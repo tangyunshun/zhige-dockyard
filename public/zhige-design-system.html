@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>知阁.舟坊 (ZhiGe Dockyard) - 全量 UI 样式规范字典 V6.0 (150组件终极版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* ==========================================================================
+           1. 核心设计令牌 (Design Tokens) - 必须严格调用的 CSS 变量
+           ========================================================================== */
+        :root {
+            --zhige-primary: #3182ce; --zhige-primary-hover: #2b6cb0; --zhige-primary-light: #ebf8ff;
+            --zhige-success: #38a169; --zhige-success-light: #f0fff4;
+            --zhige-warning: #dd6b20; --zhige-warning-light: #fffaf0;
+            --zhige-danger: #e53e3e; --zhige-danger-light: #fff5f5;
+            --zhige-text-main: #1e293b; --zhige-text-sub: #64748b;
+            --zhige-bg-page: #f0f8ff; --zhige-bg-card: #ffffff; --zhige-border: #e2e8f0;
+            --radius-card: 8px; --radius-btn: 4px;      
+        }
+
+        body { background-color: var(--zhige-bg-page); color: var(--zhige-text-main); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; overflow: hidden; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .zg-required::before { content: "*"; color: var(--zhige-danger); margin-right: 4px; font-weight: bold; font-family: monospace; }
+        .zg-card { background-color: var(--zhige-bg-card); border-radius: var(--radius-card); border: 1px solid var(--zhige-border); box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); padding: 20px; }
+        .zg-input { width: 100%; border-radius: var(--radius-btn); border: 1px solid var(--zhige-border); padding: 8px 12px; font-size: 14px; color: var(--zhige-text-main); transition: all 0.2s; outline: none; }
+        .zg-input:focus { border-color: var(--zhige-primary); box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2); }
+        .zg-input.is-error { border-color: var(--zhige-danger); box-shadow: 0 0 0 2px rgba(229, 62, 62, 0.2); }
+        .zg-btn { display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-btn); padding: 6px 16px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+        .zg-btn-primary { background: var(--zhige-primary); color: white; }
+        .zg-btn-primary:hover { background: var(--zhige-primary-hover); }
+        .zg-btn-default { background: white; border-color: var(--zhige-border); color: var(--zhige-text-main); }
+        .zg-btn-default:hover { border-color: var(--zhige-primary); color: var(--zhige-primary); }
+        .zg-btn-danger { background: var(--zhige-danger); color: white; }
+        .zg-btn-danger:hover { filter: brightness(0.9); }
+        .zg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .zg-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-btn); font-size: 12px; font-weight: 500; }
+        .zg-table { width: 100%; border-collapse: collapse; text-align: left; }
+        .zg-table th { background-color: #f1f5f9; color: var(--zhige-text-sub); font-weight: 500; font-size: 13px; padding: 10px 16px; border-bottom: 1px solid var(--zhige-border); white-space: nowrap; }
+        .zg-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid var(--zhige-border); color: var(--zhige-text-main); }
+        .zg-table tr:hover td { background-color: var(--zhige-primary-light); }
+
+        .zg-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; border: 1px solid var(--zhige-border); border-radius: 4px; background-color: white; cursor: pointer; position: relative; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); display: inline-block; vertical-align: middle; margin: 0; outline: none; }
+        .zg-checkbox:hover { border-color: var(--zhige-primary); }
+        .zg-checkbox:checked { background-color: var(--zhige-primary); border-color: var(--zhige-primary); box-shadow: 0 1px 3px rgba(49,130,206,0.3); }
+        .zg-checkbox:checked::after { content: ''; position: absolute; left: 5px; top: 1.5px; width: 5px; height: 9px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+        .zg-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+        .zg-modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .zg-modal { background: white; border-radius: var(--radius-card); width: 100%; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); transform: translateY(-20px); transition: transform 0.2s; display: flex; flex-direction: column; max-height: 90vh; }
+        .zg-modal-overlay.active .zg-modal { transform: translateY(0); }
+        .zg-modal-header { padding: 16px 20px; border-bottom: 1px solid var(--zhige-border); display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 16px; }
+        .zg-modal-body { padding: 20px; overflow-y: auto; }
+        .zg-modal-footer { padding: 12px 20px; border-top: 1px solid var(--zhige-border); display: flex; justify-content: flex-end; gap: 12px; background: #f8fafc; border-bottom-left-radius: var(--radius-card); border-bottom-right-radius: var(--radius-card); }
+
+        #zg-toast-container { position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .zg-toast { background: white; border-radius: var(--radius-card); box-shadow: 0 4px 12px rgba(0,0,0,0.12); padding: 8px 14px; display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 180px; transform: translateY(-20px); opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .zg-toast.show { transform: translateY(0); opacity: 1; }
+
+        @media (max-width: 768px) { #zg-sidebar { position: fixed; height: 100vh; left: 0; top: 0; transform: translateX(-100%); transition: transform 0.3s ease; } #zg-sidebar.open { transform: translateX(0); } }
+        .zg-menu-item { display: flex; align-items: center; padding: 10px 16px; border-radius: var(--radius-btn); color: #475569; font-size: 14px; cursor: pointer; transition: all 0.2s; margin-bottom: 4px; }
+        .zg-menu-item:hover { background-color: rgba(0,0,0,0.04); color: #0f172a; }
+        .zg-menu-item.active { background-color: var(--zhige-primary-light); color: var(--zhige-primary); font-weight: 600; }
+        .zg-menu-icon { width: 18px; height: 18px; margin-right: 12px; }
+
+        .zg-tabs { display: flex; border-bottom: 1px solid var(--zhige-border); gap: 24px; overflow-x: auto; }
+        .zg-tab-item { padding: 8px 4px; font-size: 14px; color: var(--zhige-text-sub); cursor: pointer; position: relative; font-weight: 500; transition: color 0.2s; white-space: nowrap; display: flex; align-items: center; }
+        .zg-tab-item:hover { color: var(--zhige-primary); }
+        .zg-tab-item.active { color: var(--zhige-primary); }
+        .zg-tab-item.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background-color: var(--zhige-primary); border-radius: 2px 2px 0 0; }
+        .zg-tab-badge { background-color: var(--zhige-danger); color: white; border-radius: 10px; padding: 0 6px; font-size: 10px; margin-left: 6px; line-height: 16px; height: 16px; font-weight: bold; }
+        .zg-tab-item.active .zg-tab-badge { background-color: var(--zhige-primary); }
+        
+        .zg-switch { position: relative; display: inline-flex; width: 36px; height: 20px; background-color: var(--zhige-border); border-radius: 999px; cursor: pointer; transition: background-color 0.2s; }
+        .zg-switch.active { background-color: var(--zhige-primary); }
+        .zg-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .zg-switch.active::after { transform: translateX(16px); }
+
+        .zg-progress { width: 100%; background-color: #e2e8f0; border-radius: 999px; height: 6px; overflow: hidden; }
+        .zg-progress-bar { background-color: var(--zhige-primary); height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+
+        .zg-tooltip-wrapper { position: relative; display: inline-block; cursor: help; }
+        .zg-tooltip-wrapper .zg-tooltip { visibility: hidden; opacity: 0; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%) translateY(-4px); background-color: #1e293b; color: white; text-align: center; padding: 6px 10px; border-radius: 4px; font-size: 12px; white-space: nowrap; z-index: 999; transition: all 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); pointer-events: none;}
+        .zg-tooltip-wrapper .zg-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; margin-left: -4px; border-width: 4px; border-style: solid; border-color: #1e293b transparent transparent transparent; }
+        .zg-tooltip-wrapper:hover .zg-tooltip { visibility: visible; opacity: 1; transform: translateX(-50%) translateY(-8px); }
+
+        .zg-step-pro { display: flex; margin-bottom: 28px; position: relative; }
+        .zg-step-pro:last-child { margin-bottom: 0; }
+        .zg-step-pro-line { position: absolute; left: 15px; top: 34px; bottom: -28px; width: 2px; background: #e2e8f0; }
+        .zg-step-pro.completed .zg-step-pro-line { background: var(--zhige-primary); }
+        .zg-step-pro-icon { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; background: white; z-index: 10; font-weight: bold; color: var(--zhige-text-sub); transition: all 0.3s; font-size: 14px;}
+        .zg-step-pro.active .zg-step-pro-icon { border-color: var(--zhige-primary); color: white; background: var(--zhige-primary); box-shadow: 0 0 0 4px rgba(49,130,206,0.25); }
+        .zg-step-pro.completed .zg-step-pro-icon { border-color: var(--zhige-primary); color: var(--zhige-primary); background: var(--zhige-primary-light); }
+
+        .zg-tree-node { display: flex; align-items: center; padding: 6px 10px; font-size: 14px; color: var(--zhige-text-main); cursor: pointer; border-radius: 4px; transition: all 0.2s;}
+        .zg-tree-node:hover { background-color: var(--zhige-primary-light); color: var(--zhige-primary); }
+        .zg-tree-node.active { background-color: #e0f2fe; color: var(--zhige-primary); font-weight: bold; }
+
+        .zg-radio { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; border: 1px solid var(--zhige-border); border-radius: 50%; margin-right: 6px; cursor: pointer; position: relative; vertical-align: middle; background: white; transition: all 0.2s; }
+        .zg-radio:hover { border-color: var(--zhige-primary); }
+        .zg-radio:checked { border-color: var(--zhige-primary); background: var(--zhige-primary); box-shadow: 0 1px 3px rgba(49,130,206,0.3); }
+        .zg-radio:checked::after { content: ''; position: absolute; top: 4.5px; left: 4.5px; width: 5px; height: 5px; border-radius: 50%; background: white; }
+        
+        .zg-slider-pro-wrapper { position: relative; width: 100%; display: flex; align-items: center; }
+        .zg-slider-pro { -webkit-appearance: none; width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; outline: none; }
+        .zg-slider-pro::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: white; border: 2px solid var(--zhige-primary); border-radius: 50%; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.1s; }
+        .zg-slider-pro::-webkit-slider-thumb:hover { transform: scale(1.1); }
+        .zg-slider-tooltip { position: absolute; top: -30px; left: 60%; transform: translateX(-50%); background: var(--zhige-primary); color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;}
+        .zg-slider-tooltip::after { content:''; position: absolute; bottom:-4px; left:50%; margin-left:-4px; border-width: 4px 4px 0; border-style: solid; border-color: var(--zhige-primary) transparent transparent transparent;}
+
+        .zg-upload-pro { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 40px 20px; text-align: center; background: #f8fafc; cursor: pointer; transition: all 0.3s; }
+        .zg-upload-pro:hover { border-color: var(--zhige-primary); background: var(--zhige-primary-light); }
+        .zg-empty-pro { text-align: center; color: var(--zhige-text-sub); padding: 48px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        
+        .zg-chat { padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: 85%; line-height: 1.6; }
+        .zg-chat-user { background: var(--zhige-primary); color: white; border-bottom-right-radius: 4px; margin-left: auto; box-shadow: 0 2px 4px rgba(49,130,206,0.2); }
+        .zg-chat-ai { background: white; border: 1px solid var(--zhige-border); color: var(--zhige-text-main); border-top-left-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .zg-code-block { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: var(--radius-card); font-family: monospace; font-size: 13px; position: relative; overflow-x: auto; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
+        .zg-code-copy { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.1); border: none; color: #94a3b8; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+        .zg-code-copy:hover { background: rgba(255,255,255,0.2); color: white; }
+        .zg-stat-val { font-size: 28px; font-weight: 800; color: var(--zhige-text-main); font-family: 'Courier New', Courier, monospace;}
+        .zg-stat-trend { font-size: 12px; margin-left: 8px; display: inline-flex; align-items: center; font-weight: bold; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .zg-skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 400% 100%; animation: shimmer 1.5s infinite linear; border-radius: 4px; }
+        .zg-dot { display: inline-flex; align-items: center; font-size: 13px; }
+        .zg-dot::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 0 2px white; }
+        .zg-dot.success::before { background-color: var(--zhige-success); }
+        .zg-dot.warning::before { background-color: var(--zhige-warning); }
+        .zg-dot.danger::before { background-color: var(--zhige-danger); }
+        details.zg-accordion { border-bottom: 1px solid var(--zhige-border); transition: all 0.3s; }
+        summary.zg-accordion-title { padding: 16px 0; cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: var(--zhige-text-main); outline: none; }
+        summary.zg-accordion-title::-webkit-details-marker { display: none; }
+        .zg-accordion-content { padding-bottom: 16px; color: var(--zhige-text-sub); font-size: 13.5px; line-height: 1.6; }
+        details.zg-accordion[open] summary svg { transform: rotate(180deg); }
+        .zg-avatar-group { display: flex; align-items: center; }
+        .zg-avatar { width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: white; margin-left: -8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .zg-avatar:first-child { margin-left: 0; }
+        .zg-popover { position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: white; border: 1px solid var(--zhige-border); border-radius: var(--radius-card); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); padding: 12px; z-index: 20; min-width: 200px; display: none; }
+        .relative:hover > .zg-popover { display: block; }
+        .zg-popover::after { content: ''; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: white transparent transparent transparent; }
+        
+        .zg-timeline { border-left: 2px solid var(--zhige-border); padding-left: 20px; position: relative; margin-left: 6px; }
+        .zg-time-item { position: relative; margin-bottom: 24px; }
+        .zg-time-dot { position: absolute; left: -27px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: white; border: 3px solid var(--zhige-primary); box-shadow: 0 0 0 3px white; }
+        .zg-kbd { padding: 2px 6px; font-size: 11px; font-family: monospace; background: #f8fafc; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 4px; color: #475569; }
+        .zg-quote { border-left: 4px solid var(--zhige-primary); background: var(--zhige-primary-light); padding: 12px 16px; margin: 0; color: #334155; font-size: 14px; border-radius: 0 4px 4px 0; }
+        .zg-overlay-loading { position: absolute; inset: 0; background: rgba(255,255,255,0.7); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 10; border-radius: var(--radius-card); }
+        .zg-spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid rgba(49,130,206,0.2); border-radius: 50%; border-top-color: var(--zhige-primary); animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* AI 动效 */
+        @keyframes zg-typing { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        .zg-cursor { display: inline-block; width: 2px; height: 1em; background: var(--zhige-primary); vertical-align: middle; animation: zg-typing 1s infinite; }
+        .zg-ai-wave { display: flex; gap: 3px; align-items: center; height: 24px;}
+        .zg-ai-wave span { display: block; width: 3px; background: var(--zhige-primary); border-radius: 2px; animation: zg-wave 1s ease-in-out infinite; }
+        .zg-ai-wave span:nth-child(2) { animation-delay: 0.1s; } .zg-ai-wave span:nth-child(3) { animation-delay: 0.2s; }
+        @keyframes zg-wave { 0%, 100% { height: 8px; } 50% { height: 24px; } }
+        
+        /* 环形进度条 */
+        .zg-circle-prog { position: relative; width: 60px; height: 60px; border-radius: 50%; background: conic-gradient(var(--zhige-primary) 70%, #e2e8f0 0); display: flex; align-items: center; justify-content: center; }
+        .zg-circle-prog::before { content: ''; position: absolute; width: 48px; height: 48px; border-radius: 50%; background: white; }
+        .zg-circle-val { position: relative; z-index: 1; font-size: 14px; font-weight: bold; color: var(--zhige-text-main); }
+    </style>
+</head>
+<body class="flex h-screen w-full">
+
+    <div id="mobile-overlay" class="fixed inset-0 bg-slate-900/50 z-20 hidden md:hidden" onclick="toggleSidebar()"></div>
+
+    <aside id="zg-sidebar" class="w-[240px] flex-shrink-0 bg-[#eaf4fc] text-[#1e293b] flex flex-col border-r border-[var(--zhige-border)] shadow-xl md:shadow-none z-30">
+        <div class="h-14 flex items-center px-6 font-bold text-lg border-b border-[var(--zhige-border)] tracking-wider flex-shrink-0">
+            <span class="text-[var(--zhige-primary)] mr-2 text-xl">⬡</span>
+            <span class="text-[#1e293b]">知阁.舟坊</span>
+        </div>
+        
+        <div class="p-4 border-b border-[var(--zhige-border)]">
+            <div class="bg-white rounded-[var(--radius-btn)] p-2 px-3 flex justify-between items-center cursor-pointer border border-[var(--zhige-border)] hover:border-[var(--zhige-primary)] transition shadow-sm">
+                <div class="flex flex-col">
+                    <span class="text-xs text-slate-500">当前项目空间</span>
+                    <span class="text-sm font-medium text-slate-800">省级政务云一期</span>
+                </div>
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-2 px-3">全局视图</div>
+            <div class="zg-menu-item">
+                <svg class="zg-menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                工作台 (Workspace)
+            </div>
+            
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-6 px-3">组件矩阵</div>
+            <div class="zg-menu-item active">
+                <svg class="zg-menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                商机与售前打单 (6)
+            </div>
+            <div class="zg-menu-item">
+                <svg class="zg-menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                需求定义与设计 (4)
+            </div>
+            <div class="zg-menu-item">
+                <svg class="zg-menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                后端核心与 API (6)
+            </div>
+            
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-6 px-3">系统底座</div>
+            <div class="zg-menu-item">
+                <svg class="zg-menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                全局设置规范
+            </div>
+        </nav>
+    </aside>
+
+    <main class="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-[var(--zhige-bg-page)] relative">
+        <header class="h-14 bg-white border-b border-[var(--zhige-border)] flex items-center px-6 justify-between flex-shrink-0 z-10 shadow-sm">
+            <div class="flex items-center flex-1 min-w-0">
+                <button class="md:hidden mr-3 text-slate-500 hover:text-[var(--zhige-primary)]" onclick="toggleSidebar()">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+                <nav class="flex text-sm text-[var(--zhige-text-sub)] font-medium" aria-label="Breadcrumb">
+                    <ol class="inline-flex items-center space-x-1 md:space-x-2">
+                        <li class="inline-flex items-center"><a href="#" class="hover:text-[var(--zhige-primary)] transition">工作台</a></li>
+                        <li class="hidden sm:block"><div class="flex items-center"><span class="mx-2 text-gray-400">/</span><a href="#" class="hover:text-[var(--zhige-primary)] transition">商机与售前打单</a></div></li>
+                        <li><div class="flex items-center"><span class="mx-2 text-gray-400">/</span><span class="text-[var(--zhige-text-main)] font-semibold">【组件 01】RFP 标书拆解器</span></div></li>
+                    </ol>
+                </nav>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="hidden lg:block relative">
+                    <input type="text" class="zg-input py-1.5 pl-8 text-sm w-64 rounded-full bg-slate-50" placeholder="全局搜索功能或文档...">
+                    <svg class="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <div class="h-6 w-px bg-[var(--zhige-border)] hidden sm:block mx-2"></div>
+                <div class="flex items-center space-x-2 cursor-pointer hover:opacity-80 transition">
+                    <div class="text-right hidden sm:block">
+                        <div class="text-sm font-bold text-[var(--zhige-text-main)] leading-none">王建国</div>
+                        <div class="text-[11px] text-[var(--zhige-text-sub)] mt-1">SuperAdmin</div>
+                    </div>
+                    <div class="w-8 h-8 rounded-full bg-[var(--zhige-primary-light)] border border-[var(--zhige-primary)] flex items-center justify-center text-[var(--zhige-primary)] font-bold text-sm">王</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-6 scroll-smooth">
+            <div class="max-w-[1400px] mx-auto w-full space-y-6">
+
+                <div class="flex justify-between items-end mb-6">
+                    <div>
+                        <h1 class="text-2xl font-bold text-[var(--zhige-text-main)]">UI 样式规范中心 (V5.0 - 150组件真理版)</h1>
+                        <p class="text-sm text-[var(--zhige-text-sub)] mt-1">基于大厂交互体验重构，总计 150 种高阶 AI/B 端组件，打造系统视觉天花板。</p>
+                    </div>
+                    <button class="zg-btn zg-btn-primary" onclick="showToast('success', '同步配置成功')">同步全局配置</button>
+                </div>
+
+                <section class="zg-card">
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2">1. 状态与标签 (Tags)</h2>
+                    <div class="flex flex-wrap gap-4 items-center">
+                        <span class="zg-tag bg-[var(--zhige-primary-light)] text-[var(--zhige-primary)] border border-[var(--zhige-primary)]">主色标签 (Primary)</span>
+                        <span class="zg-tag bg-[var(--zhige-success-light)] text-[var(--zhige-success)] border border-[var(--zhige-success)]">成功/通过 (Success)</span>
+                        <span class="zg-tag bg-[var(--zhige-warning-light)] text-[var(--zhige-warning)] border border-[var(--zhige-warning)]">预警/进行中 (Warning)</span>
+                        <span class="zg-tag bg-[var(--zhige-danger-light)] text-[var(--zhige-danger)] border border-[var(--zhige-danger)]">失败/严重 (Danger)</span>
+                        <span class="zg-tag bg-slate-100 text-slate-600 border border-slate-300">中性/未开始 (Neutral)</span>
+                        
+                        <span class="text-sm text-slate-400 ml-4 mr-2 border-l border-slate-300 pl-4">【组件 31】常驻实心标签：</span>
+                        <span class="zg-tag bg-slate-200 text-slate-700 border border-slate-300 rounded px-3 py-1 cursor-default">系统预设 (不可删)</span>
+                        <span class="zg-tag bg-[var(--zhige-primary)] text-white border border-[var(--zhige-primary)] rounded px-3 py-1 cursor-default shadow-sm">核心资源 (锁定)</span>
+                    </div>
+                </section>
+
+                <section class="zg-card">
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2">2. 按钮操作 (Buttons)</h2>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <button class="zg-btn zg-btn-primary">主操作按钮</button>
+                        <button class="zg-btn zg-btn-default">次操作按钮</button>
+                        <button class="zg-btn zg-btn-default border-dashed">虚线按钮 (添加)</button>
+                        <button class="zg-btn zg-btn-danger">危险操作</button>
+                        <button class="zg-btn zg-btn-primary" disabled>禁用状态</button>
+                    </div>
+                </section>
+
+                <section class="zg-card">
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2">3. 表单与输入 (Forms & Validation)</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium mb-1 zg-required">项目名称</label>
+                            <input type="text" class="zg-input" placeholder="请输入如：智慧工地项目...">
+                            <p class="text-xs text-[var(--zhige-text-sub)] mt-1">用于在左侧工作台显示的简短名称。</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 zg-required">数据库密码</label>
+                            <input type="password" class="zg-input is-error" value="12345">
+                            <p class="text-xs text-[var(--zhige-danger)] mt-1 flex items-center font-medium">
+                                <svg class="w-3 h-3 mr-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                                密码复杂度不足
+                            </p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">所属组件模块</label>
+                            <select class="zg-input bg-white cursor-pointer">
+                                <option>【组件 01】RFP 标书拆解器</option>
+                                <option>【组件 07】混沌需求转 PRD</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="zg-card p-0 flex flex-col overflow-hidden">
+                    <div class="p-4 border-b border-[var(--zhige-border)] flex justify-between items-center bg-white rounded-t-[var(--radius-card)]">
+                        <h2 class="text-lg font-bold border-l-4 border-[var(--zhige-primary)] pl-2">4. 高密度表格 (已应用修复后的复选框)</h2>
+                        <div class="flex items-center space-x-2">
+                            <button class="zg-btn zg-btn-danger text-xs py-1.5" onclick="openConfirmModal()">批量删除</button>
+                            <button class="zg-btn zg-btn-default text-xs py-1.5">导出 CSV</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="zg-table min-w-[900px]">
+                            <thead>
+                                <tr>
+                                    <th class="w-12 text-center"><input type="checkbox" class="zg-checkbox" onclick="toggleAllCheckboxes(this)"></th>
+                                    <th class="w-16">ID</th>
+                                    <th>文档名称</th>
+                                    <th>解析进度</th>
+                                    <th>创建人</th>
+                                    <th>更新时间</th>
+                                    <th class="text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="text-center"><input type="checkbox" class="zg-checkbox row-checkbox cursor-pointer"></td>
+                                    <td>#01</td>
+                                    <td class="font-medium text-[var(--zhige-primary)] cursor-pointer hover:underline">公安局交管标书.pdf</td>
+                                    <td><span class="zg-tag bg-[var(--zhige-success-light)] text-[var(--zhige-success)]">已完成</span></td>
+                                    <td>Admin</td>
+                                    <td class="text-[var(--zhige-text-sub)]">2026-04-14 10:22</td>
+                                    <td class="text-right space-x-3">
+                                        <span class="text-[var(--zhige-primary)] cursor-pointer text-sm font-medium hover:opacity-80">查看</span>
+                                        <span class="text-[var(--zhige-danger)] cursor-pointer text-sm hover:opacity-80" onclick="openConfirmModal()">删除</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-center"><input type="checkbox" class="zg-checkbox row-checkbox cursor-pointer"></td>
+                                    <td>#02</td>
+                                    <td class="font-medium text-gray-800">第三人民医院信息化招标文件.docx</td>
+                                    <td><span class="zg-tag bg-[var(--zhige-warning-light)] text-[var(--zhige-warning)]">处理中 64%</span></td>
+                                    <td>User_01</td>
+                                    <td class="text-[var(--zhige-text-sub)]">2026-04-14 09:15</td>
+                                    <td class="text-right space-x-3">
+                                        <span class="text-[var(--zhige-primary)] cursor-pointer text-sm font-medium hover:opacity-80">查看</span>
+                                        <span class="text-[var(--zhige-danger)] cursor-pointer text-sm hover:opacity-80" onclick="openConfirmModal()">删除</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="p-4 border-t border-[var(--zhige-border)] flex flex-col sm:flex-row justify-between items-center bg-slate-50 rounded-b-[var(--radius-card)]">
+                        <div class="text-sm text-[var(--zhige-text-sub)] mb-3 sm:mb-0">
+                            共 <span class="font-bold text-[var(--zhige-text-main)]">128</span> 条数据
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button class="px-2.5 py-1 border border-[var(--zhige-border)] rounded bg-white text-gray-400 cursor-not-allowed text-sm" disabled>&lt;</button>
+                            <button class="px-3 py-1 border border-[var(--zhige-primary)] rounded bg-[var(--zhige-primary)] text-white text-sm font-medium">1</button>
+                            <button class="px-3 py-1 border border-[var(--zhige-border)] rounded bg-white hover:text-[var(--zhige-primary)] text-sm font-medium">2</button>
+                            <span class="px-2 text-gray-400">...</span>
+                            <button class="px-3 py-1 border border-[var(--zhige-border)] rounded bg-white hover:text-[var(--zhige-primary)] text-sm font-medium">10</button>
+                            <button class="px-2.5 py-1 border border-[var(--zhige-border)] rounded bg-white hover:text-[var(--zhige-primary)] text-sm">&gt;</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="zg-card relative overflow-hidden">
+                    <div class="zg-overlay-loading hidden" id="demo-overlay">
+                        <div class="flex flex-col items-center">
+                            <div class="zg-spinner w-8 h-8 mb-3"></div>
+                            <span class="text-sm font-bold text-[var(--zhige-primary)]">数据同步中...</span>
+                        </div>
+                    </div>
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2 flex justify-between">
+                        <span>5. 交互反馈体系 (Modals & Toasts)</span>
+                        <button class="text-xs text-[var(--zhige-primary)] hover:underline" onclick="document.getElementById('demo-overlay').classList.toggle('hidden')">【组件 10】演示局部加载遮罩</button>
+                    </h2>
+                    
+                    <div class="bg-orange-50 border-l-4 border-orange-500 p-3 rounded shadow-sm mb-4">
+                        <div class="flex">
+                            <svg class="w-5 h-5 text-orange-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                            <div>
+                                <h3 class="text-sm font-bold text-orange-800">【组件 9】算力 Token 额度不足预警</h3>
+                                <p class="text-xs text-orange-700 mt-1">当前账户剩余 12,450 Tokens。系统将于 2 小时后自动降级为基础模型，请及时充值以免影响业务。</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-4 mt-2">
+                        <button class="zg-btn zg-btn-default" onclick="showToast('success', '组件配置保存成功！')">触发成功 Toast</button>
+                        <button class="zg-btn zg-btn-default" onclick="showToast('error', '数据库连接失败，请检查。')">触发错误 Toast</button>
+                        <button class="zg-btn zg-btn-primary" onclick="openModal('demoModal')">打开业务填写弹窗</button>
+                        <button class="zg-btn zg-btn-danger" onclick="openConfirmModal()">呼出二次确认弹窗</button>
+                    </div>
+                </section>
+
+                <section class="zg-card">
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2">6. 扩展功能组件 (Tabs, Progress, Switch)</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="space-y-8">
+                            <div>
+                                <div class="text-sm font-medium mb-3 text-[var(--zhige-text-main)]">【组件 12 修复】带数字的模块导航 (Tabs)</div>
+                                <div class="zg-tabs">
+                                    <div class="zg-tab-item active">全部任务 <span class="zg-tab-badge">12</span></div>
+                                    <div class="zg-tab-item">解析中 <span class="zg-tab-badge">2</span></div>
+                                    <div class="zg-tab-item">已完成</div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-sm font-medium mb-3 text-[var(--zhige-text-main)]">【组件 14】系统配置 (Switch)</div>
+                                <div class="flex items-center space-x-3">
+                                    <div class="zg-switch active" onclick="this.classList.toggle('active')"></div>
+                                    <span class="text-sm text-[var(--zhige-text-sub)]">开启大模型深度分析（消耗更多 Token）</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-8">
+                            <div>
+                                <div class="text-sm font-medium mb-3 text-[var(--zhige-text-main)] flex justify-between">
+                                    <span>标书拆解进度 (Progress)</span>
+                                    <span class="text-[var(--zhige-primary)] font-bold">64%</span>
+                                </div>
+                                <div class="zg-progress">
+                                    <div class="zg-progress-bar" style="width: 64%;"></div>
+                                </div>
+                                <p class="text-xs text-[var(--zhige-text-sub)] mt-2">正在提取第 124/180 页的资质偏离项...</p>
+                            </div>
+                            <div>
+                                <div class="text-sm font-medium mb-3 text-[var(--zhige-text-main)]">【组件 4 修复】文字提示 (Tooltip)</div>
+                                <div class="zg-tooltip-wrapper">
+                                    <span class="underline decoration-dashed decoration-gray-400 text-sm text-[var(--zhige-text-main)] underline-offset-4 cursor-help">鼠标悬浮此文本查看说明</span>
+                                    <div class="zg-tooltip">这是一个标准的极简 Tooltip 提示框</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="zg-card">
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2">7. 进阶表单与协作组件</h2>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-medium mb-2">系统级指令 / Prompt (多行文本)</label>
+                                <textarea class="zg-input zg-textarea" placeholder="请描述你需要大模型生成的系统架构规则..."></textarea>
+                                <div class="text-right text-xs text-gray-400 mt-1">支持拖拽右下角改变高度</div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium mb-2">解析引擎选择 (原生 Radio 单选增强)</label>
+                                <div class="flex items-center space-x-6">
+                                    <label class="flex items-center text-sm cursor-pointer hover:text-[var(--zhige-primary)]">
+                                        <input type="radio" name="ai_engine" class="zg-radio" checked> 舟坊自研推理模型
+                                    </label>
+                                    <label class="flex items-center text-sm cursor-pointer hover:text-[var(--zhige-primary)]">
+                                        <input type="radio" name="ai_engine" class="zg-radio"> DeepSeek 本地部署版
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">【组件 15 修复】带气泡的数值滑块 (Slider)</label>
+                                <div class="zg-slider-pro-wrapper mt-6 mb-2">
+                                    <div class="zg-slider-tooltip">60</div>
+                                    <input type="range" class="zg-slider-pro" min="0" max="100" value="60">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-medium mb-2 zg-required">【组件 17 修复】高级拖拽上传 (Drag & Drop)</label>
+                                <div class="zg-upload-pro">
+                                    <div class="text-5xl mb-3 flex justify-center drop-shadow-md">📂</div>
+                                    <div class="text-base text-[var(--zhige-text-main)] font-bold mb-1">点击选择，或将文件夹拖拽到此处上传</div>
+                                    <div class="text-sm text-gray-500 mt-1">支持批量上传 PDF, DOCX 文档，单次不超过 500MB</div>
+                                    <button class="zg-btn zg-btn-default mt-4 shadow-sm">浏览本地文件</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium mb-2">【组件 19】项目组成员 (Avatar Group)</label>
+                                <div class="zg-avatar-group">
+                                    <div class="zg-avatar bg-blue-500">王</div>
+                                    <div class="zg-avatar bg-orange-500">李</div>
+                                    <div class="zg-avatar bg-green-500">陈</div>
+                                    <div class="zg-avatar bg-gray-200 text-gray-600 border-dashed">+</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="zg-card">
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2">8. 高级数据展现与状态反馈</h2>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="space-y-6">
+                            <div>
+                                <div class="text-sm font-medium mb-2">【组件 12】表格流转状态 (Status Dots)</div>
+                                <div class="flex space-x-6 bg-slate-50 p-3 rounded border border-slate-200">
+                                    <span class="zg-dot success">服务在线</span>
+                                    <span class="zg-dot warning">大模型推理中</span>
+                                    <span class="zg-dot danger">解析异常</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="text-sm font-medium mb-4">【组件 8 修复】高级垂直流程追踪 (Vertical Steps)</div>
+                                <div class="pl-2">
+                                    <div class="zg-step-pro completed">
+                                        <div class="zg-step-pro-line"></div>
+                                        <div class="zg-step-pro-icon">✓</div>
+                                        <div class="ml-4">
+                                            <div class="text-sm font-bold text-[var(--zhige-text-main)]">需求接入完成</div>
+                                            <div class="text-xs text-slate-400 mt-0.5">2026-04-14 10:24</div>
+                                        </div>
+                                    </div>
+                                    <div class="zg-step-pro active">
+                                        <div class="zg-step-pro-line"></div>
+                                        <div class="zg-step-pro-icon">2</div>
+                                        <div class="ml-4">
+                                            <div class="text-sm font-bold text-[var(--zhige-primary)]">大模型解析推理中</div>
+                                            <div class="text-xs text-[var(--zhige-primary)] opacity-80 mt-0.5">正在提取第五章资质要求...</div>
+                                        </div>
+                                    </div>
+                                    <div class="zg-step-pro">
+                                        <div class="zg-step-pro-icon">3</div>
+                                        <div class="ml-4">
+                                            <div class="text-sm font-bold text-slate-400">输出并归档 PRD</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6">
+                            <div>
+                                <div class="text-sm font-medium mb-2">【组件 16】无数据兜底 (Empty State)</div>
+                                <div class="zg-empty-pro bg-slate-50 rounded-[var(--radius-card)] border border-dashed border-slate-200">
+                                    <div class="text-5xl mb-3 grayscale opacity-40">📭</div>
+                                    <p class="text-base font-bold mb-1 text-slate-700">当前项目下暂无任何生成记录</p>
+                                    <p class="text-xs text-slate-400 mb-4">您可以尝试上传文档，或新建一个解析任务。</p>
+                                    <button class="zg-btn zg-btn-primary text-xs py-1.5 shadow-sm">新建任务</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="text-sm font-medium mb-2">【组件 23 修复】多级树形目录 (Tree Node)</div>
+                                <div class="border border-[var(--zhige-border)] rounded shadow-sm p-3 bg-white mb-4">
+                                    <div class="zg-tree-node font-bold text-[var(--zhige-primary)] bg-[var(--zhige-primary-light)]">
+                                        <span class="mr-2 text-lg">📂</span> 知阁企业知识库
+                                    </div>
+                                    <div class="zg-tree-node relative">
+                                        <div class="zg-tree-indent"></div>
+                                        <span class="text-yellow-500 mr-2 text-lg">📁</span> 历年中标标书
+                                    </div>
+                                    <div class="zg-tree-node relative">
+                                        <div class="zg-tree-indent"></div>
+                                        <span class="text-blue-500 mr-2 text-lg">📁</span> 行业术语字典
+                                    </div>
+                                    <div class="zg-tree-node relative active">
+                                        <div class="zg-tree-indent ml-[40px]"></div>
+                                        <span class="text-slate-400 mr-2 text-lg">📄</span> 某项目政务云_PRD.docx
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="zg-card mb-8">
+                    <h2 class="text-lg font-bold mb-4 border-l-4 border-[var(--zhige-primary)] pl-2">【组件 26 修复】图文媒体展示卡片 (Image Card)</h2>
+                    <p class="text-sm text-slate-500 mb-4 bg-blue-50 p-3 rounded border border-blue-100">
+                        💡 <strong>设计说明：</strong>该组件在 B端 SaaS 中极其重要。它常用于展示 <strong>系统预设模板库 (Template Library)</strong>、<strong>系统架构图大纲预览</strong>、或者 <strong>大模型生成的复杂报告封面</strong>，提升界面视觉丰富度。
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="zg-img-card shadow-sm cursor-pointer hover:shadow-md transition">
+                            <div class="zg-img-cover bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-mono border-b border-slate-200 relative">
+                                <span class="absolute top-2 right-2 bg-black/60 text-white px-2 py-0.5 rounded text-[10px]">官方模板</span>
+                                🖼️ 架构图预览占位
+                            </div>
+                            <div class="p-4 bg-white">
+                                <div class="font-bold text-sm mb-1">微服务网关架构模板</div>
+                                <div class="text-xs text-slate-500">包含 Nginx, 注册中心及鉴权逻辑。</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+
+                <div class="mt-16 mb-8 flex items-center opacity-80">
+                    <div class="h-px bg-[var(--zhige-primary)] flex-1"></div>
+                    <span class="px-6 text-sm font-bold text-[var(--zhige-primary)] uppercase tracking-widest">👑 150 Ultimate Components Matrix 👑</span>
+                    <div class="h-px bg-[var(--zhige-primary)] flex-1"></div>
+                </div>
+
+                <div class="mb-4 text-center text-sm text-slate-500">
+                    以下 120 个高级组件为纯增量代码（C31 - C150），全部采用最精简的 Tailwind 语法，确保不会拖慢任何加载速度。
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C31</span><span class="text-[11px] text-slate-400 mb-2 font-bold">实心标签</span><span class="bg-[var(--zhige-primary)] text-white text-xs px-2 py-1 rounded shadow-sm">Solid Tag</span></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C32</span><span class="text-[11px] text-slate-400 mb-2 font-bold">描边标签</span><span class="border border-[var(--zhige-primary)] text-[var(--zhige-primary)] text-xs px-2 py-1 rounded bg-white">Outline Tag</span></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C33</span><span class="text-[11px] text-slate-400 mb-2 font-bold">圆点标签</span><span class="bg-white border border-slate-200 text-slate-600 text-xs px-2 py-1 rounded flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>Dot Tag</span></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C34</span><span class="text-[11px] text-slate-400 mb-2 font-bold">小红点红点</span><div class="relative"><span class="text-xl">🔔</span><span class="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C35</span><span class="text-[11px] text-slate-400 mb-2 font-bold">数字徽标</span><div class="relative"><span class="text-xl">✉️</span><span class="absolute -top-1 -right-2 bg-red-500 text-white text-[9px] px-1 rounded-full border border-white">12</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C36</span><span class="text-[11px] text-slate-400 mb-2 font-bold">文本徽标</span><span class="bg-gradient-to-r from-orange-400 to-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-sm shadow-sm font-bold">PRO</span></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C37</span><span class="text-[11px] text-slate-400 mb-2 font-bold">成功状态点</span><div class="flex items-center text-sm text-slate-600"><span class="w-2 h-2 rounded-full bg-green-500 mr-2 shadow-[0_0_0_2px_#bbf7d0]"></span>在线</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C38</span><span class="text-[11px] text-slate-400 mb-2 font-bold">警告状态点</span><div class="flex items-center text-sm text-slate-600"><span class="w-2 h-2 rounded-full bg-yellow-500 mr-2 shadow-[0_0_0_2px_#fef08a]"></span>繁忙</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C39</span><span class="text-[11px] text-slate-400 mb-2 font-bold">错误状态点</span><div class="flex items-center text-sm text-slate-600"><span class="w-2 h-2 rounded-full bg-red-500 mr-2 shadow-[0_0_0_2px_#fecaca]"></span>离线</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C40</span><span class="text-[11px] text-slate-400 mb-2 font-bold">中性状态点</span><div class="flex items-center text-sm text-slate-600"><span class="w-2 h-2 rounded-full bg-slate-400 mr-2 shadow-[0_0_0_2px_#e2e8f0]"></span>未知</div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C41</span><span class="text-[11px] text-slate-400 mb-2 font-bold">图标按钮</span><button class="bg-white border border-slate-300 p-1.5 rounded hover:bg-slate-50"><svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C42</span><span class="text-[11px] text-slate-400 mb-2 font-bold">加载按钮</span><button class="bg-[var(--zhige-primary)] text-white px-3 py-1.5 rounded text-xs flex items-center opacity-80 cursor-wait"><div class="zg-spinner w-3 h-3 border-2 mr-1"></div>Loading</button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C43</span><span class="text-[11px] text-slate-400 mb-2 font-bold">幽灵按钮</span><button class="bg-transparent border border-[var(--zhige-primary)] text-[var(--zhige-primary)] hover:bg-blue-50 px-3 py-1.5 rounded text-xs">Ghost</button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C44</span><span class="text-[11px] text-slate-400 mb-2 font-bold">链接按钮</span><button class="text-[var(--zhige-primary)] hover:underline text-sm font-medium">Click Link</button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C45</span><span class="text-[11px] text-slate-400 mb-2 font-bold">圆角胶囊按钮</span><button class="bg-slate-800 text-white px-4 py-1 rounded-full text-xs shadow-sm">Pill Btn</button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C46</span><span class="text-[11px] text-slate-400 mb-2 font-bold">悬浮操作 (FAB)</span><button class="w-8 h-8 rounded-full bg-[var(--zhige-primary)] text-white shadow-lg flex items-center justify-center text-lg leading-none">+</button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C47</span><span class="text-[11px] text-slate-400 mb-2 font-bold">带图标下拉</span><button class="bg-white border text-xs px-2 py-1 rounded flex items-center shadow-sm">操作 <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C48</span><span class="text-[11px] text-slate-400 mb-2 font-bold">无边框按钮组</span><div class="flex bg-slate-100 rounded p-0.5"><button class="bg-white shadow-sm px-2 py-0.5 text-xs rounded-sm">日</button><button class="px-2 py-0.5 text-xs text-slate-500 hover:text-slate-800">周</button></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C49</span><span class="text-[11px] text-slate-400 mb-2 font-bold">块级大按钮</span><button class="w-full bg-slate-200 text-slate-600 text-xs py-2 rounded border border-slate-300 border-dashed hover:border-slate-400">Block Btn</button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C50</span><span class="text-[11px] text-slate-400 mb-2 font-bold">玻璃态按钮</span><button class="bg-white/50 backdrop-blur-sm border border-white/40 text-[var(--zhige-primary)] px-3 py-1 text-xs rounded shadow-sm">Glassmorphism</button></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C51</span><span class="text-[11px] text-slate-400 mb-2 font-bold">带前缀输入框</span><div class="flex border rounded overflow-hidden text-xs"><span class="bg-slate-100 px-2 py-1.5 text-slate-500 border-r">https://</span><input type="text" class="w-16 px-1 outline-none"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C52</span><span class="text-[11px] text-slate-400 mb-2 font-bold">带后缀输入框</span><div class="flex border rounded overflow-hidden text-xs"><input type="text" class="w-10 px-2 text-right outline-none" value="100"><span class="bg-slate-100 px-2 py-1.5 text-slate-500 border-l">RMB</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C53</span><span class="text-[11px] text-slate-400 mb-2 font-bold">多行文本域</span><textarea class="w-full h-10 border rounded text-xs p-1 outline-none resize-none" placeholder="Textarea..."></textarea></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C54</span><span class="text-[11px] text-slate-400 mb-2 font-bold">步进器 (Stepper)</span><div class="flex border rounded overflow-hidden w-20 text-xs"><button class="bg-slate-100 px-2 hover:bg-slate-200">-</button><input type="text" class="w-full text-center border-x outline-none font-bold" value="1"><button class="bg-slate-100 px-2 hover:bg-slate-200">+</button></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C55</span><span class="text-[11px] text-slate-400 mb-2 font-bold">禁用输入框</span><input type="text" class="w-full bg-slate-100 border border-slate-200 rounded text-xs p-1.5 text-slate-400 cursor-not-allowed" value="Disabled" disabled></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C56</span><span class="text-[11px] text-slate-400 mb-2 font-bold">标签输入器</span><div class="border rounded p-1 flex items-center bg-white text-xs"><span class="bg-blue-50 text-blue-500 px-1 rounded mr-1">AI ✕</span><input type="text" class="w-8 outline-none" placeholder="..."></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C57</span><span class="text-[11px] text-slate-400 mb-2 font-bold">颜色选择器</span><div class="w-6 h-6 rounded border-2 border-white shadow-[0_0_0_1px_#cbd5e1] bg-purple-500 cursor-pointer"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C58</span><span class="text-[11px] text-slate-400 mb-2 font-bold">星级打分</span><div class="text-yellow-400 text-sm tracking-widest">★★★★<span class="text-slate-300">★</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C59</span><span class="text-[11px] text-slate-400 mb-2 font-bold">验证码 OTP</span><div class="flex space-x-1"><input class="w-5 h-6 text-center border rounded text-xs bg-white" value="4"><input class="w-5 h-6 text-center border rounded text-xs bg-white" value="2"><input class="w-5 h-6 text-center border rounded text-xs bg-white" placeholder="-"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C60</span><span class="text-[11px] text-slate-400 mb-2 font-bold">日期选择器 (Date)</span><div class="border bg-white rounded px-2 py-1 text-xs text-slate-600 flex items-center">📅 2026-04-14</div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C61</span><span class="text-[11px] text-slate-400 mb-2 font-bold">微型头像</span><div class="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px]">W</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C62</span><span class="text-[11px] text-slate-400 mb-2 font-bold">大型头像</span><div class="w-10 h-10 rounded-full bg-indigo-500 text-white flex items-center justify-center text-lg font-bold shadow-sm">建</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C63</span><span class="text-[11px] text-slate-400 mb-2 font-bold">带状态头像</span><div class="relative"><div class="w-8 h-8 rounded-full bg-slate-300"></div><div class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C64</span><span class="text-[11px] text-slate-400 mb-2 font-bold">方形头像</span><div class="w-8 h-8 rounded bg-gradient-to-br from-purple-400 to-blue-500 shadow-sm text-white flex items-center justify-center text-xs">AI</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C65</span><span class="text-[11px] text-slate-400 mb-2 font-bold">统计大数字</span><div class="text-xl font-black text-slate-800">4,092</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C66</span><span class="text-[11px] text-slate-400 mb-2 font-bold">带趋势统计</span><div class="flex items-baseline"><span class="text-lg font-bold">89%</span><span class="text-[10px] text-red-500 ml-1">↑2%</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C67</span><span class="text-[11px] text-slate-400 mb-2 font-bold">气泡提示 (Popover)</span><div class="bg-[var(--zhige-text-main)] text-white text-[10px] px-2 py-1 rounded relative shadow-md">悬浮显示<div class="absolute -bottom-1 left-1/2 -ml-1 w-2 h-2 bg-[var(--zhige-text-main)] rotate-45"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C68</span><span class="text-[11px] text-slate-400 mb-2 font-bold">文字单行截断</span><div class="w-16 truncate text-xs text-slate-700 font-medium">这是一段很长的文字</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C69</span><span class="text-[11px] text-slate-400 mb-2 font-bold">引用装饰块</span><div class="border-l-2 border-[var(--zhige-primary)] bg-blue-50 pl-2 py-0.5 text-[10px] text-slate-600 text-left">Quote text</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C70</span><span class="text-[11px] text-slate-400 mb-2 font-bold">快捷键 (Kbd)</span><div class="bg-white border border-slate-300 border-b-2 rounded px-1.5 py-0.5 text-[10px] font-mono shadow-sm">Ctrl+C</div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C71</span><span class="text-[11px] text-slate-400 mb-2 font-bold">微型警示成功</span><div class="bg-green-50 text-green-600 border border-green-200 text-[10px] px-2 py-1 rounded w-full">✓ 操作成功</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C72</span><span class="text-[11px] text-slate-400 mb-2 font-bold">微型警示错误</span><div class="bg-red-50 text-red-600 border border-red-200 text-[10px] px-2 py-1 rounded w-full">✕ 连接失败</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C73</span><span class="text-[11px] text-slate-400 mb-2 font-bold">微型警示信息</span><div class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] px-2 py-1 rounded w-full">ℹ 提示信息</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C74</span><span class="text-[11px] text-slate-400 mb-2 font-bold">骨架屏头像</span><div class="w-8 h-8 rounded-full bg-slate-200 animate-pulse"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C75</span><span class="text-[11px] text-slate-400 mb-2 font-bold">骨架屏文本行</span><div class="w-full h-2 bg-slate-200 rounded animate-pulse mb-1"></div><div class="w-2/3 h-2 bg-slate-200 rounded animate-pulse"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C76</span><span class="text-[11px] text-slate-400 mb-2 font-bold">细线进度条</span><div class="w-full bg-slate-200 h-1 rounded-full overflow-hidden"><div class="bg-blue-500 w-[60%] h-full"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C77</span><span class="text-[11px] text-slate-400 mb-2 font-bold">粗线进度条</span><div class="w-full bg-slate-200 h-3 rounded-full overflow-hidden relative"><div class="bg-green-500 w-[40%] h-full"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C78</span><span class="text-[11px] text-slate-400 mb-2 font-bold">空状态图标</span><div class="text-2xl grayscale opacity-30">📭</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C79</span><span class="text-[11px] text-slate-400 mb-2 font-bold">加载波浪 (Wave)</span><div class="flex gap-1 items-end h-4"><div class="w-1 bg-[var(--zhige-primary)] h-4 animate-pulse"></div><div class="w-1 bg-[var(--zhige-primary)] h-2 animate-pulse"></div><div class="w-1 bg-[var(--zhige-primary)] h-3 animate-pulse"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C80</span><span class="text-[11px] text-slate-400 mb-2 font-bold">圆环进度 (Ring)</span><div class="w-6 h-6 rounded-full border-2 border-slate-200 border-t-[var(--zhige-primary)] rotate-45"></div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C81</span><span class="text-[11px] text-slate-400 mb-2 font-bold">面包屑线</span><div class="text-[10px] text-slate-500">主页 <span class="mx-0.5 text-slate-300">/</span> 设置</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C82</span><span class="text-[11px] text-slate-400 mb-2 font-bold">精简页码</span><div class="flex space-x-1 text-[10px]"><span class="border px-1.5 rounded bg-white">&lt;</span><span class="border px-1.5 rounded bg-[var(--zhige-primary)] text-white">1</span><span class="border px-1.5 rounded bg-white">&gt;</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C83</span><span class="text-[11px] text-slate-400 mb-2 font-bold">水平步骤简线</span><div class="flex items-center w-full px-2"><div class="w-2 h-2 rounded-full bg-[var(--zhige-primary)]"></div><div class="flex-1 h-px bg-slate-300"></div><div class="w-2 h-2 rounded-full bg-slate-300"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C84</span><span class="text-[11px] text-slate-400 mb-2 font-bold">卡片式 Tabs</span><div class="flex bg-slate-200 p-0.5 rounded text-[10px]"><span class="bg-white shadow-sm px-2 py-0.5 rounded">Tab1</span><span class="px-2 py-0.5 text-slate-500">Tab2</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C85</span><span class="text-[11px] text-slate-400 mb-2 font-bold">胶囊式 Tabs</span><div class="flex border border-[var(--zhige-primary)] rounded-full text-[10px] overflow-hidden"><span class="bg-[var(--zhige-primary)] text-white px-2 py-0.5">ON</span><span class="text-[var(--zhige-primary)] px-2 py-0.5 bg-white">OFF</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C86</span><span class="text-[11px] text-slate-400 mb-2 font-bold">实心分割线</span><div class="w-full h-px bg-slate-300 my-2"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C87</span><span class="text-[11px] text-slate-400 mb-2 font-bold">虚线分割线</span><div class="w-full border-b border-dashed border-slate-400 my-2"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C88</span><span class="text-[11px] text-slate-400 mb-2 font-bold">垂直分割线</span><div class="flex items-center h-4"><span class="text-[10px]">A</span><div class="w-px h-full bg-slate-300 mx-2"></div><span class="text-[10px]">B</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C89</span><span class="text-[11px] text-slate-400 mb-2 font-bold">折叠图标面板</span><div class="flex items-center text-[10px] text-slate-600 bg-white border px-2 py-1 rounded w-full justify-between"><span>折叠栏</span><span>▼</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C90</span><span class="text-[11px] text-slate-400 mb-2 font-bold">描述列表行</span><div class="flex justify-between w-full text-[9px] border-b pb-1"><span class="text-slate-400">Key</span><span class="font-bold">Value</span></div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C91</span><span class="text-[11px] text-slate-400 mb-2 font-bold">微型折线图</span><svg class="w-12 h-4 text-blue-500" viewBox="0 0 50 20" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" stroke-width="2" points="0,15 10,10 20,18 30,5 40,8 50,2"/></svg></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C92</span><span class="text-[11px] text-slate-400 mb-2 font-bold">微型柱状图</span><div class="flex items-end gap-1 h-6"><div class="w-1.5 bg-blue-300 h-3"></div><div class="w-1.5 bg-blue-500 h-5"></div><div class="w-1.5 bg-blue-400 h-4"></div><div class="w-1.5 bg-blue-600 h-6"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C93</span><span class="text-[11px] text-slate-400 mb-2 font-bold">堆叠水平槽</span><div class="w-full flex h-2 rounded overflow-hidden"><div class="bg-green-500 w-1/2"></div><div class="bg-yellow-400 w-1/4"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C94</span><span class="text-[11px] text-slate-400 mb-2 font-bold">仪表盘 Mock</span><div class="w-8 h-4 border-4 border-b-0 border-blue-500 rounded-t-full relative"><div class="absolute bottom-0 left-1/2 w-0.5 h-3 bg-red-500 origin-bottom rotate-45"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C95</span><span class="text-[11px] text-slate-400 mb-2 font-bold">热力格子</span><div class="grid grid-cols-3 gap-0.5"><div class="w-2 h-2 bg-green-200"></div><div class="w-2 h-2 bg-green-500"></div><div class="w-2 h-2 bg-green-300"></div><div class="w-2 h-2 bg-green-700"></div><div class="w-2 h-2 bg-green-100"></div><div class="w-2 h-2 bg-green-400"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C96</span><span class="text-[11px] text-slate-400 mb-2 font-bold">活动日历格</span><div class="w-4 h-4 rounded-sm bg-blue-500 opacity-80"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C97</span><span class="text-[11px] text-slate-400 mb-2 font-bold">左侧高亮卡</span><div class="w-full bg-white border-l-2 border-[var(--zhige-primary)] shadow-sm h-6"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C98</span><span class="text-[11px] text-slate-400 mb-2 font-bold">置顶高亮卡</span><div class="w-full bg-white border-t-2 border-[var(--zhige-primary)] shadow-sm h-6"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C99</span><span class="text-[11px] text-slate-400 mb-2 font-bold">用户详情微卡</span><div class="flex items-center bg-white border p-1 rounded shadow-sm w-full"><div class="w-4 h-4 bg-purple-500 rounded-full mr-1"></div><div class="h-1.5 w-8 bg-slate-200 rounded"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C100</span><span class="text-[11px] text-slate-400 mb-2 font-bold">价格简卡</span><div class="border border-blue-200 bg-blue-50 text-[10px] font-bold text-blue-800 p-1 w-full text-center rounded">¥99/mo</div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C101</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 聚光灯环</span><div class="w-16 h-4 rounded-full shadow-[0_0_8px_rgba(168,85,247,0.5)] border border-purple-300"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C102</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 右侧气泡</span><div class="bg-[var(--zhige-primary)] w-3/4 h-4 rounded-l-md rounded-tr-md ml-auto"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C103</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 左侧气泡</span><div class="bg-white border border-slate-200 w-3/4 h-4 rounded-r-md rounded-tl-md mr-auto shadow-sm"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C104</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 打字指示</span><div class="w-1.5 h-3 bg-black animate-pulse"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C105</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 语音声纹</span><div class="flex gap-0.5 items-end h-4"><div class="w-1 h-3 bg-purple-500"></div><div class="w-1 h-4 bg-purple-500"></div><div class="w-1 h-2 bg-purple-500"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C106</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 思维链占位</span><div class="text-[10px] text-slate-400 flex items-center border p-1 rounded bg-white w-full"><span class="mr-1">🤔</span> 思考中...</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C107</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 来源引用注</span><sup class="text-[9px] text-blue-500 bg-blue-50 border border-blue-200 rounded px-0.5">[1]</sup></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C108</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 建议筹码</span><div class="border border-purple-200 bg-purple-50 text-purple-600 text-[9px] px-2 py-1 rounded-full shadow-sm">优化代码</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C109</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 黑色代码框</span><div class="bg-slate-800 rounded w-full h-6 border-l-2 border-blue-400"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C110</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 复制微动</span><button class="text-[9px] border bg-white px-1.5 py-0.5 shadow-sm rounded text-slate-500">Copy</button></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C111</span><span class="text-[11px] text-slate-400 mb-2 font-bold">代码行高亮</span><div class="w-full bg-slate-100 border-l-2 border-green-500 h-3"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C112</span><span class="text-[11px] text-slate-400 mb-2 font-bold">Diff 增行</span><div class="w-full bg-green-100 text-green-700 text-[9px] text-left pl-1 border-l-2 border-green-500">+ new()</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C113</span><span class="text-[11px] text-slate-400 mb-2 font-bold">Diff 删行</span><div class="w-full bg-red-100 text-red-700 text-[9px] text-left pl-1 border-l-2 border-red-500">- old()</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C114</span><span class="text-[11px] text-slate-400 mb-2 font-bold">停止生成方块</span><div class="w-3 h-3 bg-slate-600 rounded-sm"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C115</span><span class="text-[11px] text-slate-400 mb-2 font-bold">重新生成圆环</span><div class="text-[10px] text-blue-500 border border-blue-200 px-1.5 rounded bg-white shadow-sm">↻ Regen</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C116</span><span class="text-[11px] text-slate-400 mb-2 font-bold">点赞反馈微调</span><div class="flex space-x-1"><span class="bg-white border p-0.5 rounded text-[10px]">👍</span><span class="bg-white border p-0.5 rounded text-[10px]">👎</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C117</span><span class="text-[11px] text-slate-400 mb-2 font-bold">Token 仪表微圈</span><div class="w-6 h-6 border-2 border-purple-200 border-t-purple-600 rounded-full"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C118</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 模型下拉框</span><div class="bg-white border rounded text-[9px] px-1 py-0.5 shadow-sm text-slate-700">DeepSeek ▼</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C119</span><span class="text-[11px] text-slate-400 mb-2 font-bold">AI 温度控制槽</span><div class="w-full h-1 bg-gradient-to-r from-blue-300 to-red-400 rounded relative"><div class="w-2 h-2 bg-white border border-slate-400 rounded-full absolute top-[-2px] left-[70%]"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C120</span><span class="text-[11px] text-slate-400 mb-2 font-bold">向量检索库卡</span><div class="bg-indigo-50 border border-indigo-100 text-indigo-600 text-[9px] px-2 py-1 rounded w-full">VDB 关联</div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C121</span><span class="text-[11px] text-slate-400 mb-2 font-bold">API 密钥星号框</span><div class="w-full bg-white border rounded text-[10px] py-0.5 px-1 font-mono tracking-widest text-slate-500">sk-********</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C122</span><span class="text-[11px] text-slate-400 mb-2 font-bold">暗黑终端窗头</span><div class="w-full bg-[#0f172a] h-4 rounded-t-md flex items-center px-1 space-x-0.5"><div class="w-1.5 h-1.5 rounded-full bg-red-400"></div><div class="w-1.5 h-1.5 rounded-full bg-yellow-400"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C123</span><span class="text-[11px] text-slate-400 mb-2 font-bold">系统日志输出行</span><div class="text-[9px] text-slate-400 font-mono w-full text-left bg-white p-1 rounded border">INFO: done.</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C124</span><span class="text-[11px] text-slate-400 mb-2 font-bold">JSON 语法高亮卡</span><div class="text-[8px] bg-slate-50 border p-1 text-left w-full"><span class="text-blue-600">"status"</span>: <span class="text-green-600">200</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C125</span><span class="text-[11px] text-slate-400 mb-2 font-bold">Webhook 连线框</span><div class="flex items-center text-[10px] w-full"><span class="bg-white border px-1">App</span><span class="flex-1 h-px bg-blue-400 mx-1"></span><span class="bg-white border px-1">API</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C126</span><span class="text-[11px] text-slate-400 mb-2 font-bold">权限矩阵勾选格</span><div class="grid grid-cols-2 gap-1 w-full"><div class="bg-white border h-3 flex items-center justify-center text-[8px] text-green-500">✓</div><div class="bg-slate-100 border h-3"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C127</span><span class="text-[11px] text-slate-400 mb-2 font-bold">工作流触发节点</span><div class="rounded-full bg-green-50 border border-green-200 text-green-600 text-[9px] px-2 py-0.5 font-bold">▶ Start</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C128</span><span class="text-[11px] text-slate-400 mb-2 font-bold">工作流条件菱形</span><div class="w-6 h-6 bg-yellow-50 border border-yellow-300 rotate-45 flex items-center justify-center"><span class="rotate-[-45deg] text-[8px] text-yellow-600">IF</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C129</span><span class="text-[11px] text-slate-400 mb-2 font-bold">工作流动作方块</span><div class="bg-blue-50 border border-blue-200 rounded text-[9px] px-2 py-1 text-blue-700">执行 API</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C130</span><span class="text-[11px] text-slate-400 mb-2 font-bold">计费高亮包边卡</span><div class="w-full bg-white border-2 border-[var(--zhige-primary)] rounded h-6 shadow-[0_0_8px_rgba(49,130,206,0.3)]"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C131</span><span class="text-[11px] text-slate-400 mb-2 font-bold">数据字典微行</span><div class="w-full bg-white border-b text-[8px] text-slate-500 text-left py-0.5 px-1">id_card VARCHAR</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C132</span><span class="text-[11px] text-slate-400 mb-2 font-bold">二维码扫描占位</span><div class="w-8 h-8 border border-dashed border-slate-400 flex items-center justify-center text-[8px]">QR</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C133</span><span class="text-[11px] text-slate-400 mb-2 font-bold">条形码一维占位</span><div class="w-12 h-6 bg-[repeating-linear-gradient(90deg,#1e293b_0,#1e293b_2px,transparent_2px,transparent_4px)]"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C134</span><span class="text-[11px] text-slate-400 mb-2 font-bold">机密水印背景图</span><div class="w-full h-8 bg-slate-100 flex items-center justify-center -rotate-12 opacity-30 text-[8px] font-bold tracking-widest">CONFIDENTIAL</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C135</span><span class="text-[11px] text-slate-400 mb-2 font-bold">拖拽排序点状柄</span><div class="grid grid-cols-2 gap-[1px] w-2 h-4 text-slate-300 opacity-50"><div class="w-0.5 h-0.5 bg-slate-400"></div><div class="w-0.5 h-0.5 bg-slate-400"></div><div class="w-0.5 h-0.5 bg-slate-400"></div><div class="w-0.5 h-0.5 bg-slate-400"></div><div class="w-0.5 h-0.5 bg-slate-400"></div><div class="w-0.5 h-0.5 bg-slate-400"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C136</span><span class="text-[11px] text-slate-400 mb-2 font-bold">离线斜纹背景带</span><div class="w-full h-6 bg-[repeating-linear-gradient(45deg,#f1f5f9_0,#f1f5f9_4px,#e2e8f0_4px,#e2e8f0_8px)] rounded border"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px] hover:overflow-visible"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br z-10">C137</span><span class="text-[11px] text-slate-400 mb-2 font-bold z-10">右上角热销横条</span><div class="absolute -right-5 top-2 bg-red-500 text-white text-[8px] font-bold py-0.5 px-6 rotate-45 shadow z-0">HOT</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C138</span><span class="text-[11px] text-slate-400 mb-2 font-bold">细字版权页脚注</span><div class="text-[8px] text-slate-400 border-t w-full pt-1">© 2026 ZhiGe OS</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C139</span><span class="text-[11px] text-slate-400 mb-2 font-bold">双色许可证徽章</span><div class="flex text-[8px] rounded overflow-hidden shadow-sm border border-slate-200"><span class="bg-slate-700 text-white px-1">MIT</span><span class="bg-green-500 text-white px-1">Licensed</span></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C140</span><span class="text-[11px] text-slate-400 mb-2 font-bold">版本迭代更新签</span><div class="bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] px-1.5 py-0.5 rounded-sm">V5.0.0 Beta</div></div>
+
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C141</span><span class="text-[11px] text-slate-400 mb-2 font-bold">内联加载点</span><div class="flex space-x-1"><div class="w-1.5 h-1.5 bg-[var(--zhige-primary)] rounded-full animate-bounce"></div><div class="w-1.5 h-1.5 bg-[var(--zhige-primary)] rounded-full animate-bounce delay-100"></div><div class="w-1.5 h-1.5 bg-[var(--zhige-primary)] rounded-full animate-bounce delay-200"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C142</span><span class="text-[11px] text-slate-400 mb-2 font-bold">数据脉冲雷达</span><div class="w-3 h-3 bg-red-500 rounded-full relative"><div class="absolute inset-0 border border-red-500 rounded-full animate-ping"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C143</span><span class="text-[11px] text-slate-400 mb-2 font-bold">透明幽灵下拉</span><div class="border border-white/50 bg-white/20 backdrop-blur-sm text-[10px] px-2 py-0.5 rounded text-slate-600">Select ▼</div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C144</span><span class="text-[11px] text-slate-400 mb-2 font-bold">卡片悬浮高亮</span><div class="w-full h-4 bg-white shadow-[0_2px_8px_rgba(49,130,206,0.4)] border border-[var(--zhige-primary)] rounded"></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C145</span><span class="text-[11px] text-slate-400 mb-2 font-bold">右侧飞入抽屉</span><div class="w-full h-8 bg-slate-100 relative overflow-hidden"><div class="absolute right-0 top-0 bottom-0 w-3 bg-white shadow-[-2px_0_4px_rgba(0,0,0,0.1)] border-l"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C146</span><span class="text-[11px] text-slate-400 mb-2 font-bold">底部弹起面板</span><div class="w-full h-8 bg-slate-100 relative overflow-hidden"><div class="absolute left-0 right-0 bottom-0 h-3 bg-white shadow-[0_-2px_4px_rgba(0,0,0,0.1)] border-t rounded-t-md"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C147</span><span class="text-[11px] text-slate-400 mb-2 font-bold">带缺口文件夹</span><div class="w-6 h-4 bg-yellow-400 rounded-b rounded-tr relative mt-1"><div class="absolute -top-1.5 left-0 w-3 h-2 bg-yellow-400 rounded-t border-b border-yellow-500"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C148</span><span class="text-[11px] text-slate-400 mb-2 font-bold">锁定/私密锁头</span><div class="w-3 h-2.5 bg-slate-400 rounded-sm relative mt-2"><div class="absolute -top-1.5 left-0.5 w-2 h-2 border-2 border-slate-400 rounded-t-full"></div></div></div>
+                    <div class="border border-slate-200 rounded bg-slate-50 p-4 flex flex-col items-center justify-center text-center relative hover:border-[var(--zhige-primary)] transition min-h-[100px]"><span class="absolute top-0 left-0 bg-slate-200 text-slate-500 text-[10px] px-1.5 py-0.5 rounded-br">C149</span><span class="text-[11px] text-slate-400 mb-2 font-bold">模糊遮罩底板</span><div class="w-full h-6 bg-gradient-to-r from-blue-500 to-purple-500 blur-sm opacity-50 rounded"></div></div>
+                    <div class="border-2 border-[var(--zhige-primary)] rounded bg-blue-50 p-4 flex flex-col items-center justify-center text-center relative shadow-md min-h-[100px]"><span class="absolute top-0 left-0 bg-[var(--zhige-primary)] text-white text-[10px] px-1.5 py-0.5 rounded-br font-bold">C150</span><span class="text-[12px] text-[var(--zhige-primary)] mb-1 font-black">终极竣工</span><div class="text-[10px] text-blue-700">150 组件全量挂载完成！</div></div>
+                </div>
+
+                <div class="h-16"></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="zg-toast-container"></div>
+    <div id="demoModal" class="zg-modal-overlay mx-4">
+        <div class="zg-modal">
+            <div class="zg-modal-header bg-slate-50 border-b border-[var(--zhige-border)] rounded-t-[var(--radius-card)]">
+                <span class="text-[var(--zhige-text-main)] font-bold">新建数据库逆向解析</span>
+                <button class="text-gray-400 hover:text-gray-700 transition outline-none" onclick="closeModal('demoModal')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="zg-modal-body space-y-5">
+                <div>
+                    <label class="block text-sm font-medium mb-1 zg-required">数据库连接串 (JDBC URL)</label>
+                    <input type="text" class="zg-input" placeholder="jdbc:mysql://localhost:3306/old_system">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1 zg-required">用户名</label>
+                        <input type="text" class="zg-input" value="root">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1 zg-required">密码</label>
+                        <input type="password" class="zg-input" placeholder="请输入密码">
+                    </div>
+                </div>
+            </div>
+            <div class="zg-modal-footer">
+                <button class="zg-btn zg-btn-default" onclick="closeModal('demoModal')">取消</button>
+                <button class="zg-btn zg-btn-primary" onclick="submitModal()">确认提交</button>
+            </div>
+        </div>
+    </div>
+    <div id="confirmModal" class="zg-modal-overlay mx-4">
+        <div class="zg-modal" style="max-width: 360px;">
+            <div class="zg-modal-header bg-[var(--zhige-danger-light)] border-b border-red-100 rounded-t-[var(--radius-card)]">
+                <span class="text-[var(--zhige-danger)] font-bold flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                    二次安全确认
+                </span>
+                <button class="text-red-400 hover:text-[var(--zhige-danger)] transition outline-none" onclick="closeModal('confirmModal')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="zg-modal-body py-6">
+                <p class="text-[15px] text-[var(--zhige-text-main)] text-center font-medium">您确定要执行此删除操作吗？<br><span class="text-sm text-[var(--zhige-text-sub)] font-normal mt-2 block">删除后数据将无法恢复。</span></p>
+            </div>
+            <div class="zg-modal-footer">
+                <button class="zg-btn zg-btn-default" onclick="closeModal('confirmModal')">取消操作</button>
+                <button class="zg-btn zg-btn-danger" onclick="submitConfirm()">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('zg-sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            sidebar.classList.toggle('open');
+            if (sidebar.classList.contains('open')) { overlay.classList.remove('hidden'); } else { overlay.classList.add('hidden'); }
+        }
+        function toggleAllCheckboxes(source) {
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(cb => cb.checked = source.checked);
+        }
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function submitModal() { closeModal('demoModal'); showToast('success', '任务已提交到分析队列，请稍后。'); }
+        function openConfirmModal() { openModal('confirmModal'); }
+        function submitConfirm() { closeModal('confirmModal'); showToast('success', '指令已下发，数据已删除。'); }
+        function showToast(type, message) {
+            const container = document.getElementById('zg-toast-container');
+            const toast = document.createElement('div');
+            let iconSvg = ''; let colorClass = '';
+            if (type === 'success') {
+                colorClass = 'text-[var(--zhige-success)] bg-[var(--zhige-success-light)] border-[var(--zhige-success)]';
+                iconSvg = '<svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>';
+            } else if (type === 'error') {
+                colorClass = 'text-[var(--zhige-danger)] bg-[var(--zhige-danger-light)] border-[var(--zhige-danger)]';
+                iconSvg = '<svg class="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
+            }
+            toast.className = `zg-toast flex items-start border border-[var(--zhige-border)]`;
+            toast.innerHTML = `<div class="flex-shrink-0 mt-0.5 p-1 rounded-full ${colorClass} border border-transparent bg-opacity-50">${iconSvg}</div><div class="ml-2 mr-6 text-sm font-bold text-[var(--zhige-text-main)]">${message}</div>`;
+            container.appendChild(toast);
+            requestAnimationFrame(() => { toast.classList.add('show'); });
+            setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+    </script>
+</body>
+</html>

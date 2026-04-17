@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model componenttask {
+  id          String    @id
+  name        String
+  description String?
+  type        String
+  status      String    @default("pending")
+  progress    Int       @default(0)
+  config      Json?
+  result      Json?
+  userId      String?
+  tenantId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  completedAt DateTime?
+  tenant      tenant?   @relation(fields: [tenantId], references: [id], map: "ComponentTask_tenantId_fkey")
+  user        user?     @relation(fields: [userId], references: [id], map: "ComponentTask_userId_fkey")
+
+  @@index([status], map: "ComponentTask_status_idx")
+  @@index([tenantId], map: "ComponentTask_tenantId_idx")
+  @@index([type], map: "ComponentTask_type_idx")
+  @@index([userId], map: "ComponentTask_userId_idx")
+}
+
+model tenant {
+  id            String          @id
+  name          String
+  description   String?
+  logo          String?
+  status        String          @default("active")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  componenttask componenttask[]
+  user          user[]
+
+  @@index([name], map: "Tenant_name_idx")
+  @@index([status], map: "Tenant_status_idx")
+}
+
+model user {
+  id            String          @id
+  email         String          @unique(map: "User_email_key")
+  name          String?
+  password      String
+  avatar        String?
+  role          String          @default("user")
+  tenantId      String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  componenttask componenttask[]
+  tenant        tenant?         @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
+
+  @@index([email], map: "User_email_idx")
+  @@index([tenantId], map: "User_tenantId_idx")
+}
