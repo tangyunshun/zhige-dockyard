@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ToastProvider } from "@/components/Toast";
 
 export const metadata: Metadata = {
   title: "知阁·舟坊 (ZhiGe Dockyard) - 全链路 AI 软件研发效能操作系统",
   description:
-    "打破工具孤岛，从 RFP 标书解析到系统架构、PRD 生成、项目验收，提效200%。",
+    "打破工具孤岛，从 RFP 标书解析到系统架构、PRD 生成、项目验收，提效 300%。",
+  icons: {
+    icon: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -20,7 +25,11 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ToastProvider>
+          {children}
+        </ToastProvider>
+      </body>
     </html>
   );
 }

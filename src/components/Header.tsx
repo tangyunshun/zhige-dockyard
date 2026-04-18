@@ -1,20 +1,14 @@
 "use client";
 
-import { Hexagon, ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
+import { Logo } from "./Logo";
 
 export default function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-nav">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Left: Logo */}
-        <div className="flex items-center gap-2 cursor-pointer">
-          <div className="w-8 h-8 bg-[#2b6cb0] flex items-center justify-center rounded-8 shadow-sm">
-            <Hexagon className="text-white w-5 h-5" />
-          </div>
-          <span className="text-lg font-bold tracking-tight">
-            知阁·舟坊 <span className="text-[#2b6cb0]">ZhiGe Dockyard</span>
-          </span>
-        </div>
+        <Logo className="flex items-center" variant="light" />
 
         {/* Center: Navigation */}
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
