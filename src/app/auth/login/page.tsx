@@ -14,11 +14,11 @@ import {
   User,
   MessageSquare,
   QrCode,
-  MessageCircle,
   Check,
   ArrowRight,
   Shield,
 } from "lucide-react";
+import Image from "next/image";
 
 type LoginMethod = "password" | "sms";
 
@@ -40,12 +40,21 @@ export default function LoginPage() {
 
   const [smsCountdown, setSmsCountdown] = useState(0);
   const [showCaptcha, setShowCaptcha] = useState(false);
+  const [errors, setErrors] = useState<{
+    account?: string;
+    password?: string;
+    phone?: string;
+    smsCode?: string;
+  }>({});
 
   const sendSmsCode = async () => {
     if (!formData.phone || !/^1[3-9]\d{9}$/.test(formData.phone)) {
+      setErrors({ ...errors, phone: "请输入正确的手机号" });
       toast.warning("请输入正确的手机号");
       return;
     }
+
+    setErrors({ ...errors, phone: undefined });
 
     if (!showCaptcha) {
       setShowCaptcha(true);
@@ -90,7 +99,34 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 验证必填项
+    const newErrors: typeof errors = {};
+
+    if (loginMethod === "password") {
+      if (!formData.account) {
+        newErrors.account = "请输入账号";
+      }
+      if (!formData.password) {
+        newErrors.password = "请输入密码";
+      }
+    } else {
+      if (!formData.phone) {
+        newErrors.phone = "请输入手机号";
+      }
+      if (!formData.smsCode) {
+        newErrors.smsCode = "请输入验证码";
+      }
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      toast.warning("请填写完整信息");
+      return;
+    }
+
     setLoading(true);
+    setErrors({});
 
     try {
       const endpoint =
@@ -132,9 +168,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden">
       <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[var(--radius-card)] overflow-hidden shadow-2xl bg-white">
-        {/* 左侧品牌区 - 缩小尺寸 */}
+        {/* 左侧品牌区 - 固定 */}
         <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[var(--zhige-primary)] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
           {/* 装饰背景 */}
           <div className="absolute inset-0 opacity-10">
@@ -151,7 +187,7 @@ export default function LoginPage() {
               全链路 AI 软件研发效能操作系统
             </p>
 
-            {/* 特性列表 - 精简 */}
+            {/* 特性列表 */}
             <div className="space-y-3 text-left">
               <div className="flex items-center gap-2 bg-white/10 rounded-[var(--radius-btn)] px-3 py-2 backdrop-blur-sm">
                 <Check className="w-4 h-4 text-green-300" />
@@ -171,7 +207,6 @@ export default function LoginPage() {
 
         {/* 右侧表单区 */}
         <div className="md:col-span-3 p-6 md:p-8">
-          {/* Logo */}
           <div className="mb-6">
             <Logo variant="light" />
           </div>
@@ -179,10 +214,13 @@ export default function LoginPage() {
           <h2 className="text-xl font-bold text-slate-800 mb-1">欢迎回来</h2>
           <p className="text-slate-600 mb-6 text-sm">请登录您的账号</p>
 
-          {/* 登录方式切换 - 更紧凑 */}
+          {/* 登录方式切换 */}
           <div className="flex gap-1 mb-5 p-1 bg-slate-100 rounded-[var(--radius-btn)]">
             <button
-              onClick={() => setLoginMethod("password")}
+              onClick={() => {
+                setLoginMethod("password");
+                setErrors({});
+              }}
               className={`flex-1 py-1.5 text-xs font-medium rounded-[var(--radius-btn)] transition-colors ${
                 loginMethod === "password"
                   ? "bg-white text-[var(--zhige-primary)] shadow-sm"
@@ -192,7 +230,10 @@ export default function LoginPage() {
               账号密码
             </button>
             <button
-              onClick={() => setLoginMethod("sms")}
+              onClick={() => {
+                setLoginMethod("sms");
+                setErrors({});
+              }}
               className={`flex-1 py-1.5 text-xs font-medium rounded-[var(--radius-btn)] transition-colors ${
                 loginMethod === "sms"
                   ? "bg-white text-[var(--zhige-primary)] shadow-sm"
@@ -208,38 +249,53 @@ export default function LoginPage() {
               <>
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    账号 / 邮箱 / 手机号
+                    账号 / 邮箱 / 手机号 <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="text"
                       value={formData.account}
-                      onChange={(e) =>
-                        setFormData({ ...formData, account: e.target.value })
-                      }
-                      className="w-full pl-9 pr-4 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                      onChange={(e) => {
+                        setFormData({ ...formData, account: e.target.value });
+                        if (errors.account)
+                          setErrors({ ...errors, account: undefined });
+                      }}
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
+                        errors.account
+                          ? "border-red-500"
+                          : "border-[var(--zhige-border)]"
+                      }`}
                       placeholder="请输入账号"
-                      required
                     />
                   </div>
+                  {errors.account && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.account}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    密码
+                    密码 <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type={showPassword ? "text" : "password"}
                       value={formData.password}
-                      onChange={(e) =>
-                        setFormData({ ...formData, password: e.target.value })
-                      }
-                      className="w-full pl-9 pr-10 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                      onChange={(e) => {
+                        setFormData({ ...formData, password: e.target.value });
+                        if (errors.password)
+                          setErrors({ ...errors, password: undefined });
+                      }}
+                      className={`w-full pl-9 pr-10 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
+                        errors.password
+                          ? "border-red-500"
+                          : "border-[var(--zhige-border)]"
+                      }`}
                       placeholder="请输入密码"
-                      required
                     />
                     <button
                       type="button"
@@ -253,6 +309,11 @@ export default function LoginPage() {
                       )}
                     </button>
                   </div>
+                  {errors.password && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.password}
+                    </p>
+                  )}
                   <div className="flex justify-end mt-1.5">
                     <Link
                       href="/auth/forgot-password"
@@ -267,7 +328,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setRememberMe(!rememberMe)}
-                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
                       rememberMe
                         ? "bg-[var(--zhige-primary)] border-[var(--zhige-primary)]"
                         : "border-[var(--zhige-border)]"
@@ -287,26 +348,34 @@ export default function LoginPage() {
               <>
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    手机号
+                    手机号 <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="tel"
                       value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                      className="w-full pl-9 pr-4 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                      onChange={(e) => {
+                        setFormData({ ...formData, phone: e.target.value });
+                        if (errors.phone)
+                          setErrors({ ...errors, phone: undefined });
+                      }}
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
+                        errors.phone
+                          ? "border-red-500"
+                          : "border-[var(--zhige-border)]"
+                      }`}
                       placeholder="请输入手机号"
-                      required
                     />
                   </div>
+                  {errors.phone && (
+                    <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                    验证码
+                    验证码 <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
@@ -314,12 +383,17 @@ export default function LoginPage() {
                       <input
                         type="text"
                         value={formData.smsCode}
-                        onChange={(e) =>
-                          setFormData({ ...formData, smsCode: e.target.value })
-                        }
-                        className="w-full pl-9 pr-4 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                        onChange={(e) => {
+                          setFormData({ ...formData, smsCode: e.target.value });
+                          if (errors.smsCode)
+                            setErrors({ ...errors, smsCode: undefined });
+                        }}
+                        className={`w-full pl-9 pr-4 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
+                          errors.smsCode
+                            ? "border-red-500"
+                            : "border-[var(--zhige-border)]"
+                        }`}
                         placeholder="请输入验证码"
-                        required
                       />
                     </div>
                     <button
@@ -328,9 +402,16 @@ export default function LoginPage() {
                       disabled={smsCountdown > 0 || loading}
                       className="px-3 py-2.5 bg-[var(--zhige-primary)] text-white rounded-[var(--radius-btn)] text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
-                      {smsCountdown > 0 ? `${smsCountdown}秒` : "获取验证码"}
+                      {smsCountdown > 0
+                        ? `${smsCountdown}秒后重发`
+                        : "获取验证码"}
                     </button>
                   </div>
+                  {errors.smsCode && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.smsCode}
+                    </p>
+                  )}
                 </div>
               </>
             )}
@@ -364,25 +445,33 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* 第三方登录 - 更紧凑 */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* 第三方登录 */}
+          <div className="grid grid-cols-3 gap-3">
             <button
               type="button"
-              className="flex items-center justify-center gap-1.5 py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
+              className="flex items-center justify-center py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
+              title="微信扫码登录"
             >
-              <QrCode className="w-4 h-4 text-slate-600" />
-              <span className="text-xs font-medium text-slate-600">
-                扫码登录
-              </span>
+              <Image
+                src="/icons/wechat.png"
+                alt="微信"
+                width={20}
+                height={20}
+              />
             </button>
             <button
               type="button"
-              className="flex items-center justify-center gap-1.5 py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
+              className="flex items-center justify-center py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
+              title="QQ 登录"
             >
-              <MessageCircle className="w-4 h-4 text-green-500" />
-              <span className="text-xs font-medium text-slate-600">
-                微信登录
-              </span>
+              <Image src="/icons/QQ.png" alt="QQ" width={20} height={20} />
+            </button>
+            <button
+              type="button"
+              className="flex items-center justify-center py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
+              title="扫码登录"
+            >
+              <QrCode className="w-5 h-5 text-slate-600" />
             </button>
           </div>
 
