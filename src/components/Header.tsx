@@ -2,8 +2,11 @@
 
 import { ChevronDown, Search } from "lucide-react";
 import { Logo } from "./Logo";
+import { useRouter } from "next/navigation";
 
 export default function Header() {
+  const router = useRouter();
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-nav">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -34,7 +37,10 @@ export default function Header() {
           <button className="p-2 text-slate-500 hover:text-[#2b6cb0]">
             <Search className="w-5 h-5" />
           </button>
-          <button className="text-sm font-medium px-4 py-2 text-slate-600 hover:text-slate-900">
+          <button
+            className="text-sm font-medium px-4 py-2 text-slate-600 hover:text-slate-900"
+            onClick={() => router.push("/auth/login")}
+          >
             登录
           </button>
           <button className="text-sm font-semibold bg-[#2b6cb0] text-white px-5 py-2.5 rounded-4 hover:bg-[#2c5282] transition-colors shadow-sm">

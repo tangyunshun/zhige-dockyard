@@ -150,29 +150,61 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-[var(--radius-card)] shadow-xl p-8">
-          <div className="mb-8">
+      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[var(--radius-card)] overflow-hidden shadow-2xl bg-white">
+        {/* 左侧品牌区 */}
+        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[var(--zhige-primary)] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-300 rounded-full blur-3xl" />
+          </div>
+
+          <div className="relative z-10 text-center">
+            <div className="w-16 h-16 mb-4 bg-white/10 rounded-[var(--radius-card)] flex items-center justify-center backdrop-blur-sm mx-auto">
+              <Shield className="w-10 h-10" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2">知阁·舟坊</h1>
+            <p className="text-blue-100 mb-6 text-sm">开启高效研发之旅</p>
+
+            <div className="space-y-3 text-left">
+              <div className="flex items-center gap-2 bg-white/10 rounded-[var(--radius-btn)] px-3 py-2 backdrop-blur-sm">
+                <Check className="w-4 h-4 text-green-300" />
+                <span className="text-xs">免费试用 30 天</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/10 rounded-[var(--radius-btn)] px-3 py-2 backdrop-blur-sm">
+                <Check className="w-4 h-4 text-green-300" />
+                <span className="text-xs">无需信用卡</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/10 rounded-[var(--radius-btn)] px-3 py-2 backdrop-blur-sm">
+                <Check className="w-4 h-4 text-green-300" />
+                <span className="text-xs">随时取消</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 右侧表单区 */}
+        <div className="md:col-span-3 p-6 md:p-8">
+          <div className="mb-6">
             <Logo variant="light" />
           </div>
 
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">创建账号</h2>
-          <p className="text-slate-600 mb-6">使用手机号注册新账号</p>
+          <h2 className="text-xl font-bold text-slate-800 mb-1">创建账号</h2>
+          <p className="text-slate-600 mb-6 text-sm">使用手机号注册新账号</p>
 
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
                 手机号 <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={(e) =>
                     setFormData({ ...formData, phone: e.target.value })
                   }
-                  className="w-full pl-10 pr-4 py-3 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                  className="w-full pl-9 pr-4 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
                   placeholder="请输入手机号"
                   required
                 />
@@ -180,19 +212,19 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
                 验证码 <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
                     value={formData.smsCode}
                     onChange={(e) =>
                       setFormData({ ...formData, smsCode: e.target.value })
                     }
-                    className="w-full pl-10 pr-4 py-3 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                    className="w-full pl-9 pr-4 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
                     placeholder="请输入验证码"
                     required
                   />
@@ -201,19 +233,19 @@ export default function RegisterPage() {
                   type="button"
                   onClick={sendSmsCode}
                   disabled={smsCountdown > 0 || loading}
-                  className="px-4 py-3 bg-[var(--zhige-primary)] text-white rounded-[var(--radius-btn)] font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  className="px-3 py-2.5 bg-[var(--zhige-primary)] text-white rounded-[var(--radius-btn)] text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                  {smsCountdown > 0 ? `${smsCountdown}秒后重发` : "获取验证码"}
+                  {smsCountdown > 0 ? `${smsCountdown}秒` : "获取验证码"}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
                 密码 <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
@@ -221,7 +253,7 @@ export default function RegisterPage() {
                     setFormData({ ...formData, password: e.target.value });
                     validatePassword(e.target.value);
                   }}
-                  className="w-full pl-10 pr-12 py-3 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                  className="w-full pl-9 pr-10 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
                   placeholder="请设置密码"
                   required
                 />
@@ -231,15 +263,15 @@ export default function RegisterPage() {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
+                    <EyeOff className="w-4 h-4" />
                   ) : (
-                    <Eye className="w-5 h-5" />
+                    <Eye className="w-4 h-4" />
                   )}
                 </button>
               </div>
 
               {/* 密码强度指示器 */}
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-1.5">
                 <div className="flex gap-1">
                   {[1, 2, 3, 4, 5].map((level) => (
                     <div
@@ -267,11 +299,11 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
                 确认密码 <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={formData.confirmPassword}
@@ -281,7 +313,7 @@ export default function RegisterPage() {
                       confirmPassword: e.target.value,
                     })
                   }
-                  className="w-full pl-10 pr-4 py-3 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
+                  className="w-full pl-9 pr-4 py-2.5 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all"
                   placeholder="请再次输入密码"
                   required
                 />
@@ -292,7 +324,7 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setAgreedToTerms(!agreedToTerms)}
-                className={`w-5 h-5 rounded border flex items-center justify-center transition-colors mt-0.5 ${
+                className={`w-4 h-4 rounded border flex items-center justify-center transition-colors mt-0.5 ${
                   agreedToTerms
                     ? "bg-[var(--zhige-primary)] border-[var(--zhige-primary)]"
                     : "border-[var(--zhige-border)]"
@@ -300,13 +332,13 @@ export default function RegisterPage() {
               >
                 {agreedToTerms && <Check className="w-3 h-3 text-white" />}
               </button>
-              <label className="text-sm text-slate-600 cursor-pointer select-none">
+              <label className="text-xs text-slate-600 cursor-pointer select-none">
                 我已阅读并同意{" "}
                 <Link
                   href="/terms"
                   className="text-[var(--zhige-primary)] hover:underline"
                 >
-                  《知阁服务条款》
+                  《服务条款》
                 </Link>{" "}
                 与{" "}
                 <Link
@@ -321,23 +353,23 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={loading || !agreedToTerms || !passwordStrength.valid}
-              className="w-full bg-[var(--zhige-primary)] text-white py-3 rounded-[var(--radius-btn)] font-semibold hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-[var(--zhige-primary)] text-white py-2.5 rounded-[var(--radius-btn)] font-medium text-sm hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>注册中...</span>
                 </>
               ) : (
                 <>
                   <span>注册</span>
-                  <ArrowRight className="w-5 h-5" />
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-slate-600">
+          <div className="mt-5 text-center text-xs text-slate-600">
             已有账号？{" "}
             <Link
               href="/auth/login"
