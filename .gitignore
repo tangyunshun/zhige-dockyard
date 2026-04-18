@@ -1,3 +1,41 @@
-node_modules/  
-
+node_modules/
 /generated/prisma
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+.vercel
