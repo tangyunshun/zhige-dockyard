@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
@@ -12,11 +12,20 @@ import {
   EyeOff,
   User,
   MessageSquare,
-  Check,
+  CheckCircle,
   ArrowRight,
-  Shield,
+  ArrowLeft,
+  Mail,
 } from "lucide-react";
 import Image from "next/image";
+import {
+  validateAccount,
+  validatePhone,
+  validateEmail,
+  validateSmsCode,
+  getEmailSuggestions,
+  getAccountType,
+} from "@/lib/validators";
 
 type LoginMethod = "password" | "sms";
 
@@ -45,10 +54,156 @@ export default function LoginPage() {
     smsCode?: string;
   }>({});
 
+  // 账号类型和邮箱补全
+  const [accountType, setAccountType] = useState<
+    "phone" | "email" | "username" | "unknown"
+  >("unknown");
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
+  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
+
+  // 账号检测相关状态
+  const [accountCheckStatus, setAccountCheckStatus] = useState<{
+    exists?: boolean;
+    locked?: boolean;
+    disabled?: boolean;
+    minutesRemaining?: number;
+    remainingAttempts?: number;
+  }>({});
+
+  // 自动跳转注册倒计时
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(
+    null,
+  );
+
+  // 使用 useEffect 处理倒计时和跳转，避免在渲染期间调用 router.push
+  useEffect(() => {
+    if (redirectCountdown === null || redirectCountdown <= 0) return;
+
+    if (redirectCountdown === 1) {
+      // 最后 1 秒，执行跳转，带账号参数
+      const timer = setTimeout(() => {
+        router.push(
+          `/auth/register?account=${encodeURIComponent(formData.account)}`,
+        );
+        setRedirectCountdown(null);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+
+    // 倒计时
+    const timer = setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev === null || prev <= 1) return null;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [redirectCountdown, router, formData.account]);
+
+  // 检测账号是否存在
+  const checkAccount = async (account: string) => {
+    const validation = validateAccount(account);
+    if (!validation.valid) {
+      setAccountCheckStatus({});
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/check-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account }),
+      });
+
+      const data = await res.json();
+
+      if (!data.exists) {
+        setAccountCheckStatus({
+          exists: false,
+        });
+        // 设置倒计时，由 useEffect 处理跳转
+        setRedirectCountdown(5);
+      } else if (data.status === "locked") {
+        setAccountCheckStatus({
+          exists: true,
+          locked: true,
+          minutesRemaining: data.minutesRemaining,
+        });
+      } else if (data.status === "disabled") {
+        setAccountCheckStatus({
+          exists: true,
+          disabled: true,
+        });
+      } else {
+        setAccountCheckStatus({ exists: true });
+      }
+    } catch (error) {
+      console.error("Account check error:", error);
+    }
+  };
+
+  // 账号输入处理
+  const handleAccountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData({ ...formData, account: value });
+
+    if (errors.account) {
+      setErrors({ ...errors, account: undefined });
+    }
+
+    // 清空账号检测状态
+    if (accountCheckStatus.exists === false) {
+      setAccountCheckStatus({});
+      if (redirectCountdown !== null) {
+        setRedirectCountdown(null);
+      }
+    }
+
+    // 验证账号格式并检测类型
+    const validation = validateAccount(value);
+    if (!validation.valid && value.length > 0) {
+      setErrors({ ...errors, account: validation.message });
+    }
+
+    // 判断账号类型
+    const type = getAccountType(value);
+    setAccountType(type);
+
+    // 邮箱自动补全建议
+    if (value.includes("@")) {
+      const suggestions = getEmailSuggestions(value);
+      setEmailSuggestions(suggestions);
+      setShowEmailSuggestions(suggestions.length > 0);
+    } else {
+      setEmailSuggestions([]);
+      setShowEmailSuggestions(false);
+    }
+  };
+
+  // 账号输入框失焦时检测
+  const handleAccountBlur = () => {
+    setShowEmailSuggestions(false);
+    if (formData.account) {
+      const validation = validateAccount(formData.account);
+      if (validation.valid) {
+        checkAccount(formData.account);
+      }
+    }
+  };
+
+  // 选择邮箱建议
+  const handleEmailSuggestionClick = (suggestion: string) => {
+    setFormData({ ...formData, account: suggestion });
+    setEmailSuggestions([]);
+    setShowEmailSuggestions(false);
+    setErrors({ ...errors, account: undefined });
+  };
+
   const sendSmsCode = async () => {
-    if (!formData.phone || !/^1[3-9]\d{9}$/.test(formData.phone)) {
-      setErrors({ ...errors, phone: "请输入正确的手机号" });
-      toast.warning("请输入正确的手机号");
+    const phoneValidation = validatePhone(formData.phone);
+    if (!phoneValidation.valid) {
+      setErrors({ ...errors, phone: phoneValidation.message });
       return;
     }
 
@@ -98,22 +253,28 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 验证必填项
     const newErrors: typeof errors = {};
 
     if (loginMethod === "password") {
-      if (!formData.account) {
-        newErrors.account = "请输入账号";
+      // 验证账号
+      const accountValidation = validateAccount(formData.account);
+      if (!accountValidation.valid) {
+        newErrors.account = accountValidation.message;
       }
+      // 验证密码
       if (!formData.password) {
         newErrors.password = "请输入密码";
       }
     } else {
-      if (!formData.phone) {
-        newErrors.phone = "请输入手机号";
+      // 验证手机号
+      const phoneValidation = validatePhone(formData.phone);
+      if (!phoneValidation.valid) {
+        newErrors.phone = phoneValidation.message;
       }
-      if (!formData.smsCode) {
-        newErrors.smsCode = "请输入验证码";
+      // 验证验证码
+      const smsCodeValidation = validateSmsCode(formData.smsCode);
+      if (!smsCodeValidation.valid) {
+        newErrors.smsCode = smsCodeValidation.message;
       }
     }
 
@@ -122,8 +283,61 @@ export default function LoginPage() {
       return;
     }
 
+    // 短信登录时，先验证验证码
+    if (loginMethod === "sms") {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/auth/verify-sms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: formData.phone,
+            smsCode: formData.smsCode,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (data.isLocked) {
+            toast.error(
+              `验证失败次数过多，请${data.minutesRemaining}分钟后再试`,
+            );
+          } else if (data.remainingAttempts !== undefined) {
+            toast.error(
+              `${data.message}，剩余${data.remainingAttempts}次尝试机会`,
+            );
+          } else {
+            toast.error(data.message || "验证失败");
+          }
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        toast.error("网络错误，请稍后重试");
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setErrors({});
+
+    // 检查账号是否被锁定
+    if (accountCheckStatus.locked) {
+      toast.error(
+        `账号已锁定，请${accountCheckStatus.minutesRemaining}分钟后再试`,
+      );
+      setLoading(false);
+      return;
+    }
+
+    // 检查账号是否被禁用
+    if (accountCheckStatus.disabled) {
+      toast.error("账号已被禁用，请联系管理员");
+      setLoading(false);
+      return;
+    }
 
     try {
       const endpoint =
@@ -155,7 +369,26 @@ export default function LoginPage() {
           router.push("/");
         }, 1000);
       } else {
-        toast.error(data.message || "登录失败");
+        // 处理各种错误情况
+        if (data.accountExists === false) {
+          // 账号不存在
+          // 设置倒计时，由 useEffect 处理跳转
+          setRedirectCountdown(5);
+        } else if (data.remainingAttempts !== undefined) {
+          // 密码错误，显示剩余次数
+          if (data.remainingAttempts > 0) {
+            toast.error(
+              `${data.message}，剩余${data.remainingAttempts}次尝试机会`,
+            );
+          } else {
+            toast.error(data.message);
+          }
+        } else if (data.minutesRemaining) {
+          // 账号被锁定
+          toast.error(`账号已锁定，请${data.minutesRemaining}分钟后再试`);
+        } else {
+          toast.error(data.message || "登录失败");
+        }
       }
     } catch (error) {
       toast.error("网络错误，请稍后重试");
@@ -165,37 +398,41 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[var(--radius-card)] overflow-hidden shadow-2xl bg-white">
+    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden">
+      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[16px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50">
         {/* 左侧品牌区 - 固定 */}
-        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[var(--zhige-primary)] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
-          {/* 装饰背景 */}
+        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl" />
             <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-300 rounded-full blur-3xl" />
           </div>
 
           <div className="relative z-10 text-center">
-            <div className="w-16 h-16 mb-4 bg-white/10 rounded-[var(--radius-card)] flex items-center justify-center backdrop-blur-sm mx-auto">
-              <Shield className="w-10 h-10" />
+            <div className="w-16 h-16 mb-4 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm mx-auto shadow-lg">
+              <svg
+                className="w-10 h-10"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 6c1.4 0 2.8 1.1 2.8 2.5V11c.6 0 1.2.6 1.2 1.2v3.5c0 .7-.6 1.3-1.2 1.3H9.2c-.6 0-1.2-.6-1.2-1.2v-3.5c0-.7.6-1.3 1.2-1.3V9.5C9.2 8.1 10.6 7 12 7zm0 1c-.8 0-1.5.7-1.5 1.5V11h3V9.5c0-.8-.7-1.5-1.5-1.5zm-1.5 5v3.5h3v-3.5h-3z" />
+              </svg>
             </div>
             <h1 className="text-2xl font-bold mb-2">知阁·舟坊</h1>
             <p className="text-blue-100 mb-6 text-sm">
               全链路 AI 软件研发效能操作系统
             </p>
 
-            {/* 特性列表 */}
             <div className="space-y-3 text-left">
-              <div className="flex items-center gap-2 bg-white/10 rounded-[var(--radius-btn)] px-3 py-2 backdrop-blur-sm">
-                <Check className="w-4 h-4 text-green-300" />
+              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
+                <CheckCircle className="w-4 h-4 text-green-300" />
                 <span className="text-xs">企业级安全架构</span>
               </div>
-              <div className="flex items-center gap-2 bg-white/10 rounded-[var(--radius-btn)] px-3 py-2 backdrop-blur-sm">
-                <Check className="w-4 h-4 text-green-300" />
+              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
+                <CheckCircle className="w-4 h-4 text-green-300" />
                 <span className="text-xs">AI 智能驱动</span>
               </div>
-              <div className="flex items-center gap-2 bg-white/10 rounded-[var(--radius-btn)] px-3 py-2 backdrop-blur-sm">
-                <Check className="w-4 h-4 text-green-300" />
+              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
+                <CheckCircle className="w-4 h-4 text-green-300" />
                 <span className="text-xs">全链路提效 300%</span>
               </div>
             </div>
@@ -204,24 +441,30 @@ export default function LoginPage() {
 
         {/* 右侧表单区 */}
         <div className="md:col-span-3 p-6 md:p-8">
-          <div className="mb-6">
+          <div className="mb-6 flex items-center justify-between">
+            <button
+              onClick={() => router.push("/")}
+              className="group flex items-center gap-1.5 text-slate-600 hover:text-[#3182ce] transition-colors text-sm cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+              返回首页
+            </button>
             <Logo variant="light" />
           </div>
 
           <h2 className="text-xl font-bold text-slate-800 mb-1">欢迎回来</h2>
           <p className="text-slate-600 mb-6 text-sm">请登录您的账号</p>
 
-          {/* 登录方式切换 */}
-          <div className="flex gap-1 mb-5 p-1 bg-slate-100 rounded-[var(--radius-btn)]">
+          <div className="flex gap-1 mb-5 p-1 bg-slate-100 rounded-lg">
             <button
               type="button"
               onClick={() => {
                 setLoginMethod("password");
                 setErrors({});
               }}
-              className={`flex-1 py-1.5 text-xs font-medium rounded-[var(--radius-btn)] transition-colors ${
+              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 loginMethod === "password"
-                  ? "bg-white text-[var(--zhige-primary)] shadow-sm"
+                  ? "bg-white text-[#3182ce] shadow-sm"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
@@ -233,9 +476,9 @@ export default function LoginPage() {
                 setLoginMethod("sms");
                 setErrors({});
               }}
-              className={`flex-1 py-1.5 text-xs font-medium rounded-[var(--radius-btn)] transition-colors ${
+              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 loginMethod === "sms"
-                  ? "bg-white text-[var(--zhige-primary)] shadow-sm"
+                  ? "bg-white text-[#3182ce] shadow-sm"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
@@ -251,27 +494,78 @@ export default function LoginPage() {
                     账号 / 邮箱 / 手机号 <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    {accountType === "email" ? (
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    ) : accountType === "phone" ? (
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    ) : (
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    )}
                     <input
                       type="text"
                       value={formData.account}
-                      onChange={(e) => {
-                        setFormData({ ...formData, account: e.target.value });
-                        if (errors.account)
-                          setErrors({ ...errors, account: undefined });
-                      }}
-                      className={`w-full pl-9 pr-4 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
-                        errors.account
-                          ? "border-red-500"
-                          : "border-[var(--zhige-border)]"
+                      onChange={handleAccountChange}
+                      onBlur={handleAccountBlur}
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                        errors.account ? "border-red-500" : "border-[#e2e8f0]"
                       }`}
-                      placeholder="请输入账号"
+                      placeholder="请输入账号/邮箱/手机号"
                     />
                   </div>
                   {errors.account && (
                     <p className="mt-1 text-xs text-red-500">
                       {errors.account}
                     </p>
+                  )}
+
+                  {/* 邮箱自动补全建议 */}
+                  {showEmailSuggestions && emailSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-[#e2e8f0] rounded-lg shadow-lg">
+                      {emailSuggestions.map((suggestion, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => handleEmailSuggestionClick(suggestion)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-[#f0f8ff] text-slate-700 first:rounded-t-lg last:rounded-b-lg"
+                        >
+                          <Mail className="inline w-3 h-3 mr-2 text-[#3182ce]" />
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* 账号状态提示 */}
+                  {accountCheckStatus.exists === false &&
+                    redirectCountdown !== null && (
+                      <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+                        <p className="text-xs text-orange-700">
+                          ⚠️ 该账号未注册，{redirectCountdown}秒后跳转注册页面
+                        </p>
+                        <button
+                          onClick={() => {
+                            setRedirectCountdown(null);
+                            router.push("/auth/register");
+                          }}
+                          className="text-xs text-[#3182ce] hover:underline font-medium"
+                        >
+                          立即注册 →
+                        </button>
+                      </div>
+                    )}
+                  {accountCheckStatus.locked && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs text-red-700">
+                        🔒 账号已锁定，请{accountCheckStatus.minutesRemaining}
+                        分钟后再试
+                      </p>
+                    </div>
+                  )}
+                  {accountCheckStatus.disabled && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs text-red-700">
+                        ⛔ 账号已被禁用，请联系管理员
+                      </p>
+                    </div>
                   )}
                 </div>
 
@@ -289,10 +583,8 @@ export default function LoginPage() {
                         if (errors.password)
                           setErrors({ ...errors, password: undefined });
                       }}
-                      className={`w-full pl-9 pr-10 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
-                        errors.password
-                          ? "border-red-500"
-                          : "border-[var(--zhige-border)]"
+                      className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                        errors.password ? "border-red-500" : "border-[#e2e8f0]"
                       }`}
                       placeholder="请输入密码"
                     />
@@ -314,23 +606,19 @@ export default function LoginPage() {
                     </p>
                   )}
                   <div className="flex justify-between items-center mt-1.5">
-                    <Link
-                      href="/auth/forgot-password"
-                      className="text-xs text-[var(--zhige-primary)] hover:underline"
-                    >
-                      忘记密码？
-                    </Link>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setRememberMe(!rememberMe)}
                         className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
                           rememberMe
-                            ? "bg-[var(--zhige-primary)] border-[var(--zhige-primary)]"
-                            : "border-[var(--zhige-border)]"
+                            ? "bg-[#3182ce] border-[#3182ce]"
+                            : "border-[#e2e8f0]"
                         }`}
                       >
-                        {rememberMe && <Check className="w-3 h-3 text-white" />}
+                        {rememberMe && (
+                          <CheckCircle className="w-3 h-3 text-white" />
+                        )}
                       </button>
                       <label
                         onClick={() => setRememberMe(!rememberMe)}
@@ -339,6 +627,12 @@ export default function LoginPage() {
                         记住我
                       </label>
                     </div>
+                    <Link
+                      href="/auth/forgot-password"
+                      className="text-xs text-[#3182ce] hover:underline"
+                    >
+                      忘记密码？
+                    </Link>
                   </div>
                 </div>
               </>
@@ -354,16 +648,23 @@ export default function LoginPage() {
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => {
-                        setFormData({ ...formData, phone: e.target.value });
-                        if (errors.phone)
+                        const value = e.target.value;
+                        setFormData({ ...formData, phone: value });
+                        if (errors.phone) {
                           setErrors({ ...errors, phone: undefined });
+                        }
+                        // 实时验证手机号格式
+                        if (value && !validatePhone(value).valid) {
+                          setErrors({
+                            ...errors,
+                            phone: validatePhone(value).message,
+                          });
+                        }
                       }}
-                      className={`w-full pl-9 pr-4 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
-                        errors.phone
-                          ? "border-red-500"
-                          : "border-[var(--zhige-border)]"
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                        errors.phone ? "border-red-500" : "border-[#e2e8f0]"
                       }`}
-                      placeholder="请输入手机号"
+                      placeholder="请输入 11 位手机号"
                     />
                   </div>
                   {errors.phone && (
@@ -382,23 +683,34 @@ export default function LoginPage() {
                         type="text"
                         value={formData.smsCode}
                         onChange={(e) => {
-                          setFormData({ ...formData, smsCode: e.target.value });
-                          if (errors.smsCode)
+                          const value = e.target.value;
+                          setFormData({ ...formData, smsCode: value });
+                          if (errors.smsCode) {
                             setErrors({ ...errors, smsCode: undefined });
+                          }
+                          // 实时验证验证码格式（6 位数字）
+                          if (value && !/^\d{0,6}$/.test(value)) {
+                            return;
+                          }
+                          if (value.length > 0 && value.length < 6) {
+                            setErrors({
+                              ...errors,
+                              smsCode: "验证码为 6 位数字",
+                            });
+                          }
                         }}
-                        className={`w-full pl-9 pr-4 py-2.5 border rounded-[var(--radius-btn)] text-sm focus:border-[var(--zhige-primary)] focus:ring-2 focus:ring-[var(--zhige-primary)]/20 outline-none transition-all ${
-                          errors.smsCode
-                            ? "border-red-500"
-                            : "border-[var(--zhige-border)]"
+                        className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                          errors.smsCode ? "border-red-500" : "border-[#e2e8f0]"
                         }`}
-                        placeholder="请输入验证码"
+                        placeholder="请输入 6 位验证码"
+                        maxLength={6}
                       />
                     </div>
                     <button
                       type="button"
                       onClick={sendSmsCode}
                       disabled={smsCountdown > 0 || loading}
-                      className="px-3 py-2.5 bg-[var(--zhige-primary)] text-white rounded-[var(--radius-btn)] text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      className="px-3 py-2.5 bg-[#3182ce] text-white rounded-lg text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                       {smsCountdown > 0
                         ? `${smsCountdown}秒后重发`
@@ -417,7 +729,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[var(--zhige-primary)] text-white py-2.5 rounded-[var(--radius-btn)] font-medium text-sm hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -433,17 +745,15 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* 分割线 */}
           <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[var(--zhige-border)]" />
+              <div className="w-full border-t border-[#e2e8f0]" />
             </div>
             <div className="relative flex justify-center text-xs">
               <span className="px-3 bg-white text-slate-500">其他登录方式</span>
             </div>
           </div>
 
-          {/* 第三方登录 */}
           <div className="flex justify-center gap-6">
             <button
               type="button"
@@ -466,12 +776,11 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* 注册链接 */}
           <div className="mt-5 text-center text-xs text-slate-600">
             还没有账号？{" "}
             <Link
               href="/auth/register"
-              className="text-[var(--zhige-primary)] font-medium hover:underline"
+              className="text-[#3182ce] font-medium hover:underline"
             >
               立即注册
             </Link>

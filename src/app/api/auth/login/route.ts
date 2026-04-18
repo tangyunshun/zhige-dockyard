@@ -19,12 +19,26 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json({ message: "账号或密码错误" }, { status: 401 });
+      return NextResponse.json(
+        {
+          message: "账号或密码错误",
+          accountExists: false,
+          remainingAttempts: 5,
+        },
+        { status: 401 },
+      );
     }
 
     // 检查账号状态
     if (user.status !== "active") {
-      return NextResponse.json({ message: "账号已被禁用" }, { status: 403 });
+      return NextResponse.json(
+        {
+          message: "账号已被禁用",
+          accountExists: true,
+          status: "disabled",
+        },
+        { status: 403 },
+      );
     }
 
     // 检查是否被锁定
@@ -33,7 +47,12 @@ export async function POST(request: NextRequest) {
         (user.lockedUntil.getTime() - Date.now()) / 60000,
       );
       return NextResponse.json(
-        { message: `账号已锁定，请${minutes}分钟后再试` },
+        {
+          message: `账号已锁定，请${minutes}分钟后再试`,
+          accountExists: true,
+          lockedUntil: user.lockedUntil.toISOString(),
+          minutesRemaining: minutes,
+        },
         { status: 423 },
       );
     }
@@ -46,8 +65,8 @@ export async function POST(request: NextRequest) {
       const newAttempts = (user.loginAttempts || 0) + 1;
 
       if (newAttempts >= 5) {
-        // 锁定 15 分钟
-        const lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+        // 锁定 5 分钟
+        const lockedUntil = new Date(Date.now() + 5 * 60 * 1000);
         await prisma.user.update({
           where: { id: user.id },
           data: {
@@ -57,7 +76,12 @@ export async function POST(request: NextRequest) {
         });
 
         return NextResponse.json(
-          { message: "密码错误次数过多，账号已锁定 15 分钟" },
+          {
+            message: "密码错误次数过多，账号已锁定 5 分钟",
+            accountExists: true,
+            lockedUntil: lockedUntil.toISOString(),
+            remainingAttempts: 0,
+          },
           { status: 423 },
         );
       }
@@ -68,7 +92,11 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json(
-        { message: `账号或密码错误（剩余${5 - newAttempts}次尝试机会）` },
+        {
+          message: `账号或密码错误（剩余${5 - newAttempts}次尝试机会）`,
+          accountExists: true,
+          remainingAttempts: 5 - newAttempts,
+        },
         { status: 401 },
       );
     }

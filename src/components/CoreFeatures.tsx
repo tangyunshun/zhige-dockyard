@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   FileSearch,
   GitMerge,
@@ -14,6 +15,8 @@ import {
 } from "lucide-react";
 
 export default function CoreFeatures() {
+  const router = useRouter();
+
   return (
     <>
       {/* Section 4: Core Component Matrix (Bento Grid) */}
@@ -24,20 +27,23 @@ export default function CoreFeatures() {
               核心组件矩阵库
             </div>
             <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight text-slate-900 leading-tight">
-              50+ 原子组件，<span className="bg-gradient-to-r from-[#2b6cb0] to-indigo-500 text-transparent bg-clip-text">覆盖研发全链路</span>
+              50+ 原子组件，
+              <span className="bg-gradient-to-r from-[#2b6cb0] to-indigo-500 text-transparent bg-clip-text">
+                覆盖研发全链路
+              </span>
             </h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
               从商机挖掘到代码落盘，每一环都有 AI 能力作为"齿轮"驱动，开箱即用。
             </p>
 
             <div className="mt-8 flex justify-center md:absolute md:right-0 md:bottom-1">
-              <a
-                href="#"
-                className="text-sm font-semibold text-[#2b6cb0] inline-flex items-center gap-1 hover:text-[#2c5282] transition-colors group cursor-pointer"
+              <button
+                onClick={() => router.push("/components")}
+                className="text-sm font-semibold text-[#2b6cb0] inline-flex items-center gap-1 hover:text-[#2c5282] transition-colors group cursor-pointer bg-transparent border-none p-0"
               >
                 查看完整组件库{" "}
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </a>
+              </button>
             </div>
           </div>
 
@@ -135,7 +141,9 @@ export default function CoreFeatures() {
                 <div className="mb-4 text-rose-500">
                   <Layers className="w-6 h-6" />
                 </div>
-                <h3 className="font-bold mb-1 text-slate-900">自动化 API 契约</h3>
+                <h3 className="font-bold mb-1 text-slate-900">
+                  自动化 API 契约
+                </h3>
                 <p className="text-slate-500 text-sm mb-4">
                   生成符合 OpenAPI 3.0 的接口定义。
                 </p>

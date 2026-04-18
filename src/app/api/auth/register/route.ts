@@ -4,70 +4,162 @@ import { hashPassword } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const { phone, smsCode, password } = await request.json();
+    const { 
+      phone, 
+      username, 
+      email, 
+      smsCode, 
+      password,
+      accountType 
+    } = await request.json();
 
-    // 验证手机号格式
-    if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+    // 根据账号类型验证
+    if (accountType === "phone") {
+      // 手机号注册
+      if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+        return NextResponse.json(
+          { message: "手机号格式不正确" },
+          { status: 400 },
+        );
+      }
+      
+      // 验证验证码
+      if (!smsCode || smsCode.length !== 6) {
+        return NextResponse.json(
+          { message: "验证码格式不正确" },
+          { status: 400 },
+        );
+      }
+      
+      // 检查手机号是否已注册
+      const existingUser = await prisma.user.findUnique({
+        where: { phone },
+      });
+      
+      if (existingUser) {
+        return NextResponse.json({ message: "该手机号已注册" }, { status: 400 });
+      }
+      
+      // 哈希密码
+      const hashedPassword = await hashPassword(password);
+      
+      // 插入数据
+      const result = await prisma.$executeRaw`
+        INSERT INTO user (id, phone, password, name, role, created_at, updated_at)
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${`用户${phone.slice(-4)}`}, 'user', NOW(), NOW())
+      `;
+      
+      if (result < 0) {
+        throw new Error("Failed to create user");
+      }
+      
+      // 获取创建的用户
+      const user = await prisma.user.findUnique({
+        where: { phone },
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+        },
+      });
+      
+      return NextResponse.json({
+        success: true,
+        message: "注册成功",
+        user: {
+          id: user.id,
+          phone: user.phone,
+          name: user.name,
+        },
+      });
+      
+    } else if (accountType === "username") {
+      // 用户名注册
+      if (!username || !/^[a-zA-Z0-9_@]{3,20}$/.test(username)) {
+        return NextResponse.json(
+          { message: "用户名格式不正确，支持 3-20 位字母、数字、@、下划线" },
+          { status: 400 },
+        );
+      }
+      
+      if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+        return NextResponse.json(
+          { message: "绑定手机号格式不正确" },
+          { status: 400 },
+        );
+      }
+      
+      // 验证验证码
+      if (!smsCode || smsCode.length !== 6) {
+        return NextResponse.json(
+          { message: "验证码格式不正确" },
+          { status: 400 },
+        );
+      }
+      
+      // 检查用户名是否已存在
+      const existingUserByUsername = await prisma.user.findFirst({
+        where: { name: username },
+      });
+      
+      if (existingUserByUsername) {
+        return NextResponse.json({ message: "该用户名已存在" }, { status: 400 });
+      }
+      
+      // 检查手机号是否已注册
+      const existingUserByPhone = await prisma.user.findUnique({
+        where: { phone },
+      });
+      
+      if (existingUserByPhone) {
+        return NextResponse.json({ message: "该手机号已被注册" }, { status: 400 });
+      }
+      
+      // 哈希密码
+      const hashedPassword = await hashPassword(password);
+      
+      // 插入数据
+      const result = await prisma.$executeRaw`
+        INSERT INTO user (id, phone, password, name, role, created_at, updated_at)
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${username}, 'user', NOW(), NOW())
+      `;
+      
+      if (result < 0) {
+        throw new Error("Failed to create user");
+      }
+      
+      // 获取创建的用户
+      const user = await prisma.user.findUnique({
+        where: { phone },
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+        },
+      });
+      
+      return NextResponse.json({
+        success: true,
+        message: "注册成功",
+        user: {
+          id: user.id,
+          phone: user.phone,
+          name: user.name,
+        },
+      });
+      
+    } else if (accountType === "email") {
+      // 邮箱注册（暂时返回不支持）
       return NextResponse.json(
-        { message: "手机号格式不正确" },
+        { message: "邮箱注册功能暂未开放" },
+        { status: 400 },
+      );
+    } else {
+      return NextResponse.json(
+        { message: "不支持的注册方式" },
         { status: 400 },
       );
     }
-
-    // TODO: 验证短信验证码（需要接入短信服务商）
-    // 这里暂时跳过验证，生产环境需要调用短信服务商 API 验证
-    if (!smsCode || smsCode.length !== 6) {
-      return NextResponse.json(
-        { message: "验证码格式不正确" },
-        { status: 400 },
-      );
-    }
-
-    // 检查手机号是否已注册
-    const existingUser = await prisma.user.findUnique({
-      where: { phone },
-    });
-
-    if (existingUser) {
-      return NextResponse.json({ message: "该手机号已注册" }, { status: 400 });
-    }
-
-    // 哈希密码
-    const hashedPassword = await hashPassword(password);
-
-    // 使用 executeRaw 插入数据
-    const result = await prisma.$executeRaw`
-      INSERT INTO user (id, phone, password, name, role, created_at, updated_at)
-      VALUES (UUID(), ${phone}, ${hashedPassword}, ${`用户${phone.slice(-4)}`}, 'user', NOW(), NOW())
-    `;
-
-    if (result < 0) {
-      throw new Error("Failed to create user");
-    }
-
-    // 获取创建的用户
-    const user = await prisma.user.findUnique({
-      where: { phone },
-      select: {
-        id: true,
-        phone: true,
-        name: true,
-      },
-    });
-
-    if (!user) {
-      throw new Error("Failed to retrieve created user");
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "注册成功",
-      user: {
-        id: user.id,
-        phone: user.phone,
-        name: user.name,
-      },
-    });
   } catch (error) {
     console.error("Register error:", error);
     return NextResponse.json({ message: "服务器错误" }, { status: 500 });

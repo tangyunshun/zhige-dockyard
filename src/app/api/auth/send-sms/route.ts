@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { generateSmsCode, storeSmsCode } from '@/lib/sms-store';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,13 +14,26 @@ export async function POST(request: NextRequest) {
     }
 
     // TODO: 验证图形验证码（如果提供了 captcha 参数）
-    // TODO: 调用短信服务商 API 发送短信
-    // 这里生成一个 6 位随机验证码作为示例
-    const smsCode = Math.random().toString().slice(2, 8);
+    // 生产环境需要验证图形验证码
     
-    // 生产环境需要：
-    // 1. 将验证码存储到 Redis，设置 5 分钟过期
-    // 2. 调用阿里云/腾讯云短信 API 发送
+    // 生成 6 位随机验证码
+    const smsCode = generateSmsCode();
+    
+    // 存储验证码
+    const storeResult = storeSmsCode(phone, smsCode);
+    
+    if (!storeResult.success) {
+      return NextResponse.json(
+        { 
+          message: storeResult.message,
+          countdown: storeResult.countdown 
+        },
+        { status: 400 }
+      );
+    }
+    
+    // TODO: 调用阿里云/腾讯云短信 API 发送短信
+    // 这里只在控制台输出，生产环境需要调用短信服务商 API
     
     console.log(`发送短信验证码到 ${phone}: ${smsCode} (类型：${type})`);
 
