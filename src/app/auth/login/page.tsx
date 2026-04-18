@@ -320,27 +320,26 @@ export default function LoginPage() {
                     >
                       忘记密码？
                     </Link>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRememberMe(!rememberMe)}
+                        className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                          rememberMe
+                            ? "bg-[var(--zhige-primary)] border-[var(--zhige-primary)]"
+                            : "border-[var(--zhige-border)]"
+                        }`}
+                      >
+                        {rememberMe && <Check className="w-3 h-3 text-white" />}
+                      </button>
+                      <label
+                        onClick={() => setRememberMe(!rememberMe)}
+                        className="text-xs text-slate-600 cursor-pointer select-none"
+                      >
+                        记住我
+                      </label>
+                    </div>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRememberMe(!rememberMe)}
-                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
-                      rememberMe
-                        ? "bg-[var(--zhige-primary)] border-[var(--zhige-primary)]"
-                        : "border-[var(--zhige-border)]"
-                    }`}
-                  >
-                    {rememberMe && <Check className="w-3 h-3 text-white" />}
-                  </button>
-                  <label
-                    onClick={() => setRememberMe(!rememberMe)}
-                    className="text-xs text-slate-600 cursor-pointer select-none"
-                  >
-                    记住我
-                  </label>
                 </div>
               </>
             ) : (
