@@ -6,14 +6,12 @@ import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
 import {
-  Mail,
   Lock,
   Phone,
   Eye,
   EyeOff,
   User,
   MessageSquare,
-  QrCode,
   Check,
   ArrowRight,
   Shield,
@@ -121,7 +119,6 @@ export default function LoginPage() {
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      toast.warning("请填写完整信息");
       return;
     }
 
@@ -168,7 +165,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
       <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[var(--radius-card)] overflow-hidden shadow-2xl bg-white">
         {/* 左侧品牌区 - 固定 */}
         <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[var(--zhige-primary)] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
@@ -217,6 +214,7 @@ export default function LoginPage() {
           {/* 登录方式切换 */}
           <div className="flex gap-1 mb-5 p-1 bg-slate-100 rounded-[var(--radius-btn)]">
             <button
+              type="button"
               onClick={() => {
                 setLoginMethod("password");
                 setErrors({});
@@ -230,6 +228,7 @@ export default function LoginPage() {
               账号密码
             </button>
             <button
+              type="button"
               onClick={() => {
                 setLoginMethod("sms");
                 setErrors({});
@@ -314,7 +313,7 @@ export default function LoginPage() {
                       {errors.password}
                     </p>
                   )}
-                  <div className="flex justify-end mt-1.5">
+                  <div className="flex justify-between items-center mt-1.5">
                     <Link
                       href="/auth/forgot-password"
                       className="text-xs text-[var(--zhige-primary)] hover:underline"
@@ -446,32 +445,25 @@ export default function LoginPage() {
           </div>
 
           {/* 第三方登录 */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="flex justify-center gap-6">
             <button
               type="button"
-              className="flex items-center justify-center py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
+              className="transition-opacity hover:opacity-80"
               title="微信扫码登录"
             >
               <Image
                 src="/icons/wechat.png"
                 alt="微信"
-                width={20}
-                height={20}
+                width={24}
+                height={24}
               />
             </button>
             <button
               type="button"
-              className="flex items-center justify-center py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
+              className="transition-opacity hover:opacity-80"
               title="QQ 登录"
             >
-              <Image src="/icons/QQ.png" alt="QQ" width={20} height={20} />
-            </button>
-            <button
-              type="button"
-              className="flex items-center justify-center py-2 border border-[var(--zhige-border)] rounded-[var(--radius-btn)] hover:bg-slate-50 transition-colors"
-              title="扫码登录"
-            >
-              <QrCode className="w-5 h-5 text-slate-600" />
+              <Image src="/icons/QQ.png" alt="QQ" width={24} height={24} />
             </button>
           </div>
 
