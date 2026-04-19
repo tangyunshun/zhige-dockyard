@@ -1,4 +1,5 @@
 import React from "react";
+import { useRouter } from "next/navigation";
 
 interface LogoProps {
   className?: string;
@@ -11,12 +12,14 @@ export const Logo: React.FC<LogoProps> = ({
   showText = true,
   variant = "light",
 }) => {
+  const router = useRouter();
   const textColor = variant === "dark" ? "text-white" : "text-slate-800";
   const textSubColor = variant === "dark" ? "text-slate-300" : "text-slate-500";
 
   return (
     <div
       className={`flex items-center cursor-pointer select-none ${className}`}
+      onClick={() => router.push("/")}
     >
       <svg
         className="w-8 h-8 mr-2.5 flex-shrink-0 transition-transform duration-300 hover:scale-110"

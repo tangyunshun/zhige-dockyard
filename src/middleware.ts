@@ -6,6 +6,7 @@ const PUBLIC_FILES = ["/favicon.svg", "/_next/static", "/_next/image", "/init"];
 
 const AUTH_ROUTES = ["/auth/login", "/auth/register", "/auth/forgot-password"];
 const PROTECTED_ROUTES = ["/dashboard", "/admin", "/settings", "/profile"];
+const SKIP_WORKSPACE_HUB_ROUTES = ["/workspace-hub"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -35,17 +36,30 @@ export async function middleware(request: NextRequest) {
     const token = request.cookies.get("auth_token")?.value;
     const isLoggedIn = !!token;
 
-    // 如果在认证路由且已登录，重定向到首页
-    if (AUTH_ROUTES.some((route) => pathname.startsWith(route)) && isLoggedIn) {
-      return NextResponse.redirect(new URL("/", request.url));
+    // 邀请链接免打扰逻辑：如果用户携带 invite_token，直接加入企业并跳转
+    const inviteToken = request.nextUrl.searchParams.get("invite_token");
+    if (inviteToken && isLoggedIn) {
+      // 如果用户正在访问 workspace-hub，直接重定向到邀请的企业空间
+      if (SKIP_WORKSPACE_HUB_ROUTES.some((route) => pathname.startsWith(route))) {
+        // 这里可以添加处理邀请逻辑的代码
+        // 例如：验证 inviteToken，将用户加入对应企业，然后重定向
+        return NextResponse.redirect(new URL("/workspace", request.url));
+      }
     }
 
-    // 检查是否需要登录
-    if (
-      PROTECTED_ROUTES.some((route) => pathname.startsWith(route)) &&
-      !isLoggedIn
-    ) {
-      return NextResponse.redirect(new URL("/auth/login", request.url));
+    // 认证路由无需登录即可访问
+    if (AUTH_ROUTES.some((route) => pathname.startsWith(route))) {
+      if (isLoggedIn) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+      return NextResponse.next();
+    }
+
+    // 保护路由需要登录才能访问
+    if (PROTECTED_ROUTES.some((route) => pathname.startsWith(route))) {
+      if (!isLoggedIn) {
+        return NextResponse.redirect(new URL("/auth/login", request.url));
+      }
     }
 
     return NextResponse.next();

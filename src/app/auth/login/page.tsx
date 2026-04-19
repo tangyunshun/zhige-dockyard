@@ -229,7 +229,16 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        toast.success("验证码已发送，请注意查收");
+        // 开发环境显示验证码
+        if (data.debugCode) {
+          toast.showToast(
+            "sms-code",
+            `验证码已发送：${data.debugCode}`,
+            5000 // 显示 5秒
+          );
+        } else {
+          toast.success("验证码已发送，请注意查收");
+        }
         setSmsCountdown(60);
         const timer = setInterval(() => {
           setSmsCountdown((prev) => {
@@ -248,6 +257,18 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 微信登录处理
+  const handleWechatLogin = () => {
+    // 跳转到微信授权页面
+    window.location.href = "/api/auth/wechat";
+  };
+
+  // QQ 登录处理
+  const handleQQLogin = () => {
+    // 跳转到 QQ 授权页面
+    window.location.href = "/api/auth/qq";
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -544,7 +565,10 @@ export default function LoginPage() {
                         <button
                           onClick={() => {
                             setRedirectCountdown(null);
-                            router.push("/auth/register");
+                            // 带账号参数跳转到注册页面
+                            router.push(
+                              `/auth/register?account=${encodeURIComponent(formData.account)}`,
+                            );
                           }}
                           className="text-xs text-[#3182ce] hover:underline font-medium"
                         >
@@ -745,41 +769,55 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[#e2e8f0]" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="px-3 bg-white text-slate-500">其他登录方式</span>
+          {/* 其他登录方式 */}
+          <div className="mt-6 mb-4">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200"></div>
+              </div>
+              <div className="relative flex justify-center">
+                <span className="px-4 bg-white text-slate-500 text-sm">
+                  其他登录方式
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-center gap-6">
+          <div className="flex justify-center gap-8 mb-6">
             <button
               type="button"
-              className="transition-opacity hover:opacity-80"
+              onClick={handleWechatLogin}
+              className="transition-all hover:scale-110"
               title="微信扫码登录"
             >
               <Image
                 src="/icons/wechat.png"
                 alt="微信"
-                width={24}
-                height={24}
+                width={32}
+                height={32}
+                className="w-8 h-8"
               />
             </button>
             <button
               type="button"
-              className="transition-opacity hover:opacity-80"
+              onClick={handleQQLogin}
+              className="transition-all hover:scale-110"
               title="QQ 登录"
             >
-              <Image src="/icons/QQ.png" alt="QQ" width={24} height={24} />
+              <Image
+                src="/icons/QQ.png"
+                alt="QQ"
+                width={32}
+                height={32}
+                className="w-8 h-8"
+              />
             </button>
           </div>
 
-          <div className="mt-5 text-center text-xs text-slate-600">
+          <div className="text-center text-sm text-slate-600">
             还没有账号？{" "}
             <Link
-              href="/auth/register"
+              href={`/auth/register${formData.account ? `?account=${encodeURIComponent(formData.account)}` : ""}`}
               className="text-[#3182ce] font-medium hover:underline"
             >
               立即注册

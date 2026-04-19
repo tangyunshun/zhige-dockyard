@@ -110,6 +110,43 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 获取用户的工作空间列表
+    const workspaceMembers = await prisma.workspaceMember.findMany({
+      where: { userId: user.id },
+      include: {
+        workspace: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            ownerId: true,
+            description: true,
+            logo: true,
+          },
+        },
+      },
+    });
+
+    const workspaces = workspaceMembers.map((member) => ({
+      id: member.id,
+      userId: member.userId,
+      workspaceId: member.workspaceId,
+      role: member.role,
+      workspace: member.workspace,
+    }));
+
+    // 获取用户的 lastWorkspaceId
+    const lastWorkspaceId = user.lastWorkspaceId;
+
+    // 计算建议的重定向 URL
+    let redirectUrl = "/workspace-hub";
+    if (lastWorkspaceId && workspaceMembers.some((m) => m.workspaceId === lastWorkspaceId)) {
+      redirectUrl = `/dashboard?wid=${lastWorkspaceId}`;
+    } else if (workspaceMembers.length > 0) {
+      // 如果有工作空间，直接进入 workspace-hub 或最后一个工作空间
+      redirectUrl = "/workspace-hub";
+    }
+
     // 生成 JWT Token
     const expiresIn = rememberMe ? "7d" : "24h";
     const token = await new SignJWT({
@@ -152,6 +189,9 @@ export async function POST(request: NextRequest) {
         role: user.role,
         avatar: user.avatar,
       },
+      workspaces,
+      lastWorkspaceId,
+      redirectUrl,
     });
   } catch (error) {
     console.error("Login error:", error);

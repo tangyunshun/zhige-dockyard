@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 工作空间类型枚举
+enum WorkspaceType {
+  PERSONAL
+  ENTERPRISE
+}
+
+// 工作空间角色枚举
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model componenttask {
   id          String    @id
   name        String
@@ -46,29 +59,63 @@ model tenant {
 }
 
 model user {
-  id            String          @id @default(cuid())
-  email         String?         @unique(map: "User_email_key")
+  id            String           @id @default(cuid())
+  email         String?          @unique(map: "User_email_key")
   name          String?
   password      String
-  phone         String?         @unique(map: "User_phone_key")
+  phone         String?          @unique(map: "User_phone_key")
   avatar        String?
-  role          String          @default("user")
+  role          String           @default("user")
   tenantId      String?
-  wechatUnionId String?         @unique(map: "User_wechatUnionId_key")
-  qqUnionId     String?         @unique(map: "User_qqUnionId_key")
+  wechatUnionId String?          @unique(map: "User_wechatUnionId_key")
+  qqUnionId     String?          @unique(map: "User_qqUnionId_key")
   refreshToken  String?
   refreshTokenExpiresAt DateTime?
-  loginAttempts Int             @default(0)
+  loginAttempts Int              @default(0)
   lockedUntil   DateTime?
-  status        String          @default("active")
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime
+  status        String           @default("active")
+  lastWorkspaceId String?        @map("last_workspace_id")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   componenttask componenttask[]
-  tenant        tenant?         @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
+  tenant        tenant?          @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
+  workspaces    WorkspaceMember[]
 
   @@index([email], map: "User_email_idx")
   @@index([phone], map: "User_phone_idx")
   @@index([tenantId], map: "User_tenantId_idx")
   @@index([status], map: "User_status_idx")
   @@index([role], map: "User_role_idx")
+  @@index([lastWorkspaceId], map: "User_lastWorkspaceId_idx")
+}
+
+// 工作空间模型
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  type        WorkspaceType
+  ownerId     String
+  description String?
+  logo        String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  members     WorkspaceMember[]
+
+  @@index([ownerId], map: "Workspace_ownerId_idx")
+  @@index([type], map: "Workspace_type_idx")
+}
+
+// 工作空间成员关联表
+model WorkspaceMember {
+  id          String         @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole
+  joinedAt    DateTime       @default(now())
+  user        user           @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
+
+  @@unique([userId, workspaceId], map: "WorkspaceMember_userId_workspaceId_key")
+  @@index([userId], map: "WorkspaceMember_userId_idx")
+  @@index([workspaceId], map: "WorkspaceMember_workspaceId_idx")
 }

@@ -25,15 +25,9 @@ export async function POST(request: NextRequest) {
     const result = verifySmsCode(phone, smsCode);
 
     if (!result.success) {
-      const statusCode = result.isLocked ? 429 : 400;
       return NextResponse.json(
-        {
-          message: result.message,
-          remainingAttempts: result.remainingAttempts,
-          isLocked: result.isLocked,
-          minutesRemaining: result.minutesRemaining,
-        },
-        { status: statusCode }
+        { message: result.message },
+        { status: 400 }
       );
     }
 

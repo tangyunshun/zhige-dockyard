@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
@@ -26,7 +26,8 @@ import {
   getAccountType,
 } from "@/lib/validators";
 
-export default function RegisterPage() {
+// 内部组件用于处理 searchParams
+function RegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
@@ -48,6 +49,9 @@ export default function RegisterPage() {
     password: "",
     confirmPassword: "",
   });
+
+  // 确认密码验证状态
+  const [confirmPasswordError, setConfirmPasswordError] = useState<string>();
 
   const [smsCountdown, setSmsCountdown] = useState(0);
   const [errors, setErrors] = useState<{
@@ -278,7 +282,16 @@ export default function RegisterPage() {
       const data = await res.json();
 
       if (res.ok) {
-        toast.success("验证码已发送，请注意查收");
+        // 开发环境显示验证码
+        if (data.debugCode) {
+          toast.showToast(
+            "sms-code",
+            `验证码已发送：${data.debugCode}`,
+            5000 // 显示 5 秒
+          );
+        } else {
+          toast.success("验证码已发送，请注意查收");
+        }
         setSmsCountdown(60);
         const timer = setInterval(() => {
           setSmsCountdown((prev) => {
@@ -347,11 +360,9 @@ export default function RegisterPage() {
       newErrors.password = "请输入密码";
     }
 
-    // 验证确认密码
+    // 验证确认密码（只检查是否为空，一致性已在失焦时验证）
     if (!formData.confirmPassword) {
       newErrors.confirmPassword = "请再次输入密码";
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "两次输入的密码不一致";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -422,7 +433,7 @@ export default function RegisterPage() {
         requestData.username = formData.account;
         requestData.phone = formData.phone;
         requestData.accountType = "username";
-      } else if (accountType === "email") {
+      } else if ((accountType as string) === "email") {
         requestData.email = formData.account;
         requestData.accountType = "email";
       }
@@ -772,20 +783,35 @@ export default function RegisterPage() {
                       ...formData,
                       confirmPassword: e.target.value,
                     });
-                    if (errors.confirmPassword)
+                    // 清空错误状态
+                    if (errors.confirmPassword) {
                       setErrors({ ...errors, confirmPassword: undefined });
+                    }
+                    if (confirmPasswordError) {
+                      setConfirmPasswordError(undefined);
+                    }
+                  }}
+                  onBlur={() => {
+                    // 失焦时验证密码一致性
+                    if (formData.confirmPassword && formData.password) {
+                      if (formData.password !== formData.confirmPassword) {
+                        setConfirmPasswordError("两次输入的密码不一致");
+                      } else {
+                        setConfirmPasswordError(undefined);
+                      }
+                    }
                   }}
                   className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                    errors.confirmPassword
+                    confirmPasswordError || errors.confirmPassword
                       ? "border-red-500"
                       : "border-[#e2e8f0]"
                   }`}
                   placeholder="请再次输入密码"
                 />
               </div>
-              {errors.confirmPassword && (
+              {(confirmPasswordError || errors.confirmPassword) && (
                 <p className="mt-1 text-xs text-red-500">
-                  {errors.confirmPassword}
+                  {confirmPasswordError || errors.confirmPassword}
                 </p>
               )}
             </div>
@@ -858,5 +884,18 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// 导出包装组件，带 Suspense 边界
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
+        <div className="text-[#3182ce] text-lg">加载中...</div>
+      </div>
+    }>
+      <RegisterContent />
+    </Suspense>
   );
 }

@@ -50,6 +50,9 @@ export default function ForgotPasswordPage() {
     confirmPassword?: string;
   }>({});
 
+  // 确认密码验证状态
+  const [confirmPasswordError, setConfirmPasswordError] = useState<string>();
+
   // 账号类型和邮箱补全
   const [accountType, setAccountType] = useState<
     "phone" | "email" | "username" | "unknown"
@@ -194,7 +197,16 @@ export default function ForgotPasswordPage() {
         const data = await res.json();
 
         if (res.ok) {
-          toast.success("验证码已发送，请注意查收");
+          // 开发环境显示验证码
+          if (data.debugCode) {
+            toast.showToast(
+              "sms-code",
+              `验证码已发送：${data.debugCode}`,
+              5000 // 显示 5 秒
+            );
+          } else {
+            toast.success("验证码已发送，请注意查收");
+          }
           setSmsCountdown(60);
           const timer = setInterval(() => {
             setSmsCountdown((prev) => {
@@ -294,20 +306,13 @@ export default function ForgotPasswordPage() {
       }
     }
 
-    // 验证确认密码
+    // 验证确认密码（只检查是否为空，一致性已在失焦时验证）
     if (!formData.confirmPassword) {
       newErrors.confirmPassword = "请再次输入新密码";
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "两次输入的密码不一致";
     }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      toast.error("两次输入的密码不一致");
       return;
     }
 
@@ -705,21 +710,36 @@ export default function ForgotPasswordPage() {
                           ...formData,
                           confirmPassword: value,
                         });
+                        // 清空错误状态
                         if (errors.confirmPassword) {
                           setErrors({ ...errors, confirmPassword: undefined });
                         }
+                        if (confirmPasswordError) {
+                          setConfirmPasswordError(undefined);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // 失焦时验证密码一致性
+                        const confirmValue = e.target.value;
+                        if (confirmValue && formData.password) {
+                          if (formData.password !== confirmValue) {
+                            setConfirmPasswordError("两次输入的密码不一致");
+                          } else {
+                            setConfirmPasswordError(undefined);
+                          }
+                        }
                       }}
                       className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                        errors.confirmPassword
+                        confirmPasswordError || errors.confirmPassword
                           ? "border-red-500"
                           : "border-[#e2e8f0]"
                       }`}
                       placeholder="请再次输入新密码"
                     />
                   </div>
-                  {errors.confirmPassword && (
+                  {(confirmPasswordError || errors.confirmPassword) && (
                     <p className="mt-1 text-xs text-red-500">
-                      {errors.confirmPassword}
+                      {confirmPasswordError || errors.confirmPassword}
                     </p>
                   )}
                 </div>
