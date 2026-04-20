@@ -98,6 +98,33 @@ export default function WorkspaceHub() {
     }
   };
 
+  const handleOpenEnterpriseModal = () => {
+    // 显示加载提示
+    toast.info("正在为您创建企业空间...", 1000);
+    // 等待 1 秒后打开弹窗
+    setTimeout(() => {
+      setShowModal(true);
+    }, 1000);
+  };
+
+  const handleGoToSettings = () => {
+    // 显示加载提示
+    toast.info("正在加载个人空间设置...", 1000);
+    // 等待 1 秒后跳转
+    setTimeout(() => {
+      router.push("/workspace-hub/settings");
+    }, 1000);
+  };
+
+  const handleGoToDocs = () => {
+    // 显示加载提示
+    toast.info("正在打开帮助手册...", 1000);
+    // 等待 1 秒后跳转
+    setTimeout(() => {
+      router.push("/docs");
+    }, 1000);
+  };
+
   const handleCreateEnterprise = async () => {
     if (!formData.name.trim()) {
       toast.error("请输入企业名称");
@@ -243,7 +270,7 @@ export default function WorkspaceHub() {
 
           {/* 卡片 2：升级为企业空间（高亮） */}
           <div
-            onClick={() => setShowModal(true)}
+            onClick={handleOpenEnterpriseModal}
             className="group cursor-pointer relative bg-white/90 backdrop-blur-xl rounded-xl p-6 border-2 border-[#3182ce]/30 hover:border-[#3182ce]/60 hover:shadow-2xl hover:shadow-[#3182ce]/15 transition-all duration-300 hover:-translate-y-1"
             style={{
               transitionTimingFunction:
@@ -277,7 +304,7 @@ export default function WorkspaceHub() {
 
           {/* 卡片 3：空间与个人设置 */}
           <div
-            onClick={() => router.push("/workspace-hub/settings")}
+            onClick={handleGoToSettings}
             className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-white/90 hover:shadow-2xl hover:shadow-[#10b981]/10 transition-all duration-300 hover:-translate-y-1"
             style={{
               transitionTimingFunction:
@@ -305,7 +332,7 @@ export default function WorkspaceHub() {
 
           {/* 卡片 4：帮助手册 */}
           <div
-            onClick={() => router.push("/docs")}
+            onClick={handleGoToDocs}
             className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-white/90 hover:shadow-2xl hover:shadow-[#f59e0b]/10 transition-all duration-300 hover:-translate-y-1"
             style={{
               transitionTimingFunction:
