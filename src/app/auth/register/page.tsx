@@ -73,6 +73,12 @@ function RegisterContent() {
     checking?: boolean;
   }>({});
 
+  // 手机号验证状态（独立于账号状态）
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState<{
+    registered?: boolean;
+    checking?: boolean;
+  }>({});
+
   // 从登录页跳转时，获取账号参数
   useEffect(() => {
     const accountParam = searchParams.get("account");
@@ -126,11 +132,11 @@ function RegisterContent() {
   // 检查手机号是否已注册（保留用于用户名注册时的手机号验证）
   const checkPhone = async (phone: string) => {
     if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
-      setAccountCheckStatus({});
+      setPhoneCheckStatus({});
       return;
     }
 
-    setAccountCheckStatus({ checking: true });
+    setPhoneCheckStatus({ checking: true });
 
     try {
       const res = await fetch("/api/auth/check-phone", {
@@ -142,15 +148,15 @@ function RegisterContent() {
       const data = await res.json();
 
       if (data.registered) {
-        setAccountCheckStatus({ registered: true, checking: false });
+        setPhoneCheckStatus({ registered: true, checking: false });
         setErrors({ ...errors, phone: "该手机号已被注册" });
       } else {
-        setAccountCheckStatus({ registered: false, checking: false });
+        setPhoneCheckStatus({ registered: false, checking: false });
         setErrors({ ...errors, phone: undefined });
       }
     } catch (error) {
       console.error("Phone check error:", error);
-      setAccountCheckStatus({ checking: false });
+      setPhoneCheckStatus({ checking: false });
     }
   };
 
@@ -219,9 +225,9 @@ function RegisterContent() {
     setFormData({ ...formData, phone: value });
 
     // 清空错误状态
-    if (errors.phone || accountCheckStatus.registered) {
+    if (errors.phone || phoneCheckStatus.registered) {
       setErrors({ ...errors, phone: undefined });
-      setAccountCheckStatus({});
+      setPhoneCheckStatus({});
     }
 
     // 实时验证手机号格式
@@ -632,7 +638,7 @@ function RegisterContent() {
                     }`}
                     placeholder="请输入 11 位手机号"
                   />
-                  {accountCheckStatus.checking && (
+                  {phoneCheckStatus.checking && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
                       <div className="w-4 h-4 border-2 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin" />
                     </div>
@@ -641,12 +647,12 @@ function RegisterContent() {
                 {errors.phone && (
                   <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
                 )}
-                {accountCheckStatus.registered && (
+                {phoneCheckStatus.registered && (
                   <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
                     <p className="text-xs text-red-700">⚠️ 该手机号已被注册</p>
                   </div>
                 )}
-                {accountCheckStatus.registered === false &&
+                {phoneCheckStatus.registered === false &&
                   formData.phone &&
                   validatePhone(formData.phone).valid && (
                     <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
