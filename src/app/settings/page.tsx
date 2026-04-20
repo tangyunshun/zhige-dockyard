@@ -102,6 +102,7 @@ export default function SettingsPage() {
     phone: "",
     email: "",
     bio: "",
+    title: "",
   });
 
   useEffect(() => {
@@ -132,6 +133,7 @@ export default function SettingsPage() {
         phone: userData.user.phone || "",
         email: userData.user.email || "",
         bio: userData.user.bio || "",
+        title: userData.user.title || "",
       });
 
       // 获取工作空间列表
@@ -178,6 +180,7 @@ export default function SettingsPage() {
           nickname: profileData.nickname,
           email: profileData.email,
           bio: profileData.bio,
+          title: profileData.title,
         }),
       });
 
@@ -827,6 +830,24 @@ export default function SettingsPage() {
 
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          职位 / 头衔
+                        </label>
+                        <input
+                          type="text"
+                          value={profileData.title || ""}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              title: e.target.value,
+                            })
+                          }
+                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                          placeholder="例如：产品经理、CTO、全栈工程师"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
                           手机号
                         </label>
                         <div className="relative">
@@ -1145,83 +1166,97 @@ export default function SettingsPage() {
               {/* 我的工作空间 */}
               {activeTab === "workspace" && (
                 <div className="space-y-6">
+                  {/* 提示卡片 */}
                   <div className="p-4 bg-[#3182ce]/5 rounded-xl border border-[#3182ce]/20">
                     <p className="text-sm text-[#3182ce]">
                       💡 您可以使用同一个账号，无缝切换并参与多个团队的协作。
                     </p>
                   </div>
 
-                  {/* 工作空间卡片列表 */}
-                  <div className="grid gap-4">
+                  {/* 工作空间 Grid 卡片列表 */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {workspaces.map((workspace) => (
                       <div
                         key={workspace.id}
-                        className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-white/90 hover:shadow-2xl hover:shadow-[#3182ce]/10 transition-all duration-300 hover:-translate-y-1"
+                        className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-white/90 hover:shadow-2xl hover:shadow-[#3182ce]/10 transition-all duration-300 hover:-translate-y-1"
                         style={{
                           transitionTimingFunction:
                             "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
                         }}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-4">
-                            <div
-                              className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg ${
-                                workspace.type === "ENTERPRISE"
-                                  ? "bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-[#f59e0b]/20"
-                                  : "bg-gradient-to-br from-[#3182ce] to-[#2563eb] shadow-[#3182ce]/20"
-                              }`}
-                            >
-                              <Users className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                              <h3 className="text-lg font-bold text-slate-800 mb-1">
-                                {workspace.name}
-                              </h3>
-                              <p className="text-sm text-slate-600">
-                                {workspace.description || "暂无描述"}
-                              </p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span
-                                  className={`px-2 py-1 text-xs font-bold rounded ${
-                                    workspace.type === "ENTERPRISE"
-                                      ? "bg-[#f59e0b]/10 text-[#f59e0b]"
-                                      : "bg-[#3182ce]/10 text-[#3182ce]"
-                                  }`}
-                                >
-                                  {workspace.type === "ENTERPRISE"
-                                    ? "企业空间"
-                                    : "个人空间"}
-                                </span>
-                                <span className="px-2 py-1 text-xs font-bold bg-slate-100 text-slate-600 rounded">
-                                  {workspace.role === "OWNER"
-                                    ? "所有者"
-                                    : workspace.role === "ADMIN"
-                                      ? "管理员"
-                                      : "成员"}
-                                </span>
-                              </div>
-                            </div>
+                        <div className="flex items-start justify-between mb-3">
+                          <div
+                            className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg ${
+                              workspace.type === "ENTERPRISE"
+                                ? "bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-[#f59e0b]/20"
+                                : "bg-gradient-to-br from-[#3182ce] to-[#2563eb] shadow-[#3182ce]/20"
+                            }`}
+                          >
+                            <Users className="w-6 h-6 text-white" />
                           </div>
-                          <div className="flex items-center gap-2">
-                            {workspace.role === "OWNER" ? (
-                              <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#f59e0b] text-[#f59e0b] hover:bg-[#f59e0b]/5 transition-all cursor-pointer">
-                                移交所有权
-                              </button>
-                            ) : (
-                              <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-red-300 text-red-600 hover:bg-red-50 transition-all cursor-pointer">
-                                退出空间
-                              </button>
-                            )}
-                          </div>
+                          {workspace.role === "OWNER" && (
+                            <span className="px-2 py-1 text-xs font-bold bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white rounded-full shadow-sm">
+                              👑 所有者
+                            </span>
+                          )}
+                          {workspace.role === "ADMIN" && (
+                            <span className="px-2 py-1 text-xs font-bold bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-full shadow-sm">
+                              🛡️ 管理员
+                            </span>
+                          )}
+                          {workspace.role === "MEMBER" && (
+                            <span className="px-2 py-1 text-xs font-bold bg-slate-100 text-slate-600 rounded-full">
+                              👤 成员
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="text-base font-bold text-slate-800 mb-1.5 truncate">
+                          {workspace.name}
+                        </h3>
+                        <p className="text-xs text-slate-500 mb-3 line-clamp-2">
+                          {workspace.description || "暂无描述"}
+                        </p>
+
+                        <div className="flex items-center gap-2 mb-4">
+                          <span
+                            className={`px-2 py-1 text-xs font-bold rounded ${
+                              workspace.type === "ENTERPRISE"
+                                ? "bg-[#f59e0b]/10 text-[#f59e0b]"
+                                : "bg-[#3182ce]/10 text-[#3182ce]"
+                            }`}
+                          >
+                            {workspace.type === "ENTERPRISE"
+                              ? "企业空间"
+                              : "个人空间"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-end">
+                          {workspace.role === "MEMBER" ? (
+                            <button className="h-[36px] px-[16px] rounded-[8px] text-[13px] font-[600] border border-red-300 text-red-600 hover:bg-red-50 transition-all cursor-pointer">
+                              退出空间
+                            </button>
+                          ) : workspace.role === "OWNER" ? (
+                            <button className="h-[36px] px-[16px] rounded-[8px] text-[13px] font-[600] border border-[#f59e0b] text-[#f59e0b] hover:bg-[#f59e0b]/5 transition-all cursor-pointer">
+                              移交所有权
+                            </button>
+                          ) : (
+                            <button className="h-[36px] px-[16px] rounded-[8px] text-[13px] font-[600] border border-slate-300 text-slate-600 hover:bg-slate-50 transition-all cursor-pointer">
+                              管理空间
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
 
                     {/* 创建新空间入口 */}
-                    <div className="group cursor-pointer bg-white/60 backdrop-blur-xl rounded-xl p-6 border-2 border-dashed border-[#3182ce]/30 hover:border-[#3182ce] hover:bg-[#3182ce]/5 transition-all duration-300">
-                      <div className="flex items-center justify-center gap-3 text-[#3182ce]">
-                        <Plus className="w-6 h-6" />
-                        <span className="text-base font-bold">
+                    <div className="group cursor-pointer bg-white/60 backdrop-blur-xl rounded-xl p-5 border-2 border-dashed border-[#3182ce]/30 hover:border-[#3182ce] hover:bg-[#3182ce]/5 transition-all duration-300 flex items-center justify-center min-h-[180px]">
+                      <div className="flex flex-col items-center gap-3 text-[#3182ce]">
+                        <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 flex items-center justify-center group-hover:bg-[#3182ce]/20 transition-colors">
+                          <Plus className="w-6 h-6" />
+                        </div>
+                        <span className="text-sm font-bold">
                           创建全新的企业工作空间
                         </span>
                       </div>
@@ -1351,62 +1386,97 @@ export default function SettingsPage() {
                         </li>
                       </ul>
                     </div>
-                  </div>
 
-                  {/* 偏好设置 */}
-                  <div className="space-y-4">
-                    <h2 className="text-lg font-bold text-slate-800 mb-4">
-                      通知偏好
-                    </h2>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                        <div>
-                          <p className="text-sm font-bold text-slate-800">
-                            邮件通知
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            通过邮件接收系统通知和更新
-                          </p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            checked={notificationData.emailNotifications}
-                            onChange={(e) =>
-                              setNotificationData({
-                                ...notificationData,
-                                emailNotifications: e.target.checked,
-                              })
-                            }
-                          />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
-                        </label>
-                      </div>
-
-                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                        <div>
-                          <p className="text-sm font-bold text-slate-800">
-                            @提及通知
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            当有人在评论中@您时发送通知
-                          </p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
-                            checked={notificationData.mentionNotifications}
-                            onChange={(e) =>
-                              setNotificationData({
-                                ...notificationData,
-                                mentionNotifications: e.target.checked,
-                              })
-                            }
-                          />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
-                        </label>
+                    {/* Token 消耗流水 */}
+                    <div className="bg-white/80 rounded-xl p-6 border border-[#e2e8f0]/80">
+                      <h3 className="text-lg font-bold text-slate-800 mb-4">
+                        近期算力消耗流水
+                      </h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left font-bold text-slate-700">
+                                时间
+                              </th>
+                              <th className="px-4 py-3 text-left font-bold text-slate-700">
+                                项目
+                              </th>
+                              <th className="px-4 py-3 text-left font-bold text-slate-700">
+                                类型
+                              </th>
+                              <th className="px-4 py-3 text-right font-bold text-slate-700">
+                                Token 消耗
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-b border-[#e2e8f0]/80">
+                              <td className="px-4 py-3 text-slate-600">
+                                2024-01-15 14:32
+                              </td>
+                              <td className="px-4 py-3 text-slate-800 font-medium">
+                                API 调用 - 文本生成
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="px-2 py-1 text-xs font-bold bg-[#3182ce]/10 text-[#3182ce] rounded">
+                                  计算任务
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-bold text-red-600">
+                                -150
+                              </td>
+                            </tr>
+                            <tr className="border-b border-[#e2e8f0]/80">
+                              <td className="px-4 py-3 text-slate-600">
+                                2024-01-15 10:15
+                              </td>
+                              <td className="px-4 py-3 text-slate-800 font-medium">
+                                API 调用 - 图像识别
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="px-2 py-1 text-xs font-bold bg-[#3182ce]/10 text-[#3182ce] rounded">
+                                  计算任务
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-bold text-red-600">
+                                -280
+                              </td>
+                            </tr>
+                            <tr className="border-b border-[#e2e8f0]/80">
+                              <td className="px-4 py-3 text-slate-600">
+                                2024-01-14 16:45
+                              </td>
+                              <td className="px-4 py-3 text-slate-800 font-medium">
+                                月度 Token 充值
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="px-2 py-1 text-xs font-bold bg-[#10b981]/10 text-[#10b981] rounded">
+                                  系统充值
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-bold text-green-600">
+                                +1000
+                              </td>
+                            </tr>
+                            <tr>
+                              <td className="px-4 py-3 text-slate-600">
+                                2024-01-14 09:20
+                              </td>
+                              <td className="px-4 py-3 text-slate-800 font-medium">
+                                API 调用 - 代码生成
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="px-2 py-1 text-xs font-bold bg-[#3182ce]/10 text-[#3182ce] rounded">
+                                  计算任务
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-bold text-red-600">
+                                -95
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </div>
