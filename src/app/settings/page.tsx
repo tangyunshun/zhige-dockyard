@@ -725,6 +725,519 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+
+              {/* 安全与绑定 */}
+              {activeTab === "security" && (
+                <div className="space-y-6">
+                  {/* 基础安全区 */}
+                  <div className="space-y-4">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4">
+                      基础安全
+                    </h2>
+
+                    <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
+                          <Key className="w-5 h-5 text-[#3182ce]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            登录密码
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            用于账号登录验证
+                          </p>
+                        </div>
+                      </div>
+                      <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer">
+                        修改密码
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-[#10b981]/10 flex items-center justify-center">
+                          <Shield className="w-5 h-5 text-[#10b981]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            双重验证 (2FA)
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            额外安全层，保护账号安全
+                          </p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={securityData.twoFactorEnabled}
+                          onChange={(e) =>
+                            setSecurityData({
+                              ...securityData,
+                              twoFactorEnabled: e.target.checked,
+                            })
+                          }
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10b981]"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* 第三方绑定区 */}
+                  <div className="space-y-4">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4">
+                      账号绑定
+                    </h2>
+
+                    <div className="space-y-3">
+                      {/* 手机号 */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#f59e0b]/10 flex items-center justify-center">
+                            <Smartphone className="w-5 h-5 text-[#f59e0b]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              手机号
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {securityData.phone
+                                ? securityData.phone.replace(
+                                    /(\d{3})\d{4}(\d{4})/,
+                                    "$1****$2",
+                                  )
+                                : "未绑定"}
+                            </p>
+                          </div>
+                        </div>
+                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#3182ce] text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer">
+                          {securityData.phone ? "更换" : "去绑定"}
+                        </button>
+                      </div>
+
+                      {/* 邮箱 */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
+                            <Mail className="w-5 h-5 text-[#3182ce]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              邮箱
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {securityData.email || "未绑定"}
+                            </p>
+                          </div>
+                        </div>
+                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#3182ce] text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer">
+                          {securityData.email ? "更换" : "去绑定"}
+                        </button>
+                      </div>
+
+                      {/* 微信 */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#07c160]/10 flex items-center justify-center">
+                            <Wechat className="w-5 h-5 text-[#07c160]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              微信
+                            </p>
+                            <p className="text-xs text-slate-500">未绑定</p>
+                          </div>
+                        </div>
+                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-[#07c160] text-white hover:brightness-110 transition-all cursor-pointer">
+                          去绑定
+                        </button>
+                      </div>
+
+                      {/* GitHub */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#333]/10 flex items-center justify-center">
+                            <Github className="w-5 h-5 text-[#333]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              GitHub
+                            </p>
+                            <p className="text-xs text-slate-500">未绑定</p>
+                          </div>
+                        </div>
+                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-[#333] text-white hover:brightness-110 transition-all cursor-pointer">
+                          去绑定
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 设备与审计 */}
+                  <div className="space-y-4">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4">
+                      最近登录设备
+                    </h2>
+                    <div className="bg-white/60 rounded-xl border border-[#e2e8f0]/80 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-bold text-slate-700">
+                              设备类型
+                            </th>
+                            <th className="px-4 py-3 text-left font-bold text-slate-700">
+                              IP 地址
+                            </th>
+                            <th className="px-4 py-3 text-left font-bold text-slate-700">
+                              登录时间
+                            </th>
+                            <th className="px-4 py-3 text-left font-bold text-slate-700">
+                              状态
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-t border-[#e2e8f0]/80">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Device className="w-4 h-4 text-slate-500" />
+                                <span>Windows Chrome</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              192.168.1.100
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              2024-01-20 14:30
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">
+                                当前在线
+                              </span>
+                            </td>
+                          </tr>
+                          <tr className="border-t border-[#e2e8f0]/80">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Device className="w-4 h-4 text-slate-500" />
+                                <span>Mac Safari</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              192.168.1.101
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              2024-01-19 09:15
+                            </td>
+                            <td className="px-4 py-3">
+                              <button className="text-xs text-[#3182ce] hover:underline cursor-pointer">
+                                下线
+                              </button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex justify-end">
+                      <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-red-300 text-red-600 hover:bg-red-50 transition-all cursor-pointer">
+                        下线其他所有设备
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 危险区域 */}
+                  <div className="p-6 bg-red-50/50 border border-red-200 rounded-xl">
+                    <div className="flex items-start gap-3 mb-4">
+                      <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h3 className="text-base font-bold text-red-800">
+                          危险操作
+                        </h3>
+                        <p className="text-xs text-red-700 mt-1">
+                          注销前需确保您名下的企业空间已解散或移交，此操作不可恢复！
+                        </p>
+                      </div>
+                    </div>
+                    <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-red-600 text-white hover:bg-red-700 transition-all cursor-pointer flex items-center gap-2">
+                      <Trash2 className="w-4 h-4" />
+                      注销账号
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 我的工作空间 */}
+              {activeTab === "workspace" && (
+                <div className="space-y-6">
+                  <div className="p-4 bg-[#3182ce]/5 rounded-xl border border-[#3182ce]/20">
+                    <p className="text-sm text-[#3182ce]">
+                      💡 您可以使用同一个账号，无缝切换并参与多个团队的协作。
+                    </p>
+                  </div>
+
+                  {/* 工作空间卡片列表 */}
+                  <div className="grid gap-4">
+                    {workspaces.map((workspace) => (
+                      <div
+                        key={workspace.id}
+                        className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-white/90 hover:shadow-2xl hover:shadow-[#3182ce]/10 transition-all duration-300 hover:-translate-y-1"
+                        style={{
+                          transitionTimingFunction:
+                            "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
+                        }}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-4">
+                            <div
+                              className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg ${
+                                workspace.type === "ENTERPRISE"
+                                  ? "bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-[#f59e0b]/20"
+                                  : "bg-gradient-to-br from-[#3182ce] to-[#2563eb] shadow-[#3182ce]/20"
+                              }`}
+                            >
+                              <Users className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                              <h3 className="text-lg font-bold text-slate-800 mb-1">
+                                {workspace.name}
+                              </h3>
+                              <p className="text-sm text-slate-600">
+                                {workspace.description || "暂无描述"}
+                              </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span
+                                  className={`px-2 py-1 text-xs font-bold rounded ${
+                                    workspace.type === "ENTERPRISE"
+                                      ? "bg-[#f59e0b]/10 text-[#f59e0b]"
+                                      : "bg-[#3182ce]/10 text-[#3182ce]"
+                                  }`}
+                                >
+                                  {workspace.type === "ENTERPRISE"
+                                    ? "企业空间"
+                                    : "个人空间"}
+                                </span>
+                                <span className="px-2 py-1 text-xs font-bold bg-slate-100 text-slate-600 rounded">
+                                  {workspace.role === "OWNER"
+                                    ? "所有者"
+                                    : workspace.role === "ADMIN"
+                                      ? "管理员"
+                                      : "成员"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {workspace.role === "OWNER" ? (
+                              <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#f59e0b] text-[#f59e0b] hover:bg-[#f59e0b]/5 transition-all cursor-pointer">
+                                移交所有权
+                              </button>
+                            ) : (
+                              <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-red-300 text-red-600 hover:bg-red-50 transition-all cursor-pointer">
+                                退出空间
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 创建新空间入口 */}
+                    <div className="group cursor-pointer bg-white/60 backdrop-blur-xl rounded-xl p-6 border-2 border-dashed border-[#3182ce]/30 hover:border-[#3182ce] hover:bg-[#3182ce]/5 transition-all duration-300">
+                      <div className="flex items-center justify-center gap-3 text-[#3182ce]">
+                        <Plus className="w-6 h-6" />
+                        <span className="text-base font-bold">
+                          创建全新的企业工作空间
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 个人资产 */}
+              {activeTab === "billing" && (
+                <div className="space-y-6">
+                  {/* 资产大盘 */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-gradient-to-br from-[#3182ce]/5 to-[#10b981]/5 rounded-xl p-6 border border-[#3182ce]/20">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold text-slate-800">
+                          Token 消耗进度
+                        </h3>
+                        <CreditCard className="w-5 h-5 text-[#3182ce]" />
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="relative w-32 h-32">
+                          <svg className="w-full h-full" viewBox="0 0 100 100">
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke="#e2e8f0"
+                              strokeWidth="12"
+                            />
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke="url(#gradient)"
+                              strokeWidth="12"
+                              strokeDasharray={`${(billingData.usedTokens / billingData.freeTokens) * 251.2} 251.2`}
+                              strokeLinecap="round"
+                              transform="rotate(-90 50 50)"
+                            />
+                            <defs>
+                              <linearGradient
+                                id="gradient"
+                                x1="0%"
+                                y1="0%"
+                                x2="100%"
+                                y2="0%"
+                              >
+                                <stop offset="0%" stopColor="#3182ce" />
+                                <stop offset="100%" stopColor="#10b981" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="text-center">
+                              <p className="text-2xl font-black text-[#3182ce]">
+                                {Math.round(
+                                  (billingData.usedTokens /
+                                    billingData.freeTokens) *
+                                    100,
+                                )}
+                                %
+                              </p>
+                              <p className="text-xs text-slate-500">已使用</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="mb-3">
+                            <p className="text-sm text-slate-600 mb-1">
+                              可用 Token
+                            </p>
+                            <p className="text-3xl font-black text-slate-800">
+                              {billingData.freeTokens - billingData.usedTokens}
+                            </p>
+                          </div>
+                          <div className="mb-3">
+                            <p className="text-sm text-slate-600 mb-1">
+                              总额度
+                            </p>
+                            <p className="text-xl font-bold text-slate-700">
+                              {billingData.freeTokens}
+                            </p>
+                          </div>
+                          <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer">
+                            升级团队版
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white/80 rounded-xl p-6 border border-[#e2e8f0]/80">
+                      <h3 className="text-lg font-bold text-slate-800 mb-4">
+                        当前套餐
+                      </h3>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
+                          <CreditCard className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-xl font-black text-slate-800">
+                            免费版
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            适合个人开发者
+                          </p>
+                        </div>
+                      </div>
+                      <ul className="space-y-2 text-sm text-slate-600">
+                        <li className="flex items-center gap-2">
+                          <Check className="w-4 h-4 text-[#10b981]" />
+                          <span>1,000 Token/月</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="w-4 h-4 text-[#10b981]" />
+                          <span>基础组件库</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="w-4 h-4 text-[#10b981]" />
+                          <span>个人工作空间</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="w-4 h-4 text-[#10b981]" />
+                          <span>社区支持</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* 偏好设置 */}
+                  <div className="space-y-4">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4">
+                      通知偏好
+                    </h2>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            邮件通知
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            通过邮件接收系统通知和更新
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={notificationData.emailNotifications}
+                            onChange={(e) =>
+                              setNotificationData({
+                                ...notificationData,
+                                emailNotifications: e.target.checked,
+                              })
+                            }
+                          />
+                          <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            @提及通知
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            当有人在评论中@您时发送通知
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={notificationData.mentionNotifications}
+                            onChange={(e) =>
+                              setNotificationData({
+                                ...notificationData,
+                                mentionNotifications: e.target.checked,
+                              })
+                            }
+                          />
+                          <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
