@@ -159,19 +159,17 @@ function RegisterContent() {
     const value = e.target.value;
     setFormData({ ...formData, account: value });
 
-    if (errors.account) {
-      setErrors({ ...errors, account: undefined });
-    }
-
-    // 清空账号检测状态
-    if (accountCheckStatus.registered) {
+    // 清空账号检测状态和错误
+    if (accountCheckStatus.registered || errors.account) {
       setAccountCheckStatus({});
+      setErrors({ ...errors, account: undefined });
     }
 
     // 验证账号格式并检测类型
     const validation = validateAccount(value);
     if (!validation.valid && value.length > 0) {
       setErrors({ ...errors, account: validation.message });
+      return;
     }
 
     // 判断账号类型
@@ -220,8 +218,10 @@ function RegisterContent() {
     const value = e.target.value;
     setFormData({ ...formData, phone: value });
 
-    if (errors.phone) {
+    // 清空错误状态
+    if (errors.phone || accountCheckStatus.registered) {
       setErrors({ ...errors, phone: undefined });
+      setAccountCheckStatus({});
     }
 
     // 实时验证手机号格式
@@ -287,7 +287,7 @@ function RegisterContent() {
           toast.showToast(
             "sms-code",
             `验证码已发送：${data.debugCode}`,
-            5000 // 显示 5 秒
+            5000, // 显示 5 秒
           );
         } else {
           toast.success("验证码已发送，请注意查收");
@@ -890,11 +890,13 @@ function RegisterContent() {
 // 导出包装组件，带 Suspense 边界
 export default function RegisterPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
-        <div className="text-[#3182ce] text-lg">加载中...</div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
+          <div className="text-[#3182ce] text-lg">加载中...</div>
+        </div>
+      }
+    >
       <RegisterContent />
     </Suspense>
   );
