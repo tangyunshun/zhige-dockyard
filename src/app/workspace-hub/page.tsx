@@ -75,6 +75,7 @@ export default function WorkspaceHub() {
         if (personal) {
           setPersonalWorkspace(personal);
         }
+        // 不显示错误提示，静默处理
       }
     } catch (error) {
       console.error("加载用户信息失败:", error);
