@@ -1393,7 +1393,10 @@ export default function SettingsPage() {
                         近期算力消耗流水
                       </h3>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table
+                          className="w-full text-sm"
+                          style={{ tableLayout: "auto" }}
+                        >
                           <thead>
                             <tr className="border-b-2 border-[#e2e8f0]/80">
                               <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
