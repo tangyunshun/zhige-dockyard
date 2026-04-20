@@ -1387,108 +1387,107 @@ export default function SettingsPage() {
                       </ul>
                     </div>
 
-                    {/* Token 消耗流水 */}
-                    <div className="bg-white/80 rounded-xl p-6 border border-[#e2e8f0]/80">
-                      <h3 className="text-lg font-bold text-slate-800 mb-4">
-                        近期算力消耗流水
-                      </h3>
-                      <div className="overflow-x-auto">
-                        <table
-                          className="w-full text-sm"
-                          style={{ tableLayout: "auto" }}
-                        >
-                          <thead>
-                            <tr className="border-b-2 border-[#e2e8f0]/80">
-                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                                时间
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                                项目
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                                类型
-                              </th>
-                              <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                                Token 消耗
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[#e2e8f0]/60">
-                            <tr className="hover:bg-white/90 transition-colors">
-                              <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
-                                2024-01-15 14:32
-                              </td>
-                              <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
-                                API 调用 - 文本生成
-                              </td>
-                              <td className="px-4 py-4 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#3182ce]/10 text-[#3182ce]">
-                                  计算任务
-                                </span>
-                              </td>
-                              <td className="px-4 py-4 text-right whitespace-nowrap">
-                                <span className="text-xs font-bold text-red-600">
-                                  -150
-                                </span>
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-white/90 transition-colors">
-                              <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
-                                2024-01-15 10:15
-                              </td>
-                              <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
-                                API 调用 - 图像识别
-                              </td>
-                              <td className="px-4 py-4 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#3182ce]/10 text-[#3182ce]">
-                                  计算任务
-                                </span>
-                              </td>
-                              <td className="px-4 py-4 text-right whitespace-nowrap">
-                                <span className="text-xs font-bold text-red-600">
-                                  -280
-                                </span>
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-white/90 transition-colors">
-                              <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
-                                2024-01-14 16:45
-                              </td>
-                              <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
-                                月度 Token 充值
-                              </td>
-                              <td className="px-4 py-4 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#10b981]/10 text-[#10b981]">
-                                  系统充值
-                                </span>
-                              </td>
-                              <td className="px-4 py-4 text-right whitespace-nowrap">
-                                <span className="text-xs font-bold text-green-600">
-                                  +1000
-                                </span>
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-white/90 transition-colors">
-                              <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
-                                2024-01-14 09:20
-                              </td>
-                              <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
-                                API 调用 - 代码生成
-                              </td>
-                              <td className="px-4 py-4 whitespace-nowrap">
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#3182ce]/10 text-[#3182ce]">
-                                  计算任务
-                                </span>
-                              </td>
-                              <td className="px-4 py-4 text-right whitespace-nowrap">
-                                <span className="text-xs font-bold text-red-600">
-                                  -95
-                                </span>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
+                  {/* Token 消耗流水 - 全宽布局 */}
+                  <div className="bg-white/80 rounded-xl p-6 border border-[#e2e8f0]/80">
+                    <h3 className="text-lg font-bold text-slate-800 mb-4">
+                      近期算力消耗流水
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table
+                        className="w-full text-sm"
+                        style={{ tableLayout: "auto" }}
+                      >
+                        <thead>
+                          <tr className="border-b-2 border-[#e2e8f0]/80">
+                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                              时间
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                              项目
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                              类型
+                            </th>
+                            <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                              Token 消耗
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#e2e8f0]/60">
+                          <tr className="hover:bg-white/90 transition-colors">
+                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
+                              2024-01-15 14:32
+                            </td>
+                            <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
+                              API 调用 - 文本生成
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#3182ce]/10 text-[#3182ce]">
+                                计算任务
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-right whitespace-nowrap">
+                              <span className="text-xs font-bold text-red-600">
+                                -150
+                              </span>
+                            </td>
+                          </tr>
+                          <tr className="hover:bg-white/90 transition-colors">
+                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
+                              2024-01-15 10:15
+                            </td>
+                            <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
+                              API 调用 - 图像识别
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#3182ce]/10 text-[#3182ce]">
+                                计算任务
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-right whitespace-nowrap">
+                              <span className="text-xs font-bold text-red-600">
+                                -280
+                              </span>
+                            </td>
+                          </tr>
+                          <tr className="hover:bg-white/90 transition-colors">
+                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
+                              2024-01-14 16:45
+                            </td>
+                            <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
+                              月度 Token 充值
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#10b981]/10 text-[#10b981]">
+                                系统充值
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-right whitespace-nowrap">
+                              <span className="text-xs font-bold text-green-600">
+                                +1000
+                              </span>
+                            </td>
+                          </tr>
+                          <tr className="hover:bg-white/90 transition-colors">
+                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
+                              2024-01-14 09:20
+                            </td>
+                            <td className="px-4 py-4 text-slate-800 font-medium whitespace-nowrap text-xs">
+                              API 调用 - 代码生成
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[#3182ce]/10 text-[#3182ce]">
+                                计算任务
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-right whitespace-nowrap">
+                              <span className="text-xs font-bold text-red-600">
+                                -95
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
