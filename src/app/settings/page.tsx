@@ -103,7 +103,43 @@ export default function SettingsPage() {
     email: "",
     bio: "",
     title: "",
+    avatar: "",
   });
+
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
+
+  // 系统内置头像列表（8 个）
+  const systemAvatars = [
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=1",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=2",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=3",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=4",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=5",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=6",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=7",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=8",
+  ];
+
+  // 职位/头衔选项
+  const titleOptions = [
+    "产品经理",
+    "项目经理",
+    "技术总监",
+    "CTO",
+    "CEO",
+    "前端工程师",
+    "后端工程师",
+    "全栈工程师",
+    "UI/UX 设计师",
+    "数据分析师",
+    "运维工程师",
+    "测试工程师",
+    "架构师",
+    "技术顾问",
+    "自由职业者",
+    "学生",
+    "其他",
+  ];
 
   useEffect(() => {
     loadData();
@@ -796,18 +832,29 @@ export default function SettingsPage() {
                           头像
                         </label>
                         <div className="flex items-center gap-4">
-                          <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
-                            <User className="w-10 h-10 text-white" />
+                          <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20 overflow-hidden">
+                            {profileData.avatar ? (
+                              <img
+                                src={profileData.avatar}
+                                alt="用户头像"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <User className="w-10 h-10 text-white" />
+                            )}
                           </div>
-                          <div>
-                            <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setShowAvatarSelector(true)}
+                              className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer"
+                            >
                               更换头像
                             </button>
-                            <p className="text-xs text-slate-500 mt-1">
-                              支持 JPG、PNG 格式，最大 2MB
-                            </p>
                           </div>
                         </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                          支持上传本地图片或选择系统内置头像
+                        </p>
                       </div>
 
                       <div>
@@ -832,8 +879,7 @@ export default function SettingsPage() {
                         <label className="block text-xs font-medium text-slate-700 mb-1.5">
                           职位 / 头衔
                         </label>
-                        <input
-                          type="text"
+                        <select
                           value={profileData.title || ""}
                           onChange={(e) =>
                             setProfileData({
@@ -841,9 +887,15 @@ export default function SettingsPage() {
                               title: e.target.value,
                             })
                           }
-                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
-                          placeholder="例如：产品经理、CTO、全栈工程师"
-                        />
+                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none cursor-pointer"
+                        >
+                          <option value="">请选择职位/头衔</option>
+                          {titleOptions.map((title) => (
+                            <option key={title} value={title}>
+                              {title}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div>
@@ -1458,6 +1510,119 @@ export default function SettingsPage() {
           </div>
         </div>
       </main>
+
+      {/* 头像选择器弹窗 */}
+      {showAvatarSelector && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* 遮罩层 */}
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => setShowAvatarSelector(false)}
+          />
+
+          {/* 弹窗内容 */}
+          <div className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            {/* 标题栏 */}
+            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
+              <h2 className="text-xl font-bold text-slate-800">更换头像</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                选择系统内置头像或上传本地图片
+              </p>
+            </div>
+
+            {/* 内容区域 */}
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {/* 系统内置头像 */}
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-slate-700 mb-3">
+                  系统内置头像
+                </h3>
+                <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+                  {systemAvatars.map((avatar, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        setProfileData({ ...profileData, avatar });
+                        setShowAvatarSelector(false);
+                        toast.success("头像已更新");
+                      }}
+                      className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all hover:scale-110 cursor-pointer ${
+                        profileData.avatar === avatar
+                          ? "border-[#3182ce] shadow-lg shadow-[#3182ce]/20"
+                          : "border-[#e2e8f0]"
+                      }`}
+                    >
+                      <img
+                        src={avatar}
+                        alt={`系统头像${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 上传本地图片 */}
+              <div>
+                <h3 className="text-sm font-bold text-slate-700 mb-3">
+                  上传本地图片
+                </h3>
+                <div className="border-2 border-dashed border-[#e2e8f0] rounded-xl p-6 text-center hover:border-[#3182ce] transition-colors">
+                  <input
+                    type="file"
+                    id="avatar-upload"
+                    accept="image/jpeg,image/png"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 2 * 1024 * 1024) {
+                          toast.error("图片大小不能超过 2MB");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const result = event.target?.result as string;
+                          setProfileData({ ...profileData, avatar: result });
+                          setShowAvatarSelector(false);
+                          toast.success("头像已更新");
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="avatar-upload"
+                    className="cursor-pointer flex flex-col items-center gap-2"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
+                      <User className="w-6 h-6 text-[#3182ce]" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">
+                        点击上传头像
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        支持 JPG、PNG 格式，最大 2MB
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-6 py-4 border-t border-[#e2e8f0] flex justify-end">
+              <button
+                onClick={() => setShowAvatarSelector(false)}
+                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#e2e8f0] text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
