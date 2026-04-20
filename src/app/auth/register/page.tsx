@@ -149,7 +149,7 @@ function RegisterContent() {
 
       if (data.registered) {
         setPhoneCheckStatus({ registered: true, checking: false });
-        setErrors({ ...errors, phone: "该手机号已被注册" });
+        // 不设置 errors.phone，避免与提示框重复
       } else {
         setPhoneCheckStatus({ registered: false, checking: false });
         setErrors({ ...errors, phone: undefined });
