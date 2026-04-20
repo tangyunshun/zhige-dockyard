@@ -350,9 +350,11 @@ function RegisterContent() {
         newErrors.phone = phoneValidation.message;
       }
     } else if (accountType === "email") {
-      // 邮箱注册，暂时跳过
-      toast.warning("邮箱注册功能开发中");
-      return;
+      // 邮箱注册，需要验证绑定的手机号
+      const phoneValidation = validatePhone(formData.phone);
+      if (!phoneValidation.valid) {
+        newErrors.phone = phoneValidation.message;
+      }
     }
 
     // 验证验证码
@@ -439,8 +441,9 @@ function RegisterContent() {
         requestData.username = formData.account;
         requestData.phone = formData.phone;
         requestData.accountType = "username";
-      } else if ((accountType as string) === "email") {
+      } else if (accountType === "email") {
         requestData.email = formData.account;
+        requestData.phone = formData.phone;
         requestData.accountType = "email";
       }
 
@@ -620,11 +623,11 @@ function RegisterContent() {
                 )}
             </div>
 
-            {/* 手机号输入框 - 仅当账号类型为用户名时显示 */}
-            {accountType === "username" && (
+            {/* 手机号输入框 - 当账号类型为用户名或邮箱时显示 */}
+            {(accountType === "username" || accountType === "email") && (
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                  绑定手机号 <span className="text-red-500">*</span>
+                  {accountType === "email" ? "绑定手机号" : "绑定手机号"} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
