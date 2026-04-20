@@ -1410,8 +1410,8 @@ export default function SettingsPage() {
                               </th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-[#e2e8f0]/80">
-                            <tr className="hover:bg-slate-50/60 transition-colors">
+                          <tbody className="divide-y divide-[#e2e8f0]/60">
+                            <tr className="hover:bg-white/90 transition-colors">
                               <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
                                 2024-01-15 14:32
                               </td>
@@ -1429,7 +1429,7 @@ export default function SettingsPage() {
                                 </span>
                               </td>
                             </tr>
-                            <tr className="hover:bg-slate-50/60 transition-colors">
+                            <tr className="hover:bg-white/90 transition-colors">
                               <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
                                 2024-01-15 10:15
                               </td>
@@ -1447,7 +1447,7 @@ export default function SettingsPage() {
                                 </span>
                               </td>
                             </tr>
-                            <tr className="hover:bg-slate-50/60 transition-colors">
+                            <tr className="hover:bg-white/90 transition-colors">
                               <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
                                 2024-01-14 16:45
                               </td>
@@ -1465,7 +1465,7 @@ export default function SettingsPage() {
                                 </span>
                               </td>
                             </tr>
-                            <tr className="hover:bg-slate-50/60 transition-colors">
+                            <tr className="hover:bg-white/90 transition-colors">
                               <td className="px-4 py-4 text-slate-600 whitespace-nowrap text-xs">
                                 2024-01-14 09:20
                               </td>
