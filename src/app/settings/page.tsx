@@ -16,6 +16,18 @@ import {
   Moon,
   Sun,
   Check,
+  Shield,
+  Smartphone,
+  Mail,
+  Github,
+  Wechat,
+  Key,
+  Smartphone as Device,
+  CreditCard,
+  Users,
+  Plus,
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
 
 interface WorkspaceInfo {
@@ -37,9 +49,14 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
-  const [activeTab, setActiveTab] = useState<"workspace" | "appearance" | "notification">(
-    "workspace"
-  );
+  const [activeTab, setActiveTab] = useState<
+    | "profile"
+    | "security"
+    | "workspace"
+    | "appearance"
+    | "notification"
+    | "billing"
+  >("profile");
   const [workspaceData, setWorkspaceData] = useState({
     name: "",
     description: "",
@@ -53,6 +70,30 @@ export default function SettingsPage() {
     emailNotifications: true,
     mentionNotifications: true,
     systemAnnouncements: true,
+  });
+
+  // 账号安全相关数据
+  const [securityData, setSecurityData] = useState({
+    phone: "",
+    email: "",
+    hasPassword: false,
+    twoFactorEnabled: false,
+  });
+
+  const [workspaces, setWorkspaces] = useState<
+    Array<{
+      id: string;
+      name: string;
+      type: "PERSONAL" | "ENTERPRISE";
+      role: "OWNER" | "ADMIN" | "MEMBER";
+      description?: string;
+    }>
+  >([]);
+
+  const [billingData, setBillingData] = useState({
+    freeTokens: 1000,
+    usedTokens: 350,
+    plan: "free",
   });
 
   useEffect(() => {
@@ -69,13 +110,24 @@ export default function SettingsPage() {
       const userData = await userRes.json();
       setUser(userData.user);
 
-      // 获取当前工作空间信息
+      // 加载安全数据
+      setSecurityData({
+        phone: userData.user.phone || "",
+        email: userData.user.email || "",
+        hasPassword: true, // 假设已设置密码
+        twoFactorEnabled: false,
+      });
+
+      // 获取工作空间列表
       const workspaceRes = await fetch("/api/workspace/list");
       if (workspaceRes.ok) {
         const workspaceData = await workspaceRes.json();
-        const personalWorkspace = workspaceData.workspaces.find(
-          (w: WorkspaceInfo) => w.type === "PERSONAL"
-        );
+        setWorkspaces(workspaceData.workspaces || []);
+      }
+
+      // 获取当前工作空间信息
+      if (workspaces.length > 0) {
+        const personalWorkspace = workspaces.find((w) => w.type === "PERSONAL");
         if (personalWorkspace) {
           setWorkspace(personalWorkspace);
           setWorkspaceData({
@@ -179,19 +231,29 @@ export default function SettingsPage() {
 
   const tabs = [
     {
-      id: "workspace" as const,
-      label: "空间设置",
+      id: "profile" as const,
+      label: "个人档案",
       icon: Settings,
     },
     {
-      id: "appearance" as const,
-      label: "外观主题",
-      icon: Palette,
+      id: "security" as const,
+      label: "安全与绑定",
+      icon: Shield,
     },
     {
-      id: "notification" as const,
-      label: "通知设置",
+      id: "workspace" as const,
+      label: "我的工作空间",
+      icon: Users,
+    },
+    {
+      id: "appearance" as const,
+      label: "偏好与通知",
       icon: Bell,
+    },
+    {
+      id: "billing" as const,
+      label: "个人资产",
+      icon: CreditCard,
     },
   ];
 
@@ -247,10 +309,10 @@ export default function SettingsPage() {
           {/* 头部 */}
           <div className="px-8 py-6 border-b border-[#e2e8f0]/90 bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
             <h1 className="text-2xl font-black text-slate-800 mb-2">
-              个人空间设置
+              个人设置中心
             </h1>
             <p className="text-sm text-slate-600">
-              管理您的个人空间配置、外观主题与通知偏好
+              管理您的账号安全、工作空间、偏好设置与个人资产
             </p>
           </div>
 
@@ -298,7 +360,10 @@ export default function SettingsPage() {
                           type="text"
                           value={workspaceData.name}
                           onChange={(e) =>
-                            setWorkspaceData({ ...workspaceData, name: e.target.value })
+                            setWorkspaceData({
+                              ...workspaceData,
+                              name: e.target.value,
+                            })
                           }
                           className="w-full px-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                           placeholder="请输入空间名称"
@@ -312,7 +377,10 @@ export default function SettingsPage() {
                         <textarea
                           value={workspaceData.description}
                           onChange={(e) =>
-                            setWorkspaceData({ ...workspaceData, description: e.target.value })
+                            setWorkspaceData({
+                              ...workspaceData,
+                              description: e.target.value,
+                            })
                           }
                           placeholder="简要描述您的个人空间用途（选填）"
                           rows={4}
@@ -323,11 +391,15 @@ export default function SettingsPage() {
                       <div className="p-4 bg-[#3182ce]/5 rounded-xl border border-[#3182ce]/20">
                         <div className="flex items-start gap-2">
                           <div className="w-5 h-5 rounded-full bg-[#3182ce] flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span className="text-xs font-bold text-white">i</span>
+                            <span className="text-xs font-bold text-white">
+                              i
+                            </span>
                           </div>
                           <div className="text-xs text-[#3182ce] leading-relaxed">
                             <p className="font-bold mb-1">温馨提示</p>
-                            <p>个人空间名称可随时修改，修改后会同步到空间切换器中。</p>
+                            <p>
+                              个人空间名称可随时修改，修改后会同步到空间切换器中。
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -357,7 +429,12 @@ export default function SettingsPage() {
 
                     <div className="grid grid-cols-3 gap-4">
                       <button
-                        onClick={() => setAppearanceData({ ...appearanceData, theme: "light" })}
+                        onClick={() =>
+                          setAppearanceData({
+                            ...appearanceData,
+                            theme: "light",
+                          })
+                        }
                         className={`group relative p-6 rounded-xl border-2 transition-all cursor-pointer ${
                           appearanceData.theme === "light"
                             ? "border-[#3182ce] bg-[#3182ce]/5"
@@ -373,7 +450,9 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex items-center justify-center gap-2">
                           <Sun className="w-5 h-5 text-[#f59e0b]" />
-                          <p className="text-sm font-bold text-slate-800">浅色模式</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            浅色模式
+                          </p>
                         </div>
                         {appearanceData.theme === "light" && (
                           <div className="absolute top-2 right-2 w-6 h-6 bg-[#3182ce] rounded-full flex items-center justify-center">
@@ -383,7 +462,12 @@ export default function SettingsPage() {
                       </button>
 
                       <button
-                        onClick={() => setAppearanceData({ ...appearanceData, theme: "dark" })}
+                        onClick={() =>
+                          setAppearanceData({
+                            ...appearanceData,
+                            theme: "dark",
+                          })
+                        }
                         className={`group relative p-6 rounded-xl border-2 transition-all cursor-pointer ${
                           appearanceData.theme === "dark"
                             ? "border-[#3182ce] bg-[#3182ce]/5"
@@ -399,7 +483,9 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex items-center justify-center gap-2">
                           <Moon className="w-5 h-5 text-[#6366f1]" />
-                          <p className="text-sm font-bold text-slate-800">深色模式</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            深色模式
+                          </p>
                         </div>
                         {appearanceData.theme === "dark" && (
                           <div className="absolute top-2 right-2 w-6 h-6 bg-[#3182ce] rounded-full flex items-center justify-center">
@@ -409,7 +495,12 @@ export default function SettingsPage() {
                       </button>
 
                       <button
-                        onClick={() => setAppearanceData({ ...appearanceData, theme: "auto" })}
+                        onClick={() =>
+                          setAppearanceData({
+                            ...appearanceData,
+                            theme: "auto",
+                          })
+                        }
                         className={`group relative p-6 rounded-xl border-2 transition-all cursor-pointer ${
                           appearanceData.theme === "auto"
                             ? "border-[#3182ce] bg-[#3182ce]/5"
@@ -425,7 +516,9 @@ export default function SettingsPage() {
                         </div>
                         <div className="flex items-center justify-center gap-2">
                           <Monitor className="w-5 h-5 text-slate-600" />
-                          <p className="text-sm font-bold text-slate-800">跟随系统</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            跟随系统
+                          </p>
                         </div>
                         {appearanceData.theme === "auto" && (
                           <div className="absolute top-2 right-2 w-6 h-6 bg-[#3182ce] rounded-full flex items-center justify-center">
@@ -454,8 +547,12 @@ export default function SettingsPage() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                         <div>
-                          <p className="text-sm font-bold text-slate-800">紧凑模式</p>
-                          <p className="text-xs text-slate-500">减小界面元素间距，显示更多内容</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            紧凑模式
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            减小界面元素间距，显示更多内容
+                          </p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
@@ -463,7 +560,10 @@ export default function SettingsPage() {
                             className="sr-only peer"
                             checked={appearanceData.compactMode}
                             onChange={(e) =>
-                              setAppearanceData({ ...appearanceData, compactMode: e.target.checked })
+                              setAppearanceData({
+                                ...appearanceData,
+                                compactMode: e.target.checked,
+                              })
                             }
                           />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
@@ -472,8 +572,12 @@ export default function SettingsPage() {
 
                       <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                         <div>
-                          <p className="text-sm font-bold text-slate-800">动画效果</p>
-                          <p className="text-xs text-slate-500">启用物理阻尼动效 (--zg-spring)</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            动画效果
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            启用物理阻尼动效 (--zg-spring)
+                          </p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
@@ -481,7 +585,10 @@ export default function SettingsPage() {
                             className="sr-only peer"
                             checked={appearanceData.animations}
                             onChange={(e) =>
-                              setAppearanceData({ ...appearanceData, animations: e.target.checked })
+                              setAppearanceData({
+                                ...appearanceData,
+                                animations: e.target.checked,
+                              })
                             }
                           />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
@@ -503,8 +610,12 @@ export default function SettingsPage() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                         <div>
-                          <p className="text-sm font-bold text-slate-800">邮件通知</p>
-                          <p className="text-xs text-slate-500">通过邮件接收系统通知和更新</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            邮件通知
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            通过邮件接收系统通知和更新
+                          </p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
@@ -512,7 +623,10 @@ export default function SettingsPage() {
                             className="sr-only peer"
                             checked={notificationData.emailNotifications}
                             onChange={(e) =>
-                              setNotificationData({ ...notificationData, emailNotifications: e.target.checked })
+                              setNotificationData({
+                                ...notificationData,
+                                emailNotifications: e.target.checked,
+                              })
                             }
                           />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
@@ -521,8 +635,12 @@ export default function SettingsPage() {
 
                       <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                         <div>
-                          <p className="text-sm font-bold text-slate-800">@提及通知</p>
-                          <p className="text-xs text-slate-500">当有人在评论中@您时发送通知</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            @提及通知
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            当有人在评论中@您时发送通知
+                          </p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
@@ -530,7 +648,10 @@ export default function SettingsPage() {
                             className="sr-only peer"
                             checked={notificationData.mentionNotifications}
                             onChange={(e) =>
-                              setNotificationData({ ...notificationData, mentionNotifications: e.target.checked })
+                              setNotificationData({
+                                ...notificationData,
+                                mentionNotifications: e.target.checked,
+                              })
                             }
                           />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
@@ -539,8 +660,12 @@ export default function SettingsPage() {
 
                       <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                         <div>
-                          <p className="text-sm font-bold text-slate-800">系统公告</p>
-                          <p className="text-xs text-slate-500">接收系统维护、功能更新等重要公告</p>
+                          <p className="text-sm font-bold text-slate-800">
+                            系统公告
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            接收系统维护、功能更新等重要公告
+                          </p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
@@ -548,7 +673,10 @@ export default function SettingsPage() {
                             className="sr-only peer"
                             checked={notificationData.systemAnnouncements}
                             onChange={(e) =>
-                              setNotificationData({ ...notificationData, systemAnnouncements: e.target.checked })
+                              setNotificationData({
+                                ...notificationData,
+                                systemAnnouncements: e.target.checked,
+                              })
                             }
                           />
                           <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3182ce]"></div>
@@ -578,9 +706,18 @@ export default function SettingsPage() {
                         <div className="text-sm text-slate-700 leading-relaxed">
                           <p className="font-bold mb-2">通知类型说明</p>
                           <ul className="space-y-1.5 text-xs text-slate-600">
-                            <li>• <strong>邮件通知：</strong>重要操作和系统消息会通过邮件发送</li>
-                            <li>• <strong>@提及通知：</strong>协作者在评论中提及时会收到提醒</li>
-                            <li>• <strong>系统公告：</strong>产品更新、维护通知等全局消息</li>
+                            <li>
+                              • <strong>邮件通知：</strong>
+                              重要操作和系统消息会通过邮件发送
+                            </li>
+                            <li>
+                              • <strong>@提及通知：</strong>
+                              协作者在评论中提及时会收到提醒
+                            </li>
+                            <li>
+                              • <strong>系统公告：</strong>
+                              产品更新、维护通知等全局消息
+                            </li>
                           </ul>
                         </div>
                       </div>

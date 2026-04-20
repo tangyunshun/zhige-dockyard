@@ -217,18 +217,31 @@ export default function Header() {
 
                 {/* 下拉菜单 */}
                 {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-[0_8px_24px_-6px_rgba(15,23,42,0.1),0_2px_6px_-2px_rgba(15,23,42,0.04)] border border-[#e2e8f0]/90 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-[0_8px_24px_-6px_rgba(15,23,42,0.1),0_2px_6px_-2px_rgba(15,23,42,0.04)] border border-[#e2e8f0]/90 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="px-4 py-2 border-b border-[#e2e8f0]/90">
                       <p className="text-sm font-bold text-slate-800 truncate">
                         {user.name || "用户"}
                       </p>
                     </div>
+                    
+                    {/* 个人设置入口 */}
+                    <button
+                      onClick={() => {
+                        router.push("/settings");
+                        setShowUserMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-[#3182ce] transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <Settings className="w-4 h-4" />
+                      个人设置
+                    </button>
+                    
                     <button
                       onClick={() => {
                         handleLogout();
                         setShowUserMenu(false);
                       }}
-                      className="w-full px-4 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors flex items-center gap-2 cursor-pointer"
+                      className="w-full px-4 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors flex items-center gap-2 cursor-pointer border-t border-[#e2e8f0]/90 mt-1 pt-2"
                     >
                       <LogOut className="w-4 h-4" />
                       退出登录
