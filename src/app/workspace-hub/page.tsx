@@ -64,7 +64,7 @@ export default function WorkspaceHub() {
       const data = await res.json();
       setUser(data.user);
 
-      // 加载用户的工作空间（登录时已自动创建个人空间）
+      // 加载用户的工作空间
       const workspacesRes = await fetch("/api/workspace/list");
       if (workspacesRes.ok) {
         const workspacesData = await workspacesRes.json();
@@ -72,58 +72,30 @@ export default function WorkspaceHub() {
         const personal = workspacesData.workspaces.find(
           (w: Workspace) => w.type === "PERSONAL",
         );
-        if (personal) {
-          setPersonalWorkspace(personal);
-        } else {
-          // 如果没有个人空间，立即创建一个
-          await createPersonalWorkspace();
-        }
+        setPersonalWorkspace(personal || null);
+      } else {
+        // 如果获取工作空间失败，设置为 null
+        setPersonalWorkspace(null);
       }
     } catch (error) {
       console.error("加载用户信息失败:", error);
-    }
-  };
-
-  const createPersonalWorkspace = async () => {
-    try {
-      const res = await fetch("/api/workspace/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `个人空间 - ${user?.name || "用户"}`,
-          type: "PERSONAL",
-          description: `${user?.name || "用户"}的个人工作空间`,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setPersonalWorkspace({
-          id: data.workspace.id,
-          name: data.workspace.name,
-          type: "PERSONAL",
-        });
-      }
-    } catch (error) {
-      console.error("创建个人空间失败:", error);
+      // 不显示任何错误提示，静默失败
+      setPersonalWorkspace(null);
     }
   };
 
   const handleEnterPersonal = async () => {
-    if (!personalWorkspace) {
-      // 显示加载提示，重新加载数据
-      toast.info("正在加载个人空间信息...");
-      await loadUserInfo();
-      // 等待 500ms 让 state 更新
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      // 重新检查
-      if (!personalWorkspace) {
-        toast.error("加载失败，请刷新页面重试");
-      }
-      return;
+    // 显示加载提示
+    toast.info("正在加载个人空间信息...");
+    // 等待 1 秒
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // 直接跳转到个人空间页面
+    if (personalWorkspace) {
+      router.push(`/dashboard?wid=${personalWorkspace.id}`);
+    } else {
+      // 如果没有个人空间，跳转到空页面（显示"此页面正在开发中"）
+      router.push("/workspace-hub/personal");
     }
-    // 跳转到个人空间工作台（带侧边栏的正式后台）
-    router.push(`/dashboard?wid=${personalWorkspace.id}`);
   };
 
   const handleCreateEnterprise = async () => {
