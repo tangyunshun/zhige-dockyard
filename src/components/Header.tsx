@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, User, LogOut, Hammer } from "lucide-react";
+import { ChevronDown, User, LogOut, Hammer, Settings } from "lucide-react";
 import { Logo } from "./Logo";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
