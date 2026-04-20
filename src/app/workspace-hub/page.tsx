@@ -277,7 +277,7 @@ export default function WorkspaceHub() {
 
           {/* 卡片 3：空间与个人设置 */}
           <div
-            onClick={() => router.push("/settings")}
+            onClick={() => router.push("/workspace-hub/settings")}
             className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-white/90 hover:shadow-2xl hover:shadow-[#10b981]/10 transition-all duration-300 hover:-translate-y-1"
             style={{
               transitionTimingFunction:
