@@ -1386,6 +1386,7 @@ export default function SettingsPage() {
                         </li>
                       </ul>
                     </div>
+                  </div>
 
                   {/* Token 消耗流水 - 全宽布局 */}
                   <div className="bg-white/80 rounded-xl p-6 border border-[#e2e8f0]/80">
