@@ -85,8 +85,8 @@ export default function WorkspaceHub() {
   };
 
   const handleEnterPersonal = async () => {
-    // 显示加载提示
-    toast.info("正在加载个人空间信息...");
+    // 显示加载提示（1 秒后自动关闭）
+    toast.info("正在加载个人空间信息...", 1000);
     // 等待 1 秒
     await new Promise((resolve) => setTimeout(resolve, 1000));
     // 直接跳转到个人空间页面
