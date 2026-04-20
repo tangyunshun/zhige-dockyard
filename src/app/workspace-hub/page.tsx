@@ -84,29 +84,13 @@ export default function WorkspaceHub() {
 
   const handleEnterPersonal = async () => {
     if (!personalWorkspace) {
-      // 自动创建一个个人空间（静默创建，不显示中间状态）
-      try {
-        const res = await fetch("/api/workspace/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: `个人空间 - ${user?.name || "用户"}`,
-            type: "PERSONAL",
-            description: `${user?.name || "用户"}的个人工作空间`,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          // 创建成功，直接跳转
-          router.push(`/dashboard?wid=${data.workspace.id}`);
-        } else {
-          const error = await res.json();
-          toast.error(error.message || "创建失败");
-        }
-      } catch (error) {
-        console.error("创建个人空间失败:", error);
-        toast.error("创建失败，请刷新页面重试");
+      // 显示加载提示，等待数据加载
+      toast.info("正在加载个人空间信息...");
+      // 等待 1 秒让数据加载完成
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // 重新检查
+      if (!personalWorkspace) {
+        toast.error("加载失败，请刷新页面重试");
       }
       return;
     }
