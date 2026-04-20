@@ -91,11 +91,8 @@ export default function WorkspaceHub() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: `个人空间 - ${user?.name || "用户"}`,
+            type: "PERSONAL",
             description: `${user?.name || "用户"}的个人工作空间`,
-            teamSize: "1",
-            industry: "其他",
-            contactEmail: "",
-            contactPhone: "",
           }),
         });
 
@@ -104,7 +101,8 @@ export default function WorkspaceHub() {
           // 创建成功，直接跳转
           router.push(`/dashboard?wid=${data.workspace.id}`);
         } else {
-          toast.error("个人空间不存在，请联系管理员");
+          const error = await res.json();
+          toast.error(error.message || "创建失败");
         }
       } catch (error) {
         console.error("创建个人空间失败:", error);
