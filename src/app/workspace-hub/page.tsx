@@ -84,44 +84,31 @@ export default function WorkspaceHub() {
 
   const handleEnterPersonal = async () => {
     if (!personalWorkspace) {
-      // 显示加载中提示
-      toast.info("正在加载个人空间信息...");
-      // 重新加载一次
-      await loadUserInfo();
-      
-      // 等待 500ms 让 state 更新
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // 如果还是为空，说明用户可能没有个人空间，引导创建
-      if (!personalWorkspace) {
-        toast.info("正在为您创建个人空间...");
-        // 自动创建一个个人空间
-        try {
-          const res = await fetch("/api/workspace/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: `个人空间 - ${user?.name || "用户"}`,
-              description: `${user?.name || "用户"}的个人工作空间`,
-              teamSize: "1",
-              industry: "其他",
-              contactEmail: "",
-              contactPhone: "",
-            }),
-          });
-          
-          if (res.ok) {
-            const data = await res.json();
-            toast.success("个人空间创建成功！");
-            // 跳转到新创建的个人空间
-            router.push(`/dashboard?wid=${data.workspace.id}`);
-          } else {
-            toast.error("个人空间创建失败，请联系管理员");
-          }
-        } catch (error) {
-          console.error("创建个人空间失败:", error);
-          toast.error("创建失败，请刷新页面重试");
+      // 自动创建一个个人空间（静默创建，不显示中间状态）
+      try {
+        const res = await fetch("/api/workspace/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: `个人空间 - ${user?.name || "用户"}`,
+            description: `${user?.name || "用户"}的个人工作空间`,
+            teamSize: "1",
+            industry: "其他",
+            contactEmail: "",
+            contactPhone: "",
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // 创建成功，直接跳转
+          router.push(`/dashboard?wid=${data.workspace.id}`);
+        } else {
+          toast.error("个人空间不存在，请联系管理员");
         }
+      } catch (error) {
+        console.error("创建个人空间失败:", error);
+        toast.error("创建失败，请刷新页面重试");
       }
       return;
     }
