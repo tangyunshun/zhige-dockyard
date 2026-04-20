@@ -19,7 +19,7 @@ import {
   Shield,
   Smartphone,
   Mail,
-  Github as GithubIcon,
+  GitFork as GithubIcon,
   MessageCircle as WechatIcon,
   Key,
   Smartphone as Device,
@@ -1245,3 +1245,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+// 设置页面 - 修复图标导入
