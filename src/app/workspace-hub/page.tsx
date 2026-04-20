@@ -64,7 +64,7 @@ export default function WorkspaceHub() {
       const data = await res.json();
       setUser(data.user);
 
-      // 加载用户的工作空间
+      // 加载用户的工作空间（登录时已自动创建个人空间）
       const workspacesRes = await fetch("/api/workspace/list");
       if (workspacesRes.ok) {
         const workspacesData = await workspacesRes.json();
@@ -75,7 +75,7 @@ export default function WorkspaceHub() {
         if (personal) {
           setPersonalWorkspace(personal);
         }
-        // 不显示错误提示，静默处理
+        // 登录 API 已保证创建个人空间，所以不需要错误提示
       }
     } catch (error) {
       console.error("加载用户信息失败:", error);
@@ -84,7 +84,9 @@ export default function WorkspaceHub() {
 
   const handleEnterPersonal = () => {
     if (!personalWorkspace) {
-      toast.error("未找到个人空间");
+      // 理论上不应该发生，因为登录时已创建个人空间
+      // 可能是网络延迟，重新加载一次
+      loadUserInfo();
       return;
     }
     // 跳转到个人空间工作台（带侧边栏的正式后台）
