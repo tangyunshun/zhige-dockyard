@@ -28,6 +28,7 @@ import {
   Plus,
   AlertTriangle,
   Trash2,
+  User,
 } from "lucide-react";
 
 interface WorkspaceInfo {
@@ -96,6 +97,13 @@ export default function SettingsPage() {
     plan: "free",
   });
 
+  const [profileData, setProfileData] = useState({
+    nickname: "",
+    phone: "",
+    email: "",
+    bio: "",
+  });
+
   useEffect(() => {
     loadData();
   }, []);
@@ -116,6 +124,14 @@ export default function SettingsPage() {
         email: userData.user.email || "",
         hasPassword: true, // 假设已设置密码
         twoFactorEnabled: false,
+      });
+
+      // 加载个人档案数据
+      setProfileData({
+        nickname: userData.user.name || "",
+        phone: userData.user.phone || "",
+        email: userData.user.email || "",
+        bio: userData.user.bio || "",
       });
 
       // 获取工作空间列表
@@ -139,6 +155,43 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("加载信息失败:", error);
       toast.error("加载信息失败");
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profileData.nickname.trim()) {
+      toast.error("请输入昵称");
+      return;
+    }
+
+    if (profileData.bio.length > 200) {
+      toast.error("个人简介不能超过 200 字");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: profileData.nickname,
+          email: profileData.email,
+          bio: profileData.bio,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("更新失败");
+      }
+
+      toast.success("个人档案已更新！");
+      loadData();
+    } catch (error) {
+      console.error("更新个人档案失败:", error);
+      toast.error("更新个人档案失败，请稍后重试");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -721,6 +774,127 @@ export default function SettingsPage() {
                           </ul>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 个人档案 */}
+              {activeTab === "profile" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800 mb-6">
+                      基本信息
+                    </h2>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          头像
+                        </label>
+                        <div className="flex items-center gap-4">
+                          <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
+                            <User className="w-10 h-10 text-white" />
+                          </div>
+                          <div>
+                            <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer">
+                              更换头像
+                            </button>
+                            <p className="text-xs text-slate-500 mt-1">
+                              支持 JPG、PNG 格式，最大 2MB
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          昵称 <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={profileData.nickname}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              nickname: e.target.value,
+                            })
+                          }
+                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                          placeholder="请输入昵称"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          手机号
+                        </label>
+                        <div className="relative">
+                          <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="tel"
+                            value={profileData.phone}
+                            disabled
+                            className="w-full h-[38px] pl-[38px] pr-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-slate-50 text-slate-500 cursor-not-allowed"
+                          />
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                          手机号已绑定，如需修改请联系管理员
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          邮箱
+                        </label>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="email"
+                            value={profileData.email || ""}
+                            onChange={(e) =>
+                              setProfileData({
+                                ...profileData,
+                                email: e.target.value,
+                              })
+                            }
+                            className="w-full h-[38px] pl-[38px] pr-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                            placeholder="请输入邮箱地址"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                          个人简介
+                        </label>
+                        <textarea
+                          value={profileData.bio}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              bio: e.target.value,
+                            })
+                          }
+                          rows={4}
+                          className="w-full px-[14px] py-[12px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none resize-none"
+                          placeholder="介绍一下自己吧..."
+                        />
+                        <p className="text-xs text-slate-500 mt-1">
+                          {profileData.bio.length}/200 字
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-8 flex justify-end">
+                      <button
+                        onClick={handleSaveProfile}
+                        disabled={loading || !profileData.nickname.trim()}
+                        className="inline-flex items-center gap-2 h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Save className="w-4 h-4" />
+                        {loading ? "保存中..." : "保存修改"}
+                      </button>
                     </div>
                   </div>
                 </div>
