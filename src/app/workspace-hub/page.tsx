@@ -82,11 +82,17 @@ export default function WorkspaceHub() {
     }
   };
 
-  const handleEnterPersonal = () => {
+  const handleEnterPersonal = async () => {
     if (!personalWorkspace) {
       // 理论上不应该发生，因为登录时已创建个人空间
-      // 可能是网络延迟，重新加载一次
-      loadUserInfo();
+      // 可能是网络延迟，显示加载中提示
+      toast.info("正在加载个人空间信息...");
+      // 重新加载一次
+      await loadUserInfo();
+      // 如果还是为空，显示错误
+      if (!personalWorkspace) {
+        toast.error("个人空间加载失败，请刷新页面重试");
+      }
       return;
     }
     // 跳转到个人空间工作台（带侧边栏的正式后台）
