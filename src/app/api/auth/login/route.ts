@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 获取用户的工作空间列表
+    // 检查用户是否有个人空间，如果没有则创建
     const workspaceMembers = await prisma.workspaceMember.findMany({
       where: { userId: user.id },
       include: {
@@ -126,6 +126,57 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // 查找是否有个人空间
+    const personalWorkspace = workspaceMembers.find(
+      (member) => member.workspace.type === 'PERSONAL'
+    );
+
+    // 如果没有个人空间，自动创建一个
+    if (!personalWorkspace) {
+      const workspaceName = `个人空间 - ${user.name || user.phone || user.email}`;
+      const newWorkspace = await prisma.workspace.create({
+        data: {
+          name: workspaceName,
+          type: 'PERSONAL',
+          ownerId: user.id,
+          description: `${user.name || '用户'}的个人工作空间`,
+        },
+      });
+
+      // 创建 WorkspaceMember 记录
+      await prisma.workspaceMember.create({
+        data: {
+          userId: user.id,
+          workspaceId: newWorkspace.id,
+          role: 'OWNER',
+        },
+      });
+
+      // 更新用户的 lastWorkspaceId
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastWorkspaceId: newWorkspace.id,
+        },
+      });
+
+      // 刷新 workspaceMembers 列表
+      workspaceMembers.push({
+        id: newWorkspace.id,
+        userId: user.id,
+        workspaceId: newWorkspace.id,
+        role: 'OWNER',
+        workspace: {
+          id: newWorkspace.id,
+          name: workspaceName,
+          type: 'PERSONAL',
+          ownerId: user.id,
+          description: `${user.name || '用户'}的个人工作空间`,
+          logo: null,
+        },
+      });
+    }
 
     const workspaces = workspaceMembers.map((member) => ({
       id: member.id,

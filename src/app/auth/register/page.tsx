@@ -456,9 +456,9 @@ function RegisterContent() {
       const data = await res.json();
 
       if (res.ok) {
-        toast.success("注册成功！正在跳转到登录页面...");
+        toast.success("注册成功！正在跳转到工作空间...");
         setTimeout(() => {
-          router.push("/auth/login");
+          router.push(data.redirectUrl || "/workspace-hub");
         }, 1500);
       } else {
         toast.error(data.message || "注册失败");
