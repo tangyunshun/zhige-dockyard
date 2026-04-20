@@ -19,7 +19,7 @@ import {
   Shield,
   Smartphone,
   Mail,
-  Github,
+  Github as GithubIcon,
   Wechat,
   Key,
   Smartphone as Device,
@@ -859,7 +859,7 @@ export default function SettingsPage() {
                       <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-[#333]/10 flex items-center justify-center">
-                            <Github className="w-5 h-5 text-[#333]" />
+                            <GithubIcon className="w-5 h-5 text-[#333]" />
                           </div>
                           <div>
                             <p className="text-sm font-bold text-slate-800">
