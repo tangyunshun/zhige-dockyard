@@ -20,7 +20,7 @@ import {
   Smartphone,
   Mail,
   Github as GithubIcon,
-  Wechat,
+  MessageCircle as WechatIcon,
   Key,
   Smartphone as Device,
   CreditCard,
@@ -841,7 +841,7 @@ export default function SettingsPage() {
                       <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-[#07c160]/10 flex items-center justify-center">
-                            <Wechat className="w-5 h-5 text-[#07c160]" />
+                            <WechatIcon className="w-5 h-5 text-[#07c160]" />
                           </div>
                           <div>
                             <p className="text-sm font-bold text-slate-800">
