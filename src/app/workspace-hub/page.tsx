@@ -74,11 +74,38 @@ export default function WorkspaceHub() {
         );
         if (personal) {
           setPersonalWorkspace(personal);
+        } else {
+          // 如果没有个人空间，立即创建一个
+          await createPersonalWorkspace();
         }
-        // 登录 API 已保证创建个人空间，所以不需要错误提示
       }
     } catch (error) {
       console.error("加载用户信息失败:", error);
+    }
+  };
+
+  const createPersonalWorkspace = async () => {
+    try {
+      const res = await fetch("/api/workspace/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `个人空间 - ${user?.name || "用户"}`,
+          type: "PERSONAL",
+          description: `${user?.name || "用户"}的个人工作空间`,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setPersonalWorkspace({
+          id: data.workspace.id,
+          name: data.workspace.name,
+          type: "PERSONAL",
+        });
+      }
+    } catch (error) {
+      console.error("创建个人空间失败:", error);
     }
   };
 
