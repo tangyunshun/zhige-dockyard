@@ -848,45 +848,6 @@ export default function SettingsPage() {
 
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                          手机号
-                        </label>
-                        <div className="relative">
-                          <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input
-                            type="tel"
-                            value={profileData.phone}
-                            disabled
-                            className="w-full h-[38px] pl-[38px] pr-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-slate-50 text-slate-500 cursor-not-allowed"
-                          />
-                        </div>
-                        <p className="text-xs text-slate-500 mt-1">
-                          手机号已绑定，如需修改请联系管理员
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                          邮箱
-                        </label>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <input
-                            type="email"
-                            value={profileData.email || ""}
-                            onChange={(e) =>
-                              setProfileData({
-                                ...profileData,
-                                email: e.target.value,
-                              })
-                            }
-                            className="w-full h-[38px] pl-[38px] pr-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
-                            placeholder="请输入邮箱地址"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1.5">
                           个人简介
                         </label>
                         <textarea
