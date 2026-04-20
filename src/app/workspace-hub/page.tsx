@@ -84,10 +84,11 @@ export default function WorkspaceHub() {
 
   const handleEnterPersonal = async () => {
     if (!personalWorkspace) {
-      // 显示加载提示，等待数据加载
+      // 显示加载提示，重新加载数据
       toast.info("正在加载个人空间信息...");
-      // 等待 1 秒让数据加载完成
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await loadUserInfo();
+      // 等待 500ms 让 state 更新
+      await new Promise((resolve) => setTimeout(resolve, 500));
       // 重新检查
       if (!personalWorkspace) {
         toast.error("加载失败，请刷新页面重试");
