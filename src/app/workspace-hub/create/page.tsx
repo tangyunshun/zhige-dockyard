@@ -10,7 +10,6 @@ import {
   Users,
   Zap,
   Shield,
-  Check,
   Loader2,
 } from "lucide-react";
 
@@ -100,70 +99,70 @@ export default function CreateEnterpriseWorkspace() {
       </header>
 
       {/* 核心区 */}
-      <main className="relative z-10 px-6 py-8">
+      <main className="relative z-10 px-6 pb-8">
         <div className="max-w-5xl mx-auto">
           {/* 标题区 */}
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-2xl shadow-[#f59e0b]/30 mb-6">
-              <Building2 className="w-10 h-10 text-white" />
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-2xl shadow-[#f59e0b]/30 mb-4">
+              <Building2 className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-4xl font-black text-slate-800 mb-3">
+            <h1 className="text-3xl font-black text-slate-800 mb-2">
               创建企业或组织空间
             </h1>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+            <p className="text-base text-slate-600 max-w-2xl mx-auto">
               解锁团队协作、成员管理、资源共享功能，获取全量 16 个高阶组件的使用权限
             </p>
           </div>
 
           {/* 功能亮点 */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
-            <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#f59e0b]/20">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center mb-3 shadow-lg shadow-[#f59e0b]/30">
-                <Users className="w-6 h-6 text-white" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white/80 backdrop-blur-xl rounded-xl p-4 border border-[#f59e0b]/20">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center mb-3 shadow-lg shadow-[#f59e0b]/30">
+                <Users className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">
+              <h3 className="text-sm font-black text-slate-800 mb-1">
                 团队协作
               </h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                邀请团队成员加入，分配不同角色权限，支持多人实时协作开发，提升团队效率
+              <p className="text-xs text-slate-600 leading-relaxed">
+                邀请团队成员加入，分配不同角色权限，支持多人实时协作开发
               </p>
             </div>
 
-            <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#3182ce]/20">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center mb-3 shadow-lg shadow-[#3182ce]/30">
-                <Zap className="w-6 h-6 text-white" />
+            <div className="bg-white/80 backdrop-blur-xl rounded-xl p-4 border border-[#3182ce]/20">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center mb-3 shadow-lg shadow-[#3182ce]/30">
+                <Zap className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">
+              <h3 className="text-sm font-black text-slate-800 mb-1">
                 全量组件
               </h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                解锁全部 16 个高阶组件，包括商机分析、需求设计、后端 API 等完整开发流程工具
+              <p className="text-xs text-slate-600 leading-relaxed">
+                解锁全部 16 个高阶组件，包括商机分析、需求设计、后端 API 等工具
               </p>
             </div>
 
-            <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#10b981]/20">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center mb-3 shadow-lg shadow-[#10b981]/30">
-                <Shield className="w-6 h-6 text-white" />
+            <div className="bg-white/80 backdrop-blur-xl rounded-xl p-4 border border-[#10b981]/20">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center mb-3 shadow-lg shadow-[#10b981]/30">
+                <Shield className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">
+              <h3 className="text-sm font-black text-slate-800 mb-1">
                 资产共享
               </h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                建立团队专属资源库，共享组件配置、API 密钥、项目模板等资产，避免重复劳动
+              <p className="text-xs text-slate-600 leading-relaxed">
+                建立团队专属资源库，共享组件配置、API 密钥、项目模板等资产
               </p>
             </div>
           </div>
 
           {/* 创建表单 */}
-          <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-8 border border-[#e2e8f0]/80 shadow-xl">
-            <h2 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2">
+          <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-6 border border-[#e2e8f0]/80 shadow-xl">
+            <h2 className="text-xl font-black text-slate-800 mb-5 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-[#f59e0b]" />
               填写企业或组织信息
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* 左侧列 */}
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {/* 企业/组织名称 */}
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">
@@ -176,7 +175,7 @@ export default function CreateEnterpriseWorkspace() {
                       setFormData({ ...formData, name: e.target.value })
                     }
                     placeholder="请输入您的企业或组织全称"
-                    className="w-full px-4 py-3 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     用于标识您的工作空间，后续可在设置中修改
@@ -198,7 +197,7 @@ export default function CreateEnterpriseWorkspace() {
                     }
                     placeholder="简要描述您的企业或组织的主要业务方向、团队目标等（选填）"
                     rows={3}
-                    className="w-full px-4 py-3 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95 resize-none"
+                    className="w-full px-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95 resize-none"
                   />
                 </div>
 
@@ -212,7 +211,7 @@ export default function CreateEnterpriseWorkspace() {
                     onChange={(e) =>
                       setFormData({ ...formData, industry: e.target.value })
                     }
-                    className="w-full px-4 py-3 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   >
                     <option value="">请选择所属行业</option>
                     <option value="互联网/软件">互联网/软件</option>
@@ -234,7 +233,7 @@ export default function CreateEnterpriseWorkspace() {
               </div>
 
               {/* 右侧列 */}
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {/* 团队规模 */}
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">
@@ -245,7 +244,7 @@ export default function CreateEnterpriseWorkspace() {
                     onChange={(e) =>
                       setFormData({ ...formData, teamSize: e.target.value })
                     }
-                    className="w-full px-4 py-3 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   >
                     <option value="">请选择团队规模</option>
                     <option value="1-5">1-5 人（初创团队）</option>
@@ -274,7 +273,7 @@ export default function CreateEnterpriseWorkspace() {
                       })
                     }
                     placeholder="请输入有效的联系邮箱"
-                    className="w-full px-4 py-3 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     用于接收重要通知和系统更新
@@ -296,7 +295,7 @@ export default function CreateEnterpriseWorkspace() {
                       })
                     }
                     placeholder="请输入联系电话（选填）"
-                    className="w-full px-4 py-3 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     方便我们与您联系，提供技术支持
@@ -306,7 +305,7 @@ export default function CreateEnterpriseWorkspace() {
             </div>
 
             {/* 温馨提示 */}
-            <div className="mt-6 p-4 bg-[#3182ce]/5 rounded-xl border border-[#3182ce]/20">
+            <div className="mt-5 p-4 bg-[#3182ce]/5 rounded-xl border border-[#3182ce]/20">
               <div className="flex items-start gap-3">
                 <div className="w-6 h-6 rounded-full bg-[#3182ce] flex items-center justify-center flex-shrink-0 mt-0.5">
                   <span className="text-xs font-bold text-white">i</span>
@@ -324,10 +323,10 @@ export default function CreateEnterpriseWorkspace() {
             </div>
 
             {/* 操作按钮 */}
-            <div className="mt-8 flex justify-end gap-3 pt-6 border-t border-[#e2e8f0]/80">
+            <div className="mt-5 flex justify-end gap-3 pt-5 border-t border-[#e2e8f0]/80">
               <button
                 onClick={() => router.back()}
-                className="px-6 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100 rounded-lg transition-all cursor-pointer"
+                className="px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 rounded-lg transition-all cursor-pointer"
               >
                 取消
               </button>
@@ -336,7 +335,7 @@ export default function CreateEnterpriseWorkspace() {
                 disabled={
                   loading || !formData.name.trim() || !formData.teamSize
                 }
-                className="inline-flex items-center justify-center h-[42px] px-6 rounded-lg text-sm font-bold bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center h-[40px] px-6 rounded-lg text-sm font-bold bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
