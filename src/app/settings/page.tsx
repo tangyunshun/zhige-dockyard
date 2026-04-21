@@ -1413,7 +1413,6 @@ export default function SettingsPage() {
                           去绑定
                         </button>
                       </div>
-                    </div>
 
                   {/* 设备与审计 */}
                   <div className="space-y-4">
