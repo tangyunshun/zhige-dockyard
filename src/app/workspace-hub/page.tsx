@@ -10,15 +10,15 @@ import {
   Box,
   ArrowRight,
   Sparkles,
-  Clock,
   TrendingUp,
   ExternalLink,
   FileText,
-  Database,
   Code,
-  Shield,
-  Activity,
-  Zap,
+  Database,
+  Target,
+  Layers,
+  Server,
+  ChevronRight,
 } from "lucide-react";
 
 interface UserInfo {
@@ -32,6 +32,65 @@ interface Workspace {
   name: string;
   type: "PERSONAL" | "ENTERPRISE";
 }
+
+interface ComponentStage {
+  icon: React.ReactNode;
+  name: string;
+  description: string;
+  count: number;
+  color: string;
+  bgColor: string;
+  components: string[];
+}
+
+const componentStages: ComponentStage[] = [
+  {
+    icon: <Target className="w-5 h-5" />,
+    name: "商机与售前打单",
+    description: "从商机发现到售前方案，助力业务拓展与客户需求分析",
+    count: 6,
+    color: "#3182ce",
+    bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
+    components: [
+      "PDF 解析引擎",
+      "偏离表提取器",
+      "招标文件分析",
+      "竞品分析助手",
+      "方案生成器",
+      "报价计算器",
+    ],
+  },
+  {
+    icon: <Layers className="w-5 h-5" />,
+    name: "需求定义与设计",
+    description: "将业务需求转化为技术规格，完成系统架构与接口设计",
+    count: 4,
+    color: "#10b981",
+    bgColor: "from-[#10b981]/10 to-[#059669]/10",
+    components: [
+      "PRD 文档助手",
+      "ER 图生成器",
+      "API 设计工具",
+      "原型图生成器",
+    ],
+  },
+  {
+    icon: <Server className="w-5 h-5" />,
+    name: "后端核心与 API",
+    description: "构建稳健的后端服务，提供高效可靠的 API 接口与数据处理",
+    count: 6,
+    color: "#f59e0b",
+    bgColor: "from-[#f59e0b]/10 to-[#d97706]/10",
+    components: [
+      "代码 Diff 评审",
+      "自动化部署",
+      "性能监控",
+      "日志分析器",
+      "安全漏洞扫描",
+      "接口测试器",
+    ],
+  },
+];
 
 export default function WorkspaceHub() {
   const router = useRouter();
@@ -94,6 +153,13 @@ export default function WorkspaceHub() {
     }, 1000);
   };
 
+  const handleGoToStage = (stageIndex: number) => {
+    toast.info(`正在加载${componentStages[stageIndex].name}...`, 1000);
+    setTimeout(() => {
+      router.push(`/studio?stage=${stageIndex}`);
+    }, 1000);
+  };
+
   const handleLogout = async () => {
     try {
       const res = await fetch("/api/auth/logout", {
@@ -150,12 +216,13 @@ export default function WorkspaceHub() {
       {/* 核心区 */}
       <main className="relative z-10 px-6 py-8">
         {/* 欢迎区 */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-black text-slate-800 mb-2">
+        <div className="mb-10">
+          <h1 className="text-3xl font-black text-slate-800 mb-3">
             欢迎回来，{user?.name || "用户"}
           </h1>
-          <p className="text-slate-600">
-            选择工作空间或浏览组件库，开始您的工作
+          <p className="text-slate-600 text-base leading-relaxed">
+            知阁·舟坊组件化开发平台 -
+            选择工作空间开始协作，或浏览按项目阶段组织的全量组件库，加速您的软件开发全流程
           </p>
         </div>
 
@@ -163,7 +230,8 @@ export default function WorkspaceHub() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 左侧：工作空间选择（占 1 列） */}
           <div className="lg:col-span-1 space-y-4">
-            <h2 className="text-lg font-black text-slate-800 mb-4">
+            <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+              <Box className="w-5 h-5 text-[#3182ce]" />
               我的工作空间
             </h2>
 
@@ -192,7 +260,7 @@ export default function WorkspaceHub() {
                     )}
                   </div>
                   <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                    个人专属工作区，适合个人开发者
+                    个人专属工作区，适合独立开发者进行项目探索、技术验证与组件体验
                   </p>
                   {personalWorkspace && (
                     <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
@@ -237,7 +305,8 @@ export default function WorkspaceHub() {
                     )}
                   </div>
                   <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                    团队协作，解锁全量高阶组件
+                    团队协作工作区，支持成员管理、资源共享、全量 16
+                    个高阶组件与完整业务流程
                   </p>
                   {enterpriseWorkspace && (
                     <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
@@ -253,15 +322,16 @@ export default function WorkspaceHub() {
               </div>
             </div>
 
-            {/* 数据统计 */}
+            {/* 使用统计 */}
             <div className="bg-white/80 backdrop-blur-xl rounded-xl p-4 border border-[#e2e8f0]/80 mt-6">
-              <h3 className="text-sm font-black text-slate-800 mb-3">
-                使用统计
+              <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-[#f59e0b]" />
+                我的使用统计
               </h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600">组件调用次数</span>
-                  <span className="font-bold text-slate-800">12,450</span>
+                  <span className="text-slate-600">累计组件调用</span>
+                  <span className="font-bold text-slate-800">12,450 次</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-600">平均响应时间</span>
@@ -270,6 +340,10 @@ export default function WorkspaceHub() {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-600">活跃组件</span>
                   <span className="font-bold text-slate-800">12 个</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">成功率</span>
+                  <span className="font-bold text-[#10b981]">98.5%</span>
                 </div>
               </div>
             </div>
@@ -289,7 +363,7 @@ export default function WorkspaceHub() {
                       Studio 组件库
                     </h2>
                     <p className="text-sm text-slate-600">
-                      浏览与使用系统提供的全量高阶组件
+                      按项目阶段组织的 16 个高阶组件，覆盖软件开发全流程
                     </p>
                   </div>
                 </div>
@@ -297,96 +371,74 @@ export default function WorkspaceHub() {
                   onClick={handleGoToStudio}
                   className="px-5 py-2.5 bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white text-sm font-bold rounded-xl hover:shadow-xl hover:shadow-[#8b5cf6]/30 transition-all flex items-center gap-2"
                 >
-                  <span>立即浏览</span>
+                  <span>浏览全部组件</span>
                   <ExternalLink className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* 组件分类展示 */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                {/* 分析类 */}
-                <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-[#3182ce]/20">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
-                      <Activity className="w-4 h-4 text-[#3182ce]" />
+              {/* 组件阶段展示 */}
+              <div className="space-y-4">
+                {componentStages.map((stage, index) => (
+                  <div
+                    key={stage.name}
+                    onClick={() => handleGoToStage(index)}
+                    className="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl p-4 border transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5"
+                    style={{
+                      borderColor: `${stage.color}30`,
+                    }}
+                  >
+                    <div className="flex items-start gap-3 mb-3">
+                      <div
+                        className={`w-10 h-10 rounded-lg bg-gradient-to-br ${stage.bgColor} flex items-center justify-center flex-shrink-0 shadow-md`}
+                        style={{
+                          boxShadow: `0 4px 12px ${stage.color}30`,
+                        }}
+                      >
+                        <div style={{ color: stage.color }}>
+                          {stage.icon}
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-base font-black text-slate-800">
+                            {stage.name}
+                          </h3>
+                          <span
+                            className="px-2 py-0.5 text-xs font-bold rounded-full"
+                            style={{
+                              backgroundColor: `${stage.color}10`,
+                              color: stage.color,
+                            }}
+                          >
+                            {stage.count} 个组件
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {stage.description}
+                        </p>
+                      </div>
+                      <ChevronRight
+                        className="w-5 h-5 text-slate-400 group-hover:translate-x-1 group-hover:text-slate-600 transition-all"
+                      />
                     </div>
-                    <h3 className="text-sm font-bold text-slate-800">分析类</h3>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#3182ce]" />
-                      <span>PDF 解析引擎</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#3182ce]" />
-                      <span>偏离表提取器</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#3182ce]" />
-                      <span>性能监控</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#3182ce]" />
-                      <span>日志分析器</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* 生成类 */}
-                <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-[#10b981]/20">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-[#10b981]/10 flex items-center justify-center">
-                      <Zap className="w-4 h-4 text-[#10b981]" />
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-800">生成类</h3>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
-                      <span>ER 图生成器</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
-                      <span>PRD 文档助手</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
-                      <span>UI 组件生成器</span>
+                    {/* 组件列表 */}
+                    <div className="flex flex-wrap gap-2 pl-13">
+                      {stage.components.map((component) => (
+                        <span
+                          key={component}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-white text-xs font-medium text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer hover:shadow-sm"
+                        >
+                          {component}
+                        </span>
+                      ))}
                     </div>
                   </div>
-                </div>
-
-                {/* 工具类 */}
-                <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-[#f59e0b]/20">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-[#f59e0b]/10 flex items-center justify-center">
-                      <Code className="w-4 h-4 text-[#f59e0b]" />
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-800">工具类</h3>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
-                      <span>代码 Diff 评审</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
-                      <span>安全漏洞扫描</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
-                      <span>自动化部署</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#f59e0b]" />
-                      <span>接口测试器</span>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
 
               {/* 热门组件 */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-[#e2e8f0]/80">
+              <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-[#e2e8f0]/80 mt-4">
                 <div className="flex items-center gap-2 mb-3">
                   <TrendingUp className="w-4 h-4 text-[#f59e0b]" />
                   <h3 className="text-sm font-black text-slate-800">
@@ -394,36 +446,51 @@ export default function WorkspaceHub() {
                   </h3>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between p-2 bg-gradient-to-r from-[#f59e0b]/5 to-transparent rounded-lg">
+                  <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-[#f59e0b]/5 to-transparent rounded-lg">
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded bg-[#f59e0b] text-white text-xs font-black flex items-center justify-center">
+                      <span className="w-6 h-6 rounded bg-[#f59e0b] text-white text-xs font-black flex items-center justify-center shadow-md shadow-[#f59e0b]/30">
                         1
                       </span>
-                      <span className="text-sm font-bold text-slate-700">
-                        代码 Diff 评审
-                      </span>
+                      <div>
+                        <span className="text-sm font-bold text-slate-700">
+                          代码 Diff 评审
+                        </span>
+                        <span className="text-xs text-slate-500 ml-2">
+                          后端核心与 API
+                        </span>
+                      </div>
                     </div>
                     <span className="text-xs text-slate-500">3,421 次</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-gradient-to-r from-[#3182ce]/5 to-transparent rounded-lg">
+                  <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-[#3182ce]/5 to-transparent rounded-lg">
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded bg-[#3182ce] text-white text-xs font-black flex items-center justify-center">
+                      <span className="w-6 h-6 rounded bg-[#3182ce] text-white text-xs font-black flex items-center justify-center shadow-md shadow-[#3182ce]/30">
                         2
                       </span>
-                      <span className="text-sm font-bold text-slate-700">
-                        日志分析器
-                      </span>
+                      <div>
+                        <span className="text-sm font-bold text-slate-700">
+                          日志分析器
+                        </span>
+                        <span className="text-xs text-slate-500 ml-2">
+                          后端核心与 API
+                        </span>
+                      </div>
                     </div>
                     <span className="text-xs text-slate-500">3,245 次</span>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-gradient-to-r from-[#10b981]/5 to-transparent rounded-lg">
+                  <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-[#10b981]/5 to-transparent rounded-lg">
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded bg-[#10b981] text-white text-xs font-black flex items-center justify-center">
+                      <span className="w-6 h-6 rounded bg-[#10b981] text-white text-xs font-black flex items-center justify-center shadow-md shadow-[#10b981]/30">
                         3
                       </span>
-                      <span className="text-sm font-bold text-slate-700">
-                        ER 图生成器
-                      </span>
+                      <div>
+                        <span className="text-sm font-bold text-slate-700">
+                          ER 图生成器
+                        </span>
+                        <span className="text-xs text-slate-500 ml-2">
+                          需求定义与设计
+                        </span>
+                      </div>
                     </div>
                     <span className="text-xs text-slate-500">2,341 次</span>
                   </div>
