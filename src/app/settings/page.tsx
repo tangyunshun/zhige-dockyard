@@ -81,6 +81,43 @@ export default function SettingsPage() {
     twoFactorEnabled: false,
   });
 
+  // 修改密码
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  // 登录设备列表
+  const [loginDevices, setLoginDevices] = useState<
+    Array<{
+      id: string;
+      device: string;
+      location: string;
+      ip: string;
+      lastActive: string;
+      current: boolean;
+    }>
+  >([]);
+
+  // API Keys
+  const [apiKeys, setApiKeys] = useState<
+    Array<{
+      id: string;
+      name: string;
+      keyPrefix: string;
+      lastUsedAt: string | null;
+      createdAt: string;
+    }>
+  >([]);
+
+  const [showCreateApiKeyModal, setShowCreateApiKeyModal] = useState(false);
+  const [newApiKeyData, setNewApiKeyData] = useState({
+    name: "",
+    description: "",
+  });
+  const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
+
   const [workspaces, setWorkspaces] = useState<
     Array<{
       id: string;
@@ -170,6 +207,7 @@ export default function SettingsPage() {
         email: userData.user.email || "",
         bio: userData.user.bio || "",
         title: userData.user.title || "",
+        avatar: userData.user.avatar || "",
       });
 
       // 获取工作空间列表
@@ -190,10 +228,179 @@ export default function SettingsPage() {
           });
         }
       }
+
+      // 加载登录设备列表
+      setLoginDevices([
+        {
+          id: "1",
+          device: "Windows Chrome - 当前设备",
+          location: "广东省深圳市",
+          ip: "192.168.1.100",
+          lastActive: "刚刚",
+          current: true,
+        },
+      ]);
+
+      // 加载 API Keys
+      loadApiKeys();
     } catch (error) {
       console.error("加载信息失败:", error);
       toast.error("加载信息失败");
     }
+  };
+
+  const loadApiKeys = async () => {
+    try {
+      const res = await fetch("/api/user/api-keys");
+      if (res.ok) {
+        const data = await res.json();
+        setApiKeys(data.apiKeys || []);
+      }
+    } catch (error) {
+      console.error("加载 API Keys 失败:", error);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword) {
+      toast.error("请输入当前密码");
+      return;
+    }
+
+    if (!passwordForm.newPassword) {
+      toast.error("请输入新密码");
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      toast.error("新密码长度不能少于 6 位");
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error("两次输入的新密码不一致");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/user/update-security", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("密码修改成功");
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+      } else {
+        toast.error(data.error || "密码修改失败");
+      }
+    } catch (error) {
+      console.error("修改密码失败:", error);
+      toast.error("修改密码失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleTwoFactor = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/user/update-security", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          twoFactorEnabled: !securityData.twoFactorEnabled,
+        }),
+      });
+
+      if (res.ok) {
+        setSecurityData({
+          ...securityData,
+          twoFactorEnabled: !securityData.twoFactorEnabled,
+        });
+        toast.success(
+          securityData.twoFactorEnabled
+            ? "双因素认证已关闭"
+            : "双因素认证已开启",
+        );
+      } else {
+        toast.error("操作失败");
+      }
+    } catch (error) {
+      console.error("切换双因素认证失败:", error);
+      toast.error("操作失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateApiKey = async () => {
+    if (!newApiKeyData.name.trim()) {
+      toast.error("请输入 API Key 名称");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/user/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newApiKeyData),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setCreatedApiKey(data.apiKey.key);
+        loadApiKeys();
+        toast.success("API Key 创建成功，请妥善保存！");
+      } else {
+        toast.error(data.error || "创建失败");
+      }
+    } catch (error) {
+      console.error("创建 API Key 失败:", error);
+      toast.error("创建失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteApiKey = async (id: string) => {
+    if (!confirm("确定要删除此 API Key 吗？此操作不可恢复。")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/user/api-keys", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+
+      if (res.ok) {
+        toast.success("API Key 已删除");
+        loadApiKeys();
+      } else {
+        toast.error("删除失败");
+      }
+    } catch (error) {
+      console.error("删除 API Key 失败:", error);
+      toast.error("删除失败，请稍后重试");
+    }
+  };
+
+  const handleRevokeDevice = (id: string) => {
+    toast.info("已下线设备");
+    setLoginDevices(loginDevices.filter((d) => d.id !== id));
   };
 
   const handleSaveProfile = async () => {
@@ -937,32 +1144,83 @@ export default function SettingsPage() {
               {/* 安全与绑定 */}
               {activeTab === "security" && (
                 <div className="space-y-6">
-                  {/* 基础安全区 */}
-                  <div className="space-y-4">
-                    <h2 className="text-lg font-bold text-slate-800 mb-4">
-                      基础安全
+                  {/* 修改密码 */}
+                  <div className="p-6 bg-white/80 rounded-xl border border-[#e2e8f0]/80">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                      <Key className="w-5 h-5 text-[#3182ce]" />
+                      修改密码
                     </h2>
 
-                    <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
-                          <Key className="w-5 h-5 text-[#3182ce]" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-800">
-                            登录密码
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            用于账号登录验证
-                          </p>
-                        </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                          当前密码
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.currentPassword}
+                          onChange={(e) =>
+                            setPasswordForm({
+                              ...passwordForm,
+                              currentPassword: e.target.value,
+                            })
+                          }
+                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                          placeholder="请输入当前密码"
+                        />
                       </div>
-                      <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer">
-                        修改密码
-                      </button>
-                    </div>
 
-                    <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                          新密码
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.newPassword}
+                          onChange={(e) =>
+                            setPasswordForm({
+                              ...passwordForm,
+                              newPassword: e.target.value,
+                            })
+                          }
+                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                          placeholder="请输入新密码（至少 6 位）"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                          确认新密码
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) =>
+                            setPasswordForm({
+                              ...passwordForm,
+                              confirmPassword: e.target.value,
+                            })
+                          }
+                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                          placeholder="请再次输入新密码"
+                        />
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          onClick={handleChangePassword}
+                          disabled={loading}
+                          className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {loading ? "修改中..." : "确认修改"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 双因素认证 */}
+                  <div className="p-6 bg-white/80 rounded-xl border border-[#e2e8f0]/80">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-[#10b981]/10 flex items-center justify-center">
                           <Shield className="w-5 h-5 text-[#10b981]" />
@@ -972,64 +1230,139 @@ export default function SettingsPage() {
                             双重验证 (2FA)
                           </p>
                           <p className="text-xs text-slate-500">
-                            额外安全层，保护账号安全
+                            {securityData.twoFactorEnabled
+                              ? "已开启，账号更安全"
+                              : "未开启，建议开启以保护账号安全"}
                           </p>
                         </div>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={securityData.twoFactorEnabled}
-                          onChange={(e) =>
-                            setSecurityData({
-                              ...securityData,
-                              twoFactorEnabled: e.target.checked,
-                            })
-                          }
+                      <button
+                        onClick={handleToggleTwoFactor}
+                        disabled={loading}
+                        className={`relative inline-flex h-[24px] w-[44px] items-center rounded-full transition-colors cursor-pointer ${
+                          securityData.twoFactorEnabled
+                            ? "bg-[#10b981]"
+                            : "bg-slate-200"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-[20px] w-[20px] transform rounded-full bg-white transition-transform ${
+                            securityData.twoFactorEnabled
+                              ? "translate-x-[22px]"
+                              : "translate-x-[2px]"
+                          }`}
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:ring-4 peer-focus:ring-[#3182ce]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10b981]"></div>
-                      </label>
+                      </button>
                     </div>
                   </div>
 
-                  {/* 第三方绑定区 */}
-                  <div className="space-y-4">
-                    <h2 className="text-lg font-bold text-slate-800 mb-4">
-                      账号绑定
+                  {/* 登录设备管理 */}
+                  <div className="p-6 bg-white/80 rounded-xl border border-[#e2e8f0]/80">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                      <Device className="w-5 h-5 text-[#3182ce]" />
+                      登录设备管理
                     </h2>
 
                     <div className="space-y-3">
-                      {/* 手机号 */}
-                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-[#f59e0b]/10 flex items-center justify-center">
-                            <Smartphone className="w-5 h-5 text-[#f59e0b]" />
+                      {loginDevices.map((device) => (
+                        <div
+                          key={device.id}
+                          className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80"
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
+                              <Device className="w-5 h-5 text-[#3182ce]" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-slate-800">
+                                {device.device}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {device.location} · {device.ip} ·{" "}
+                                {device.lastActive}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">
-                              手机号
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {securityData.phone
-                                ? securityData.phone.replace(
-                                    /(\d{3})\d{4}(\d{4})/,
-                                    "$1****$2",
-                                  )
-                                : "未绑定"}
-                            </p>
-                          </div>
+                          {device.current ? (
+                            <span className="text-xs font-bold text-[#10b981] px-3 py-1 bg-[#10b981]/10 rounded-full">
+                              当前设备
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleRevokeDevice(device.id)}
+                              className="h-[34px] px-[14px] rounded-[6px] text-[13px] font-[600] border border-red-200 text-red-600 hover:bg-red-50 transition-all cursor-pointer"
+                            >
+                              下线
+                            </button>
+                          )}
                         </div>
-                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#3182ce] text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer">
-                          {securityData.phone ? "更换" : "去绑定"}
-                        </button>
-                      </div>
+                      ))}
+                    </div>
+                  </div>
 
-                      {/* 邮箱 */}
-                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
-                            <Mail className="w-5 h-5 text-[#3182ce]" />
+                  {/* API Keys 管理 */}
+                  <div className="p-6 bg-white/80 rounded-xl border border-[#e2e8f0]/80">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <Key className="w-5 h-5 text-[#3182ce]" />
+                        API Keys 管理
+                      </h2>
+                      <button
+                        onClick={() => {
+                          setShowCreateApiKeyModal(true);
+                          setCreatedApiKey(null);
+                          setNewApiKeyData({ name: "", description: "" });
+                        }}
+                        className="h-[34px] px-[14px] rounded-[6px] text-[13px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer inline-flex items-center gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        创建新 Key
+                      </button>
+                    </div>
+
+                    {apiKeys.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500 text-sm">
+                        暂无 API Keys，请点击上方按钮创建
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {apiKeys.map((apiKey) => (
+                          <div
+                            key={apiKey.id}
+                            className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80"
+                          >
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-slate-800 mb-1">
+                                {apiKey.name}
+                              </p>
+                              <p className="text-xs text-slate-500 font-mono">
+                                {apiKey.keyPrefix}••••••••••••••••
+                              </p>
+                              <p className="text-xs text-slate-400 mt-1">
+                                创建于{" "}
+                                {new Date(apiKey.createdAt).toLocaleDateString(
+                                  "zh-CN"
+                                )}
+                                {apiKey.lastUsedAt
+                                  ? ` · 最后使用：${new Date(
+                                      apiKey.lastUsedAt
+                                    ).toLocaleDateString("zh-CN")}`
+                                  : ""}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteApiKey(apiKey.id)}
+                              className="h-[34px] px-[14px] rounded-[6px] text-[13px] font-[600] border border-red-200 text-red-600 hover:bg-red-50 transition-all cursor-pointer"
+                            >
+                              删除
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
                           </div>
                           <div>
                             <p className="text-sm font-bold text-slate-800">
