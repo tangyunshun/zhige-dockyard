@@ -55,7 +55,7 @@ export default function SettingsPage() {
     | "security"
     | "workspace"
     | "appearance"
-    | "notification"
+    | "notifications"
     | "billing"
   >("profile");
   const [workspaceData, setWorkspaceData] = useState({
@@ -141,6 +141,15 @@ export default function SettingsPage() {
     bio: "",
     title: "",
     avatar: "",
+  });
+
+  // 通知设置
+  const [notificationSettings, setNotificationSettings] = useState({
+    emailNotifications: true,
+    systemMessages: true,
+    projectUpdates: true,
+    commentMentions: true,
+    frequency: "REALTIME" as "REALTIME" | "DAILY" | "WEEKLY",
   });
 
   const [showAvatarSelector, setShowAvatarSelector] = useState(false);
@@ -403,6 +412,29 @@ export default function SettingsPage() {
     setLoginDevices(loginDevices.filter((d) => d.id !== id));
   };
 
+  const handleSaveNotifications = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/user/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notificationSettings),
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        toast.success("通知设置已保存！");
+      } else {
+        toast.error(result.error || "保存失败");
+      }
+    } catch (error) {
+      console.error("保存通知设置失败:", error);
+      toast.error("保存失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!profileData.nickname.trim()) {
       toast.error("请输入昵称");
@@ -545,7 +577,7 @@ export default function SettingsPage() {
       icon: Users,
     },
     {
-      id: "appearance" as const,
+      id: "notifications" as const,
       label: "偏好与通知",
       icon: Bell,
     },
@@ -1503,6 +1535,258 @@ export default function SettingsPage() {
                       <Trash2 className="w-4 h-4" />
                       注销账号
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 偏好与通知 */}
+              {activeTab === "notifications" && (
+                <div className="space-y-6">
+                  {/* 通知开关 */}
+                  <div className="p-6 bg-white/80 rounded-xl border border-[#e2e8f0]/80">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                      <Bell className="w-5 h-5 text-[#3182ce]" />
+                      通知类型
+                    </h2>
+
+                    <div className="space-y-4">
+                      {/* 邮件通知 */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
+                            <Mail className="w-5 h-5 text-[#3182ce]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              邮件通知
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              通过邮件接收重要通知
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              emailNotifications:
+                                !notificationSettings.emailNotifications,
+                            })
+                          }
+                          className={`relative inline-flex h-[24px] w-[44px] items-center rounded-full transition-colors cursor-pointer ${
+                            notificationSettings.emailNotifications
+                              ? "bg-[#3182ce]"
+                              : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-[20px] w-[20px] transform rounded-full bg-white transition-transform ${
+                              notificationSettings.emailNotifications
+                                ? "translate-x-[22px]"
+                                : "translate-x-[2px]"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* 系统消息 */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#10b981]/10 flex items-center justify-center">
+                            <MessageSquare className="w-5 h-5 text-[#10b981]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              系统消息
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              系统公告和重要更新
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              systemMessages:
+                                !notificationSettings.systemMessages,
+                            })
+                          }
+                          className={`relative inline-flex h-[24px] w-[44px] items-center rounded-full transition-colors cursor-pointer ${
+                            notificationSettings.systemMessages
+                              ? "bg-[#3182ce]"
+                              : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-[20px] w-[20px] transform rounded-full bg-white transition-transform ${
+                              notificationSettings.systemMessages
+                                ? "translate-x-[22px]"
+                                : "translate-x-[2px]"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* 项目更新 */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#f59e0b]/10 flex items-center justify-center">
+                            <Folder className="w-5 h-5 text-[#f59e0b]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              项目更新
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              项目状态变更和进展通知
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              projectUpdates:
+                                !notificationSettings.projectUpdates,
+                            })
+                          }
+                          className={`relative inline-flex h-[24px] w-[44px] items-center rounded-full transition-colors cursor-pointer ${
+                            notificationSettings.projectUpdates
+                              ? "bg-[#3182ce]"
+                              : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-[20px] w-[20px] transform rounded-full bg-white transition-transform ${
+                              notificationSettings.projectUpdates
+                                ? "translate-x-[22px]"
+                                : "translate-x-[2px]"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* 评论@ */}
+                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-[#8b5cf6]/10 flex items-center justify-center">
+                            <AtSign className="w-5 h-5 text-[#8b5cf6]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              评论@
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              被他人@或回复时通知
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              commentMentions:
+                                !notificationSettings.commentMentions,
+                            })
+                          }
+                          className={`relative inline-flex h-[24px] w-[44px] items-center rounded-full transition-colors cursor-pointer ${
+                            notificationSettings.commentMentions
+                              ? "bg-[#3182ce]"
+                              : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-[20px] w-[20px] transform rounded-full bg-white transition-transform ${
+                              notificationSettings.commentMentions
+                                ? "translate-x-[22px]"
+                                : "translate-x-[2px]"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 通知频率 */}
+                  <div className="p-6 bg-white/80 rounded-xl border border-[#e2e8f0]/80">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-[#3182ce]" />
+                      通知频率
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {[
+                        {
+                          id: "REALTIME",
+                          label: "实时通知",
+                          desc: "立即发送",
+                        },
+                        {
+                          id: "DAILY",
+                          label: "每日摘要",
+                          desc: "每天 8:00 发送",
+                        },
+                        {
+                          id: "WEEKLY",
+                          label: "每周摘要",
+                          desc: "每周一 8:00 发送",
+                        },
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          onClick={() =>
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              frequency: option.id as
+                                | "REALTIME"
+                                | "DAILY"
+                                | "WEEKLY",
+                            })
+                          }
+                          className={`group relative p-4 rounded-xl border-2 transition-all cursor-pointer text-left ${
+                            notificationSettings.frequency === option.id
+                              ? "border-[#3182ce] bg-[#3182ce]/5"
+                              : "border-[#e2e8f0] hover:border-[#3182ce]/50"
+                          }`}
+                          style={{
+                            transitionTimingFunction:
+                              "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
+                          }}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <div
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                notificationSettings.frequency === option.id
+                                  ? "border-[#3182ce] bg-[#3182ce]"
+                                  : "border-slate-300"
+                              }`}
+                            >
+                              {notificationSettings.frequency ===
+                                option.id && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                            <span className="text-sm font-bold text-slate-800">
+                              {option.label}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 pl-6">
+                            {option.desc}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="mt-6">
+                      <button
+                        onClick={handleSaveNotifications}
+                        disabled={loading}
+                        className="w-full h-[38px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading ? "保存中..." : "保存设置"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
