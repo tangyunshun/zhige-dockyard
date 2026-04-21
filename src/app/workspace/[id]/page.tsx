@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
-import { LogOut, Building, Users, FolderKanban, Settings, Plus } from "lucide-react";
+import { LogOut, Building, Users, FolderKanban, Settings, Plus, ArrowLeft } from "lucide-react";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -40,6 +40,14 @@ export default function WorkspacePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoBack = () => {
+    router.back();
+  };
+
+  const handleGoToSettings = () => {
+    router.push("/workspace-hub/settings");
   };
 
   const handleLogout = async () => {
@@ -88,7 +96,23 @@ export default function WorkspacePage() {
 
       {/* 顶栏 */}
       <header className="relative z-10 flex items-center justify-between px-8 py-6">
-        <Logo variant="light" />
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleGoBack}
+            className="group flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-all"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="font-bold">返回</span>
+          </button>
+          <div className="h-6 w-px bg-slate-300" />
+          <button
+            onClick={handleGoToSettings}
+            className="group flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-all"
+          >
+            <Settings className="w-5 h-5" />
+            <span className="font-bold">设置</span>
+          </button>
+        </div>
 
         <button
           onClick={handleLogout}
