@@ -13,10 +13,7 @@ import {
   Loader2,
   Tag,
   FileText,
-  Image,
   Upload,
-  Globe,
-  Clock,
   Eye,
 } from "lucide-react";
 
@@ -31,8 +28,7 @@ export default function CreateEnterpriseWorkspace() {
     icon: "",
     teamSize: "",
     industry: "",
-    timezone: "Asia/Shanghai",
-    language: "zh-CN",
+    spaceType: "standard",
     visibility: "private",
     contactEmail: "",
     contactPhone: "",
@@ -104,19 +100,19 @@ export default function CreateEnterpriseWorkspace() {
       </div>
 
       {/* 顶栏 */}
-      <header className="relative z-10 flex items-center px-3 py-3">
+      <header className="relative z-10 flex items-center px-4 py-5">
         <button
           onClick={() => router.push("/workspace-hub")}
-          className="group flex items-center gap-1.5 text-slate-600 hover:text-[#3182ce] transition-all text-xs"
+          className="group flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-all text-sm font-bold"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span className="font-bold">返回工作区</span>
+          <ArrowLeft className="w-5 h-5" />
+          <span>返回工作区</span>
         </button>
       </header>
 
       {/* 核心区 */}
-      <main className="relative z-10 px-6 pb-8">
-        <div className="max-w-5xl mx-auto">
+      <main className="relative z-10 px-4 py-6">
+        <div className="max-w-6xl mx-auto">
           {/* 标题区 */}
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-2xl shadow-[#f59e0b]/30 mb-4">
@@ -184,10 +180,10 @@ export default function CreateEnterpriseWorkspace() {
                   <Building2 className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-sm font-bold text-slate-800 mb-2">
+                  <h3 className="text-base font-bold text-slate-800 mb-2">
                     空间图标
                   </h3>
-                  <p className="text-xs text-slate-600 mb-3">
+                  <p className="text-sm text-slate-600 mb-3">
                     上传自定义图标，让空间更具辨识度
                   </p>
                   <button className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-[#e2e8f0] text-sm font-bold text-slate-700 rounded-lg hover:bg-slate-50 transition-all cursor-pointer">
@@ -198,9 +194,9 @@ export default function CreateEnterpriseWorkspace() {
               </div>
 
               {/* 第一行：空间名称 + 空间标识 */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
                     空间名称 <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -210,19 +206,19 @@ export default function CreateEnterpriseWorkspace() {
                       setFormData({ ...formData, name: e.target.value })
                     }
                     placeholder="例如：知阁研发中心"
-                    className="w-full px-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   />
-                  <p className="text-[9px] text-slate-500 mt-0.5">
-                    用于标识工作空间
+                  <p className="text-xs text-slate-500 mt-1">
+                    用于标识您的工作空间，后续可修改
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
                     空间标识 <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="text"
                       value={formData.slug}
@@ -230,19 +226,19 @@ export default function CreateEnterpriseWorkspace() {
                         setFormData({ ...formData, slug: e.target.value })
                       }
                       placeholder="zhige-research"
-                      className="w-full pl-8 pr-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                      className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                     />
                   </div>
-                  <p className="text-[9px] text-slate-500 mt-0.5">
-                    唯一标识，用于 URL
+                  <p className="text-xs text-slate-500 mt-1">
+                    唯一标识，用于 URL 和 API 调用，创建后不可修改
                   </p>
                 </div>
               </div>
 
               {/* 第二行：团队规模 + 所属行业 */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
                     团队规模 <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -250,19 +246,22 @@ export default function CreateEnterpriseWorkspace() {
                     onChange={(e) =>
                       setFormData({ ...formData, teamSize: e.target.value })
                     }
-                    className="w-full px-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   >
-                    <option value="">请选择</option>
-                    <option value="1-5">1-5 人</option>
-                    <option value="6-20">6-20 人</option>
-                    <option value="21-50">21-50 人</option>
-                    <option value="51-100">51-100 人</option>
-                    <option value="100+">100+ 人</option>
+                    <option value="">请选择团队规模</option>
+                    <option value="1-5">1-5 人（初创团队）</option>
+                    <option value="6-20">6-20 人（小型团队）</option>
+                    <option value="21-50">21-50 人（中型团队）</option>
+                    <option value="51-100">51-100 人（大型团队）</option>
+                    <option value="100+">100 人以上（企业级）</option>
                   </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    帮助您选择适合的套餐方案
+                  </p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
                     所属行业 <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -270,9 +269,9 @@ export default function CreateEnterpriseWorkspace() {
                     onChange={(e) =>
                       setFormData({ ...formData, industry: e.target.value })
                     }
-                    className="w-full px-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   >
-                    <option value="">请选择</option>
+                    <option value="">请选择所属行业</option>
                     <option value="互联网/软件">互联网/软件</option>
                     <option value="金融/保险">金融/保险</option>
                     <option value="教育/培训">教育/培训</option>
@@ -280,83 +279,71 @@ export default function CreateEnterpriseWorkspace() {
                     <option value="制造业">制造业</option>
                     <option value="零售/电商">零售/电商</option>
                     <option value="媒体/广告">媒体/广告</option>
+                    <option value="建筑/房地产">建筑/房地产</option>
+                    <option value="服务业">服务业</option>
                     <option value="其他">其他</option>
                   </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    选择您所在的主要行业领域
+                  </p>
                 </div>
               </div>
 
-              {/* 第三行：时区 + 语言 */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* 第三行：空间类型 + 空间可见性 */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    时区
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    空间类型
                   </label>
                   <div className="relative">
-                    <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <select
-                      value={formData.timezone}
+                      value={formData.spaceType}
                       onChange={(e) =>
-                        setFormData({ ...formData, timezone: e.target.value })
+                        setFormData({ ...formData, spaceType: e.target.value })
                       }
-                      className="w-full pl-8 pr-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                      className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                     >
-                      <option value="Asia/Shanghai">北京时间 (UTC+8)</option>
-                      <option value="Asia/Hong_Kong">香港时间 (UTC+8)</option>
-                      <option value="Asia/Tokyo">东京时间 (UTC+9)</option>
-                      <option value="America/New_York">纽约时间 (UTC-5)</option>
-                      <option value="Europe/London">伦敦时间 (UTC+0)</option>
+                      <option value="standard">标准空间（免费）</option>
+                      <option value="pro">专业空间（付费）</option>
+                      <option value="enterprise">企业空间（定制）</option>
                     </select>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    选择适合您的空间套餐
+                  </p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    语言
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    空间可见性
                   </label>
                   <div className="relative">
-                    <Globe className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <Eye className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <select
-                      value={formData.language}
+                      value={formData.visibility}
                       onChange={(e) =>
-                        setFormData({ ...formData, language: e.target.value })
+                        setFormData({ ...formData, visibility: e.target.value })
                       }
-                      className="w-full pl-8 pr-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                      className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                     >
-                      <option value="zh-CN">简体中文</option>
-                      <option value="zh-TW">繁體中文</option>
-                      <option value="en-US">English</option>
+                      <option value="private">私有（仅成员可见）</option>
+                      <option value="public">公开（所有人可见）</option>
                     </select>
                   </div>
-                </div>
-              </div>
-
-              {/* 第四行：空间可见性 */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  空间可见性
-                </label>
-                <div className="relative">
-                  <Eye className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                  <select
-                    value={formData.visibility}
-                    onChange={(e) =>
-                      setFormData({ ...formData, visibility: e.target.value })
-                    }
-                    className="w-full pl-8 pr-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
-                  >
-                    <option value="private">私有（仅成员可见）</option>
-                    <option value="public">公开（所有人可见）</option>
-                  </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    控制空间的访问权限
+                  </p>
                 </div>
               </div>
 
               {/* 空间描述 */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
                   空间描述
                 </label>
                 <div className="relative">
-                  <FileText className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <FileText className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                   <textarea
                     value={formData.description}
                     onChange={(e) =>
@@ -366,16 +353,16 @@ export default function CreateEnterpriseWorkspace() {
                       })
                     }
                     placeholder="简要描述空间用途（选填）"
-                    rows={2}
-                    className="w-full pl-8 pr-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95 resize-none"
+                    rows={3}
+                    className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95 resize-none"
                   />
                 </div>
               </div>
 
               {/* 联系信息 */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
                     联系邮箱 <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -388,12 +375,15 @@ export default function CreateEnterpriseWorkspace() {
                       })
                     }
                     placeholder="name@company.com"
-                    className="w-full px-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    用于接收重要通知和系统更新
+                  </p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
                     联系电话
                   </label>
                   <input
@@ -406,8 +396,11 @@ export default function CreateEnterpriseWorkspace() {
                       })
                     }
                     placeholder="选填"
-                    className="w-full px-2.5 py-2 border border-[#e2e8f0] rounded-lg text-xs focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                    className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    方便我们与您联系，提供技术支持
+                  </p>
                 </div>
               </div>
             </div>
