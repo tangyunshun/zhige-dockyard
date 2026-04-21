@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Settings,
   ExternalLink,
+  Users,
   FileText,
   Code,
   Database,
@@ -170,10 +171,10 @@ export default function WorkspaceHub() {
     }, 1000);
   };
 
-  const handleGoToDocs = () => {
-    toast.info("正在打开帮助手册...", 1000);
+  const handleGoToGuide = () => {
+    toast.info("正在打开组件库操作手册...", 1000);
     setTimeout(() => {
-      router.push("/docs");
+      router.push("/studio/guide");
     }, 1000);
   };
 
@@ -286,7 +287,7 @@ export default function WorkspaceHub() {
             </div>
           </div>
 
-          {/* 企业空间 */}
+          {/* 企业或组织空间 */}
           <div
             onClick={() => handleEnterWorkspace(enterpriseWorkspace)}
             className="group cursor-pointer relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#f59e0b]/30 hover:border-[#f59e0b]/50 hover:shadow-2xl hover:shadow-[#f59e0b]/20 transition-all duration-300 hover:-translate-y-1"
@@ -302,7 +303,7 @@ export default function WorkspaceHub() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-base font-black text-slate-800">
-                    企业空间
+                    企业或组织空间
                   </h3>
                   {enterpriseWorkspace ? (
                     <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] text-xs font-bold rounded-full">
@@ -315,12 +316,18 @@ export default function WorkspaceHub() {
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                  团队协作工作区，解锁全量组件
+                  团队协作工作区，支持成员管理、资源共享，解锁全量 16 个高阶组件与完整业务流程
                 </p>
                 {enterpriseWorkspace && (
-                  <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
-                    <Box className="w-3 h-3" />
-                    <span>已用 28 个组件</span>
+                  <div className="flex items-center gap-3 text-xs text-slate-500 mb-2">
+                    <div className="flex items-center gap-1">
+                      <Box className="w-3 h-3" />
+                      <span>已用 28 个组件</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Users className="w-3 h-3" />
+                      <span>5 名成员</span>
+                    </div>
                   </div>
                 )}
                 <div className="flex items-center gap-1 text-sm font-bold text-[#f59e0b]">
@@ -378,11 +385,11 @@ export default function WorkspaceHub() {
               </div>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={handleGoToDocs}
+                  onClick={handleGoToGuide}
                   className="px-4 py-2.5 bg-white/80 backdrop-blur-sm border border-[#e2e8f0] text-slate-700 text-sm font-bold rounded-xl hover:shadow-md transition-all flex items-center gap-2"
                 >
                   <BookOpen className="w-4 h-4" />
-                  <span>帮助手册</span>
+                  <span>操作手册</span>
                 </button>
                 <button
                   onClick={handleGoToStudio}
