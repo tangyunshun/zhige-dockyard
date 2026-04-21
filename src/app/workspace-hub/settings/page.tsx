@@ -16,8 +16,8 @@ import {
   Download,
   Sparkles,
   Check,
-  Github as GithubIcon,
-  Gitlab as GitlabIcon,
+  GitFork as GithubIcon,
+  Box as GitlabIcon,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
