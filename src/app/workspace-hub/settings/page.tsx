@@ -170,20 +170,20 @@ export default function PersonalWorkspaceSettings() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#10b981]/[0.08] rounded-full blur-[120px]" />
       </div>
 
-      {/* 顶栏 */}
-      <header className="relative z-10 flex items-center justify-between px-8 py-6">
-        <div className="flex items-center gap-4">
+      {/* 顶栏 - 更紧凑 */}
+      <header className="relative z-10 flex items-center justify-between px-6 py-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => router.push("/workspace-hub")}
-            className="group flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900 hover:bg-white/60 rounded-lg transition-all cursor-pointer"
+            className="group flex items-center gap-2 px-3 py-1.5 text-sm font-bold text-slate-600 hover:text-slate-900 hover:bg-white/60 rounded-lg transition-all cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
             返回
           </button>
           <Logo variant="light" />
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={handleSaveOverview}
             disabled={loading}
@@ -195,20 +195,20 @@ export default function PersonalWorkspaceSettings() {
         </div>
       </header>
 
-      {/* 主体内容 */}
-      <main className="relative z-10 flex items-start justify-center px-4 py-8">
-        <div className="w-full max-w-6xl bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/90 overflow-hidden">
-          {/* 头部 */}
-          <div className="px-8 py-6 border-b border-[#e2e8f0]/90 bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
-                <Settings className="w-6 h-6 text-white" />
+      {/* 主体内容 - 更紧凑的布局 */}
+      <main className="relative z-10 flex items-start justify-center px-6 py-6">
+        <div className="w-full max-w-7xl bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/90 overflow-hidden">
+          {/* 头部 - 更紧凑 */}
+          <div className="px-6 py-5 border-b border-[#e2e8f0]/90 bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
+                <Settings className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-black text-slate-800">
+                <h1 className="text-xl font-black text-slate-800">
                   个人空间设置
                 </h1>
-                <p className="text-sm text-slate-600">
+                <p className="text-xs text-slate-600">
                   管理您的个人工作空间配置、集成与数据
                 </p>
               </div>
@@ -216,9 +216,9 @@ export default function PersonalWorkspaceSettings() {
           </div>
 
           <div className="flex flex-col lg:flex-row">
-            {/* 左侧辅助导航 */}
-            <div className="w-full lg:w-64 border-r border-[#e2e8f0]/90 p-6">
-              <nav className="space-y-2">
+            {/* 左侧辅助导航 - 更紧凑 */}
+            <div className="w-full lg:w-60 border-r border-[#e2e8f0]/90 p-4">
+              <nav className="space-y-1.5">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
@@ -226,22 +226,22 @@ export default function PersonalWorkspaceSettings() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                      className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${
                         isActive
                           ? "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white shadow-lg shadow-[#3182ce]/20"
                           : "text-slate-600 hover:bg-slate-100/80"
                       }`}
                     >
-                      <Icon className="w-5 h-5" />
+                      <Icon className="w-4 h-4" />
                       {tab.label}
                     </button>
                   );
                 })}
 
-                {/* 升级团队版 */}
+                {/* 升级团队版 - 更紧凑 */}
                 <button
                   onClick={handleUpgrade}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white shadow-lg shadow-[#8b5cf6]/20 hover:-translate-y-0.5"
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white shadow-lg shadow-[#8b5cf6]/20 hover:-translate-y-0.5"
                   style={{
                     transitionTimingFunction: "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
                   }}
@@ -252,25 +252,25 @@ export default function PersonalWorkspaceSettings() {
               </nav>
             </div>
 
-            {/* 右侧内容面板 */}
-            <div className="flex-1 p-8">
+            {/* 右侧内容面板 - 更紧凑 */}
+            <div className="flex-1 p-5">
               {/* 面板 A: 空间概览 */}
               {activeTab === "overview" && (
-                <div className="space-y-6">
+                <div className="space-y-5">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <Settings className="w-5 h-5 text-[#3182ce]" />
+                    <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                      <Settings className="w-4 h-4 text-[#3182ce]" />
                       空间概览
                     </h2>
 
-                    <div className="space-y-5">
+                    <div className="space-y-4">
                       {/* 空间 Logo */}
                       <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-3">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">
                           空间标识
                         </label>
-                        <div className="flex items-center gap-4">
-                          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20 text-3xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20 text-2xl">
                             {workspaceData.emoji}
                           </div>
                           <div className="flex gap-2">
