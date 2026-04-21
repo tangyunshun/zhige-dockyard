@@ -17,6 +17,17 @@ import {
   Shield,
   Mail,
   Smartphone,
+  Box,
+  Activity,
+  ChevronDown,
+  Search,
+  Bell,
+  FileText,
+  Code,
+  Database,
+  Rocket,
+  CheckCircle,
+  MoreHorizontal,
 } from "lucide-react";
 
 interface UserInfo {
@@ -330,7 +341,35 @@ export default function WorkspaceHub() {
             </div>
           </div>
 
-          {/* 卡片 4：帮助手册 */}
+          {/* 卡片 4：Studio 组件库（新增） */}
+          <div
+            onClick={() => (window.location.href = "/studio")}
+            className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-white/90 hover:shadow-2xl hover:shadow-[#8b5cf6]/10 transition-all duration-300 hover:-translate-y-1"
+            style={{
+              transitionTimingFunction:
+                "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
+            }}
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#8b5cf6]/20">
+                <Box className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-bold text-slate-800 mb-1">
+                  Studio 组件库
+                </h3>
+                <p className="text-sm text-slate-600 mb-3 leading-snug">
+                  全量 50+ 组件 / 浏览、筛选和使用系统提供的所有高阶组件。
+                </p>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#8b5cf6]">
+                  <span>立即浏览</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 卡片 5：帮助手册 */}
           <div
             onClick={handleGoToDocs}
             className="group cursor-pointer bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-white/90 hover:shadow-2xl hover:shadow-[#f59e0b]/10 transition-all duration-300 hover:-translate-y-1"
