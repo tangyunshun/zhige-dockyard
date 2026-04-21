@@ -1956,6 +1956,115 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* 创建 API Key 弹窗 */}
+      {showCreateApiKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* 遮罩层 */}
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => {
+              setShowCreateApiKeyModal(false);
+              setCreatedApiKey(null);
+            }}
+          />
+
+          {/* 弹窗内容 */}
+          <div className="relative bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            {/* 标题栏 */}
+            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
+              <h2 className="text-xl font-bold text-slate-800">创建 API Key</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                用于访问系统 API 的密钥
+              </p>
+            </div>
+
+            {/* 内容区域 */}
+            <div className="p-6">
+              {createdApiKey ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="flex items-start gap-2">
+                      <div className="w-5 h-5 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Check className="w-3 h-3 text-white" />
+                      </div>
+                      <div className="text-sm text-green-800">
+                        <p className="font-bold mb-1">创建成功！</p>
+                        <p className="mb-2">
+                          请妥善保存此 API Key，它只会显示一次！
+                        </p>
+                        <div className="p-3 bg-white rounded border border-green-200 font-mono text-xs break-all">
+                          {createdApiKey}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                      Key 名称 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newApiKeyData.name}
+                      onChange={(e) =>
+                        setNewApiKeyData({
+                          ...newApiKeyData,
+                          name: e.target.value,
+                        })
+                      }
+                      className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                      placeholder="例如：生产环境密钥"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                      描述（选填）
+                    </label>
+                    <textarea
+                      value={newApiKeyData.description}
+                      onChange={(e) =>
+                        setNewApiKeyData({
+                          ...newApiKeyData,
+                          description: e.target.value,
+                        })
+                      }
+                      rows={3}
+                      className="w-full px-[14px] py-[12px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none resize-none"
+                      placeholder="描述此密钥的用途"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-6 py-4 border-t border-[#e2e8f0] flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowCreateApiKeyModal(false);
+                  setCreatedApiKey(null);
+                }}
+                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#e2e8f0] text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                {createdApiKey ? "关闭" : "取消"}
+              </button>
+              {!createdApiKey && (
+                <button
+                  onClick={handleCreateApiKey}
+                  disabled={loading || !newApiKeyData.name.trim()}
+                  className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? "创建中..." : "确认创建"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
