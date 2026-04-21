@@ -23,6 +23,10 @@ import {
   ChevronRight,
   BookOpen,
   Plus,
+  Flame,
+  Star,
+  Clock,
+  Zap,
 } from "lucide-react";
 
 interface UserInfo {
@@ -44,7 +48,16 @@ interface ComponentStage {
   count: number;
   color: string;
   bgColor: string;
-  components: string[];
+  components: ComponentInfo[];
+  tags?: string[];
+}
+
+interface ComponentInfo {
+  name: string;
+  calls?: number;
+  isHot?: boolean;
+  isNew?: boolean;
+  isRecommended?: boolean;
 }
 
 const componentStages: ComponentStage[] = [
@@ -55,13 +68,14 @@ const componentStages: ComponentStage[] = [
     count: 6,
     color: "#3182ce",
     bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
+    tags: ["周热门", "推荐"],
     components: [
-      "PDF 解析引擎",
-      "偏离表提取器",
-      "招标文件分析",
-      "竞品分析助手",
-      "方案生成器",
-      "报价计算器",
+      { name: "PDF 解析引擎", calls: 3421, isHot: true, isRecommended: true },
+      { name: "偏离表提取器", calls: 2156 },
+      { name: "招标文件分析", calls: 1876, isNew: true },
+      { name: "竞品分析助手", calls: 1543 },
+      { name: "方案生成器", calls: 1234 },
+      { name: "报价计算器", calls: 987, isNew: true },
     ],
   },
   {
@@ -71,11 +85,12 @@ const componentStages: ComponentStage[] = [
     count: 4,
     color: "#10b981",
     bgColor: "from-[#10b981]/10 to-[#059669]/10",
+    tags: ["月热门"],
     components: [
-      "PRD 文档助手",
-      "ER 图生成器",
-      "API 设计工具",
-      "原型图生成器",
+      { name: "PRD 文档助手", calls: 2876 },
+      { name: "ER 图生成器", calls: 2341, isHot: true },
+      { name: "API 设计工具", calls: 1987, isRecommended: true },
+      { name: "原型图生成器", calls: 1654, isNew: true },
     ],
   },
   {
@@ -85,13 +100,14 @@ const componentStages: ComponentStage[] = [
     count: 6,
     color: "#f59e0b",
     bgColor: "from-[#f59e0b]/10 to-[#d97706]/10",
+    tags: ["周热门", "月热门"],
     components: [
-      "代码 Diff 评审",
-      "自动化部署",
-      "性能监控",
-      "日志分析器",
-      "安全漏洞扫描",
-      "接口测试器",
+      { name: "代码 Diff 评审", calls: 3421, isHot: true, isRecommended: true },
+      { name: "自动化部署", calls: 2654 },
+      { name: "性能监控", calls: 2123 },
+      { name: "日志分析器", calls: 3245, isHot: true },
+      { name: "安全漏洞扫描", calls: 1876, isNew: true },
+      { name: "接口测试器", calls: 1543 },
     ],
   },
 ];
@@ -412,6 +428,7 @@ export default function WorkspaceHub() {
                     borderColor: `${stage.color}30`,
                   }}
                 >
+                  {/* 阶段头部 */}
                   <div className="flex items-start gap-3 mb-3">
                     <div
                       className={`w-10 h-10 rounded-lg bg-gradient-to-br ${stage.bgColor} flex items-center justify-center flex-shrink-0 shadow-md`}
@@ -424,7 +441,7 @@ export default function WorkspaceHub() {
                       </div>
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="text-sm font-black text-slate-800">
                           {stage.name}
                         </h3>
@@ -438,6 +455,29 @@ export default function WorkspaceHub() {
                           {stage.count}
                         </span>
                       </div>
+                      {/* 热门标签 */}
+                      {stage.tags && stage.tags.length > 0 && (
+                        <div className="flex items-center gap-1 mb-1">
+                          {stage.tags.includes("周热门") && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gradient-to-r from-[#ff6b6b] to-[#ff8787] text-white text-[9px] font-black rounded-md shadow-sm">
+                              <Flame className="w-2.5 h-2.5" />
+                              周热门
+                            </span>
+                          )}
+                          {stage.tags.includes("月热门") && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-[9px] font-black rounded-md shadow-sm">
+                              <TrendingUp className="w-2.5 h-2.5" />
+                              月热门
+                            </span>
+                          )}
+                          {stage.tags.includes("推荐") && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white text-[9px] font-black rounded-md shadow-sm">
+                              <Star className="w-2.5 h-2.5" />
+                              推荐
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
                         {stage.description}
                       </p>
@@ -445,19 +485,53 @@ export default function WorkspaceHub() {
                   </div>
 
                   {/* 组件列表 */}
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {stage.components.slice(0, 4).map((component) => (
-                      <span
-                        key={component}
-                        className="px-2 py-1 bg-slate-100 hover:bg-white text-[10px] font-medium text-slate-700 rounded-md border border-slate-200 transition-all cursor-pointer hover:shadow-sm"
+                  <div className="space-y-2 mt-3">
+                    {stage.components.slice(0, 4).map((component, idx) => (
+                      <div
+                        key={component.name}
+                        className="group/component relative flex items-center justify-between p-2 bg-slate-50 hover:bg-white rounded-lg border border-slate-200 transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5"
                       >
-                        {component}
-                      </span>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {/* 组件名称 */}
+                          <span className="text-[10px] font-medium text-slate-700 truncate">
+                            {component.name}
+                          </span>
+                          {/* 组件标识 */}
+                          <div className="flex items-center gap-0.5 flex-shrink-0">
+                            {component.isHot && (
+                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-[#ff6b6b] to-[#ff8787] rounded-full shadow-sm" title="热门组件">
+                                <Flame className="w-2 h-2 text-white" />
+                              </span>
+                            )}
+                            {component.isNew && (
+                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-[#10b981] to-[#059669] rounded-full shadow-sm" title="新上架">
+                                <Zap className="w-2 h-2 text-white" />
+                              </span>
+                            )}
+                            {component.isRecommended && (
+                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-[#3182ce] to-[#2563eb] rounded-full shadow-sm" title="推荐">
+                                <Star className="w-2 h-2 text-white" />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* 调用次数 */}
+                        {component.calls && (
+                          <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                            <span className="text-[9px] font-bold text-slate-500">
+                              {component.calls.toLocaleString()}
+                            </span>
+                            <span className="text-[8px] text-slate-400">次</span>
+                          </div>
+                        )}
+                      </div>
                     ))}
                     {stage.components.length > 4 && (
-                      <span className="px-2 py-1 text-[10px] font-medium text-slate-500">
-                        +{stage.components.length - 4}
-                      </span>
+                      <div className="flex items-center justify-center p-2 bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                        <span className="text-[10px] font-medium text-slate-500">
+                          +{stage.components.length - 4} 更多组件
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
