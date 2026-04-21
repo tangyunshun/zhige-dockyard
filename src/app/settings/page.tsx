@@ -364,14 +364,14 @@ export default function SettingsPage() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#10b981]/[0.08] rounded-full blur-[120px]" />
       </div>
 
-      {/* 顶栏 */}
-      <header className="relative z-10 flex items-center justify-between px-8 py-6">
-        <div className="flex items-center gap-4">
+      {/* 顶栏 - 更紧凑 */}
+      <header className="relative z-10 flex items-center justify-between px-6 py-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => router.push("/workspace-hub")}
-            className="group flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900 hover:bg-white/60 rounded-lg transition-all cursor-pointer"
+            className="group flex items-center gap-2 px-3 py-1.5 text-sm font-bold text-slate-600 hover:text-slate-900 hover:bg-white/60 rounded-lg transition-all cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
             返回
           </button>
           <Logo variant="light" />
@@ -395,23 +395,23 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      {/* 主体内容 */}
-      <main className="relative z-10 flex items-start justify-center px-4 py-8">
-        <div className="w-full max-w-5xl bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/90 overflow-hidden">
-          {/* 头部 */}
-          <div className="px-8 py-6 border-b border-[#e2e8f0]/90 bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
-            <h1 className="text-2xl font-black text-slate-800 mb-2">
+      {/* 主体内容 - 更紧凑的布局 */}
+      <main className="relative z-10 flex items-start justify-center px-6 py-6">
+        <div className="w-full max-w-7xl bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/90 overflow-hidden">
+          {/* 头部 - 更紧凑 */}
+          <div className="px-6 py-5 border-b border-[#e2e8f0]/90 bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
+            <h1 className="text-xl font-black text-slate-800 mb-1">
               个人设置中心
             </h1>
-            <p className="text-sm text-slate-600">
+            <p className="text-xs text-slate-600">
               管理您的账号安全、工作空间、偏好设置与个人资产
             </p>
           </div>
 
           <div className="flex flex-col lg:flex-row">
-            {/* 侧边导航 */}
-            <div className="w-full lg:w-64 border-r border-[#e2e8f0]/90 p-6">
-              <nav className="space-y-2">
+            {/* 侧边导航 - 更紧凑 */}
+            <div className="w-full lg:w-60 border-r border-[#e2e8f0]/90 p-4">
+              <nav className="space-y-1.5">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
@@ -419,13 +419,13 @@ export default function SettingsPage() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                      className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${
                         isActive
                           ? "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white shadow-lg shadow-[#3182ce]/20"
                           : "text-slate-600 hover:bg-slate-100/80"
                       }`}
                     >
-                      <Icon className="w-5 h-5" />
+                      <Icon className="w-4 h-4" />
                       {tab.label}
                     </button>
                   );
@@ -433,8 +433,8 @@ export default function SettingsPage() {
               </nav>
             </div>
 
-            {/* 表单区域 */}
-            <div className="flex-1 p-8">
+            {/* 表单区域 - 更紧凑 */}
+            <div className="flex-1 p-5">
               {/* 空间设置 */}
               {activeTab === "workspace" && (
                 <div className="space-y-6">
