@@ -119,3 +119,180 @@ model WorkspaceMember {
   @@index([userId], map: "WorkspaceMember_userId_idx")
   @@index([workspaceId], map: "WorkspaceMember_workspaceId_idx")
 }
+
+// API Key 模型
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  keyHash     String
+  keyPrefix   String
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId], map: "ApiKey_userId_idx")
+  @@index([keyPrefix], map: "ApiKey_keyPrefix_idx")
+}
+
+// 用户通知设置
+model UserNotification {
+  id                 String   @id @default(cuid())
+  userId             String
+  emailNotifications Boolean  @default(true)
+  systemMessages     Boolean  @default(true)
+  projectUpdates     Boolean  @default(true)
+  commentMentions    Boolean  @default(true)
+  frequency          String   @default("REALTIME") // REALTIME | DAILY | WEEKLY
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([userId], map: "UserNotification_userId_key")
+  @@index([userId], map: "UserNotification_userId_idx")
+}
+
+// 登录历史
+model LoginHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  ipAddress String?
+  userAgent String?
+  location  String?
+  device    String?
+  loginAt   DateTime @default(now())
+
+  @@index([userId], map: "LoginHistory_userId_idx")
+  @@index([loginAt], map: "LoginHistory_loginAt_idx")
+}
+
+// 用户偏好设置
+model UserPreference {
+  id            String   @id @default(cuid())
+  userId        String
+  aiEngine      String   @default("zhige") // zhige | openai | azure
+  systemPrompt  String?
+  defaultModel  String   @default("zhige-v3")
+  temperature   Float    @default(0.7)
+  maxTokens     Int      @default(2000)
+  topP          Float    @default(0.9)
+  frequencyPenalty Float @default(0.0)
+  presencePenalty Float @default(0.0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId], map: "UserPreference_userId_key")
+  @@index([userId], map: "UserPreference_userId_idx")
+}
+
+// 集成配置
+model Integration {
+  id         String   @id @default(cuid())
+  workspaceId String
+  provider   String   // github | gitlab | gitee
+  tokenHash  String
+  name       String?
+  configured Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([workspaceId, provider], map: "Integration_workspaceId_provider_key")
+  @@index([workspaceId], map: "Integration_workspaceId_idx")
+}
+
+// 升级申请
+model UpgradeApplication {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  userId       String
+  companyName  String
+  contactName  String
+  contactPhone String
+  phone        String?  // 用户手机号（可选）
+  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  submittedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([workspaceId], map: "UpgradeApplication_workspaceId_idx")
+  @@index([status], map: "UpgradeApplication_status_idx")
+}
+
+// 操作日志
+model OperationLog {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String?
+  action      String
+  resource    String?
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId], map: "OperationLog_userId_idx")
+  @@index([workspaceId], map: "OperationLog_workspaceId_idx")
+  @@index([action], map: "OperationLog_action_idx")
+}
+
+// 文档模型
+model Document {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String
+  content     String?
+  parentId    String?
+  type        String   @default("doc") // doc | folder
+  status      String   @default("active") // active | archived | deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId], map: "Document_workspaceId_idx")
+  @@index([parentId], map: "Document_parentId_idx")
+  @@index([status], map: "Document_status_idx")
+}
+
+// 项目模型
+model Project {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  status      String   @default("active") // active | archived | deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId], map: "Project_workspaceId_idx")
+  @@index([status], map: "Project_status_idx")
+}
+
+// 资产模型
+model Asset {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  type        String
+  url         String?
+  metadata    Json?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId], map: "Asset_workspaceId_idx")
+  @@index([type], map: "Asset_type_idx")
+}
+
+// 对话模型
+model Conversation {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  title       String?
+  messages    Json?
+  model       String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId], map: "Conversation_workspaceId_idx")
+  @@index([userId], map: "Conversation_userId_idx")
+}

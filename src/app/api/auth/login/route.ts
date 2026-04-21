@@ -167,6 +167,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         workspaceId: newWorkspace.id,
         role: 'OWNER',
+        joinedAt: new Date(),
         workspace: {
           id: newWorkspace.id,
           name: workspaceName,

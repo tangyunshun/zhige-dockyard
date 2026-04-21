@@ -29,6 +29,10 @@ import {
   AlertTriangle,
   Trash2,
   User,
+  MessageSquare,
+  Folder,
+  AtSign,
+  Clock,
 } from "lucide-react";
 
 interface WorkspaceInfo {
@@ -520,28 +524,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveNotifications = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/user/notification-settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(notificationData),
-      });
-
-      if (!res.ok) {
-        throw new Error("更新失败");
-      }
-
-      toast.success("通知设置已更新！");
-    } catch (error) {
-      console.error("更新通知设置失败:", error);
-      toast.error("更新通知设置失败，请稍后重试");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleLogout = async () => {
     try {
       const res = await fetch("/api/auth/logout", {
@@ -931,7 +913,7 @@ export default function SettingsPage() {
               )}
 
               {/* 通知设置 */}
-              {activeTab === "notification" && (
+              {activeTab === "notifications" && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-lg font-bold text-slate-800 mb-6">
@@ -1373,11 +1355,11 @@ export default function SettingsPage() {
                               <p className="text-xs text-slate-400 mt-1">
                                 创建于{" "}
                                 {new Date(apiKey.createdAt).toLocaleDateString(
-                                  "zh-CN"
+                                  "zh-CN",
                                 )}
                                 {apiKey.lastUsedAt
                                   ? ` · 最后使用：${new Date(
-                                      apiKey.lastUsedAt
+                                      apiKey.lastUsedAt,
                                     ).toLocaleDateString("zh-CN")}`
                                   : ""}
                               </p>
@@ -1393,58 +1375,69 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">
-                              邮箱
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {securityData.email || "未绑定"}
-                            </p>
-                          </div>
-                        </div>
-                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#3182ce] text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer">
-                          {securityData.email ? "更换" : "去绑定"}
-                        </button>
-                      </div>
 
-                      {/* 微信 */}
-                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-[#07c160]/10 flex items-center justify-center">
-                            <WechatIcon className="w-5 h-5 text-[#07c160]" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">
-                              微信
-                            </p>
-                            <p className="text-xs text-slate-500">未绑定</p>
-                          </div>
-                        </div>
-                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-[#07c160] text-white hover:brightness-110 transition-all cursor-pointer">
-                          去绑定
-                        </button>
-                      </div>
+                  {/* 社交账号绑定 */}
+                  <div className="space-y-4">
+                    <h2 className="text-lg font-bold text-slate-800 mb-4">
+                      社交账号绑定
+                    </h2>
 
-                      {/* GitHub */}
-                      <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-[#333]/10 flex items-center justify-center">
-                            <GithubIcon className="w-5 h-5 text-[#333]" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">
-                              GitHub
-                            </p>
-                            <p className="text-xs text-slate-500">未绑定</p>
-                          </div>
+                    {/* 邮箱 */}
+                    <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
+                          <Mail className="w-5 h-5 text-[#3182ce]" />
                         </div>
-                        <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-[#333] text-white hover:brightness-110 transition-all cursor-pointer">
-                          去绑定
-                        </button>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            邮箱
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {securityData.email || "未绑定"}
+                          </p>
+                        </div>
                       </div>
+                      <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#3182ce] text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer">
+                        {securityData.email ? "更换" : "去绑定"}
+                      </button>
+                    </div>
+
+                    {/* 微信 */}
+                    <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-[#07c160]/10 flex items-center justify-center">
+                          <WechatIcon className="w-5 h-5 text-[#07c160]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            微信
+                          </p>
+                          <p className="text-xs text-slate-500">未绑定</p>
+                        </div>
+                      </div>
+                      <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-[#07c160] text-white hover:brightness-110 transition-all cursor-pointer">
+                        去绑定
+                      </button>
+                    </div>
+
+                    {/* GitHub */}
+                    <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-[#e2e8f0]/80">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-[#333]/10 flex items-center justify-center">
+                          <GithubIcon className="w-5 h-5 text-[#333]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">
+                            GitHub
+                          </p>
+                          <p className="text-xs text-slate-500">未绑定</p>
+                        </div>
+                      </div>
+                      <button className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-[#333] text-white hover:brightness-110 transition-all cursor-pointer">
+                        去绑定
+                      </button>
+                    </div>
+                  </div>
 
                   {/* 设备与审计 */}
                   <div className="space-y-4">
@@ -1762,8 +1755,7 @@ export default function SettingsPage() {
                                   : "border-slate-300"
                               }`}
                             >
-                              {notificationSettings.frequency ===
-                                option.id && (
+                              {notificationSettings.frequency === option.id && (
                                 <Check className="w-3 h-3 text-white" />
                               )}
                             </div>

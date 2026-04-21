@@ -73,6 +73,11 @@ export default function PersonalWorkspaceSettings() {
   const [showClearDataModal, setShowClearDataModal] = useState(false);
   const [clearDataConfirm, setClearDataConfirm] = useState("");
 
+  // Token 配置模态框
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [currentIntegration, setCurrentIntegration] = useState<string>("");
+  const [tokenValue, setTokenValue] = useState("");
+
   // 升级申请表单
   const [upgradeForm, setUpgradeForm] = useState({
     companyName: "",
@@ -183,36 +188,53 @@ export default function PersonalWorkspaceSettings() {
     const integration = integrations.find((i) => i.id === id);
     if (!integration) return;
 
-    const token = prompt(`请输入 ${integration.name} Token:`);
-    if (token) {
-      // 保存 Token 到后端
-      fetch("/api/workspace/integrations", {
+    setCurrentIntegration(id);
+    setTokenValue("");
+    setShowTokenModal(true);
+  };
+
+  const confirmTokenConfig = async () => {
+    if (!tokenValue.trim()) {
+      toast.error("请输入有效的 Token");
+      return;
+    }
+
+    const integration = integrations.find((i) => i.id === currentIntegration);
+    if (!integration) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/workspace/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: workspaceData.id,
-          provider: id,
+          provider: currentIntegration,
           name: integration.name,
-          tokenValue: token,
+          tokenValue: tokenValue,
         }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            setIntegrations(
-              integrations.map((i) =>
-                i.id === id ? { ...i, configured: true, token } : i,
-              ),
-            );
-            toast.success(`${integration.name} Token 已配置并保存`);
-          } else {
-            toast.error(data.error || "保存失败");
-          }
-        })
-        .catch((error) => {
-          console.error("保存 Token 失败:", error);
-          toast.error("保存失败，请稍后重试");
-        });
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setIntegrations(
+          integrations.map((i) =>
+            i.id === currentIntegration
+              ? { ...i, configured: true, token: tokenValue }
+              : i,
+          ),
+        );
+        toast.success(`${integration.name} Token 已配置并保存`);
+        setShowTokenModal(false);
+        setTokenValue("");
+      } else {
+        toast.error(data.error || "保存失败");
+      }
+    } catch (error) {
+      console.error("保存 Token 失败:", error);
+      toast.error("保存失败，请稍后重试");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -844,76 +866,6 @@ export default function PersonalWorkspaceSettings() {
         </div>
       </main>
 
-      {/* 升级确认弹窗 */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* 遮罩层 */}
-          <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            onClick={() => setShowUpgradeModal(false)}
-          />
-
-          {/* 弹窗内容 */}
-          <div className="relative bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            {/* 标题栏 */}
-            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#8b5cf6]/5 to-[#7c3aed]/5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center shadow-lg shadow-[#8b5cf6]/20">
-                  <Sparkles className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">
-                    升级为企业协同版
-                  </h2>
-                  <p className="text-sm text-slate-600">
-                    解锁团队协作与全量高阶功能
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* 内容区域 */}
-            <div className="p-6">
-              <div className="space-y-3">
-                <p className="text-sm text-slate-700">
-                  确认要申请升级此个人空间为企业协同版吗？
-                </p>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#10b981]" />
-                    <span>15 天免费试用期</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#10b981]" />
-                    <span> unlimited 团队成员邀请</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#10b981]" />
-                    <span>10,000 Token/月 算力额度</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* 底部按钮 */}
-            <div className="px-6 py-4 border-t border-[#e2e8f0] flex justify-end gap-3">
-              <button
-                onClick={() => setShowUpgradeModal(false)}
-                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#e2e8f0] text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
-              >
-                取消
-              </button>
-              <button
-                onClick={confirmUpgrade}
-                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white shadow-[0_2px_6px_-1px_rgba(139,92,246,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(139,92,246,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer"
-              >
-                确认申请
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 清空数据确认弹窗 */}
       {showClearDataModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -946,7 +898,7 @@ export default function PersonalWorkspaceSettings() {
             </div>
 
             {/* 内容区域 */}
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
                 <p className="text-sm text-red-800 font-bold mb-2">
                   警告：此操作不可恢复！
@@ -996,6 +948,100 @@ export default function PersonalWorkspaceSettings() {
         </div>
       )}
 
+      {/* Token 配置弹窗 */}
+      {showTokenModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* 遮罩层 */}
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => {
+              setShowTokenModal(false);
+              setTokenValue("");
+            }}
+          />
+
+          {/* 弹窗内容 */}
+          <div className="relative bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            {/* 标题栏 */}
+            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
+                  <Key className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800">
+                    配置{" "}
+                    {
+                      integrations.find((i) => i.id === currentIntegration)
+                        ?.name
+                    }{" "}
+                    Token
+                  </h2>
+                  <p className="text-sm text-slate-600">
+                    安全存储您的第三方集成密钥
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 内容区域 */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  Token <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={tokenValue}
+                  onChange={(e) => setTokenValue(e.target.value)}
+                  className="w-full px-[14px] py-[12px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none resize-none font-mono"
+                  placeholder="请输入您的 Access Token（例如：ghp_xxxxxxxxxxxx）"
+                  rows={4}
+                />
+                <p className="text-xs text-slate-500 mt-2">
+                  Token 将使用 bcrypt 加密存储，仅您本人可见
+                </p>
+              </div>
+
+              <div className="p-4 bg-[#3182ce]/5 rounded-xl border border-[#3182ce]/20">
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-[#3182ce] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-white">i</span>
+                  </div>
+                  <div className="text-xs text-[#3182ce] leading-relaxed">
+                    <p className="font-bold mb-1">如何获取 Token？</p>
+                    <p>
+                      {currentIntegration === "github"
+                        ? "访问 GitHub Settings → Developer settings → Personal access tokens → Generate new token"
+                        : "访问 GitLab Settings → Access Tokens → Create new token"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-6 py-4 border-t border-[#e2e8f0] bg-white flex-shrink-0 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowTokenModal(false);
+                  setTokenValue("");
+                }}
+                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#e2e8f0] text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmTokenConfig}
+                disabled={loading || !tokenValue.trim()}
+                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "保存中..." : "保存 Token"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 升级申请表单弹窗 */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1006,9 +1052,9 @@ export default function PersonalWorkspaceSettings() {
           />
 
           {/* 弹窗内容 */}
-          <div className="relative bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+          <div className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             {/* 标题栏 */}
-            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#8b5cf6]/5 to-[#7c3aed]/5">
+            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#8b5cf6]/5 to-[#7c3aed]/5 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center shadow-lg shadow-[#8b5cf6]/20">
                   <Sparkles className="w-6 h-6 text-white" />
@@ -1025,7 +1071,7 @@ export default function PersonalWorkspaceSettings() {
             </div>
 
             {/* 内容区域 */}
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="p-4 bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5 rounded-xl border border-[#3182ce]/20">
                 <h3 className="text-sm font-bold text-slate-800 mb-2">
                   升级特权
@@ -1106,7 +1152,7 @@ export default function PersonalWorkspaceSettings() {
             </div>
 
             {/* 底部按钮 */}
-            <div className="px-6 py-4 border-t border-[#e2e8f0] flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-[#e2e8f0] bg-white flex-shrink-0 flex justify-end gap-3">
               <button
                 onClick={() => setShowUpgradeModal(false)}
                 className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#e2e8f0] text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"

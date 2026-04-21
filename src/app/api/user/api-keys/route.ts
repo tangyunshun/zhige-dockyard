@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 import { v4 as uuidv4 } from "uuid";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
