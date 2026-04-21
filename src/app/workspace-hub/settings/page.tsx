@@ -16,8 +16,8 @@ import {
   Download,
   Sparkles,
   Check,
-  Github,
-  Gitlab,
+  Github as GithubIcon,
+  Gitlab as GitlabIcon,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
@@ -46,8 +46,8 @@ export default function PersonalWorkspaceSettings() {
 
   // 集成密钥
   const [integrations, setIntegrations] = useState([
-    { id: "github", name: "GitHub", icon: Github, configured: false },
-    { id: "gitlab", name: "GitLab", icon: Gitlab, configured: false },
+    { id: "github", name: "GitHub", icon: GithubIcon, configured: false },
+    { id: "gitlab", name: "GitLab", icon: GitlabIcon, configured: false },
   ]);
 
   // 存储数据
