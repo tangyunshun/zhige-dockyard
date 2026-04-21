@@ -1414,7 +1414,6 @@ export default function SettingsPage() {
                         </button>
                       </div>
                     </div>
-                  </div>
 
                   {/* 设备与审计 */}
                   <div className="space-y-4">

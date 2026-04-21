@@ -93,12 +93,14 @@ export default function PersonalWorkspaceSettings() {
       }
       const data = await res.json();
       const userName = data.user?.name || "用户";
-      
+
       // 获取工作空间列表
       const workspaceRes = await fetch("/api/workspace/list");
       if (workspaceRes.ok) {
         const workspaceData = await workspaceRes.json();
-        const personalWorkspace = workspaceData.workspaces?.find((w: any) => w.type === "PERSONAL");
+        const personalWorkspace = workspaceData.workspaces?.find(
+          (w: any) => w.type === "PERSONAL",
+        );
         if (personalWorkspace) {
           setWorkspaceData({
             id: personalWorkspace.id,
@@ -172,8 +174,8 @@ export default function PersonalWorkspaceSettings() {
     if (token) {
       setIntegrations(
         integrations.map((i) =>
-          i.id === id ? { ...i, configured: true, token } : i
-        )
+          i.id === id ? { ...i, configured: true, token } : i,
+        ),
       );
       toast.success(`${integration.name} Token 已配置`);
     }
@@ -194,7 +196,7 @@ export default function PersonalWorkspaceSettings() {
 
   const confirmClearData = async () => {
     if (clearDataConfirm !== "确认清空") {
-      toast.error("请输入"确认清空"以继续操作");
+      toast.error('请输入"确认清空"以继续操作');
       return;
     }
 
@@ -864,7 +866,9 @@ export default function PersonalWorkspaceSettings() {
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">
-                  请输入 <span className="text-red-600 font-mono">确认清空</span> 以继续
+                  请输入{" "}
+                  <span className="text-red-600 font-mono">确认清空</span>{" "}
+                  以继续
                 </label>
                 <input
                   type="text"
@@ -1018,7 +1022,11 @@ export default function PersonalWorkspaceSettings() {
               </button>
               <button
                 onClick={() => {
-                  if (!upgradeForm.companyName || !upgradeForm.contactName || !upgradeForm.contactPhone) {
+                  if (
+                    !upgradeForm.companyName ||
+                    !upgradeForm.contactName ||
+                    !upgradeForm.contactPhone
+                  ) {
                     toast.error("请填写所有必填项");
                     return;
                   }
