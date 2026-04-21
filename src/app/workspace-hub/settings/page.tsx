@@ -283,7 +283,7 @@ export default function PersonalWorkspaceSettings() {
                               }}
                               className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer"
                             >
-                              随机 Emoji
+                              随机标识
                             </button>
                             <button
                               onClick={() => toast.info("上传图标功能开发中...")}
