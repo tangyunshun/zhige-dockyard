@@ -156,8 +156,21 @@ export default function PersonalWorkspaceSettings() {
   const handleSavePreferences = async () => {
     setLoading(true);
     try {
-      // TODO: 对接保存研发偏好的 API
-      toast.success("研发偏好已保存！");
+      const res = await fetch("/api/user/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aiEngine: preferences.aiEngine,
+          systemPrompt: preferences.systemPrompt,
+        }),
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        toast.success("研发偏好已保存！");
+      } else {
+        toast.error(result.error || "保存失败");
+      }
     } catch (error) {
       console.error("保存失败:", error);
       toast.error("保存失败，请稍后重试");
@@ -172,12 +185,34 @@ export default function PersonalWorkspaceSettings() {
 
     const token = prompt(`请输入 ${integration.name} Token:`);
     if (token) {
-      setIntegrations(
-        integrations.map((i) =>
-          i.id === id ? { ...i, configured: true, token } : i,
-        ),
-      );
-      toast.success(`${integration.name} Token 已配置`);
+      // 保存 Token 到后端
+      fetch("/api/workspace/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspaceData.id,
+          provider: id,
+          name: integration.name,
+          tokenValue: token,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setIntegrations(
+              integrations.map((i) =>
+                i.id === id ? { ...i, configured: true, token } : i,
+              ),
+            );
+            toast.success(`${integration.name} Token 已配置并保存`);
+          } else {
+            toast.error(data.error || "保存失败");
+          }
+        })
+        .catch((error) => {
+          console.error("保存 Token 失败:", error);
+          toast.error("保存失败，请稍后重试");
+        });
     }
   };
 
@@ -200,17 +235,34 @@ export default function PersonalWorkspaceSettings() {
       return;
     }
 
+    if (!workspaceData.id) {
+      toast.error("工作空间 ID 不存在");
+      return;
+    }
+
     setLoading(true);
     try {
-      // TODO: 对接清空数据的 API
-      setTimeout(() => {
+      const res = await fetch("/api/workspace/clear-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspaceData.id,
+          confirmText: clearDataConfirm,
+        }),
+      });
+
+      const result = await res.json();
+      if (res.ok) {
         toast.success("数据已清空");
         setShowClearDataModal(false);
-        setLoading(false);
-      }, 1000);
+        setClearDataConfirm("");
+      } else {
+        toast.error(result.error || "清空失败");
+      }
     } catch (error) {
       console.error("清空数据失败:", error);
       toast.error("清空数据失败");
+    } finally {
       setLoading(false);
     }
   };
@@ -219,9 +271,50 @@ export default function PersonalWorkspaceSettings() {
     setShowUpgradeModal(true);
   };
 
-  const confirmUpgrade = () => {
-    setShowUpgradeModal(false);
-    toast.success("已提交升级申请，工作人员将尽快联系您！");
+  const confirmUpgrade = async () => {
+    if (
+      !upgradeForm.companyName ||
+      !upgradeForm.contactName ||
+      !upgradeForm.contactPhone
+    ) {
+      toast.error("请填写所有必填项");
+      return;
+    }
+
+    if (!workspaceData.id) {
+      toast.error("工作空间 ID 不存在");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/workspace/upgrade-application", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: workspaceData.id,
+          companyName: upgradeForm.companyName,
+          contactName: upgradeForm.contactName,
+          contactPhone: upgradeForm.contactPhone,
+        }),
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        toast.success(
+          result.message || "升级申请已提交，工作人员将尽快联系您！",
+        );
+        setShowUpgradeModal(false);
+        setUpgradeForm({ companyName: "", contactName: "", contactPhone: "" });
+      } else {
+        toast.error(result.error || "申请失败");
+      }
+    } catch (error) {
+      console.error("提交升级申请失败:", error);
+      toast.error("申请失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const tabs = [
