@@ -719,11 +719,33 @@ export default function StudioPage() {
         {/* 按阶段分组的组件矩阵 */}
         {componentStages.map((stage, stageIndex) => (
           <div key={stageIndex} className="mb-10">
-            {/* 阶段标题 */}
-            <div className="mb-4 pb-3 border-b-2 border-[#e2e8f0]">
-              <h2 className="text-[13px] font-black text-slate-500 uppercase tracking-widest">
-                {stage.title}
-              </h2>
+            {/* 阶段标题 - 优化版 */}
+            <div className="mb-6 relative">
+              <div className="flex items-center gap-3 mb-3">
+                {/* 左侧彩色竖条 */}
+                <div 
+                  className="w-1.5 h-8 rounded-full"
+                  style={{
+                    background: `linear-gradient(180deg, #3182ce 0%, #8b5cf6 100%)`
+                  }}
+                ></div>
+                
+                {/* 阶段标题 */}
+                <h2 className="text-[16px] font-black text-slate-800 tracking-tight">
+                  {stage.title}
+                </h2>
+                
+                {/* 组件数量标签 */}
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-gradient-to-r from-[#3182ce] to-[#8b5cf6] text-white shadow-md">
+                  {stage.components.length} 个组件
+                </span>
+              </div>
+              
+              {/* 底部渐变分割线 */}
+              <div className="h-1 rounded-full" style={{
+                background: `linear-gradient(90deg, #3182ce 0%, #8b5cf6 50%, #3182ce 100%)`,
+                opacity: 0.3
+              }}></div>
             </div>
 
             {/* 组件 Grid 容器 */}
