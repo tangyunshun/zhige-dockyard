@@ -6,6 +6,16 @@ import { ExternalLink } from "lucide-react";
 export default function CTA() {
   const router = useRouter();
 
+  // 申请私有化演示 - 需要登录
+  const handleDemoRequest = () => {
+    router.push("/demo");
+  };
+
+  // 查阅白皮书 - 不需要登录，直接跳转
+  const handleDocsView = () => {
+    router.push("/docs");
+  };
+
   return (
     <>
       {/* Section 7: CTA */}
@@ -25,13 +35,13 @@ export default function CTA() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
-              onClick={() => router.push("/demo")}
+              onClick={handleDemoRequest}
               className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white font-bold rounded-lg shadow-xl shadow-[#3182ce]/30 hover:shadow-2xl hover:shadow-[#3182ce]/40 hover:scale-105 transition-all text-lg transform hover:-translate-y-0.5 cursor-pointer"
             >
               申请私有化演示
             </button>
             <button
-              onClick={() => router.push("/docs")}
+              onClick={handleDocsView}
               className="w-full sm:w-auto px-10 py-4 border-2 border-slate-200 text-slate-600 font-bold rounded-lg hover:border-[#3182ce] hover:text-[#3182ce] hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-white transition-all text-lg flex items-center justify-center gap-2 group cursor-pointer"
             >
               查阅开发者白皮书{" "}

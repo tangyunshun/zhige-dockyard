@@ -59,27 +59,29 @@ model tenant {
 }
 
 model user {
-  id            String           @id @default(cuid())
-  email         String?          @unique(map: "User_email_key")
-  name          String?
-  password      String
-  phone         String?          @unique(map: "User_phone_key")
-  avatar        String?
-  role          String           @default("user")
-  tenantId      String?
-  wechatUnionId String?          @unique(map: "User_wechatUnionId_key")
-  qqUnionId     String?          @unique(map: "User_qqUnionId_key")
-  refreshToken  String?
+  id                    String            @id @default(cuid())
+  email                 String?           @unique(map: "User_email_key")
+  name                  String?
+  password              String
+  phone                 String?           @unique(map: "User_phone_key")
+  avatar                String?
+  role                  String            @default("user")
+  tenantId              String?
+  wechatUnionId         String?           @unique(map: "User_wechatUnionId_key")
+  qqUnionId             String?           @unique(map: "User_qqUnionId_key")
+  refreshToken          String?
   refreshTokenExpiresAt DateTime?
-  loginAttempts Int              @default(0)
-  lockedUntil   DateTime?
-  status        String           @default("active")
-  lastWorkspaceId String?        @map("last_workspace_id")
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  componenttask componenttask[]
-  tenant        tenant?          @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
-  workspaces    WorkspaceMember[]
+  loginAttempts         Int               @default(0)
+  lockedUntil           DateTime?
+  status                String            @default("active")
+  lastWorkspaceId       String?           @map("last_workspace_id")
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  componenttask         componenttask[]
+  tenant                tenant?           @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
+  workspaces            WorkspaceMember[]
+  componentRatings      ComponentRating[]
+  componentReviews      ComponentReview[]
 
   @@index([email], map: "User_email_idx")
   @@index([phone], map: "User_phone_idx")
@@ -107,13 +109,13 @@ model Workspace {
 
 // 工作空间成员关联表
 model WorkspaceMember {
-  id          String         @id @default(cuid())
+  id          String        @id @default(cuid())
   userId      String
   workspaceId String
   role        WorkspaceRole
-  joinedAt    DateTime       @default(now())
-  user        user           @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
-  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
+  joinedAt    DateTime      @default(now())
+  user        user          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
 
   @@unique([userId, workspaceId], map: "WorkspaceMember_userId_workspaceId_key")
   @@index([userId], map: "WorkspaceMember_userId_idx")
@@ -122,15 +124,15 @@ model WorkspaceMember {
 
 // API Key 模型
 model ApiKey {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
   name        String
   description String?
   keyHash     String
   keyPrefix   String
   lastUsedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([userId], map: "ApiKey_userId_idx")
   @@index([keyPrefix], map: "ApiKey_keyPrefix_idx")
@@ -168,18 +170,18 @@ model LoginHistory {
 
 // 用户偏好设置
 model UserPreference {
-  id            String   @id @default(cuid())
-  userId        String
-  aiEngine      String   @default("zhige") // zhige | openai | azure
-  systemPrompt  String?
-  defaultModel  String   @default("zhige-v3")
-  temperature   Float    @default(0.7)
-  maxTokens     Int      @default(2000)
-  topP          Float    @default(0.9)
-  frequencyPenalty Float @default(0.0)
-  presencePenalty Float @default(0.0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String
+  aiEngine         String   @default("zhige") // zhige | openai | azure
+  systemPrompt     String?
+  defaultModel     String   @default("zhige-v3")
+  temperature      Float    @default(0.7)
+  maxTokens        Int      @default(2000)
+  topP             Float    @default(0.9)
+  frequencyPenalty Float    @default(0.0)
+  presencePenalty  Float    @default(0.0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([userId], map: "UserPreference_userId_key")
   @@index([userId], map: "UserPreference_userId_idx")
@@ -187,14 +189,14 @@ model UserPreference {
 
 // 集成配置
 model Integration {
-  id         String   @id @default(cuid())
+  id          String   @id @default(cuid())
   workspaceId String
-  provider   String   // github | gitlab | gitee
-  tokenHash  String
-  name       String?
-  configured Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  provider    String // github | gitlab | gitee
+  tokenHash   String
+  name        String?
+  configured  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([workspaceId, provider], map: "Integration_workspaceId_provider_key")
   @@index([workspaceId], map: "Integration_workspaceId_idx")
@@ -208,7 +210,7 @@ model UpgradeApplication {
   companyName  String
   contactName  String
   contactPhone String
-  phone        String?  // 用户手机号（可选）
+  phone        String? // 用户手机号（可选）
   status       String   @default("PENDING") // PENDING | APPROVED | REJECTED
   submittedAt  DateTime @default(now())
   createdAt    DateTime @default(now())
@@ -295,4 +297,86 @@ model Conversation {
 
   @@index([workspaceId], map: "Conversation_workspaceId_idx")
   @@index([userId], map: "Conversation_userId_idx")
+}
+
+// 组件收藏
+model ComponentFavorite {
+  id          String   @id @default(cuid())
+  userId      String
+  componentId String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, componentId], map: "ComponentFavorite_userId_componentId_key")
+  @@index([userId], map: "ComponentFavorite_userId_idx")
+  @@index([componentId], map: "ComponentFavorite_componentId_idx")
+}
+
+// 组件使用记录
+model ComponentUsage {
+  id          String   @id @default(cuid())
+  userId      String
+  componentId String
+  workspaceId String?
+  usedAt      DateTime @default(now())
+  metadata    Json?
+
+  @@index([userId], map: "ComponentUsage_userId_idx")
+  @@index([componentId], map: "ComponentUsage_componentId_idx")
+  @@index([usedAt], map: "ComponentUsage_usedAt_idx")
+}
+
+// 组件评分
+model ComponentRating {
+  id          String   @id @default(cuid())
+  userId      String
+  componentId String
+  rating      Int // 1-5 分
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        user?    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentRating_userId_fkey")
+
+  @@unique([userId, componentId], map: "ComponentRating_userId_componentId_key")
+  @@index([componentId], map: "ComponentRating_componentId_idx")
+  @@index([rating], map: "ComponentRating_rating_idx")
+}
+
+// 组件评论
+model ComponentReview {
+  id          String            @id @default(cuid())
+  userId      String
+  componentId String
+  parentId    String? // 回复哪条评论
+  content     String
+  rating      Int? // 只有主评论可以有评分
+  status      String            @default("active") // active | hidden
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  user        user?             @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentReview_userId_fkey")
+  parent      ComponentReview?  @relation("ReviewReplies", fields: [parentId], references: [id])
+  replies     ComponentReview[] @relation("ReviewReplies")
+
+  @@index([componentId], map: "ComponentReview_componentId_idx")
+  @@index([parentId], map: "ComponentReview_parentId_idx")
+  @@index([status], map: "ComponentReview_status_idx")
+}
+
+// 组件统计
+model ComponentStats {
+  id             String    @id @default(cuid())
+  componentId    String    @unique
+  totalUses      Int       @default(0)
+  totalFavorites Int       @default(0)
+  averageRating  Float     @default(0)
+  ratingCount    Int       @default(0)
+  reviewCount    Int       @default(0)
+  dailyUses      Int       @default(0)
+  weeklyUses     Int       @default(0)
+  monthlyUses    Int       @default(0)
+  lastUsedAt     DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@index([componentId], map: "ComponentStats_componentId_idx")
+  @@index([totalUses], map: "ComponentStats_totalUses_idx")
+  @@index([averageRating], map: "ComponentStats_averageRating_idx")
 }

@@ -9,6 +9,7 @@ import {
   Building2,
   Box,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
   TrendingUp,
   Settings,
@@ -27,6 +28,39 @@ import {
   Star,
   Clock,
   Zap,
+  ShieldCheck,
+  Palette,
+  MessageSquare,
+  AlertTriangle,
+  Heart,
+  LayoutTemplate,
+  Image,
+  Accessibility,
+  GitMerge,
+  FileCode,
+  Braces,
+  Plug,
+  SearchCheck,
+  Bug,
+  TestTube2,
+  Wind,
+  ImageMinus,
+  Wrench,
+  Cloud,
+  Scale,
+  FileWarning,
+  Package,
+  Shirt,
+  Phone,
+  Signature,
+  Smile,
+  Network,
+  Terminal,
+  CreditCard,
+  FolderLock,
+  MonitorPlay,
+  Scissors,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface UserInfo {
@@ -60,57 +94,453 @@ interface ComponentInfo {
   isRecommended?: boolean;
 }
 
-const componentStages: ComponentStage[] = [
+interface ComponentStageData {
+  title: string;
+  icon: any;
+  color: string;
+  bgColor: string;
+  tags: string[];
+  components: Array<{
+    id: string;
+    name: string;
+    calls: number;
+    successRate: number;
+  }>;
+}
+
+// 从 studio 页面导入真实的 53 个组件数据
+const componentStagesData = [
   {
-    icon: <Target className="w-5 h-5" />,
-    name: "商机与售前打单",
-    description: "从商机发现到售前方案，助力业务拓展与客户需求分析",
-    count: 6,
+    title: "第一阶段：商机捕获与售前打单",
+    icon: Target,
     color: "#3182ce",
     bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
-    tags: ["周热门", "推荐"],
+    tags: ["周热门", "推荐"] as string[],
     components: [
-      { name: "PDF 解析引擎", calls: 3421, isHot: true, isRecommended: true },
-      { name: "偏离表提取器", calls: 2156 },
-      { name: "招标文件分析", calls: 1876, isNew: true },
-      { name: "竞品分析助手", calls: 1543 },
-      { name: "方案生成器", calls: 1234 },
-      { name: "报价计算器", calls: 987, isNew: true },
+      {
+        id: "C01",
+        name: "标书智能解析",
+        calls: 3421,
+        successRate: 98.5,
+      },
+      {
+        id: "C02",
+        name: "方案合规审查",
+        calls: 2156,
+        successRate: 97.8,
+      },
+      {
+        id: "C03",
+        name: "竞品对比分析",
+        calls: 1876,
+        successRate: 96.5,
+      },
+      {
+        id: "C04",
+        name: "汇报话术转换",
+        calls: 2543,
+        successRate: 99.1,
+      },
+      {
+        id: "C05",
+        name: "项目成本测算",
+        calls: 1234,
+        successRate: 95.8,
+      },
+      {
+        id: "C06",
+        name: "商业价值评估",
+        calls: 987,
+        successRate: 94.2,
+      },
     ],
   },
   {
-    icon: <Layers className="w-5 h-5" />,
-    name: "需求定义与设计",
-    description: "将业务需求转化为技术规格，完成系统架构与接口设计",
-    count: 4,
+    title: "第二阶段：需求定义与产品设计",
+    icon: Layers,
     color: "#10b981",
     bgColor: "from-[#10b981]/10 to-[#059669]/10",
-    tags: ["月热门"],
+    tags: ["月热门"] as string[],
     components: [
-      { name: "PRD 文档助手", calls: 2876 },
-      { name: "ER 图生成器", calls: 2341, isHot: true },
-      { name: "API 设计工具", calls: 1987, isRecommended: true },
-      { name: "原型图生成器", calls: 1654, isNew: true },
+      {
+        id: "C07",
+        name: "需求转 PRD",
+        calls: 4521,
+        successRate: 98.9,
+      },
+      {
+        id: "C08",
+        name: "异常场景补全",
+        calls: 3245,
+        successRate: 97.6,
+      },
+      {
+        id: "C09",
+        name: "客诉归因分析",
+        calls: 2876,
+        successRate: 96.8,
+      },
+      {
+        id: "C10",
+        name: "仿真数据生成",
+        calls: 5432,
+        successRate: 99.5,
+      },
     ],
   },
   {
-    icon: <Server className="w-5 h-5" />,
-    name: "后端核心与 API",
-    description: "构建稳健的后端服务，提供高效可靠的 API 接口与数据处理",
-    count: 6,
+    title: "第三阶段：大前端与交互",
+    icon: Palette,
     color: "#f59e0b",
     bgColor: "from-[#f59e0b]/10 to-[#d97706]/10",
-    tags: ["周热门", "月热门"],
+    tags: ["周热门", "月热门"] as string[],
     components: [
-      { name: "代码 Diff 评审", calls: 3421, isHot: true, isRecommended: true },
-      { name: "自动化部署", calls: 2654 },
-      { name: "性能监控", calls: 2123 },
-      { name: "日志分析器", calls: 3245, isHot: true },
-      { name: "安全漏洞扫描", calls: 1876, isNew: true },
-      { name: "接口测试器", calls: 1543 },
+      {
+        id: "C11",
+        name: "CSS 样式重构",
+        calls: 2134,
+        successRate: 97.2,
+      },
+      {
+        id: "C12",
+        name: "国际化词条校验",
+        calls: 1765,
+        successRate: 98.1,
+      },
+      {
+        id: "C13",
+        name: "页面合规检测",
+        calls: 1432,
+        successRate: 96.5,
+      },
+      {
+        id: "C14",
+        name: "SVG 组件转换",
+        calls: 2987,
+        successRate: 99.2,
+      },
+      {
+        id: "C15",
+        name: "设计稿转代码",
+        calls: 3654,
+        successRate: 98.7,
+      },
+    ],
+  },
+  {
+    title: "第四阶段：架构设计与 DBA",
+    icon: Database,
+    color: "#8b5cf6",
+    bgColor: "from-[#8b5cf6]/10 to-[#7c3aed]/10",
+    tags: ["推荐"] as string[],
+    components: [
+      {
+        id: "C16",
+        name: "数据库逆向解析",
+        calls: 4123,
+        successRate: 97.9,
+      },
+      {
+        id: "C17",
+        name: "慢 SQL 优化",
+        calls: 3567,
+        successRate: 96.8,
+      },
+      {
+        id: "C18",
+        name: "微服务拆分建议",
+        calls: 2345,
+        successRate: 95.6,
+      },
+      {
+        id: "C19",
+        name: "数据迁移脚本",
+        calls: 1876,
+        successRate: 94.8,
+      },
+      {
+        id: "C20",
+        name: "国产库语法转换",
+        calls: 1234,
+        successRate: 93.5,
+      },
+      {
+        id: "C21",
+        name: "架构图代码生成",
+        calls: 2987,
+        successRate: 98.3,
+      },
+    ],
+  },
+  {
+    title: "第五阶段：后端研发与 API",
+    icon: Server,
+    color: "#3182ce",
+    bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
+    tags: ["周热门"] as string[],
+    components: [
+      {
+        id: "C22",
+        name: "生产数据脱敏",
+        calls: 3421,
+        successRate: 99.1,
+      },
+      {
+        id: "C23",
+        name: "接口文档逆向",
+        calls: 2654,
+        successRate: 97.5,
+      },
+      {
+        id: "C24",
+        name: "JSON 转实体类",
+        calls: 4532,
+        successRate: 98.8,
+      },
+      {
+        id: "C25",
+        name: "接口参数映射",
+        calls: 1987,
+        successRate: 96.2,
+      },
+      {
+        id: "C26",
+        name: "正则表达式解析",
+        calls: 1543,
+        successRate: 95.8,
+      },
+      {
+        id: "C27",
+        name: "硬件错误码诊断",
+        calls: 2876,
+        successRate: 97.3,
+      },
+    ],
+  },
+  {
+    title: "第六阶段：质量保证 QA",
+    icon: TestTube2,
+    color: "#10b981",
+    bgColor: "from-[#10b981]/10 to-[#059669]/10",
+    tags: ["月热门"] as string[],
+    components: [
+      {
+        id: "C28",
+        name: "测试用例生成",
+        calls: 3765,
+        successRate: 98.6,
+      },
+      {
+        id: "C29",
+        name: "漏洞 Payload 构造",
+        calls: 2134,
+        successRate: 96.9,
+      },
+      {
+        id: "C30",
+        name: "缺陷单自动完善",
+        calls: 2987,
+        successRate: 97.8,
+      },
+      {
+        id: "C31",
+        name: "压测脚本与分析",
+        calls: 1876,
+        successRate: 95.5,
+      },
+      {
+        id: "C32",
+        name: "UI 自动化修复",
+        calls: 2345,
+        successRate: 96.7,
+      },
+    ],
+  },
+  {
+    title: "第七阶段：DevOps 与运维",
+    icon: Cloud,
+    color: "#f59e0b",
+    bgColor: "from-[#f59e0b]/10 to-[#d97706]/10",
+    tags: ["周热门", "推荐"] as string[],
+    components: [
+      {
+        id: "C33",
+        name: "报错日志根因分析",
+        calls: 4321,
+        successRate: 98.9,
+      },
+      {
+        id: "C34",
+        name: "云资源降本优化",
+        calls: 1654,
+        successRate: 94.8,
+      },
+      {
+        id: "C35",
+        name: "开源合规审计",
+        calls: 2123,
+        successRate: 97.2,
+      },
+      {
+        id: "C36",
+        name: "漏扫报告转化",
+        calls: 2876,
+        successRate: 96.5,
+      },
+      {
+        id: "C37",
+        name: "配置文件检查",
+        calls: 1987,
+        successRate: 95.8,
+      },
+      {
+        id: "C38",
+        name: "容器镜像瘦身",
+        calls: 3245,
+        successRate: 98.3,
+      },
+    ],
+  },
+  {
+    title: "第八阶段：交付实施与协同",
+    icon: Shirt,
+    color: "#8b5cf6",
+    bgColor: "from-[#8b5cf6]/10 to-[#7c3aed]/10",
+    tags: [] as string[],
+    components: [
+      {
+        id: "C39",
+        name: "项目汇报美化",
+        calls: 2654,
+        successRate: 97.6,
+      },
+      {
+        id: "C40",
+        name: "硬件日志诊断",
+        calls: 1876,
+        successRate: 96.2,
+      },
+      {
+        id: "C41",
+        name: "验收单据生成",
+        calls: 1234,
+        successRate: 95.5,
+      },
+      {
+        id: "C42",
+        name: "操作手册生成",
+        calls: 3421,
+        successRate: 98.7,
+      },
+      {
+        id: "C43",
+        name: "敏捷回顾总结",
+        calls: 2134,
+        successRate: 96.8,
+      },
+      {
+        id: "C44",
+        name: "研发效能分析",
+        calls: 1543,
+        successRate: 94.9,
+      },
+      {
+        id: "C45",
+        name: "团队知识库问答",
+        calls: 2987,
+        successRate: 97.5,
+      },
+    ],
+  },
+  {
+    title: "第九阶段：系统扩展底座",
+    icon: Server,
+    color: "#3182ce",
+    bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
+    tags: ["月热门", "推荐"] as string[],
+    components: [
+      {
+        id: "C46",
+        name: "多模型路由网关",
+        calls: 5432,
+        successRate: 99.2,
+      },
+      {
+        id: "C47",
+        name: "全局视觉内核",
+        calls: 4321,
+        successRate: 98.9,
+      },
+      {
+        id: "C48",
+        name: "工作流编排器",
+        calls: 3654,
+        successRate: 97.8,
+      },
+      {
+        id: "C49",
+        name: "脚本 UI 化工具",
+        calls: 2876,
+        successRate: 96.5,
+      },
+      {
+        id: "C50",
+        name: "本地向量数据库",
+        calls: 2134,
+        successRate: 98.1,
+      },
+      {
+        id: "C51",
+        name: "授权与计费中心",
+        calls: 1765,
+        successRate: 95.8,
+      },
+      {
+        id: "C52",
+        name: "沙箱隔离环境",
+        calls: 2345,
+        successRate: 97.2,
+      },
+    ],
+  },
+  {
+    title: "第十阶段：交付与可视化",
+    icon: MonitorPlay,
+    color: "#10b981",
+    bgColor: "from-[#10b981]/10 to-[#059669]/10",
+    tags: ["周热门"] as string[],
+    components: [
+      {
+        id: "C53",
+        name: "架构可视化渲染",
+        calls: 3987,
+        successRate: 98.6,
+      },
     ],
   },
 ];
+
+// 转换为组件阶段数据
+const componentStages: ComponentStage[] = componentStagesData.map(
+  (stage: ComponentStageData) => ({
+    icon: <stage.icon className="w-5 h-5" />,
+    name: stage.title.split("：")[1] || stage.title,
+    description: "",
+    count: stage.components.length,
+    color: stage.color,
+    bgColor: stage.bgColor,
+    tags: stage.tags,
+    components: stage.components.map((comp) => ({
+      name: comp.name,
+      calls: comp.calls,
+      isHot: Boolean(comp.calls && comp.calls > 3000),
+      isNew: Boolean(
+        comp.id.startsWith("C") && parseInt(comp.id.substring(1)) > 40,
+      ),
+      isRecommended: Boolean(comp.successRate && comp.successRate > 98),
+    })),
+  }),
+);
 
 export default function WorkspaceHub() {
   const router = useRouter();
@@ -332,7 +762,8 @@ export default function WorkspaceHub() {
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                  团队协作工作区，支持成员管理、资源共享，解锁全量 16 个高阶组件与完整业务流程
+                  团队协作工作区，支持成员管理、资源共享，解锁全量 16
+                  个高阶组件与完整业务流程
                 </p>
                 {enterpriseWorkspace && (
                   <div className="flex items-center gap-3 text-xs text-slate-500 mb-2">
@@ -392,10 +823,10 @@ export default function WorkspaceHub() {
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800">
-                    Studio 组件库
+                    舟坊空间组件库
                   </h2>
                   <p className="text-sm text-slate-600">
-                    按项目阶段组织的 16 个高阶组件，覆盖软件开发全流程
+                    按项目阶段组织的 53 个高阶组件，覆盖软件开发全流程
                   </p>
                 </div>
               </div>
@@ -419,7 +850,7 @@ export default function WorkspaceHub() {
 
             {/* 组件阶段展示 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {componentStages.map((stage, index) => (
+              {componentStages.slice(0, 3).map((stage, index) => (
                 <div
                   key={stage.name}
                   onClick={() => handleGoToStage(index)}
@@ -436,9 +867,7 @@ export default function WorkspaceHub() {
                         boxShadow: `0 4px 12px ${stage.color}30`,
                       }}
                     >
-                      <div style={{ color: stage.color }}>
-                        {stage.icon}
-                      </div>
+                      <div style={{ color: stage.color }}>{stage.icon}</div>
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -486,50 +915,59 @@ export default function WorkspaceHub() {
 
                   {/* 组件列表 */}
                   <div className="space-y-2 mt-3">
-                    {stage.components.slice(0, 4).map((component, idx) => (
+                    {stage.components.slice(0, 5).map((component, idx) => (
                       <div
-                        key={component.name}
-                        className="group/component relative flex items-center justify-between p-2 bg-slate-50 hover:bg-white rounded-lg border border-slate-200 transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5"
+                        key={`${stage.name}-${component.name}-${idx}`}
+                        className="group/component relative flex items-center justify-between p-2.5 hover:bg-white/60 rounded-lg transition-all cursor-pointer"
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           {/* 组件名称 */}
-                          <span className="text-[10px] font-medium text-slate-700 truncate">
+                          <span className="text-xs font-medium text-slate-700 truncate">
                             {component.name}
                           </span>
                           {/* 组件标识 */}
-                          <div className="flex items-center gap-0.5 flex-shrink-0">
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             {component.isHot && (
-                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-[#ff6b6b] to-[#ff8787] rounded-full shadow-sm" title="热门组件">
-                                <Flame className="w-2 h-2 text-white" />
+                              <span
+                                className="inline-flex items-center justify-center w-4 h-4 bg-gradient-to-br from-[#ff6b6b] to-[#ff8787] rounded-full shadow-sm"
+                                title="热门组件"
+                              >
+                                <Flame className="w-2.5 h-2.5 text-white" />
                               </span>
                             )}
                             {component.isNew && (
-                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-[#10b981] to-[#059669] rounded-full shadow-sm" title="新上架">
-                                <Zap className="w-2 h-2 text-white" />
+                              <span
+                                className="inline-flex items-center justify-center w-4 h-4 bg-gradient-to-br from-[#10b981] to-[#059669] rounded-full shadow-sm"
+                                title="新上架"
+                              >
+                                <Zap className="w-2.5 h-2.5 text-white" />
                               </span>
                             )}
                             {component.isRecommended && (
-                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-[#3182ce] to-[#2563eb] rounded-full shadow-sm" title="推荐">
-                                <Star className="w-2 h-2 text-white" />
+                              <span
+                                className="inline-flex items-center justify-center w-4 h-4 bg-gradient-to-br from-[#3182ce] to-[#2563eb] rounded-full shadow-sm"
+                                title="推荐"
+                              >
+                                <Star className="w-2.5 h-2.5 text-white" />
                               </span>
                             )}
                           </div>
                         </div>
                         {/* 调用次数 */}
                         {component.calls && (
-                          <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                            <span className="text-[9px] font-bold text-slate-500">
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                            <span className="text-xs font-bold text-slate-500">
                               {component.calls.toLocaleString()}
                             </span>
-                            <span className="text-[8px] text-slate-400">次</span>
+                            <span className="text-xs text-slate-400">次</span>
                           </div>
                         )}
                       </div>
                     ))}
-                    {stage.components.length > 4 && (
+                    {stage.components.length > 5 && (
                       <div className="flex items-center justify-center p-2 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-                        <span className="text-[10px] font-medium text-slate-500">
-                          +{stage.components.length - 4} 更多组件
+                        <span className="text-xs font-medium text-slate-500">
+                          +{stage.components.length - 5} 更多组件
                         </span>
                       </div>
                     )}

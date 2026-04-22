@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         email: true,
         avatar: true,
         phone: true,
+        role: true, // 添加角色字段
       },
     });
 
@@ -41,13 +42,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 返回用户信息
+    // 返回用户信息（包含角色）
     return NextResponse.json({
       user: {
         id: user.id,
         name: user.name || user.phone || user.email,
         email: user.email,
         avatar: user.avatar,
+        role: user.role, // 添加角色信息
       },
     });
   } catch (error) {

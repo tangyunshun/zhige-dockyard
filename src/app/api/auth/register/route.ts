@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
           id: true,
           phone: true,
           name: true,
+          email: true,
+          role: true,
         },
       });
       
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json({
         success: true,
-        message: "注册成功",
+        message: "注册成功，请登录",
         user: {
           id: user.id,
           phone: user.phone,
@@ -140,6 +142,8 @@ export async function POST(request: NextRequest) {
           id: true,
           phone: true,
           name: true,
+          email: true,
+          role: true,
         },
       });
       
@@ -177,7 +181,7 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json({
         success: true,
-        message: "注册成功",
+        message: "注册成功，请登录",
         user: {
           id: user.id,
           phone: user.phone,
@@ -188,7 +192,7 @@ export async function POST(request: NextRequest) {
           name: workspace.name,
           type: workspace.type,
         },
-        redirectUrl: "/workspace-hub",
+        redirectUrl: "/auth/login",
       });
       
     } else if (accountType === "email") {
@@ -254,6 +258,7 @@ export async function POST(request: NextRequest) {
           phone: true,
           name: true,
           email: true,
+          role: true,
         },
       });
       
@@ -291,7 +296,7 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json({
         success: true,
-        message: "注册成功",
+        message: "注册成功，请登录",
         user: {
           id: user.id,
           phone: user.phone,
@@ -303,7 +308,7 @@ export async function POST(request: NextRequest) {
           name: workspace.name,
           type: workspace.type,
         },
-        redirectUrl: "/workspace-hub",
+        redirectUrl: "/auth/login",
       });
     } else {
       return NextResponse.json(

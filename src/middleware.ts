@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import prisma from "@/lib/prisma";
 
 const PUBLIC_FILES = ["/favicon.svg", "/_next/static", "/_next/image", "/init"];
 
 const AUTH_ROUTES = ["/auth/login", "/auth/register", "/auth/forgot-password"];
-const PROTECTED_ROUTES = ["/dashboard", "/admin", "/settings", "/profile"];
+const PROTECTED_ROUTES = ["/dashboard", "/admin", "/settings", "/profile", "/workspace-hub", "/studio"];
 const SKIP_WORKSPACE_HUB_ROUTES = ["/workspace-hub"];
 
 export async function middleware(request: NextRequest) {
@@ -17,21 +16,6 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // 检查系统是否需要初始化
-    const userCount = await prisma.user.count();
-
-    if (userCount === 0) {
-      // 系统未初始化，重定向到初始化页面
-      if (pathname !== "/init") {
-        return NextResponse.redirect(new URL("/init", request.url));
-      }
-    } else {
-      // 系统已初始化，禁止访问初始化页面
-      if (pathname === "/init") {
-        return NextResponse.redirect(new URL("/auth/login", request.url));
-      }
-    }
-
     // 检查认证状态
     const token = request.cookies.get("auth_token")?.value;
     const isLoggedIn = !!token;
@@ -50,7 +34,7 @@ export async function middleware(request: NextRequest) {
     // 认证路由无需登录即可访问
     if (AUTH_ROUTES.some((route) => pathname.startsWith(route))) {
       if (isLoggedIn) {
-        return NextResponse.redirect(new URL("/dashboard", request.url));
+        return NextResponse.redirect(new URL("/workspace-hub", request.url));
       }
       return NextResponse.next();
     }
