@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Bell,
@@ -65,6 +65,29 @@ import {
   CreditCard,
   FolderLock,
   MonitorPlay,
+  Star,
+  Clock,
+  Flame,
+  CheckCircle,
+  X,
+  ExternalLink,
+  BookOpen,
+  HelpCircle,
+  Filter,
+  SortAsc,
+  SortDesc,
+  Trash2,
+  ChevronRight,
+  BarChart3,
+  Calendar,
+  Zap,
+  Bookmark,
+  Share2,
+  Download,
+  Eye,
+  ThumbsUp,
+  MessageCircle,
+  Info,
 } from "lucide-react";
 
 // 53 个核心组件完整数据 - 按 10 大软件工程阶段分组
@@ -176,11 +199,166 @@ const componentStages = [
 
 const categories = ["全部", "分析类", "生成类", "工具类"];
 
-export default function StudioPage() {
-  const [searchQuery, setSearchQuery] = useState("");
+// 热门搜索关键词
+const hotSearches = ["PRD 文档", "ER 图", "代码 Diff", "标书解析", "SQL 优化", "CSS 净化", "API 测试"];
 
+// 组件详情页数据结构
+interface ComponentDetail {
+  id: string;
+  name: string;
+  description: string;
+  fullDescription: string;
+  usage: string;
+  apiDoc: string;
+  faq: Array<{ q: string; a: string }>;
+}
+
+// 组件详情数据
+const componentDetails: Record<string, ComponentDetail> = {
+  "C01": {
+    id: "C01",
+    name: "RFP 标书偏离表极速拆解器",
+    description: "解析长篇招标文件，自动提取资质要求与明标暗坑",
+    fullDescription: "本组件采用先进的 NLP 技术，能够快速解析数百页的招标文件，自动识别并提取关键信息。支持 PDF、Word、Excel 等多种格式，准确率高达 98% 以上。",
+    usage: "1. 上传招标文件（支持 PDF/Word/Excel）\n2. 选择解析模式（快速/深度）\n3. 点击'开始解析'按钮\n4. 查看提取结果并导出",
+    apiDoc: "输入参数：\n- file: File (招标文件)\n- mode: 'fast' | 'deep' (解析模式)\n\n返回结果：\n- requirements: 资质要求列表\n- risks: 风险提示列表\n- deviations: 偏离表数据",
+    faq: [
+      { q: "支持哪些文件格式？", a: "支持 PDF、Word (.docx)、Excel (.xlsx) 格式。" },
+      { q: "解析需要多长时间？", a: "根据文件大小，通常 100 页文档需要 30-60 秒。" },
+      { q: "准确率如何？", a: "在标准格式下准确率可达 98%，复杂格式建议人工复核。" },
+    ],
+  },
+};
+
+export default function StudioPage() {
+  // 搜索相关
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
+  
+  // 筛选和排序
+  const [selectedStage, setSelectedStage] = useState<number>(-1); // -1 表示全部
+  const [sortBy, setSortBy] = useState<"default" | "hot" | "success" | "new">("default");
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // 收藏和最近使用
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [recentlyUsed, setRecentlyUsed] = useState<string[]>([]);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  
+  // 组件详情
+  const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
+  
+  // 视图和引导
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [showGuide, setShowGuide] = useState(false);
+  const [isFirstVisit, setIsFirstVisit] = useState(true);
+  
+  // 批量操作
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+  
   // 统计总组件数
   const totalComponents = componentStages.reduce((sum, stage) => sum + stage.components.length, 0);
+  
+  // 加载用户偏好设置
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem("studio_favorites");
+    const savedRecentlyUsed = localStorage.getItem("studio_recently_used");
+    const savedViewMode = localStorage.getItem("studio_view_mode") as "grid" | "list";
+    const hasVisited = localStorage.getItem("studio_has_visited");
+    
+    if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
+    if (savedRecentlyUsed) setRecentlyUsed(JSON.parse(savedRecentlyUsed));
+    if (savedViewMode) setViewMode(savedViewMode);
+    if (hasVisited) setIsFirstVisit(false);
+    
+    // 首次访问显示引导
+    if (!hasVisited) {
+      setShowGuide(true);
+      localStorage.setItem("studio_has_visited", "true");
+    }
+  }, []);
+  
+  // 保存用户偏好
+  useEffect(() => {
+    localStorage.setItem("studio_favorites", JSON.stringify(favorites));
+    localStorage.setItem("studio_recently_used", JSON.stringify(recentlyUsed));
+    localStorage.setItem("studio_view_mode", viewMode);
+  }, [favorites, recentlyUsed, viewMode]);
+  
+  // 处理搜索
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() && !searchHistory.includes(query.trim())) {
+      setSearchHistory([query.trim(), ...searchHistory].slice(0, 10));
+    }
+  };
+  
+  // 清除搜索历史
+  const clearSearchHistory = () => {
+    setSearchHistory([]);
+  };
+  
+  // 切换收藏
+  const toggleFavorite = (componentId: string) => {
+    if (favorites.includes(componentId)) {
+      setFavorites(favorites.filter(id => id !== componentId));
+    } else {
+      setFavorites([...favorites, componentId]);
+    }
+  };
+  
+  // 添加到最近使用
+  const addToRecentlyUsed = (componentId: string) => {
+    setRecentlyUsed([componentId, ...recentlyUsed.filter(id => id !== componentId)].slice(0, 10));
+  };
+  
+  // 打开组件详情
+  const openComponentDetail = (componentId: string) => {
+    setSelectedComponent(componentId);
+    setShowDetail(true);
+    addToRecentlyUsed(componentId);
+  };
+  
+  // 使用组件
+  const useComponent = (componentId: string) => {
+    addToRecentlyUsed(componentId);
+    // TODO: 跳转到组件使用页面
+    alert(`即将使用组件：${componentId}`);
+  };
+  
+  // 切换选择模式
+  const toggleSelectMode = () => {
+    setSelectMode(!selectMode);
+    setSelectedComponents([]);
+  };
+  
+  // 切换组件选择
+  const toggleComponentSelection = (componentId: string) => {
+    if (selectedComponents.includes(componentId)) {
+      setSelectedComponents(selectedComponents.filter(id => id !== componentId));
+    } else {
+      setSelectedComponents([...selectedComponents, componentId]);
+    }
+  };
+  
+  // 批量收藏
+  const batchFavorite = () => {
+    setFavorites([...new Set([...favorites, ...selectedComponents])]);
+    setSelectedComponents([]);
+    setSelectMode(false);
+  };
+  
+  // 获取热门标签
+  const getComponentTags = (component: any) => {
+    const tags = [];
+    if (component.calls > 3000) tags.push({ type: "hot", text: "周热门" });
+    if (component.calls > 5000) tags.push({ type: "superhot", text: "月热门" });
+    if (component.successRate > 99) tags.push({ type: "quality", text: "高质量" });
+    return tags;
+  };
 
   return (
     <div className="min-h-screen bg-[#f0f8ff]">
@@ -217,11 +395,102 @@ export default function StudioPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="搜索组件..."
+              placeholder="搜索组件、阶段、功能..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-64 h-9 pl-10 pr-4 rounded-lg border border-[#e2e8f0] bg-white/80 text-sm text-slate-800 placeholder-slate-400 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 transition-all outline-none"
+              onChange={(e) => handleSearch(e.target.value)}
+              onFocus={() => setShowSearchHistory(true)}
+              onBlur={() => setTimeout(() => setShowSearchHistory(false), 200)}
+              className="w-72 h-9 pl-10 pr-4 rounded-lg border border-[#e2e8f0] bg-white/80 text-sm text-slate-800 placeholder-slate-400 focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 transition-all outline-none"
             />
+            
+            {/* 搜索历史和热门搜索下拉 */}
+            {showSearchHistory && (searchHistory.length > 0 || searchQuery.trim()) && (
+              <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-[#e2e8f0] p-4 z-50">
+                {/* 热门搜索 */}
+                {!searchQuery.trim() && searchHistory.length > 0 && (
+                  <>
+                    <div className="mb-3">
+                      <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1">
+                        <Flame className="w-3 h-3 text-[#f59e0b]" />
+                        热门搜索
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {hotSearches.slice(0, 5).map((term, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleSearch(term)}
+                            className="px-2 py-1 bg-[#f59e0b]/10 text-[#f59e0b] text-xs font-bold rounded-md hover:bg-[#f59e0b]/20 transition-all"
+                          >
+                            {term}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="border-t border-[#e2e8f0] pt-3">
+                      <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          搜索历史
+                        </span>
+                        <button
+                          onClick={clearSearchHistory}
+                          className="text-slate-400 hover:text-[#ef4444] transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        {searchHistory.slice(0, 5).map((term, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleSearch(term)}
+                            className="w-full text-left px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100 rounded transition-all flex items-center justify-between"
+                          >
+                            <span className="flex items-center gap-2">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              {term}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+                
+                {/* 搜索结果预览 */}
+                {searchQuery.trim() && (
+                  <div>
+                    <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">
+                      搜索结果
+                    </div>
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {componentStages.flatMap(s => s.components).filter(c => 
+                        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        c.description.toLowerCase().includes(searchQuery.toLowerCase())
+                      ).slice(0, 8).map((component) => (
+                        <button
+                          key={component.id}
+                          onClick={() => {
+                            openComponentDetail(component.id);
+                            setShowSearchHistory(false);
+                          }}
+                          className="w-full text-left px-2 py-1.5 hover:bg-slate-100 rounded transition-all"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">{component.emoji}</span>
+                            <div>
+                              <div className="text-sm font-bold text-slate-800">{component.name}</div>
+                              <div className="text-xs text-slate-500 truncate">{component.description}</div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <button className="relative w-9 h-9 rounded-lg bg-white/80 border border-[#e2e8f0] flex items-center justify-center hover:border-[#3182ce] transition-all">
             <Bell className="w-5 h-5 text-slate-600" />
@@ -235,15 +504,216 @@ export default function StudioPage() {
 
       {/* 2. 主内容区 - 53 个组件矩阵墙 */}
       <main className="relative z-0 p-6">
-        {/* 顶部标题区 */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <Box className="w-7 h-7 text-[#3182ce]" />
-            <h1 className="text-2xl font-black text-slate-800">Studio 组件库</h1>
+        {/* 统计面板 */}
+        <div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* 总组件数 */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#e2e8f0]/80 shadow-lg">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center">
+                <Box className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xs font-bold text-[#3182ce] bg-[#3182ce]/10 px-2 py-1 rounded-full">全部</span>
+            </div>
+            <div className="text-2xl font-black text-slate-800 mb-1">{totalComponents}</div>
+            <div className="text-xs text-slate-500 font-bold">总组件数</div>
           </div>
-          <p className="text-sm text-slate-600">
-            全量 <span className="font-bold text-[#3182ce]">{totalComponents}</span> 个核心组件，覆盖软件工程全生命周期
-          </p>
+          
+          {/* 我的收藏 */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#e2e8f0]/80 shadow-lg">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center">
+                <Star className="w-5 h-5 text-white" />
+              </div>
+              <button 
+                onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                className={`text-xs font-bold px-2 py-1 rounded-full transition-all ${showFavoritesOnly ? 'bg-[#f59e0b] text-white' : 'bg-[#f59e0b]/10 text-[#f59e0b]'}`}
+              >
+                {showFavoritesOnly ? '已启用' : '查看全部'}
+              </button>
+            </div>
+            <div className="text-2xl font-black text-slate-800 mb-1">{favorites.length}</div>
+            <div className="text-xs text-slate-500 font-bold">我的收藏</div>
+          </div>
+          
+          {/* 最近使用 */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#e2e8f0]/80 shadow-lg">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center">
+                <Clock className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xs font-bold text-[#10b981] bg-[#10b981]/10 px-2 py-1 rounded-full">Top 10</span>
+            </div>
+            <div className="text-2xl font-black text-slate-800 mb-1">{recentlyUsed.length}</div>
+            <div className="text-xs text-slate-500 font-bold">最近使用</div>
+          </div>
+          
+          {/* 今日调用 */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#e2e8f0]/80 shadow-lg">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xs font-bold text-[#8b5cf6] bg-[#8b5cf6]/10 px-2 py-1 rounded-full">+12.5%</span>
+            </div>
+            <div className="text-2xl font-black text-slate-800 mb-1">12,847</div>
+            <div className="text-xs text-slate-500 font-bold">今日调用</div>
+          </div>
+        </div>
+        
+        {/* 最近使用快速访问 */}
+        {recentlyUsed.length > 0 && (
+          <div className="mb-8 bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#e2e8f0]/80 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-[#10b981]" />
+                <h3 className="text-sm font-black text-slate-800">最近使用</h3>
+              </div>
+              <button 
+                onClick={() => setRecentlyUsed([])}
+                className="text-xs text-slate-500 hover:text-[#ef4444] transition-all flex items-center gap-1"
+              >
+                <Trash2 className="w-3 h-3" />
+                清空
+              </button>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {recentlyUsed.slice(0, 10).map((componentId) => {
+                const component = componentStages.flatMap(s => s.components).find(c => c.id === componentId);
+                if (!component) return null;
+                return (
+                  <button
+                    key={componentId}
+                    onClick={() => openComponentDetail(componentId)}
+                    className="flex-shrink-0 px-3 py-2 bg-gradient-to-r from-[#10b981]/10 to-[#059669]/10 border border-[#10b981]/20 rounded-lg hover:border-[#10b981]/40 transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{component.emoji}</span>
+                      <div className="text-left">
+                        <div className="text-[11px] font-black text-slate-800">{component.name}</div>
+                        <div className="text-[9px] text-slate-500">{component.calls.toLocaleString()} 次调用</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 工具栏 - 筛选和排序 */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* 阶段筛选 */}
+            <div className="relative">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`h-9 px-4 rounded-lg border flex items-center gap-2 text-sm font-bold transition-all ${showFilters ? 'bg-[#3182ce] text-white border-[#3182ce]' : 'bg-white/80 text-slate-700 border-[#e2e8f0] hover:border-[#3182ce]'}`}
+              >
+                <Filter className="w-4 h-4" />
+                筛选
+                <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {/* 筛选下拉菜单 */}
+              {showFilters && (
+                <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-[#e2e8f0] p-4 z-50">
+                  <div className="mb-4">
+                    <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">按阶段筛选</div>
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setSelectedStage(-1)}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${selectedStage === -1 ? 'bg-[#3182ce] text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                      >
+                        全部阶段
+                      </button>
+                      {componentStages.map((stage, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setSelectedStage(index)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${selectedStage === index ? 'bg-[#3182ce] text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                        >
+                          {stage.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">显示选项</div>
+                    <button
+                      onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center justify-between ${showFavoritesOnly ? 'bg-[#f59e0b] text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Star className="w-4 h-4" />
+                        只看收藏
+                      </span>
+                      {showFavoritesOnly && <CheckCircle className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* 排序 */}
+            <div className="relative">
+              <button
+                className="h-9 px-4 rounded-lg border border-[#e2e8f0] bg-white/80 flex items-center gap-2 text-sm font-bold hover:border-[#3182ce] transition-all"
+                onClick={() => setSortBy(sortBy === "default" ? "hot" : sortBy === "hot" ? "success" : sortBy === "success" ? "new" : "default")}
+              >
+                {sortBy === "default" && <><SortAsc className="w-4 h-4" />默认排序</>}
+                {sortBy === "hot" && <><Flame className="w-4 h-4" />按热度</>}
+                {sortBy === "success" && <><CheckCircle className="w-4 h-4" />按成功率</>}
+                {sortBy === "new" && <><SortDesc className="w-4 h-4" />按新旧</>}
+              </button>
+            </div>
+            
+            {/* 批量操作 */}
+            <button
+              onClick={toggleSelectMode}
+              className={`h-9 px-4 rounded-lg border flex items-center gap-2 text-sm font-bold transition-all ${selectMode ? 'bg-[#8b5cf6] text-white border-[#8b5cf6]' : 'bg-white/80 text-slate-700 border-[#e2e8f0] hover:border-[#8b5cf6]'}`}
+            >
+              {selectMode ? (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  已选择 {selectedComponents.length} 个
+                </>
+              ) : (
+                <>
+                  <Bookmark className="w-4 h-4" />
+                  批量操作
+                </>
+              )}
+            </button>
+            
+            {selectMode && (
+              <button
+                onClick={batchFavorite}
+                className="h-9 px-4 rounded-lg bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
+              >
+                <Star className="w-4 h-4" />
+                批量收藏
+              </button>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* 视图切换 */}
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`p-1.5 rounded ${viewMode === "grid" ? "bg-white shadow" : "hover:bg-slate-200"}`}
+              >
+                <Grid3X3 className="w-4 h-4 text-slate-600" />
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-1.5 rounded ${viewMode === "list" ? "bg-white shadow" : "hover:bg-slate-200"}`}
+              >
+                <List className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* 按阶段分组的组件矩阵 */}
@@ -315,6 +785,197 @@ export default function StudioPage() {
           </div>
         </div>
       </main>
+
+      {/* 组件详情弹窗 */}
+      {showDetail && selectedComponent && componentDetails[selectedComponent] && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowDetail(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {/* 弹窗头部 */}
+            <div className="sticky top-0 bg-white border-b border-[#e2e8f0] px-6 py-4 flex items-center justify-between z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center">
+                  <span className="text-2xl">{componentDetails[selectedComponent].name.charAt(0)}</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-800">{componentDetails[selectedComponent].name}</h2>
+                  <p className="text-xs text-slate-500">{componentDetails[selectedComponent].description}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDetail(false)}
+                className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+              >
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+            
+            {/* 弹窗内容 */}
+            <div className="p-6 space-y-6">
+              {/* 功能说明 */}
+              <div>
+                <h3 className="text-sm font-black text-slate-800 mb-2 flex items-center gap-2">
+                  <Info className="w-4 h-4 text-[#3182ce]" />
+                  功能说明
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  {componentDetails[selectedComponent].fullDescription}
+                </p>
+              </div>
+              
+              {/* 使用教程 */}
+              <div>
+                <h3 className="text-sm font-black text-slate-800 mb-2 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-[#10b981]" />
+                  使用教程
+                </h3>
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <pre className="text-xs text-slate-700 whitespace-pre-wrap font-mono">
+                    {componentDetails[selectedComponent].usage}
+                  </pre>
+                </div>
+              </div>
+              
+              {/* API 文档 */}
+              <div>
+                <h3 className="text-sm font-black text-slate-800 mb-2 flex items-center gap-2">
+                  <Code className="w-4 h-4 text-[#8b5cf6]" />
+                  API 文档
+                </h3>
+                <div className="bg-slate-900 rounded-lg p-4">
+                  <pre className="text-xs text-white whitespace-pre-wrap font-mono">
+                    {componentDetails[selectedComponent].apiDoc}
+                  </pre>
+                </div>
+              </div>
+              
+              {/* FAQ */}
+              <div>
+                <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
+                  <HelpCircle className="w-4 h-4 text-[#f59e0b]" />
+                  常见问题
+                </h3>
+                <div className="space-y-3">
+                  {componentDetails[selectedComponent].faq.map((item, index) => (
+                    <div key={index} className="bg-white border border-[#e2e8f0] rounded-lg p-4">
+                      <div className="flex items-start gap-2 mb-2">
+                        <HelpCircle className="w-4 h-4 text-[#f59e0b] flex-shrink-0 mt-0.5" />
+                        <p className="text-sm font-bold text-slate-800">{item.q}</p>
+                      </div>
+                      <p className="text-xs text-slate-600 ml-6">{item.a}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* 操作按钮 */}
+              <div className="flex items-center justify-between pt-4 border-t border-[#e2e8f0]">
+                <button
+                  onClick={() => toggleFavorite(selectedComponent)}
+                  className={`px-4 py-2 rounded-lg border flex items-center gap-2 text-sm font-bold transition-all ${favorites.includes(selectedComponent) ? 'bg-[#f59e0b] text-white border-[#f59e0b]' : 'bg-white text-slate-700 border-[#e2e8f0] hover:border-[#f59e0b]'}`}
+                >
+                  <Star className="w-4 h-4" />
+                  {favorites.includes(selectedComponent) ? '已收藏' : '添加收藏'}
+                </button>
+                
+                <div className="flex items-center gap-3">
+                  <button className="px-4 py-2 rounded-lg border border-[#e2e8f0] flex items-center gap-2 text-sm font-bold text-slate-700 hover:border-[#3182ce] transition-all">
+                    <Share2 className="w-4 h-4" />
+                    分享
+                  </button>
+                  <button
+                    onClick={() => useComponent(selectedComponent)}
+                    className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
+                  >
+                    <Zap className="w-4 h-4" />
+                    立即使用
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 新手引导弹窗 */}
+      {showGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 text-white" />
+                  </div>
+                  <h2 className="text-xl font-black text-slate-800">欢迎使用 Studio 组件库</h2>
+                </div>
+                <button
+                  onClick={() => setShowGuide(false)}
+                  className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+                >
+                  <X className="w-5 h-5 text-slate-600" />
+                </button>
+              </div>
+              
+              <div className="space-y-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#3182ce]/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-black text-[#3182ce]">1</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 mb-1">浏览组件</h3>
+                    <p className="text-xs text-slate-600">53 个核心组件按 10 大软件工程阶段分类，快速找到所需工具</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#10b981]/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-black text-[#10b981]">2</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 mb-1">搜索与筛选</h3>
+                    <p className="text-xs text-slate-600">使用搜索框、阶段筛选、排序等功能快速定位组件</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#f59e0b]/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-black text-[#f59e0b]">3</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 mb-1">收藏与使用</h3>
+                    <p className="text-xs text-slate-600">点击卡片查看详情，收藏常用组件，一键启动使用</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-black text-[#8b5cf6]">4</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 mb-1">批量操作</h3>
+                    <p className="text-xs text-slate-600">点击"批量操作"按钮，可多选组件进行批量收藏等操作</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setShowGuide(false)}
+                  className="text-sm text-slate-600 hover:text-slate-800 transition-all"
+                >
+                  跳过引导
+                </button>
+                <button
+                  onClick={() => setShowGuide(false)}
+                  className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-sm font-bold hover:shadow-lg transition-all"
+                >
+                  开始使用
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 自定义滚动条样式和矩阵卡片样式 */}
       <style jsx global>{`
