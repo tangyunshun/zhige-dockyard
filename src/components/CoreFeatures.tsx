@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   FileSearch,
   GitMerge,
@@ -16,6 +17,40 @@ import {
 
 export default function CoreFeatures() {
   const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 检查登录状态
+    checkLoginStatus();
+  }, []);
+
+  const checkLoginStatus = async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        setIsLoggedIn(true);
+      } else {
+        setIsLoggedIn(false);
+      }
+    } catch (error) {
+      setIsLoggedIn(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewComponents = () => {
+    if (loading) return;
+    
+    if (isLoggedIn) {
+      // 已登录：跳转到 Studio 组件库页面
+      router.push("/studio");
+    } else {
+      // 未登录：跳转到登录页面
+      router.push("/auth/login");
+    }
+  };
 
   return (
     <>
@@ -38,11 +73,23 @@ export default function CoreFeatures() {
 
             <div className="mt-8 flex justify-center md:absolute md:right-0 md:bottom-1">
               <button
-                onClick={() => router.push("/components")}
-                className="text-sm font-semibold text-[#2b6cb0] inline-flex items-center gap-1 hover:text-[#2c5282] transition-colors group cursor-pointer bg-transparent border-none p-0"
+                onClick={handleViewComponents}
+                disabled={loading}
+                className={`text-sm font-semibold text-[#2b6cb0] inline-flex items-center gap-1 hover:text-[#2c5282] transition-colors group cursor-pointer bg-transparent border-none p-0 ${
+                  loading ? "opacity-50 cursor-not-allowed" : ""
+                }`}
               >
-                查看完整组件库{" "}
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                {loading ? (
+                  <>
+                    <span className="inline-block w-3 h-3 border-2 border-[#2b6cb0] border-t-transparent rounded-full animate-spin mr-1"></span>
+                    加载中...
+                  </>
+                ) : (
+                  <>
+                    查看完整组件库{" "}
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
               </button>
             </div>
           </div>
