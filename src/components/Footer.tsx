@@ -1,7 +1,5 @@
 "use client";
 
-import { Hexagon } from "lucide-react";
-
 export default function Footer() {
   return (
     <footer className="bg-slate-50 pt-20 pb-10 border-t border-slate-200">
@@ -10,9 +8,32 @@ export default function Footer() {
           {/* Brand & Contact Icons */}
           <div className="col-span-2">
             <div className="flex items-center gap-2 mb-6">
-              <div className="w-8 h-8 bg-slate-900 flex items-center justify-center rounded-8">
-                <Hexagon className="text-white w-5 h-5" />
-              </div>
+              <svg
+                className="w-8 h-8 flex-shrink-0"
+                viewBox="20 20 160 160"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <defs>
+                  <linearGradient id="footerGradPrimary" x1="0" y1="0" x2="200" y2="200">
+                    <stop offset="0%" stopColor="#3182ce" />
+                    <stop offset="100%" stopColor="#1e3a8a" />
+                  </linearGradient>
+                  <linearGradient id="footerGradLight" x1="200" y1="0" x2="0" y2="200">
+                    <stop offset="0%" stopColor="#60a5fa" />
+                    <stop offset="100%" stopColor="#3182ce" />
+                  </linearGradient>
+                </defs>
+                <path d="M100 20 L25 65 L25 155 L100 105 Z" fill="url(#footerGradPrimary)" />
+                <path
+                  d="M25 155 L100 195 L175 155 L100 105 Z"
+                  fill="#1e40af"
+                  opacity={0.8}
+                />
+                <path d="M100 20 L175 65 L175 115 L100 155 Z" fill="url(#footerGradLight)" />
+                <circle cx="100" cy="105" r="14" fill="#bfdbfe" />
+                <circle cx="100" cy="105" r="6" fill="#ffffff" />
+              </svg>
               <span className="text-lg font-bold">知阁·舟坊</span>
             </div>
             <p className="text-sm text-slate-400 max-w-xs leading-relaxed mb-8">
