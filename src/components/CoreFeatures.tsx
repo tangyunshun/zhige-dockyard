@@ -47,8 +47,8 @@ export default function CoreFeatures() {
       // 已登录：跳转到 Studio 组件库页面
       router.push("/studio");
     } else {
-      // 未登录：跳转到登录页面
-      router.push("/auth/login");
+      // 未登录：跳转到登录页面并携带回调参数
+      router.push(`/auth/login?redirect=${encodeURIComponent("/studio")}`);
     }
   };
 

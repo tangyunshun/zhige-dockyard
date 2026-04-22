@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   Sparkles,
   CornerDownLeft,
@@ -13,11 +14,50 @@ import {
 
 export default function HeroSection() {
   const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    checkLoginStatus();
+  }, []);
+
+  const checkLoginStatus = async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        setIsLoggedIn(true);
+      } else {
+        setIsLoggedIn(false);
+      }
+    } catch (error) {
+      setIsLoggedIn(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNavigate = (targetPath: string) => {
+    if (loading) return;
+    
+    if (isLoggedIn) {
+      router.push(targetPath);
+    } else {
+      // 未登录，跳转到登录页并携带回调参数
+      router.push(`/auth/login?redirect=${encodeURIComponent(targetPath)}`);
+    }
+  };
 
   const handleSuggestionClick = (suggestion: string) => {
-    // 这里可以跳转到相应的功能页面或者填充搜索框
     console.log("Clicked suggestion:", suggestion);
-    router.push("/workbench");
+    // 根据不同的建议跳转到不同的功能页面
+    const targetPaths: Record<string, string> = {
+      "生成 PRD 文档": "/studio",
+      "逆向数据库 ER 图": "/studio",
+      "对比代码 Diff": "/studio",
+      "提取标书偏离表": "/studio",
+    };
+    const targetPath = targetPaths[suggestion] || "/studio";
+    handleNavigate(targetPath);
   };
 
   return (
@@ -60,7 +100,7 @@ export default function HeroSection() {
                 className="w-full px-3 py-2 bg-transparent border-none focus:ring-0 text-slate-700 outline-none text-sm md:text-base"
               />
               <button
-                onClick={() => router.push("/workbench")}
+                onClick={() => handleNavigate("/studio")}
                 className="bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white p-2 rounded-lg hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all cursor-pointer"
               >
                 <CornerDownLeft className="w-4 h-4" />
@@ -427,14 +467,20 @@ export default function HeroSection() {
                   采用 AES-256
                   加密存储，支持私有化部署，通过等保三级认证，全方位守护数据安全。
                 </p>
-                <div className="flex items-center text-[#3182ce] font-semibold text-xs group-hover:translate-x-1 transition-transform">
+                <button 
+                  onClick={() => handleNavigate("/docs")}
+                  className="flex items-center text-[#3182ce] font-semibold text-xs group-hover:translate-x-1 transition-transform cursor-pointer bg-transparent border-none p-0"
+                >
                   了解更多 <ArrowRight className="w-3 h-3 ml-1" />
-                </div>
+                </button>
               </div>
             </div>
 
             {/* Card 2: 自动化流程 */}
-            <div className="group relative bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <button 
+              onClick={() => handleNavigate("/studio")}
+              className="group relative bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer text-left w-full"
+            >
               <div className="absolute top-0 right-0 w-24 h-24 bg-[#ecfdf5] rounded-bl-full -mr-6 -mt-6 transition-transform group-hover:scale-110"></div>
               <div className="relative">
                 <div className="w-12 h-12 bg-[#10b981] rounded-lg flex items-center justify-center mb-4 shadow-md">
@@ -450,10 +496,13 @@ export default function HeroSection() {
                   了解更多 <ArrowRight className="w-3 h-3 ml-1" />
                 </div>
               </div>
-            </div>
+            </button>
 
             {/* Card 3: 效能提升 */}
-            <div className="group relative bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <button 
+              onClick={() => handleNavigate("/studio")}
+              className="group relative bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer text-left w-full"
+            >
               <div className="absolute top-0 right-0 w-24 h-24 bg-[#fffbeb] rounded-bl-full -mr-6 -mt-6 transition-transform group-hover:scale-110"></div>
               <div className="relative">
                 <div className="w-12 h-12 bg-[#f59e0b] rounded-lg flex items-center justify-center mb-4 shadow-md">
@@ -470,10 +519,13 @@ export default function HeroSection() {
                   了解更多 <ArrowRight className="w-3 h-3 ml-1" />
                 </div>
               </div>
-            </div>
+            </button>
 
             {/* Card 4: 全角色覆盖 */}
-            <div className="group relative bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+            <button 
+              onClick={() => handleNavigate("/workspace-hub")}
+              className="group relative bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer text-left w-full"
+            >
               <div className="absolute top-0 right-0 w-24 h-24 bg-[#fef2f2] rounded-bl-full -mr-6 -mt-6 transition-transform group-hover:scale-110"></div>
               <div className="relative">
                 <div className="w-12 h-12 bg-[#ef4444] rounded-lg flex items-center justify-center mb-4 shadow-md">
@@ -489,7 +541,7 @@ export default function HeroSection() {
                   了解更多 <ArrowRight className="w-3 h-3 ml-1" />
                 </div>
               </div>
-            </div>
+            </button>
           </div>
         </div>
       </section>

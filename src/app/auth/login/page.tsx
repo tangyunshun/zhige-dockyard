@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
@@ -31,11 +31,15 @@ type LoginMethod = "password" | "sms";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [loginMethod, setLoginMethod] = useState<LoginMethod>("password");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+
+  // 获取回调参数
+  const redirectPath = searchParams.get("redirect") || "/";
 
   const [formData, setFormData] = useState({
     account: "",
@@ -234,7 +238,7 @@ export default function LoginPage() {
           toast.showToast(
             "sms-code",
             `验证码已发送：${data.debugCode}`,
-            5000 // 显示 5秒
+            5000, // 显示 5秒
           );
         } else {
           toast.success("验证码已发送，请注意查收");
@@ -387,7 +391,8 @@ export default function LoginPage() {
           document.cookie = `auth_token=${data.token}; path=/; max-age=${rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60}`;
         }
         setTimeout(() => {
-          router.push("/");
+          // 登录成功后跳转到回调页面或首页
+          router.push(redirectPath);
         }, 1000);
       } else {
         // 处理各种错误情况
