@@ -727,39 +727,73 @@ export default function StudioPage() {
             </div>
 
             {/* 组件 Grid 容器 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
               {stage.components.map((component) => {
                 const IconComponent = component.icon;
+                const isFavorite = favorites.includes(component.id);
+                
                 return (
                   <div
                     key={component.id}
-                    className="matrix-item min-h-[84px] bg-white/75 backdrop-blur-[12px] rounded-[8px] border border-[#e2e8f0]/60 shadow-sm hover:shadow-xl hover:border-[#3182ce]/40 transition-all duration-200 cursor-pointer group hover:-translate-y-1"
+                    className="matrix-item min-h-[180px] bg-white/90 backdrop-blur-[12px] rounded-[8px] border border-[#e2e8f0]/60 shadow-sm hover:shadow-xl hover:border-[#3182ce]/40 transition-all duration-200 cursor-pointer group hover:-translate-y-1 flex flex-col"
+                    onClick={() => openComponentDetail(component.id)}
                   >
                     {/* 左上角编号 */}
-                    <span className="matrix-tag absolute top-2 left-2 px-1.5 py-0.5 bg-[#3182ce]/10 text-[#3182ce] text-[9px] font-black rounded-[4px]">
+                    <span className="matrix-tag absolute top-2 left-2 px-1.5 py-0.5 bg-[#3182ce]/10 text-[#3182ce] text-[9px] font-black rounded-[4px] z-10">
                       {component.id}
                     </span>
 
+                    {/* 右上角收藏按钮 */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFavorite(component.id);
+                      }}
+                      className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white/90 backdrop-blur-sm border border-[#e2e8f0] flex items-center justify-center hover:border-[#f59e0b] transition-all z-10"
+                    >
+                      <Star className={`w-3.5 h-3.5 ${isFavorite ? 'fill-[#f59e0b] text-[#f59e0b]' : 'text-slate-400'}`} />
+                    </button>
+
                     {/* 内容区 */}
-                    <div className="flex flex-col items-center justify-center h-full px-3 pt-4 pb-3">
-                      {/* 中心 Emoji Icon */}
-                      <div className="text-2xl drop-shadow-sm mb-1">{component.emoji}</div>
+                    <div className="flex flex-col items-center justify-center flex-1 px-3 pt-8 pb-3">
+                      {/* 中心 Icon */}
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 flex items-center justify-center mb-2">
+                        <IconComponent className="w-5 h-5 text-[#3182ce]" />
+                      </div>
                       
                       {/* 组件名称 */}
-                      <div className="text-[11px] font-black text-slate-800 tracking-tight text-center leading-snug mb-1">
+                      <div className="text-[12px] font-black text-slate-800 tracking-tight text-center leading-snug mb-2 line-clamp-2">
                         {component.name}
                       </div>
                       
-                      {/* 组件描述 (Hover 可见) */}
-                      <div className="text-[9px] text-slate-500 text-center mt-1 line-clamp-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      {/* 组件描述 (直接显示) */}
+                      <div className="text-[9px] text-slate-600 text-center leading-relaxed line-clamp-3">
                         {component.description}
                       </div>
                     </div>
 
-                    {/* 底部使用按钮 (Hover 显示) */}
-                    <div className="px-3 pb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <button className="w-full h-6 rounded-[4px] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-[9px] font-bold hover:shadow-md transition-all">
+                    {/* 底部操作按钮 */}
+                    <div className="px-3 pb-3 pt-2 border-t border-[#e2e8f0]/60 flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          useComponent(component.id);
+                        }}
+                        className="flex-1 h-7 rounded-[4px] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-[10px] font-bold hover:shadow-md transition-all flex items-center justify-center gap-1"
+                      >
+                        <Zap className="w-3 h-3" />
                         使用
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // 分享功能
+                          alert(`分享组件：${component.name}`);
+                        }}
+                        className="w-7 h-7 rounded-[4px] bg-white border border-[#e2e8f0] flex items-center justify-center hover:border-[#3182ce] transition-all"
+                        title="分享"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-slate-600" />
                       </button>
                     </div>
                   </div>
