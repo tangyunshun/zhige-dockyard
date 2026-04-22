@@ -745,11 +745,22 @@ export default function StudioPage() {
                 return (
                   <div
                     key={component.id}
-                    className="matrix-item min-h-[180px] bg-white/90 backdrop-blur-[12px] rounded-[8px] border border-[#e2e8f0]/60 shadow-sm hover:shadow-xl hover:border-[#3182ce]/40 transition-all duration-200 cursor-pointer group hover:-translate-y-1 flex flex-col"
+                    className="matrix-item min-h-[220px] bg-white/95 backdrop-blur-[16px] rounded-[12px] border-2 transition-all duration-300 cursor-pointer group hover:-translate-y-2 hover:shadow-2xl flex flex-col relative overflow-hidden"
                     onClick={() => openComponentDetail(component.id)}
+                    style={{
+                      borderColor: `${theme.color}30`,
+                      background: `linear-gradient(135deg, ${theme.color}08 0%, ${theme.color}03 100%)`,
+                      boxShadow: `0 4px 24px -8px ${theme.color}20, inset 0 1px 0 rgba(255,255,255,0.8)`
+                    }}
                   >
                     {/* 左上角编号 */}
-                    <span className="matrix-tag absolute top-2 left-2 px-1.5 py-0.5 bg-[#3182ce]/10 text-[#3182ce] text-[9px] font-black rounded-[4px] z-10">
+                    <span 
+                      className="matrix-tag absolute top-3 left-3 px-2 py-1 text-[10px] font-black rounded-[6px] z-10"
+                      style={{
+                        backgroundColor: `${theme.color}15`,
+                        color: theme.color
+                      }}
+                    >
                       {component.id}
                     </span>
 
@@ -759,39 +770,60 @@ export default function StudioPage() {
                         e.stopPropagation();
                         toggleFavorite(component.id);
                       }}
-                      className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white/90 backdrop-blur-sm border border-[#e2e8f0] flex items-center justify-center hover:border-[#f59e0b] transition-all z-10"
+                      className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border-2 flex items-center justify-center hover:scale-110 transition-all z-10"
+                      style={{ borderColor: `${theme.color}30` }}
                     >
-                      <Star className={`w-3.5 h-3.5 ${isFavorite ? 'fill-[#f59e0b] text-[#f59e0b]' : 'text-slate-400'}`} />
+                      <Star className={`w-4 h-4 ${isFavorite ? 'fill-[#f59e0b] text-[#f59e0b]' : 'text-slate-400'}`} />
                     </button>
 
+                    {/* 背景装饰 */}
+                    <div 
+                      className="absolute -top-20 -right-20 w-40 h-40 rounded-full opacity-20 blur-3xl"
+                      style={{ backgroundColor: theme.color }}
+                    ></div>
+                    <div 
+                      className="absolute -bottom-20 -left-20 w-40 h-40 rounded-full opacity-10 blur-3xl"
+                      style={{ backgroundColor: theme.color }}
+                    ></div>
+
                     {/* 内容区 */}
-                    <div className="flex flex-col items-center justify-center flex-1 px-3 pt-8 pb-3">
+                    <div className="flex flex-col items-center justify-center flex-1 px-4 pt-10 pb-4 relative z-10">
                       {/* 中心 Icon */}
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${theme.bgColor} flex items-center justify-center mb-2`}>
-                      <IconComponent className="w-6 h-6" style={{ color: theme.color }} />
-                    </div>
-                    
-                    {/* 组件名称 */}
-                    <div className="text-[13px] font-black text-slate-800 tracking-tight text-center leading-snug mb-2 line-clamp-2">
-                      {component.name}
-                    </div>
-                    
-                    {/* 组件描述 (直接显示) */}
-                    <div className="text-[10px] text-slate-600 text-center leading-relaxed line-clamp-3">
-                      {component.description}
-                    </div>
+                      <div 
+                        className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-lg"
+                        style={{
+                          background: `linear-gradient(135deg, ${theme.color}20 0%, ${theme.color}10 100%)`,
+                          boxShadow: `0 8px 24px -4px ${theme.color}30`
+                        }}
+                      >
+                        <IconComponent className="w-8 h-8" style={{ color: theme.color }} />
+                      </div>
+                      
+                      {/* 组件名称 */}
+                      <div className="text-[15px] font-black text-slate-800 tracking-tight text-center leading-snug mb-3 line-clamp-2 px-2">
+                        {component.name}
+                      </div>
+                      
+                      {/* 组件描述 (直接显示) */}
+                      <div className="text-[12px] text-slate-700 text-center leading-relaxed line-clamp-3 px-3 font-medium">
+                        {component.description}
+                      </div>
                     </div>
 
                     {/* 底部操作按钮 */}
-                    <div className="px-3 pb-3 pt-2 border-t border-[#e2e8f0]/60 flex items-center gap-2">
+                    <div className="px-4 pb-4 pt-2 flex items-center gap-2 relative z-10">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           useComponent(component.id);
                         }}
-                        className="flex-1 h-7 rounded-[4px] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-[10px] font-bold hover:shadow-md transition-all flex items-center justify-center gap-1"
+                        className="flex-1 h-9 rounded-[8px] text-white text-[11px] font-bold hover:shadow-lg transition-all flex items-center justify-center gap-1.5"
+                        style={{
+                          background: `linear-gradient(135deg, ${theme.color} 0%, ${theme.color}cc 100%)`,
+                          boxShadow: `0 4px 12px -2px ${theme.color}40`
+                        }}
                       >
-                        <Zap className="w-3 h-3" />
+                        <Zap className="w-3.5 h-3.5" />
                         使用
                       </button>
                       <button
@@ -800,10 +832,11 @@ export default function StudioPage() {
                           // 分享功能
                           alert(`分享组件：${component.name}`);
                         }}
-                        className="w-7 h-7 rounded-[4px] bg-white border border-[#e2e8f0] flex items-center justify-center hover:border-[#3182ce] transition-all"
+                        className="w-9 h-9 rounded-[8px] bg-white border-2 flex items-center justify-center hover:scale-110 transition-all"
+                        style={{ borderColor: `${theme.color}30` }}
                         title="分享"
                       >
-                        <Share2 className="w-3.5 h-3.5 text-slate-600" />
+                        <Share2 className="w-4 h-4" style={{ color: theme.color }} />
                       </button>
                     </div>
                   </div>
