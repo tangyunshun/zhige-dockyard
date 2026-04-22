@@ -728,9 +728,19 @@ export default function StudioPage() {
 
             {/* 组件 Grid 容器 */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-              {stage.components.map((component) => {
+              {stage.components.map((component, compIndex) => {
                 const IconComponent = component.icon;
                 const isFavorite = favorites.includes(component.id);
+                // 根据索引分配不同的颜色主题 (6 种配色循环)
+                const colorThemes = [
+                  { color: '#3182ce', bgColor: 'from-blue-400/10 to-blue-600/10' }, // 蓝色
+                  { color: '#10b981', bgColor: 'from-emerald-400/10 to-emerald-600/10' }, // 绿色
+                  { color: '#f59e0b', bgColor: 'from-amber-400/10 to-amber-600/10' }, // 橙色
+                  { color: '#8b5cf6', bgColor: 'from-violet-400/10 to-violet-600/10' }, // 紫色
+                  { color: '#ec4899', bgColor: 'from-pink-400/10 to-pink-600/10' }, // 粉色
+                  { color: '#ef4444', bgColor: 'from-red-400/10 to-red-600/10' }, // 红色
+                ];
+                const theme = colorThemes[compIndex % 6];
                 
                 return (
                   <div
@@ -757,19 +767,19 @@ export default function StudioPage() {
                     {/* 内容区 */}
                     <div className="flex flex-col items-center justify-center flex-1 px-3 pt-8 pb-3">
                       {/* 中心 Icon */}
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 flex items-center justify-center mb-2">
-                        <IconComponent className="w-5 h-5 text-[#3182ce]" />
-                      </div>
-                      
-                      {/* 组件名称 */}
-                      <div className="text-[12px] font-black text-slate-800 tracking-tight text-center leading-snug mb-2 line-clamp-2">
-                        {component.name}
-                      </div>
-                      
-                      {/* 组件描述 (直接显示) */}
-                      <div className="text-[9px] text-slate-600 text-center leading-relaxed line-clamp-3">
-                        {component.description}
-                      </div>
+                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${theme.bgColor} flex items-center justify-center mb-2`}>
+                      <IconComponent className="w-6 h-6" style={{ color: theme.color }} />
+                    </div>
+                    
+                    {/* 组件名称 */}
+                    <div className="text-[13px] font-black text-slate-800 tracking-tight text-center leading-snug mb-2 line-clamp-2">
+                      {component.name}
+                    </div>
+                    
+                    {/* 组件描述 (直接显示) */}
+                    <div className="text-[10px] text-slate-600 text-center leading-relaxed line-clamp-3">
+                      {component.description}
+                    </div>
                     </div>
 
                     {/* 底部操作按钮 */}
