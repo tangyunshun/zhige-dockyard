@@ -390,6 +390,10 @@ export default function LoginPage() {
         if (data.token) {
           document.cookie = `auth_token=${data.token}; path=/; max-age=${rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60}`;
         }
+        // 存储 userId 到 localStorage，用于管理员后台等需要身份验证的页面
+        if (data.user?.id) {
+          localStorage.setItem("userId", data.user.id);
+        }
         setTimeout(() => {
           // 登录成功后跳转到回调页面或首页
           router.push(redirectPath);

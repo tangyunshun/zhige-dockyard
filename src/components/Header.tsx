@@ -182,24 +182,24 @@ export default function Header() {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                  className="flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer"
                 >
                   {user.avatar ? (
                     <img
                       src={user.avatar}
                       alt={user.name || "用户头像"}
-                      className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm"
+                      className="w-7 h-7 rounded-full object-cover border-2 border-white shadow-sm"
                     />
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white text-sm font-bold shadow-sm">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white text-xs font-bold shadow-sm">
                       {user.name?.charAt(0).toUpperCase() || "U"}
                     </div>
                   )}
-                  <span className="text-sm font-bold text-slate-700 max-w-[120px] truncate hidden lg:block">
+                  <span className="text-xs font-bold text-slate-700 max-w-[60px] truncate hidden lg:block">
                     {user.name || "用户"}
                   </span>
                   <svg
-                    className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${
+                    className={`w-3 h-3 text-slate-500 transition-transform duration-200 ${
                       showUserMenu ? "rotate-180" : ""
                     }`}
                     fill="none"
@@ -217,7 +217,7 @@ export default function Header() {
 
                 {/* 下拉菜单 - 简化版：只保留个人设置和退出登录 */}
                 {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-xl rounded-xl shadow-[0_8px_24px_-6px_rgba(15,23,42,0.15),0_2px_6px_-2px_rgba(15,23,42,0.06)] border border-[#e2e8f0]/90 py-0 z-50 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
+                  <div className="absolute right-0 mt-2 w-56 bg-white/95 backdrop-blur-xl rounded-xl shadow-[0_8px_24px_-6px_rgba(15,23,42,0.15),0_2px_6px_-2px_rgba(15,23,42,0.06)] border border-[#e2e8f0]/90 py-0 z-50 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
                     {/* 1. 用户信息区 */}
                     <div className="px-5 py-4 border-b border-[#e2e8f0]/80 bg-gradient-to-br from-white to-slate-50/60">
                       <div className="flex items-center gap-3">
@@ -246,19 +246,33 @@ export default function Header() {
                     {/* 2. 设置导航区 - 简化 */}
                     <div className="px-5 py-2.5 border-b border-[#e2e8f0]/80">
                       {/* 管理员后台入口 - 仅管理员可见 */}
-                      {(user?.role?.toUpperCase() === "ADMIN" || user?.role?.toUpperCase() === "SUPER_ADMIN") && (
+                      {(user?.role?.toUpperCase() === "ADMIN" ||
+                        user?.role?.toUpperCase() === "SUPER_ADMIN") && (
                         <button
                           onClick={() => {
                             router.push("/admin");
                             setShowUserMenu(false);
                           }}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-red-50 transition-colors group mb-1"
+                          className="w-full flex items-center gap-2.5 p-2.5 rounded-lg hover:bg-red-50 transition-colors group mb-1"
                         >
-                          <svg className="w-4 h-4 text-slate-400 group-hover:text-red-600 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                          <svg
+                            className="w-4 h-4 text-slate-400 group-hover:text-red-500 transition-colors"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                            />
                           </svg>
-                          <span className="text-sm text-slate-700 font-medium group-hover:text-red-600 transition-colors">
+                          <span className="text-sm text-slate-700 font-medium group-hover:text-red-600 transition-colors flex items-center gap-1.5">
                             管理员后台
+                            <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-xs font-bold rounded">
+                              管理
+                            </span>
                           </span>
                         </button>
                       )}
@@ -282,8 +296,18 @@ export default function Header() {
                         }}
                         className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 transition-colors group mt-1"
                       >
-                        <svg className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        <svg
+                          className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] transition-colors"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                          />
                         </svg>
                         <span className="text-sm text-slate-700 font-medium group-hover:text-[#3182ce] transition-colors">
                           个人算力资产
@@ -300,8 +324,8 @@ export default function Header() {
                         }}
                         className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-red-50 transition-colors group"
                       >
-                        <LogOut className="w-4 h-4 text-slate-400 group-hover:text-red-600 transition-colors" />
-                        <span className="text-sm text-slate-700 font-medium group-hover:text-red-600 transition-colors">
+                        <LogOut className="w-4 h-4 text-red-500" />
+                        <span className="text-sm text-red-600 font-medium">
                           退出登录
                         </span>
                       </button>

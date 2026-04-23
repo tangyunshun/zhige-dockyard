@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import {
   Building2,
@@ -15,12 +15,35 @@ import {
   FileText,
   Upload,
   Eye,
+  AlertTriangle,
+  CheckCircle,
+  Edit,
+  TrendingUp,
 } from "lucide-react";
+
+interface WorkspaceInfo {
+  id: string;
+  name: string;
+  description?: string;
+  teamSize?: string;
+  industry?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+}
 
 export default function CreateEnterpriseWorkspace() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"create" | "edit" | "expand">("create");
+  const [editingWorkspace, setEditingWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [quota, setQuota] = useState<{
+    hasEnterprise: boolean;
+    enterpriseCount: number;
+    maxEnterprise: number;
+    isMember: boolean;
+  } | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
@@ -34,51 +57,154 @@ export default function CreateEnterpriseWorkspace() {
     contactPhone: "",
   });
 
+  useEffect(() => {
+    loadQuota();
+    loadWorkspaceInfo();
+  }, []);
+
+  const loadQuota = async () => {
+    try {
+      const res = await fetch("/api/workspace/quota");
+      if (res.ok) {
+        const data = await res.json();
+        setQuota(data.quota);
+      }
+    } catch (error) {
+      console.error("Load quota error:", error);
+    }
+  };
+
+  const loadWorkspaceInfo = async () => {
+    const workspaceId = searchParams.get("workspaceId");
+    const action = searchParams.get("action");
+    
+    if (action === "edit" || action === "expand") {
+      setMode(action as "edit" | "expand");
+      
+      if (workspaceId) {
+        try {
+          const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const res = await fetch(`/api/workspace/info?workspaceId=${workspaceId}`, {
+            headers: {
+              Authorization: `Bearer ${userId}`,
+            },
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            setEditingWorkspace(data.workspace);
+            setFormData({
+              ...formData,
+              name: data.workspace.name || "",
+              description: data.workspace.description || "",
+              teamSize: data.workspace.teamSize || "",
+              industry: data.workspace.industry || "",
+              contactEmail: data.workspace.contactEmail || "",
+              contactPhone: data.workspace.contactPhone || "",
+            });
+          }
+        } catch (error) {
+          console.error("Load workspace info error:", error);
+        }
+      }
+    }
+  };
+
   const handleCreate = async () => {
     if (!formData.name.trim()) {
       toast.error("请输入空间名称");
       return;
     }
 
-    if (!formData.slug.trim()) {
-      toast.error("请输入空间标识");
-      return;
-    }
+    // 创建模式下需要更多验证
+    if (mode === "create") {
+      if (!formData.slug.trim()) {
+        toast.error("请输入空间标识");
+        return;
+      }
 
-    if (!formData.teamSize) {
-      toast.error("请选择团队规模");
-      return;
-    }
+      if (!formData.teamSize) {
+        toast.error("请选择团队规模");
+        return;
+      }
 
-    if (!formData.industry) {
-      toast.error("请选择所属行业");
-      return;
-    }
+      if (!formData.industry) {
+        toast.error("请选择所属行业");
+        return;
+      }
 
-    if (!formData.contactEmail.trim()) {
-      toast.error("请输入联系邮箱");
-      return;
+      if (!formData.contactEmail.trim()) {
+        toast.error("请输入联系邮箱");
+        return;
+      }
+
+      // 检查配额
+      if (quota && quota.enterpriseCount >= quota.maxEnterprise) {
+        toast.error(`您当前最多可创建${quota.maxEnterprise}个企业空间`);
+        return;
+      }
     }
 
     setLoading(true);
     try {
-      const res = await fetch("/api/workspace/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      
+      if (mode === "create") {
+        // 创建新空间
+        const res = await fetch("/api/workspace/create-enterprise", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userId}`,
+          },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            description: formData.description.trim() || null,
+          }),
+        });
 
-      if (!res.ok) {
-        throw new Error("创建失败");
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || "创建失败");
+        }
+
+        toast.success("企业空间创建成功！");
+        router.push(`/workspace/${result.workspace.id}`);
+      } else if (mode === "edit" || mode === "expand") {
+        // 编辑或扩容空间
+        if (!editingWorkspace) {
+          throw new Error("工作空间信息不存在");
+        }
+
+        const res = await fetch(`/api/workspace/update?workspaceId=${editingWorkspace.id}`, {
+          method: "PATCH",
+          headers: { 
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userId}`,
+          },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            description: formData.description.trim() || null,
+            teamSize: formData.teamSize,
+            industry: formData.industry,
+            contactEmail: formData.contactEmail,
+            contactPhone: formData.contactPhone,
+          }),
+        });
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.error || "更新失败");
+        }
+
+        toast.success(mode === "expand" ? "扩容成功！" : "保存成功！");
+        router.push(`/workspace-hub`);
       }
-
-      const data = await res.json();
-      toast.success("企业空间创建成功！");
-
-      router.push(`/workspace/${data.workspace.id}`);
     } catch (error) {
-      console.error("创建企业空间失败:", error);
-      toast.error("创建失败，请稍后重试");
+      console.error("Workspace operation error:", error);
+      toast.error(error instanceof Error ? error.message : "操作失败，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -116,15 +242,46 @@ export default function CreateEnterpriseWorkspace() {
           {/* 标题区 */}
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] shadow-2xl shadow-[#f59e0b]/30 mb-3">
-              <Building2 className="w-7 h-7 text-white" />
+              {mode === "create" ? (
+                <Building2 className="w-7 h-7 text-white" />
+              ) : mode === "edit" ? (
+                <Edit className="w-7 h-7 text-white" />
+              ) : (
+                <TrendingUp className="w-7 h-7 text-white" />
+              )}
             </div>
             <h1 className="text-2xl font-black text-slate-800 mb-1.5">
-              创建企业或组织空间
+              {mode === "create" 
+                ? "创建企业或组织空间" 
+                : mode === "edit"
+                ? "编辑企业空间信息"
+                : "扩容企业空间"}
             </h1>
             <p className="text-sm text-slate-600 max-w-xl mx-auto">
-              解锁团队协作、成员管理、资源共享功能，获取全量 16
-              个高阶组件的使用权限
+              {mode === "create"
+                ? "解锁团队协作、成员管理、资源共享功能，获取全量高阶组件的使用权限"
+                : mode === "edit"
+                ? "修改空间名称、描述等基础信息"
+                : "升级团队规模，解锁更多成员席位"}
             </p>
+            {/* 配额信息 */}
+            {quota && mode === "create" && (
+              <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-full">
+                <CheckCircle className="w-4 h-4 text-[#10b981]" />
+                <span className="text-sm font-bold text-slate-700">
+                  当前可创建：
+                  <span className="text-[#f59e0b]">
+                    {quota.maxEnterprise - quota.enterpriseCount} 个
+                  </span>
+                </span>
+                {!quota.isMember && (
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">免费用户</span>
+                )}
+                {quota.isMember && (
+                  <span className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] text-xs font-bold rounded">会员用户</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 左右布局：左侧功能亮点 + 右侧表单 */}
@@ -193,6 +350,27 @@ export default function CreateEnterpriseWorkspace() {
                   </li>
                 </ul>
               </div>
+
+              {/* 配额限制提示 */}
+              {quota && quota.enterpriseCount >= quota.maxEnterprise && (
+                <div className="bg-gradient-to-br from-[#f59e0b]/10 to-[#d97706]/10 backdrop-blur-xl rounded-xl p-4 border border-[#f59e0b]/30">
+                  <div className="flex items-start gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-[#f59e0b] flex-shrink-0 mt-0.5" />
+                    <h3 className="text-sm font-black text-[#f59e0b]">
+                      配额已达上限
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    您当前最多可创建 <span className="font-bold text-[#f59e0b]">{quota.maxEnterprise}</span> 个企业空间，
+                    已创建 <span className="font-bold text-[#f59e0b]">{quota.enterpriseCount}</span> 个。
+                    {quota.isMember ? (
+                      <span className="block mt-1">如需更多空间，请联系客服升级。</span>
+                    ) : (
+                      <span className="block mt-1">升级会员可创建最多 3 个企业空间。</span>
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* 右侧：创建表单（占 2 列） */}

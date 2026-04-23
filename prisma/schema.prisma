@@ -380,3 +380,24 @@ model ComponentStats {
   @@index([totalUses], map: "ComponentStats_totalUses_idx")
   @@index([averageRating], map: "ComponentStats_averageRating_idx")
 }
+
+// 空间邀请码
+model WorkspaceInvitation {
+  id          String   @id @default(cuid())
+  workspaceId String
+  code        String   @unique
+  createdBy   String
+  email       String?  // 可选：指定被邀请人邮箱
+  role        WorkspaceRole @default(MEMBER)
+  status      String   @default("PENDING") // PENDING | USED | EXPIRED
+  expiresAt   DateTime?
+  usedAt      DateTime?
+  usedBy      String?  // 使用者的用户 ID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId], map: "WorkspaceInvitation_workspaceId_idx")
+  @@index([code], map: "WorkspaceInvitation_code_idx")
+  @@index([status], map: "WorkspaceInvitation_status_idx")
+  @@index([createdBy], map: "WorkspaceInvitation_createdBy_idx")
+}
