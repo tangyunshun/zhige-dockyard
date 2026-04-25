@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const [preferences, total] = await Promise.all([
-      prisma.UserPreference.findMany({
+      prisma.userPreference.findMany({
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.UserPreference.count(),
+      prisma.userPreference.count(),
     ]);
 
     return NextResponse.json({

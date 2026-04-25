@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // 验证用户身份
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
 
-    const userId = authHeader.replace("Bearer ", "");
+    const userId = authResult.user!.id;
 
     // 获取用户的所有工作空间（个人 + 企业）
     const workspaces = await prisma.workspace.findMany({
@@ -29,30 +33,29 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const workspaceIds = workspaces.map(ws => ws.id);
+    const workspaceIds = workspaces.map((ws: any) => ws.id);
 
-    // 获取用户相关的所有组件任务
-    const componentTasks = await prisma.componentTask.findMany({
+    // 获取用户相关的所有组件任务（使用 tenantId 关联工作空间）
+    const componentTasks = await prisma.componenttask.findMany({
       where: {
-        workspaceId: {
+        tenantId: {
           in: workspaceIds,
         },
       },
       select: {
         id: true,
         status: true,
-        stage: true,
+        type: true,
         createdAt: true,
         completedAt: true,
-        workspace: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
+        tenantId: true,
       },
     });
+
+    // 获取工作空间映射（用于关联任务到空间）
+    const workspaceMap = new Map(
+      workspaces.map((ws: any) => [ws.id, { name: ws.name, type: ws.type }])
+    );
 
     // 统计数据
     const totalComponentCalls = componentTasks.filter(
@@ -76,19 +79,19 @@ export async function GET(request: NextRequest) {
       : 0;
 
     // 按空间类型统计
-    const personalSpaceCount = workspaces.filter(ws => ws.type === "PERSONAL").length;
-    const enterpriseSpaceCount = workspaces.filter(ws => ws.type === "ENTERPRISE").length;
+    const personalSpaceCount = workspaces.filter((ws: any) => ws.type === "PERSONAL").length;
+    const enterpriseSpaceCount = workspaces.filter((ws: any) => ws.type === "ENTERPRISE").length;
 
     // 总成员数（只计算企业空间）
     const totalMembers = workspaces
-      .filter(ws => ws.type === "ENTERPRISE")
-      .reduce((sum, ws) => sum + ws.members.length, 0);
+      .filter((ws: any) => ws.type === "ENTERPRISE")
+      .reduce((sum: number, ws: any) => sum + ws.members.length, 0);
 
     // 最近 7 天活动
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const recentActivity = componentTasks.filter(
-      task => new Date(task.createdAt) > sevenDaysAgo
+      (task: any) => new Date(task.createdAt) > sevenDaysAgo
     ).length;
 
     return NextResponse.json({

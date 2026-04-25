@@ -8,6 +8,15 @@ const JWT_SECRET = new TextEncoder().encode(
 
 export async function GET(request: NextRequest) {
   try {
+    // 检查 prisma 客户端是否可用
+    if (!prisma) {
+      console.error('Prisma client is not initialized in /api/auth/me');
+      return NextResponse.json(
+        { message: '数据库连接失败', error: 'Prisma client is not initialized' },
+        { status: 500 }
+      );
+    }
+
     // 从 Cookie 中获取 token
     const token = request.cookies.get('auth_token')?.value;
 
@@ -31,7 +40,8 @@ export async function GET(request: NextRequest) {
         email: true,
         avatar: true,
         phone: true,
-        role: true, // 添加角色字段
+        role: true,
+        membershipLevel: true,
       },
     });
 
@@ -42,20 +52,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 返回用户信息（包含角色）
+    // 返回用户信息（包含角色、手机号和会员等级）
     return NextResponse.json({
       user: {
         id: user.id,
         name: user.name || user.phone || user.email,
         email: user.email,
-        avatar: user.avatar,
-        role: user.role, // 添加角色信息
+        phone: user.phone,
+        role: user.role,
+        membershipLevel: user.membershipLevel || 'FREE',
       },
     });
   } catch (error) {
     console.error('Token 验证失败:', error);
     return NextResponse.json(
-      { message: 'Token 无效' },
+      { message: 'Token 无效', details: error instanceof Error ? error.message : String(error) },
       { status: 401 }
     );
   }

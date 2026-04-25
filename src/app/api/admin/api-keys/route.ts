@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [apiKeys, total] = await Promise.all([
-      prisma.ApiKey.findMany({
+      prisma.apiKey.findMany({
         where,
         skip,
         take: limit,
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.ApiKey.count({ where }),
+      prisma.apiKey.count({ where }),
     ]);
 
     return NextResponse.json({
@@ -92,7 +92,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "缺少 API Key ID" }, { status: 400 });
     }
 
-    await prisma.ApiKey.delete({
+    await prisma.apiKey.delete({
       where: { id },
     });
 

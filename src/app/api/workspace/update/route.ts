@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // 验证用户身份
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
 
-    const userId = authHeader.replace("Bearer ", "");
+    const userId = authResult.user!.id;
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -29,6 +33,10 @@ export async function GET(request: NextRequest) {
         id: workspace.id,
         name: workspace.name,
         description: workspace.description,
+        teamSize: workspace.teamSize,
+        industry: workspace.industry,
+        contactEmail: workspace.contactEmail,
+        contactPhone: workspace.contactPhone,
       },
     });
   } catch (error) {
@@ -42,12 +50,15 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    // 验证用户身份
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
 
-    const userId = authHeader.replace("Bearer ", "");
+    const userId = authResult.user!.id;
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -64,13 +75,24 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description } = body;
+    const { 
+      name, 
+      description,
+      teamSize,
+      industry,
+      contactEmail,
+      contactPhone,
+    } = body;
 
     const updatedWorkspace = await prisma.workspace.update({
       where: { id: workspaceId },
       data: {
         name: name?.trim(),
         description: description?.trim() || null,
+        teamSize: teamSize || null,
+        industry: industry || null,
+        contactEmail: contactEmail?.trim() || null,
+        contactPhone: contactPhone?.trim() || null,
       },
     });
 

@@ -8,19 +8,36 @@ const JWT_SECRET = new TextEncoder().encode(
 
 export async function POST(request: NextRequest) {
   try {
-    // 从 Cookie 中获取 token
-    const token = request.cookies.get('auth_token')?.value;
+    let userId: string | null = null;
 
-    if (!token) {
-      return NextResponse.json(
-        { message: '未登录' },
-        { status: 401 }
-      );
+    // 首先尝试从 Authorization header 中获取 token
+    const authHeader = request.headers.get('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      // 如果 token 是用户 ID（简化验证）
+      const userCheck = await prisma.user.findUnique({
+        where: { id: token },
+      });
+      if (userCheck) {
+        userId = token;
+      }
     }
 
-    // 验证 token
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    const userId = payload.userId as string;
+    // 如果 header 中没有，尝试从 Cookie 中获取 token
+    if (!userId) {
+      const token = request.cookies.get('auth_token')?.value;
+
+      if (!token) {
+        return NextResponse.json(
+          { message: '未登录' },
+          { status: 401 }
+        );
+      }
+
+      // 验证 token
+      const { payload } = await jwtVerify(token, JWT_SECRET);
+      userId = payload.userId as string;
+    }
 
     // 获取用户信息
     const user = await prisma.user.findUnique({
@@ -38,6 +55,26 @@ export async function POST(request: NextRequest) {
         { message: '用户不存在' },
         { status: 404 }
       );
+    }
+
+    // 检查是否已经有个人空间
+    const existingWorkspace = await prisma.workspace.findFirst({
+      where: {
+        ownerId: userId,
+        type: 'PERSONAL',
+      },
+    });
+
+    if (existingWorkspace) {
+      // 如果已经有个人空间，直接返回
+      return NextResponse.json({
+        workspace: {
+          id: existingWorkspace.id,
+          name: existingWorkspace.name,
+          type: existingWorkspace.type,
+        },
+        message: '个人空间已存在',
+      });
     }
 
     // 创建个人空间

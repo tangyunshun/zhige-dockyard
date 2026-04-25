@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `membershiplevel` MODIFY `maxStorage` BIGINT NOT NULL DEFAULT 1073741824,
+    MODIFY `maxApiCalls` BIGINT NOT NULL DEFAULT 1000;

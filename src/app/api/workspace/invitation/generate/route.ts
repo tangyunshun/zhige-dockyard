@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 import { randomBytes } from "crypto";
-
-const prisma = new PrismaClient();
 
 // 生成邀请码
 function generateInvitationCode(): string {
@@ -11,10 +10,15 @@ function generateInvitationCode(): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get("authorization")?.replace("Bearer ", "");
-    if (!userId) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    // 验证用户身份
+    const authHeader = request.headers.get("authorization");
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
+
+    const userId = authResult.user!.id;
 
     const body = await request.json();
     const { workspaceId, email, expiresInDays } = body;
@@ -37,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     if (workspace.ownerId !== userId) {
       const member = workspace.members.find(
-        (m) => m.userId === userId && m.role === "ADMIN",
+        (m: any) => m.userId === userId && m.role === "ADMIN",
       );
       if (!member) {
         return NextResponse.json(

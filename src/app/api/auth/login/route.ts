@@ -187,6 +187,39 @@ export async function POST(request: NextRequest) {
       workspace: member.workspace,
     }));
 
+    // 如果用户没有任何工作空间，自动创建一个个人空间
+    if (workspaceMembers.length === 0) {
+      const personalWorkspace = await prisma.workspace.create({
+        data: {
+          name: `${user.name || user.email || "个人空间"}`,
+          type: "PERSONAL",
+          ownerId: user.id,
+          members: {
+            create: {
+              userId: user.id,
+              role: "OWNER",
+            },
+          },
+        },
+      });
+
+      // 更新用户的 lastWorkspaceId
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastWorkspaceId: personalWorkspace.id,
+        },
+      });
+
+      workspaces.push({
+        id: personalWorkspace.id,
+        userId: user.id,
+        workspaceId: personalWorkspace.id,
+        role: "OWNER",
+        workspace: personalWorkspace,
+      });
+    }
+
     // 获取用户的 lastWorkspaceId
     const lastWorkspaceId = user.lastWorkspaceId;
 

@@ -14,6 +14,8 @@ import {
   Shield,
   Menu,
   X,
+  Crown,
+  Package,
 } from "lucide-react";
 
 interface UserInfo {
@@ -41,6 +43,19 @@ const adminMenuItems = [
     label: "工作空间管理",
     href: "/admin/workspaces",
     description: "空间审核、资源配额",
+  },
+  {
+    icon: Crown,
+    label: "会员管理",
+    href: "/admin/membership",
+    description: "会员等级、订单管理",
+    hasSubItems: true,
+  },
+  {
+    icon: Package,
+    label: "组件管理",
+    href: "/admin/components",
+    description: "组件上架/下架管理",
   },
   {
     icon: FileText,

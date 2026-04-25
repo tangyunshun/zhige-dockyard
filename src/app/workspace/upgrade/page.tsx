@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { ArrowLeft, Building2, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
@@ -19,7 +19,7 @@ interface EnterpriseQuota {
   isMember: boolean;
 }
 
-export default function UpgradeWorkspace() {
+function UpgradeWorkspaceForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
@@ -356,5 +356,13 @@ export default function UpgradeWorkspace() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function UpgradeWorkspace() {
+  return (
+    <Suspense fallback={<div>加载中...</div>}>
+      <UpgradeWorkspaceForm />
+    </Suspense>
   );
 }

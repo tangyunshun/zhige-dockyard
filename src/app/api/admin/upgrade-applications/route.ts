@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [applications, total] = await Promise.all([
-      prisma.UpgradeApplication.findMany({
+      prisma.upgradeApplication.findMany({
         where,
         skip,
         take: limit,
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.UpgradeApplication.count({ where }),
+      prisma.upgradeApplication.count({ where }),
     ]);
 
     return NextResponse.json({
@@ -95,7 +95,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
     }
 
-    const application = await prisma.UpgradeApplication.findUnique({
+    const application = await prisma.upgradeApplication.findUnique({
       where: { id },
       include: {
         workspace: true,
@@ -107,14 +107,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     // 更新申请状态
-    await prisma.UpgradeApplication.update({
+    await prisma.upgradeApplication.update({
       where: { id },
       data: { status },
     });
 
     // 如果审核通过，升级工作空间为企业空间
     if (status === "APPROVED") {
-      await prisma.Workspace.update({
+      await prisma.workspace.update({
         where: { id: application.workspaceId },
         data: { type: "ENTERPRISE" },
       });

@@ -11,6 +11,7 @@ interface UserInfo {
   name?: string | null;
   avatar?: string | null;
   email?: string | null;
+  role?: string | null;
 }
 
 interface Workspace {

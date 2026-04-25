@@ -9,10 +9,10 @@ import {
   Code,
   Shield,
   Rocket,
-  Cpu,
+  Server,
   Database,
   Activity,
-  Sparkles,
+  Star,
   Box,
   MoreHorizontal,
   Grid3X3,
@@ -29,7 +29,7 @@ import {
   AlertTriangle,
   Heart,
   Palette,
-  Wand2,
+  Award,
   LayoutTemplate,
   Globe,
   Accessibility,
@@ -59,15 +59,15 @@ import {
   Smile,
   Users,
   Network,
-  Server,
+  Server as ServerIcon,
   Layers,
   Terminal,
   CreditCard,
   FolderLock,
   MonitorPlay,
-  Star,
+  Star as StarIcon,
   Clock,
-  Flame,
+  TrendingUp as TrendingUpIcon,
   CheckCircle,
   X,
   ExternalLink,
@@ -80,7 +80,7 @@ import {
   ChevronRight,
   BarChart3,
   Calendar,
-  Zap,
+  Zap as ZapIcon,
   Bookmark,
   Share2,
   Download,
@@ -1215,7 +1215,7 @@ export default function StudioPage() {
                     <>
                       <div className="mb-3">
                         <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1">
-                          <Flame className="w-3 h-3 text-[#f59e0b]" />
+                          <TrendingUpIcon className="w-3 h-3 text-[#f59e0b]" />
                           热门搜索
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -1382,7 +1382,7 @@ export default function StudioPage() {
                                     {/* 调用统计 */}
                                     <div className="flex items-center gap-3 mt-2">
                                       <div className="flex items-center gap-1">
-                                        <Zap className="w-3 h-3 text-[#f59e0b]" />
+                                        <Activity className="w-3 h-3 text-[#f59e0b]" />
                                         <span className="text-[10px] font-bold text-slate-500">
                                           {component.calls.toLocaleString()}{" "}
                                           次调用
@@ -1468,7 +1468,7 @@ export default function StudioPage() {
           <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-[#e2e8f0]/80 shadow-lg">
             <div className="flex items-center justify-between mb-3">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center">
-                <Zap className="w-5 h-5 text-white" />
+                <Activity className="w-5 h-5 text-white" />
               </div>
               <span className="text-xs font-bold text-[#8b5cf6] bg-[#8b5cf6]/10 px-2 py-1 rounded-full">
                 +12.5%
@@ -1638,7 +1638,7 @@ export default function StudioPage() {
                           }}
                           className="flex-1 h-7 rounded-lg bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-[11px] font-bold hover:shadow-lg hover:shadow-[#10b981]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1 cursor-pointer"
                         >
-                          <Zap className="w-3.5 h-3.5" />
+                          <Rocket className="w-3.5 h-3.5" />
                           使用
                         </button>
                         <button
@@ -1741,7 +1741,7 @@ export default function StudioPage() {
                           }}
                           className="flex-1 h-7 rounded-lg bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-[11px] font-bold hover:shadow-lg hover:shadow-[#f59e0b]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1 cursor-pointer"
                         >
-                          <Zap className="w-3.5 h-3.5" />
+                          <Rocket className="w-3.5 h-3.5" />
                           使用
                         </button>
                         <button
@@ -1845,7 +1845,7 @@ export default function StudioPage() {
                 )}
                 {sortBy === "hot" && (
                   <>
-                    <Flame className="w-4 h-4 text-[#f59e0b]" />
+                    <TrendingUpIcon className="w-4 h-4 text-[#f59e0b]" />
                     <span className="text-[#f59e0b]">按热度</span>
                   </>
                 )}
@@ -2143,14 +2143,14 @@ export default function StudioPage() {
                                 {/* 调用统计 - 与卡片视图一致 */}
                                 <div className="flex items-center gap-4 mt-2">
                                   <div className="flex items-center gap-1.5">
-                                    <Zap className="w-3.5 h-3.5 text-[#f59e0b]" />
+                                    <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
                                     <span className="text-[11px] font-bold text-slate-600">
                                       近 30 天 调用
                                       {monthlyUsage[component.id] || 0} 次
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1.5">
-                                    <Zap className="w-3.5 h-3.5 text-[#3182ce]" />
+                                    <Activity className="w-3.5 h-3.5 text-[#3182ce]" />
                                     <span className="text-[11px] font-bold text-slate-600">
                                       近 180 天调用{" "}
                                       {semiAnnualUsage[component.id] || 0} 次
@@ -2688,7 +2688,7 @@ export default function StudioPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-white" />
+                    <Lightbulb className="w-6 h-6 text-white" />
                   </div>
                   <h2 className="text-xl font-black text-slate-800">
                     欢迎使用 Studio 组件库

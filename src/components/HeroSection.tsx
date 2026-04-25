@@ -10,6 +10,7 @@ import {
   Workflow,
   BarChart3,
   Users,
+  Lightbulb,
 } from "lucide-react";
 
 export default function HeroSection() {
@@ -92,7 +93,7 @@ export default function HeroSection() {
             {/* 搜索框主体 */}
             <div className="spotlight-input relative flex items-center bg-white/80 backdrop-blur-sm border border-slate-200/60 p-1.5 rounded-xl transition-all group shadow-lg shadow-slate-200/50">
               <div className="pl-3 text-[#3182ce]">
-                <Sparkles className="w-4 h-4" />
+                <Lightbulb className="w-4 h-4" />
               </div>
               <input
                 type="text"

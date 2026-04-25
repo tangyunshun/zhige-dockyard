@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get("authorization")?.replace("Bearer ", "");
-    if (!userId) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    // 验证用户身份
+    const authHeader = request.headers.get("authorization");
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
+
+    const userId = authResult.user!.id;
 
     // 获取用户作为管理员或所有者的企业空间
     const workspaces = await prisma.workspace.findMany({
@@ -64,12 +68,12 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
-      workspaces: workspaces.map((ws) => ({
+      workspaces: workspaces.map((ws: any) => ({
         id: ws.id,
         name: ws.name,
         type: ws.type,
         memberCount: ws._count.members,
-        members: ws.members.map((m) => ({
+        members: ws.members.map((m: any) => ({
           id: m.user.id,
           name: m.user.name,
           email: m.user.email,
@@ -78,7 +82,7 @@ export async function GET(request: NextRequest) {
         })),
         isOwner: ws.ownerId === userId,
       })),
-      invitations: invitations.map((inv) => ({
+      invitations: invitations.map((inv: any) => ({
         id: inv.id,
         code: inv.code,
         workspaceId: inv.workspaceId,

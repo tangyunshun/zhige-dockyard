@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Cpu,
+  Server,
   HardDrive,
   Zap,
   TrendingUp,
@@ -54,9 +54,9 @@ export default function AssetsPage() {
 
   const statCards = [
     {
-      icon: Cpu,
-      label: "算力点数",
-      value: assets.computePoints.toLocaleString(),
+      icon: Server,
+      label: "算力资源",
+      value: assets.computePoints,
       unit: "点",
       usage: assets.monthlyUsage.compute,
       color: "from-[#3182ce] to-[#2563eb]",
@@ -114,7 +114,7 @@ export default function AssetsPage() {
               </p>
             </div>
             <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center flex-shrink-0">
-              <Cpu className="w-10 h-10 text-white" />
+              <Server className="w-10 h-10 text-white" />
             </div>
           </div>
         </div>
@@ -230,7 +230,7 @@ export default function AssetsPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <Cpu className="w-5 h-5 text-slate-600" />
+                    <Server className="w-5 h-5 text-slate-600" />
                   </div>
                   <div>
                     <div className="text-sm font-bold text-slate-800">

@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           message: "密码强度不足",
-          requirements: passwordValidation.requirements,
+          error: passwordValidation.error,
         },
         { status: 400 },
       );

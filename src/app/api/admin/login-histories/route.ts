@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [histories, total] = await Promise.all([
-      prisma.LoginHistory.findMany({
+      prisma.loginHistory.findMany({
         where,
         skip,
         take: limit,
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.LoginHistory.count({ where }),
+      prisma.loginHistory.count({ where }),
     ]);
 
     return NextResponse.json({

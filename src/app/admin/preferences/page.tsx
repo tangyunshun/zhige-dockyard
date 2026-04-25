@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings, Search, Cpu, Sliders } from "lucide-react";
+import { Settings, Search, Server, Sliders } from "lucide-react";
 
 interface UserPreference {
   id: string;
@@ -117,7 +117,7 @@ export default function AdminPreferencesPage() {
         <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm text-slate-500 font-medium">知阁引擎</div>
-            <Cpu className="w-5 h-5 text-[#10b981]" />
+            <Server className="w-5 h-5 text-[#10b981]" />
           </div>
           <div className="text-2xl font-bold text-slate-800">
             {preferenceData?.preferences.filter((p) => p.aiEngine === "zhige").length || 0}

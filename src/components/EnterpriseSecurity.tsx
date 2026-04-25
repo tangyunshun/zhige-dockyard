@@ -1,6 +1,6 @@
 "use client";
 
-import { ShieldCheck, Cpu, Lock } from "lucide-react";
+import { ShieldCheck, Server, Lock } from "lucide-react";
 
 export default function EnterpriseSecurity() {
   return (
@@ -44,9 +44,9 @@ export default function EnterpriseSecurity() {
             </div>
             <div className="space-y-6 zg-card bg-white/5 border-white/10 backdrop-blur-sm">
               <div className="w-12 h-12 bg-gradient-to-br from-purple-500/20 to-purple-600/10 rounded-xl flex items-center justify-center text-purple-400 border border-purple-400/30 shadow-lg shadow-purple-500/10">
-                <Cpu className="w-6 h-6" />
+                <Server className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-white">私有大模型微调</h3>
+              <h3 className="text-xl font-bold text-white">私有化部署</h3>
               <p className="text-slate-300 text-sm leading-relaxed">
                 支持无缝对接本地部署的 DeepSeek, Llama
                 或企业自研算力集群，确保知识资产不外流。

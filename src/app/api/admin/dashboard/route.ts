@@ -1,43 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { validateUser, isAdmin } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
 
-    // 获取用户信息（从 session 或 token）
-    const userId = authHeader.replace("Bearer ", "");
-    console.log("Dashboard API - User ID from token:", userId);
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    console.log(
-      "Dashboard API - User found:",
-      user ? { id: user.id, role: user.role } : "null",
-    );
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "用户不存在，请先登录" },
-        { status: 404 },
-      );
-    }
-
-    if (user.role !== "admin" && user.role !== "super_admin") {
-      return NextResponse.json(
-        { error: "权限不足，需要管理员角色" },
-        { status: 403 },
-      );
+    const userId = authResult.user!.id;
+    
+    // 检查是否为管理员
+    if (!isAdmin(authResult.user!)) {
+      return NextResponse.json({ error: "需要管理员权限" }, { status: 403 });
     }
 
     // 并行获取所有统计数据
@@ -52,7 +31,7 @@ export async function GET(request: NextRequest) {
       // 总用户数
       prisma.user.count(),
       // 总工作空间数
-      prisma.Workspace.count(),
+      prisma.workspace.count(),
       // 总组件数（从 componenttask 统计）
       prisma.componenttask.count(),
       // 活跃用户数（最近 7 天创建的用户，模拟活跃用户）
@@ -99,7 +78,7 @@ export async function GET(request: NextRequest) {
     });
 
     // 获取最近工作空间
-    const recentWorkspaces = await prisma.Workspace.findMany({
+    const recentWorkspaces = await prisma.workspace.findMany({
       take: 5,
       orderBy: { createdAt: "desc" },
       include: {

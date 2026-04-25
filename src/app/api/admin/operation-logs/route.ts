@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [logs, total] = await Promise.all([
-      prisma.OperationLog.findMany({
+      prisma.operationLog.findMany({
         where,
         skip,
         take: limit,
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.OperationLog.count({ where }),
+      prisma.operationLog.count({ where }),
     ]);
 
     return NextResponse.json({

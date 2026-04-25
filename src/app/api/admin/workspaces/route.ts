@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [workspaces, total] = await Promise.all([
-      prisma.Workspace.findMany({
+      prisma.workspace.findMany({
         where,
         skip,
         take: limit,
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.Workspace.count({ where }),
+      prisma.workspace.count({ where }),
     ]);
 
     return NextResponse.json({
@@ -101,7 +101,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 检查工作空间是否存在
-    const workspace = await prisma.Workspace.findUnique({
+    const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
     });
 
@@ -109,8 +109,18 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
     }
 
+    // 个人空间不能删除
+    if (workspace.type === "PERSONAL") {
+      return NextResponse.json({ error: "个人空间不能删除" }, { status: 400 });
+    }
+
+    // 企业空间必须先禁用才能删除
+    if (workspace.type === "ENTERPRISE" && workspace.status !== "DISABLED") {
+      return NextResponse.json({ error: "企业空间必须先禁用才能删除" }, { status: 400 });
+    }
+
     // 删除工作空间 (级联删除相关数据)
-    await prisma.Workspace.delete({
+    await prisma.workspace.delete({
       where: { id: workspaceId },
     });
 

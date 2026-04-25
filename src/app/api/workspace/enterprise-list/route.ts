@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // 验证用户身份
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
 
-    const userId = authHeader.replace("Bearer ", "");
-    console.log("Get enterprise workspaces for user:", userId);
+    const userId = authResult.user!.id;
     
     // 获取用户的所有企业空间
     const enterpriseWorkspaces = await prisma.workspace.findMany({
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
     // 注意：Workspace 没有直接关联 componentTasks，需要通过其他方式获取
     // 这里暂时将组件数设为 0，实际应该从其他途径统计
 
-    const totalMembers = enterpriseWorkspaces.reduce((sum, ws) => {
+    const totalMembers = enterpriseWorkspaces.reduce((sum: number, ws: any) => {
       return sum + (ws.members?.length || 0);
     }, 0);
 
@@ -56,14 +59,14 @@ export async function GET(request: NextRequest) {
     // 最近活动（暂时设为 0）
     const recentActivity = 0;
     // 活跃成员数（简单判断，实际应该检查 lastLoginAt）
-    const activeMembers = enterpriseWorkspaces.reduce((sum, ws) => {
-      return sum + (ws.members?.filter(m => 
+    const activeMembers = enterpriseWorkspaces.reduce((sum: number, ws: any) => {
+      return sum + (ws.members?.filter((m: any) => 
         m.user.email || m.user.avatar
       ).length || 0);
     }, 0);
 
     return NextResponse.json({
-      workspaces: enterpriseWorkspaces.map(ws => ({
+      workspaces: enterpriseWorkspaces.map((ws: any) => ({
         id: ws.id,
         name: ws.name,
         description: ws.description,

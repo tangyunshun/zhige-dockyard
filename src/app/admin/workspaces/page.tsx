@@ -10,6 +10,9 @@ import {
   Trash2,
   Eye,
   AlertCircle,
+  EyeOff,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 
 interface Workspace {
@@ -19,6 +22,7 @@ interface Workspace {
   ownerId: string;
   description: string | null;
   logo: string | null;
+  status: "ACTIVE" | "DISABLED";
   createdAt: string;
   members: Array<{
     id: string;
@@ -36,6 +40,7 @@ interface WorkspaceData {
 }
 
 export default function AdminWorkspacesPage() {
+  const router = useRouter();
   const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(
     null,
   );
@@ -44,6 +49,7 @@ export default function AdminWorkspacesPage() {
   const [filterType, setFilterType] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadWorkspaces(currentPage);
@@ -116,6 +122,36 @@ export default function AdminWorkspacesPage() {
 
   const handleView = (workspace: Workspace) => {
     router.push(`/workspace/${workspace.id}`);
+  };
+
+  const handleToggleStatus = async (workspaceId: string, currentStatus: "ACTIVE" | "DISABLED") => {
+    if (!confirm(`确定要${currentStatus === "ACTIVE" ? "禁用" : "启用"}该企业空间吗？`)) return;
+
+    try {
+      setTogglingId(workspaceId);
+      const res = await fetch(
+        `/api/admin/workspaces/toggle-status?workspaceId=${workspaceId}&status=${currentStatus === "ACTIVE" ? "DISABLED" : "ACTIVE"}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          },
+        },
+      );
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "操作失败");
+      }
+
+      showToast(`空间已${currentStatus === "ACTIVE" ? "禁用" : "启用"}`, "success");
+      loadWorkspaces(currentPage);
+    } catch (error) {
+      console.error("Toggle workspace status error:", error);
+      showToast("操作失败", "error");
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const showToast = (message: string, type: "success" | "error") => {
@@ -326,14 +362,52 @@ export default function AdminWorkspacesPage() {
                             >
                               <Eye className="w-4 h-4 text-slate-600" />
                             </button>
-                            <button
-                              onClick={() => handleDelete(workspace.id)}
-                              disabled={deletingId === workspace.id}
-                              className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                              title="删除空间"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </button>
+                            
+                            {/* 个人空间：只显示查看按钮，不显示删除和禁用按钮 */}
+                            {workspace.type === "PERSONAL" ? null : (
+                              <>
+                                {/* 企业空间：根据状态显示不同按钮 */}
+                                {workspace.status === "ACTIVE" ? (
+                                  // 活跃状态：显示禁用按钮
+                                  <button
+                                    onClick={() => handleToggleStatus(workspace.id, workspace.status)}
+                                    disabled={togglingId === workspace.id}
+                                    className="p-2 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                                    title="禁用空间"
+                                  >
+                                    <EyeOff className="w-4 h-4 text-orange-600" />
+                                  </button>
+                                ) : (
+                                  // 已禁用状态：显示启用和删除按钮
+                                  <>
+                                    <button
+                                      onClick={() => handleToggleStatus(workspace.id, workspace.status)}
+                                      disabled={togglingId === workspace.id}
+                                      className="p-2 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                                      title="启用空间"
+                                    >
+                                      <CheckCircle className="w-4 h-4 text-green-600" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(workspace.id)}
+                                      disabled={deletingId === workspace.id}
+                                      className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                      title="删除空间"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-600" />
+                                    </button>
+                                  </>
+                                )}
+                              </>
+                            )}
+                            
+                            {/* 状态标识 */}
+                            {workspace.status === "DISABLED" && (
+                              <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">
+                                <XCircle className="w-3 h-3" />
+                                已禁用
+                              </span>
+                            )}
                           </div>
                         </td>
                       </tr>

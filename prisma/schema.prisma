@@ -20,26 +20,37 @@ enum WorkspaceRole {
   MEMBER
 }
 
+
+
 model componenttask {
   id          String    @id
   name        String
   description String?
-  type        String
-  status      String    @default("pending")
+  type        String    // 组件类型/阶段
+  status      String    @default("pending")  // pending | published | offline (上架/下架状态)
   progress    Int       @default(0)
   config      Json?
   result      Json?
   userId      String?
   tenantId    String?
+  icon        String?   // 组件图标
+  category    String?   // 组件分类
+  tags        String?   // 组件标签（逗号分隔）
+  sortOrder   Int       @default(0)  // 排序权重
+  isPublished Boolean   @default(false)  // 是否已上架（用于前端过滤）
+  usageCount  Int       @default(0)  // 使用次数统计
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime  @updatedAt
   completedAt DateTime?
   tenant      tenant?   @relation(fields: [tenantId], references: [id], map: "ComponentTask_tenantId_fkey")
   user        user?     @relation(fields: [userId], references: [id], map: "ComponentTask_userId_fkey")
 
   @@index([status], map: "ComponentTask_status_idx")
-  @@index([tenantId], map: "ComponentTask_tenantId_idx")
+  @@index([isPublished], map: "ComponentTask_isPublished_idx")
   @@index([type], map: "ComponentTask_type_idx")
+  @@index([category], map: "ComponentTask_category_idx")
+  @@index([sortOrder], map: "ComponentTask_sortOrder_idx")
+  @@index([tenantId], map: "ComponentTask_tenantId_idx")
   @@index([userId], map: "ComponentTask_userId_idx")
 }
 
@@ -66,6 +77,7 @@ model user {
   phone                 String?           @unique(map: "User_phone_key")
   avatar                String?
   role                  String            @default("user")
+  membershipLevel       String            @default("FREE") // FREE | BRONZE | SILVER | GOLD | DIAMOND | CROWN
   tenantId              String?
   wechatUnionId         String?           @unique(map: "User_wechatUnionId_key")
   qqUnionId             String?           @unique(map: "User_qqUnionId_key")
@@ -82,6 +94,15 @@ model user {
   workspaces            WorkspaceMember[]
   componentRatings      ComponentRating[]
   componentReviews      ComponentReview[]
+  apiKeys               ApiKey[]
+  loginHistories        LoginHistory[]
+  notifications         UserNotification[]
+  operationLogs         OperationLog[]
+  preferences           UserPreference[]
+  upgradeApplications   UpgradeApplication[]
+  membershipOrders      MembershipOrder[]
+  membershipChangeLogs  MembershipChangeLog[]
+  operatorLogs          MembershipChangeLog[] @relation("OperatorMembershipChangeLogs")
 
   @@index([email], map: "User_email_idx")
   @@index([phone], map: "User_phone_idx")
@@ -98,13 +119,25 @@ model Workspace {
   type        WorkspaceType
   ownerId     String
   description String?
-  logo        String?
+  logo        String?           @db.Text  // 空间图标（base64 编码或 URL）
+  teamSize    String?           // 团队规模：1-5, 6-20, 21-50, 51-100, 100+
+  industry    String?           // 所属行业
+  contactEmail String?          // 联系邮箱
+  contactPhone String?          // 联系电话
+  plan        String            @default("STANDARD") // 空间套餐：STANDARD | PRO | ENTERPRISE | CUSTOM
+  visibility  String            @default("PRIVATE")  // 可见性：PRIVATE | PUBLIC
+  status      String            @default("ACTIVE")   // 状态：ACTIVE | DISABLED
+  quota       Json?             // 空间配额配置（组件数、成员数、存储等）
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   members     WorkspaceMember[]
+  invitations WorkspaceInvitation[]  // 邀请码关系
+  upgradeApplications UpgradeApplication[]  // 升级申请关系
 
   @@index([ownerId], map: "Workspace_ownerId_idx")
   @@index([type], map: "Workspace_type_idx")
+  @@index([plan], map: "Workspace_plan_idx")
+  @@index([status], map: "Workspace_status_idx")
 }
 
 // 工作空间成员关联表
@@ -134,6 +167,8 @@ model ApiKey {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  user        user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ApiKey_userId_fkey")
+
   @@index([userId], map: "ApiKey_userId_idx")
   @@index([keyPrefix], map: "ApiKey_keyPrefix_idx")
 }
@@ -150,6 +185,8 @@ model UserNotification {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  user               user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserNotification_userId_fkey")
+
   @@unique([userId], map: "UserNotification_userId_key")
   @@index([userId], map: "UserNotification_userId_idx")
 }
@@ -163,6 +200,8 @@ model LoginHistory {
   location  String?
   device    String?
   loginAt   DateTime @default(now())
+
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "LoginHistory_userId_fkey")
 
   @@index([userId], map: "LoginHistory_userId_idx")
   @@index([loginAt], map: "LoginHistory_loginAt_idx")
@@ -182,6 +221,8 @@ model UserPreference {
   presencePenalty  Float    @default(0.0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  user             user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserPreference_userId_fkey")
 
   @@unique([userId], map: "UserPreference_userId_key")
   @@index([userId], map: "UserPreference_userId_idx")
@@ -216,6 +257,9 @@ model UpgradeApplication {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  user         user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UpgradeApplication_userId_fkey")
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "UpgradeApplication_workspaceId_fkey")
+
   @@index([workspaceId], map: "UpgradeApplication_workspaceId_idx")
   @@index([status], map: "UpgradeApplication_status_idx")
 }
@@ -230,6 +274,8 @@ model OperationLog {
   details     Json?
   ipAddress   String?
   createdAt   DateTime @default(now())
+
+  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "OperationLog_userId_fkey")
 
   @@index([userId], map: "OperationLog_userId_idx")
   @@index([workspaceId], map: "OperationLog_workspaceId_idx")
@@ -396,8 +442,90 @@ model WorkspaceInvitation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // 关系定义
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   @@index([workspaceId], map: "WorkspaceInvitation_workspaceId_idx")
   @@index([code], map: "WorkspaceInvitation_code_idx")
   @@index([status], map: "WorkspaceInvitation_status_idx")
   @@index([createdBy], map: "WorkspaceInvitation_createdBy_idx")
+}
+
+// 会员等级配置
+model MembershipLevel {
+  id                     String   @id @default(cuid())
+  name                   String   @unique // FREE | BRONZE | SILVER | GOLD | DIAMOND | CROWN
+  nameZh                 String   // 中文名
+  icon                   String?  // 图标 emoji 或 URL
+  color                  String   @default("#94a3b8") // 主题色
+  description            String?  // 描述
+  maxPersonalWorkspaces  Int      @default(1) // 个人空间数量
+  maxEnterpriseWorkspaces BigInt   @default(1) // 企业空间数量
+  maxComponents          BigInt   @default(100) // 组件数量上限
+  maxTeamSize            BigInt   @default(5) // 团队规模上限
+  maxStorage             BigInt   @default(1073741824) // 存储空间（字节）
+  maxApiCalls            BigInt   @default(1000) // 每月 API 调用次数
+  features               Json?    // 功能权益配置（JSON 格式）
+  priceMonthly           Int      @default(0) // 月付价格（分）
+  priceYearly            Int      @default(0) // 年付价格（分）
+  trialDays              Int      @default(0) // 试用天数
+  sortOrder              Int      @default(0) // 排序
+  isActive               Boolean  @default(true) // 是否启用
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  
+  membershipOrders       MembershipOrder[]
+  membershipChangeLogs   MembershipChangeLog[]
+  
+  @@index([name], map: "MembershipLevel_name_idx")
+  @@index([isActive], map: "MembershipLevel_isActive_idx")
+  @@index([sortOrder], map: "MembershipLevel_sortOrder_idx")
+}
+
+// 会员订单
+model MembershipOrder {
+  id             String   @id @default(cuid())
+  userId         String
+  levelId        String
+  orderType      String   @default("NEW") // NEW | RENEW | UPGRADE
+  paymentMethod  String?  // WECHAT | ALIPAY | BANK_TRANSFER
+  amount         Int      @default(0) // 支付金额（分）
+  currency       String   @default("CNY")
+  startDate      DateTime
+  endDate        DateTime
+  status         String   @default("PENDING") // PENDING | PAID | REFUNDED | CANCELLED
+  transactionId  String?  // 第三方交易 ID
+  metadata       Json?    // 额外信息
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  user           user     @relation(fields: [userId], references: [id], map: "MembershipOrder_userId_fkey")
+  level          MembershipLevel @relation(fields: [levelId], references: [id], map: "MembershipOrder_levelId_fkey")
+  
+  @@index([userId], map: "MembershipOrder_userId_idx")
+  @@index([levelId], map: "MembershipOrder_levelId_idx")
+  @@index([status], map: "MembershipOrder_status_idx")
+  @@index([createdAt], map: "MembershipOrder_createdAt_idx")
+}
+
+// 会员变更日志
+model MembershipChangeLog {
+  id          String   @id @default(cuid())
+  userId      String
+  levelId     String?  // 变更的会员等级 ID（可选）
+  operatorId  String?  // 操作者 ID（管理员操作时）
+  changeType  String   // LEVEL_UP | LEVEL_DOWN | QUOTA_CHANGE | MANUAL_ADJUST
+  oldValue    Json?    // 变更前配置
+  newValue    Json     // 变更后配置
+  reason      String?  // 变更原因
+  createdAt   DateTime @default(now())
+  
+  user        user     @relation(fields: [userId], references: [id], map: "MembershipChangeLog_userId_fkey")
+  operator    user?    @relation("OperatorMembershipChangeLogs", fields: [operatorId], references: [id])
+  level       MembershipLevel? @relation(fields: [levelId], references: [id], map: "MembershipChangeLog_levelId_fkey")
+  
+  @@index([userId], map: "MembershipChangeLog_userId_idx")
+  @@index([operatorId], map: "MembershipChangeLog_operatorId_idx")
+  @@index([changeType], map: "MembershipChangeLog_changeType_idx")
+  @@index([createdAt], map: "MembershipChangeLog_createdAt_idx")
 }

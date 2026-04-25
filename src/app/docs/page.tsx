@@ -12,7 +12,7 @@ import {
   Users,
   Settings,
   Shield,
-  Zap,
+  Rocket,
   LogOut,
   ArrowLeft,
   Menu,
@@ -79,7 +79,7 @@ export default function DocsPage() {
     {
       id: "quickstart",
       title: "快速开始",
-      icon: Zap,
+      icon: Rocket,
       articles: [
         {
           id: "1",

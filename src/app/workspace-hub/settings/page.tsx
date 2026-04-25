@@ -8,18 +8,20 @@ import {
   Settings,
   ArrowLeft,
   Save,
-  Cpu,
+  Server,
   Key,
   Database,
   Upload,
   Trash2,
   Download,
-  Sparkles,
+  Star,
   Check,
   GitFork as GithubIcon,
   Box as GitlabIcon,
   AlertTriangle,
   Loader2,
+  Award,
+  Lightbulb,
 } from "lucide-react";
 
 export default function PersonalWorkspaceSettings() {
@@ -348,7 +350,7 @@ export default function PersonalWorkspaceSettings() {
     {
       id: "preferences" as const,
       label: "研发偏好",
-      icon: Cpu,
+      icon: Server,
     },
     {
       id: "integrations" as const,
@@ -571,7 +573,7 @@ export default function PersonalWorkspaceSettings() {
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <Cpu className="w-5 h-5 text-[#3182ce]" />
+                      <Server className="w-5 h-5 text-[#3182ce]" />
                       研发偏好与集成
                     </h2>
 
@@ -830,7 +832,7 @@ export default function PersonalWorkspaceSettings() {
 
                     <div className="relative z-10">
                       <div className="flex items-center gap-3 mb-4">
-                        <Sparkles className="w-8 h-8 text-yellow-300" />
+                        <Award className="w-8 h-8 text-yellow-300" />
                         <h2 className="text-2xl font-black">
                           将此空间升级为「企业协同版」
                         </h2>
@@ -1057,7 +1059,7 @@ export default function PersonalWorkspaceSettings() {
             <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#8b5cf6]/5 to-[#7c3aed]/5 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center shadow-lg shadow-[#8b5cf6]/20">
-                  <Sparkles className="w-6 h-6 text-white" />
+                  <Lightbulb className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">

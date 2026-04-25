@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const [notifications, total] = await Promise.all([
-      prisma.UserNotification.findMany({
+      prisma.userNotification.findMany({
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.UserNotification.count(),
+      prisma.userNotification.count(),
     ]);
 
     return NextResponse.json({
