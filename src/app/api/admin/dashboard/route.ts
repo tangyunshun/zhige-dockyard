@@ -7,13 +7,13 @@ export async function GET(request: NextRequest) {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
     const authResult = await validateUser(authHeader);
-    
+
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
 
     const userId = authResult.user!.id;
-    
+
     // 检查是否为管理员
     if (!isAdmin(authResult.user!)) {
       return NextResponse.json({ error: "需要管理员权限" }, { status: 403 });
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // 待审核项目（这里用 componenttask 的 pending 状态模拟）
+      // 待审核项目（这里是 componenttask 的 pending 状态模拟）
       prisma.componenttask.count({
         where: { status: "pending" },
       }),
@@ -56,43 +56,6 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    // 计算系统健康度（基于成功率）
-    const completedTasks = await prisma.componenttask.count({
-      where: { status: "completed" },
-    });
-    const totalTasks = await prisma.componenttask.count();
-    const systemHealth =
-      totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 100;
-
-    // 获取最近注册用户
-    const recentUsers = await prisma.user.findMany({
-      take: 5,
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
-    });
-
-    // 获取最近工作空间
-    const recentWorkspaces = await prisma.workspace.findMany({
-      take: 5,
-      orderBy: { createdAt: "desc" },
-      include: {
-        members: {
-          take: 1,
-          include: {
-            user: {
-              select: { name: true, email: true },
-            },
-          },
-        },
-      },
-    });
-
     return NextResponse.json({
       success: true,
       data: {
@@ -102,19 +65,10 @@ export async function GET(request: NextRequest) {
         activeUsers,
         pendingReviews,
         systemLogs,
-        systemHealth: Number(systemHealth.toFixed(1)),
-        recentUsers,
-        recentWorkspaces,
       },
     });
   } catch (error) {
-    console.error("Admin dashboard error:", error);
-    return NextResponse.json(
-      {
-        error: "获取数据失败",
-        details: error instanceof Error ? error.message : error,
-      },
-      { status: 500 },
-    );
+    console.error("Admin dashboard stats error:", error);
+    return NextResponse.json({ error: "获取统计数据失败" }, { status: 500 });
   }
 }

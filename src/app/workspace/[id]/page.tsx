@@ -4,7 +4,15 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
-import { LogOut, Building, Users, FolderKanban, Settings, Plus, ArrowLeft } from "lucide-react";
+import {
+  LogOut,
+  Building,
+  Users,
+  FolderKanban,
+  Settings,
+  Plus,
+  ArrowLeft,
+} from "lucide-react";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -43,7 +51,7 @@ export default function WorkspacePage() {
   };
 
   const handleGoBack = () => {
-    router.back();
+    router.push("/workspace-hub");
   };
 
   const handleGoToSettings = () => {
@@ -143,7 +151,9 @@ export default function WorkspacePage() {
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center mb-6 shadow-lg shadow-[#3182ce]/20">
                 <FolderKanban className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-2xl font-bold text-slate-800 mb-3">项目管理</h3>
+              <h3 className="text-2xl font-bold text-slate-800 mb-3">
+                项目管理
+              </h3>
               <p className="text-sm text-slate-600 mb-6">
                 创建和管理您的项目，跟踪进度
               </p>
@@ -157,7 +167,9 @@ export default function WorkspacePage() {
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center mb-6 shadow-lg shadow-[#10b981]/20">
                 <Users className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-2xl font-bold text-slate-800 mb-3">团队成员</h3>
+              <h3 className="text-2xl font-bold text-slate-800 mb-3">
+                团队成员
+              </h3>
               <p className="text-sm text-slate-600 mb-6">
                 邀请成员加入，协同工作
               </p>
@@ -171,7 +183,9 @@ export default function WorkspacePage() {
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center mb-6 shadow-lg shadow-[#f59e0b]/20">
                 <Settings className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-2xl font-bold text-slate-800 mb-3">空间设置</h3>
+              <h3 className="text-2xl font-bold text-slate-800 mb-3">
+                空间设置
+              </h3>
               <p className="text-sm text-slate-600 mb-6">
                 配置工作空间信息和权限
               </p>

@@ -39,6 +39,8 @@ interface MembershipLevel {
   trialDays: number;
   sortOrder: number;
   isActive: boolean;
+  isRecommended: boolean;
+  isPopular: boolean;
 }
 
 interface LevelFormData {
@@ -59,6 +61,8 @@ interface LevelFormData {
   trialDays: number;
   sortOrder: number;
   isActive: boolean;
+  isRecommended: boolean;
+  isPopular: boolean;
 }
 
 export default function AdminMembershipLevelsPage() {
@@ -67,7 +71,9 @@ export default function AdminMembershipLevelsPage() {
   const [loading, setLoading] = useState(true);
   const [levels, setLevels] = useState<MembershipLevel[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingLevel, setEditingLevel] = useState<MembershipLevel | null>(null);
+  const [editingLevel, setEditingLevel] = useState<MembershipLevel | null>(
+    null,
+  );
   const [formData, setFormData] = useState<LevelFormData>({
     name: "",
     nameZh: "",
@@ -86,6 +92,8 @@ export default function AdminMembershipLevelsPage() {
     trialDays: 0,
     sortOrder: 0,
     isActive: true,
+    isRecommended: false,
+    isPopular: false,
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -96,18 +104,19 @@ export default function AdminMembershipLevelsPage() {
   const loadLevels = async () => {
     try {
       setLoading(true);
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
       console.log("Loading levels with userId:", userId);
-      
+
       const res = await fetch("/api/admin/membership/levels", {
         headers: {
           Authorization: `Bearer ${userId}`,
         },
       });
-      
+
       console.log("Response status:", res.status, res.ok);
-      
+
       if (res.ok) {
         const data = await res.json();
         console.log("Levels data:", data);
@@ -130,7 +139,9 @@ export default function AdminMembershipLevelsPage() {
         console.error("Error message:", error.message);
         console.error("Error stack:", error.stack);
       }
-      toast.error("加载失败: " + (error instanceof Error ? error.message : "未知错误"));
+      toast.error(
+        "加载失败: " + (error instanceof Error ? error.message : "未知错误"),
+      );
     } finally {
       setLoading(false);
     }
@@ -140,7 +151,8 @@ export default function AdminMembershipLevelsPage() {
     if (!confirm("确定要删除这个会员等级吗？")) return;
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       const res = await fetch(`/api/admin/membership/levels/${name}`, {
         method: "DELETE",
         headers: {
@@ -163,7 +175,8 @@ export default function AdminMembershipLevelsPage() {
 
   const handleToggleActive = async (name: string, isActive: boolean) => {
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       const res = await fetch(`/api/admin/membership/levels/${name}`, {
         method: "PUT",
         headers: {
@@ -206,6 +219,8 @@ export default function AdminMembershipLevelsPage() {
       trialDays: 0,
       sortOrder: 0,
       isActive: true,
+      isRecommended: false,
+      isPopular: false,
     });
     setShowCreateModal(true);
   };
@@ -229,6 +244,8 @@ export default function AdminMembershipLevelsPage() {
       trialDays: level.trialDays,
       sortOrder: level.sortOrder,
       isActive: level.isActive,
+      isRecommended: level.isRecommended,
+      isPopular: level.isPopular,
     });
     setEditingLevel(level);
     setShowCreateModal(true);
@@ -250,7 +267,8 @@ export default function AdminMembershipLevelsPage() {
     setSubmitting(true);
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       const url = editingLevel
         ? `/api/admin/membership/levels/${formData.name}`
         : "/api/admin/membership/levels";
@@ -360,7 +378,10 @@ export default function AdminMembershipLevelsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {levels.map((level) => (
-                  <tr key={level.name} className="hover:bg-slate-50 transition-colors">
+                  <tr
+                    key={level.name}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
                         <div
@@ -370,8 +391,24 @@ export default function AdminMembershipLevelsPage() {
                           {level.icon || "👤"}
                         </div>
                         <div>
-                          <div className="font-bold text-slate-800">
-                            {level.nameZh}
+                          <div className="flex items-center gap-2">
+                            <div className="font-bold text-slate-800">
+                              {level.nameZh}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {level.isRecommended && (
+                                <span className="text-xs bg-[#3182ce]/10 text-[#3182ce] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                  <TrendingUp className="w-3 h-3" />
+                                  推荐
+                                </span>
+                              )}
+                              {level.isPopular && (
+                                <span className="text-xs bg-[#f59e0b]/10 text-[#f59e0b] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                  <Crown className="w-3 h-3" />
+                                  热门
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="text-xs text-slate-500">
                             {level.name}
@@ -381,10 +418,15 @@ export default function AdminMembershipLevelsPage() {
                     </td>
                     <td className="py-4 px-4">
                       <div className="text-sm text-slate-600 space-y-1">
-                        <div>企业空间：{Number(level.maxEnterpriseWorkspaces)}个</div>
+                        <div>
+                          企业空间：{Number(level.maxEnterpriseWorkspaces)}个
+                        </div>
                         <div>组件：{Number(level.maxComponents)}个</div>
                         <div>团队：{Number(level.maxTeamSize)}人</div>
-                        <div>存储：{(Number(level.maxStorage) / 1073741824).toFixed(1)}GB</div>
+                        <div>
+                          存储：
+                          {(Number(level.maxStorage) / 1073741824).toFixed(1)}GB
+                        </div>
                       </div>
                     </td>
                     <td className="py-4 px-4">
@@ -395,7 +437,9 @@ export default function AdminMembershipLevelsPage() {
                     </td>
                     <td className="py-4 px-4">
                       <button
-                        onClick={() => handleToggleActive(level.name, level.isActive)}
+                        onClick={() =>
+                          handleToggleActive(level.name, level.isActive)
+                        }
                         className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
                           level.isActive
                             ? "bg-[#10b981]/10 text-[#10b981]"
@@ -460,7 +504,9 @@ export default function AdminMembershipLevelsPage() {
             <div className="p-6 space-y-6">
               {/* 基本信息 */}
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">基本信息</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  基本信息
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -470,7 +516,10 @@ export default function AdminMembershipLevelsPage() {
                       type="text"
                       value={formData.name}
                       onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value.toUpperCase() })
+                        setFormData({
+                          ...formData,
+                          name: e.target.value.toUpperCase(),
+                        })
                       }
                       disabled={!!editingLevel}
                       placeholder="如：FREE, BRONZE, SILVER"
@@ -536,7 +585,10 @@ export default function AdminMembershipLevelsPage() {
                     <textarea
                       value={formData.description}
                       onChange={(e) =>
-                        setFormData({ ...formData, description: e.target.value })
+                        setFormData({
+                          ...formData,
+                          description: e.target.value,
+                        })
                       }
                       rows={2}
                       placeholder="会员等级描述"
@@ -548,7 +600,9 @@ export default function AdminMembershipLevelsPage() {
 
               {/* 配额配置 */}
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">配额配置</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  配额配置
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -576,7 +630,8 @@ export default function AdminMembershipLevelsPage() {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          maxEnterpriseWorkspaces: parseInt(e.target.value) || 0,
+                          maxEnterpriseWorkspaces:
+                            parseInt(e.target.value) || 0,
                         })
                       }
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
@@ -652,7 +707,9 @@ export default function AdminMembershipLevelsPage() {
 
               {/* 价格配置 */}
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">价格配置</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  价格配置
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -723,7 +780,9 @@ export default function AdminMembershipLevelsPage() {
 
               {/* 功能权益 */}
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">功能权益</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  功能权益
+                </h3>
                 <textarea
                   value={formData.features}
                   onChange={(e) =>
@@ -733,6 +792,50 @@ export default function AdminMembershipLevelsPage() {
                   placeholder="每行一个功能权益描述"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                 />
+              </div>
+
+              {/* 标记 */}
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  特殊标记
+                </h3>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.isRecommended}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          isRecommended: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 text-[#3182ce] rounded focus:ring-[#3182ce]"
+                    />
+                    <span className="text-sm font-medium text-slate-700">
+                      推荐等级（显示推荐标签）
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.isPopular}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          isPopular: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 text-[#f59e0b] rounded focus:ring-[#f59e0b]"
+                    />
+                    <span className="text-sm font-medium text-slate-700">
+                      最受欢迎（显示最受欢迎标签）
+                    </span>
+                  </label>
+                  <p className="text-xs text-slate-500 mt-2">
+                    提示：推荐和最受欢迎标记会显示在前端页面的会员卡片上，每个标记只能设置一个等级
+                  </p>
+                </div>
               </div>
 
               {/* 状态 */}
@@ -746,7 +849,9 @@ export default function AdminMembershipLevelsPage() {
                     }
                     className="w-4 h-4 text-[#3182ce] rounded focus:ring-[#3182ce]"
                   />
-                  <span className="text-sm font-medium text-slate-700">启用该会员等级</span>
+                  <span className="text-sm font-medium text-slate-700">
+                    启用该会员等级
+                  </span>
                 </label>
               </div>
             </div>

@@ -57,6 +57,7 @@ import {
   Network,
   Terminal,
   CreditCard,
+  Trash2,
   FolderLock,
   MonitorPlay,
   Scissors,
@@ -66,6 +67,7 @@ import {
   Copy,
   RefreshCw,
   Share2,
+  Lightbulb,
 } from "lucide-react";
 
 interface UserInfo {
@@ -78,6 +80,7 @@ interface Workspace {
   id: string;
   name: string;
   type: "PERSONAL" | "ENTERPRISE";
+  componentCount?: number;
 }
 
 interface EnterpriseQuota {
@@ -593,6 +596,10 @@ export default function WorkspaceHub() {
     null,
   );
   const [usageStats, setUsageStats] = useState<any>(null);
+  const [personalWorkspaceDeleted, setPersonalWorkspaceDeleted] =
+    useState(false);
+  const [personalWorkspaceUpgraded, setPersonalWorkspaceUpgraded] =
+    useState(false);
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(
     null,
   );
@@ -619,8 +626,22 @@ export default function WorkspaceHub() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"MEMBER" | "ADMIN">("MEMBER");
   const [expiresInDays, setExpiresInDays] = useState<number>(7);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
+    // 首先检查用户是否已登录
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      console.warn("用户未登录，即将重定向到登录页面...");
+      setRedirecting(true);
+      // 直接跳转，不使用 setTimeout
+      window.location.href = "/auth/login";
+      return;
+    }
+
+    // 已登录，继续加载页面
     // 检查 URL 参数中的邀请码
     const params = new URLSearchParams(window.location.search);
     const codeFromUrl = params.get("invitationCode");
@@ -629,13 +650,30 @@ export default function WorkspaceHub() {
       setShowJoinModal(true);
       verifyInvitation(codeFromUrl);
     }
+    // 从 localStorage 读取个人空间删除状态
+    const deleted = localStorage.getItem("personalWorkspaceDeleted");
+    if (deleted === "true") {
+      setPersonalWorkspaceDeleted(true);
+      // 如果是删除状态，确保升级状态为 false
+      setPersonalWorkspaceUpgraded(false);
+      localStorage.setItem("personalWorkspaceUpgraded", "false");
+    } else {
+      // 从 localStorage 读取个人空间升级状态
+      const upgraded = localStorage.getItem("personalWorkspaceUpgraded");
+      if (upgraded === "true") {
+        setPersonalWorkspaceUpgraded(true);
+      }
+    }
     loadUserInfo();
   }, []);
 
   const loadUserInfo = async () => {
     try {
+      console.log("开始加载用户信息...");
+
       const res = await fetch("/api/auth/me");
       if (!res.ok) {
+        console.error("获取用户信息失败，状态码:", res.status);
         router.push("/auth/login");
         return;
       }
@@ -669,24 +707,41 @@ export default function WorkspaceHub() {
         // 如果没有个人空间，自动创建一个
         if (!personal && user?.id) {
           console.log("未找到个人空间，正在自动创建...");
-          const createRes = await fetch("/api/workspace/create-personal", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${user.id}`,
-            },
-          });
+          console.log(
+            "当前状态：personalWorkspaceDeleted=",
+            personalWorkspaceDeleted,
+            "personalWorkspaceUpgraded=",
+            personalWorkspaceUpgraded,
+          );
 
-          console.log("创建个人空间响应状态:", createRes.status);
-
-          if (createRes.ok) {
-            const createData = await createRes.json();
-            setPersonalWorkspace(createData.workspace);
-            console.log("个人空间已自动创建:", createData.workspace);
-          } else {
-            const errorText = await createRes.text();
-            console.error("自动创建个人空间失败:", errorText);
+          // 检查是否是因为删除了个人空间
+          if (personalWorkspaceDeleted) {
+            console.log("个人空间已被用户删除，显示已删除状态，不自动创建");
             setPersonalWorkspace(null);
+          } else if (personalWorkspaceUpgraded) {
+            console.log("个人空间已升级为企业空间，显示已升级状态，不自动创建");
+            setPersonalWorkspace(null);
+          } else {
+            console.log("自动创建个人空间");
+            const createRes = await fetch("/api/workspace/create-personal", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${user.id}`,
+              },
+            });
+
+            console.log("创建个人空间响应状态:", createRes.status);
+
+            if (createRes.ok) {
+              const createData = await createRes.json();
+              setPersonalWorkspace(createData.workspace);
+              console.log("个人空间已自动创建:", createData.workspace);
+            } else {
+              const errorText = await createRes.text();
+              console.error("自动创建个人空间失败:", errorText);
+              setPersonalWorkspace(null);
+            }
           }
         } else {
           setPersonalWorkspace(personal || null);
@@ -694,6 +749,38 @@ export default function WorkspaceHub() {
         }
 
         setEnterpriseWorkspace(enterprise || null);
+
+        // 根据实际工作空间情况修正状态
+        console.log(
+          "修正状态检查：enterprise=",
+          enterprise,
+          "personal=",
+          personal,
+        );
+        console.log(
+          "当前状态：personalWorkspaceDeleted=",
+          personalWorkspaceDeleted,
+          "personalWorkspaceUpgraded=",
+          personalWorkspaceUpgraded,
+        );
+
+        if (enterprise && !personal) {
+          // 有企业空间但没有个人空间
+          console.log("进入 enterprise && !personal 分支");
+          if (personalWorkspaceDeleted) {
+            // 选项 B：删除个人空间，创建企业空间
+            console.log("选项 B：个人空间已删除，保持已删除状态");
+            // 保持 personalWorkspaceDeleted = true，不修改
+          } else if (personalWorkspaceUpgraded) {
+            // 选项 C：个人空间已升级为企业空间
+            console.log("选项 C：个人空间已升级为企业空间，保持已升级状态");
+            // 保持 personalWorkspaceUpgraded = true，不修改
+          } else {
+            // 没有设置任何状态，可能是新用户的第一个企业空间
+            console.log("新用户或数据异常，不自动设置状态");
+            // 不自动设置为选项 C，避免误判
+          }
+        }
       } else {
         console.error("获取工作空间列表失败:", await workspacesRes.text());
       }
@@ -702,7 +789,10 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        console.error("User ID not found in localStorage");
+        console.warn(
+          "User ID not found in localStorage, redirecting to login...",
+        );
+        router.push("/auth/login");
         return;
       }
 
@@ -788,7 +878,7 @@ export default function WorkspaceHub() {
 
       // 开始检测，显示检测中提示
       setCheckingDelete(true);
-      toast.info("正在检测空间状态，请稍候...", 2000);
+      setWorkspaceToDelete(workspaceId);
 
       // 调用检测 API
       const res = await fetch(
@@ -802,6 +892,8 @@ export default function WorkspaceHub() {
 
       if (!res.ok) {
         const errorData = await res.json();
+        setCheckingDelete(false);
+        setWorkspaceToDelete(null);
         throw new Error(errorData.error || "检查失败");
       }
 
@@ -810,6 +902,8 @@ export default function WorkspaceHub() {
 
       // 如果有阻止删除的问题，显示详细错误
       if (checkData.issues && checkData.issues.length > 0) {
+        setCheckingDelete(false);
+        setWorkspaceToDelete(null);
         toast.error(
           <div className="space-y-1">
             <div className="font-bold">❌ 无法注销，存在以下问题：</div>
@@ -818,18 +912,159 @@ export default function WorkspaceHub() {
             ))}
           </div>,
         );
-        setCheckingDelete(false);
         return;
       }
 
-      // 显示注销确认弹窗（警告信息在弹窗中显示）
+      // 检测通过，显示注销确认弹窗
       setCheckingDelete(false);
-      setWorkspaceToDelete(workspaceId);
       setShowDeleteModal(true);
     } catch (error) {
       console.error("Check delete workspace error:", error);
       setCheckingDelete(false);
+      setWorkspaceToDelete(null);
       toast.error(error instanceof Error ? error.message : "检查失败");
+    }
+  };
+
+  const handleCreatePersonal = async () => {
+    try {
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      if (!userId) {
+        toast.error("未授权访问");
+        return;
+      }
+
+      const createRes = await fetch("/api/workspace/create-personal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userId}`,
+        },
+      });
+
+      if (createRes.ok) {
+        const createData = await createRes.json();
+        setPersonalWorkspace(createData.workspace);
+        toast.success("个人空间创建成功");
+        // 跳转到个人空间页面
+        setTimeout(() => {
+          router.push(`/workspace/${createData.workspace.id}`);
+        }, 500);
+      } else {
+        const errorText = await createRes.text();
+        throw new Error(errorText || "创建失败");
+      }
+    } catch (error) {
+      console.error("Create personal workspace error:", error);
+      toast.error(error instanceof Error ? error.message : "创建失败");
+    }
+  };
+
+  const handleDeleteUpgradedPersonal = () => {
+    setShowDeleteConfirmModal(true);
+    setDeleteConfirmText("");
+  };
+
+  const confirmDeleteUpgradedPersonal = async () => {
+    console.log("开始确认注销个人空间...");
+    console.log("deleteConfirmText:", deleteConfirmText);
+    console.log("personalWorkspace:", personalWorkspace);
+
+    if (deleteConfirmText !== "注销") {
+      toast.error('请输入"注销"以确认操作');
+      return;
+    }
+
+    if (!personalWorkspace) {
+      console.error("personalWorkspace 不存在");
+      toast.error("个人空间不存在");
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      console.log("userId:", userId);
+
+      if (!userId) {
+        toast.error("未授权访问");
+        return;
+      }
+
+      console.log("开始调用删除 API，workspaceId:", personalWorkspace.id);
+      const deleteRes = await fetch(
+        `/api/workspace/delete?workspaceId=${personalWorkspace.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${userId}`,
+          },
+          body: JSON.stringify({
+            workspaceId: personalWorkspace.id,
+            action: "DELETE",
+          }),
+        },
+      );
+
+      console.log("删除 API 响应状态:", deleteRes.status);
+
+      if (deleteRes.ok) {
+        setPersonalWorkspace(null);
+        setShowDeleteConfirmModal(false);
+        setDeleteConfirmText("");
+        toast.success("个人空间已注销");
+      } else {
+        const errorText = await deleteRes.text();
+        console.error("删除失败:", errorText);
+        throw new Error(errorText || "注销失败");
+      }
+    } catch (error) {
+      console.error("Delete upgraded personal workspace error:", error);
+      toast.error(error instanceof Error ? error.message : "注销失败");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleRecreatePersonal = async () => {
+    try {
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      if (!userId) {
+        toast.error("未授权访问");
+        return;
+      }
+
+      const createRes = await fetch("/api/workspace/create-personal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userId}`,
+        },
+      });
+
+      if (createRes.ok) {
+        const createData = await createRes.json();
+        console.log("重新创建个人空间成功:", createData.workspace);
+        setPersonalWorkspace(createData.workspace);
+        setPersonalWorkspaceDeleted(false);
+        setPersonalWorkspaceUpgraded(false);
+        localStorage.setItem("personalWorkspaceDeleted", "false");
+        localStorage.setItem("personalWorkspaceUpgraded", "false");
+        console.log(
+          "状态已更新：personalWorkspaceDeleted=false, personalWorkspaceUpgraded=false",
+        );
+        toast.success("个人空间创建成功");
+      } else {
+        const errorText = await createRes.text();
+        throw new Error(errorText || "创建失败");
+      }
+    } catch (error) {
+      console.error("Recreate personal workspace error:", error);
+      toast.error(error instanceof Error ? error.message : "创建失败");
     }
   };
 
@@ -1140,6 +1375,18 @@ export default function WorkspaceHub() {
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
+  // 如果正在重定向，不渲染任何内容
+  if (redirecting) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#f0f8ff]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">正在跳转到登录页面...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen w-full relative bg-[#f0f8ff]">
       {/* 背景：渐变效果 */}
@@ -1192,8 +1439,11 @@ export default function WorkspaceHub() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           {/* 个人空间 - 占 1/3 */}
           <div
-            onClick={() => handleEnterWorkspace(personalWorkspace)}
-            className="group cursor-pointer relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#3182ce]/20 hover:border-[#3182ce]/40 hover:shadow-2xl hover:shadow-[#3182ce]/15 transition-all duration-300 hover:-translate-y-1"
+            className={`group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 ${
+              personalWorkspaceDeleted
+                ? "border-red-200"
+                : "border-[#3182ce]/20 hover:border-[#3182ce]/40 hover:shadow-[#3182ce]/15"
+            }`}
           >
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#3182ce]/30">
@@ -1204,7 +1454,21 @@ export default function WorkspaceHub() {
                   <h3 className="text-base font-black text-slate-800">
                     个人空间
                   </h3>
-                  {personalWorkspace ? (
+                  {personalWorkspaceDeleted ? (
+                    <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-bold rounded-full">
+                      已删除
+                    </span>
+                  ) : personalWorkspaceUpgraded && personalWorkspace ? (
+                    <span className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] text-xs font-bold rounded-full">
+                      已升级
+                    </span>
+                  ) : personalWorkspace &&
+                    enterpriseWorkspace &&
+                    personalWorkspaceUpgraded ? (
+                    <span className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] text-xs font-bold rounded-full">
+                      已升级
+                    </span>
+                  ) : personalWorkspace ? (
                     <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] text-xs font-bold rounded-full">
                       已激活
                     </span>
@@ -1215,18 +1479,32 @@ export default function WorkspaceHub() {
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                  适合独立开发者、自由职业者或个人项目使用，提供基础的组件调用和项目管理功能
+                  {personalWorkspaceDeleted
+                    ? "个人空间已被删除。点击重新创建按钮可创建新的个人空间，之前的数据将无法恢复"
+                    : personalWorkspaceUpgraded && !personalWorkspace
+                      ? "个人空间已升级为企业空间。如需使用个人空间，可以点击重新创建按钮创建新的个人空间"
+                      : personalWorkspace &&
+                          enterpriseWorkspace &&
+                          personalWorkspaceUpgraded
+                        ? "个人空间已升级为企业空间，原个人空间已保留。您可以继续使用该个人空间或选择注销"
+                        : personalWorkspaceUpgraded && personalWorkspace
+                          ? "个人空间已升级。您可以继续使用该个人空间，或选择注销"
+                          : "适合独立开发者、自由职业者或个人项目使用，提供基础的组件调用和项目管理功能"}
                 </p>
                 {personalWorkspace && (
                   <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
                     <Box className="w-3 h-3" />
-                    <span>已用 12 个组件</span>
+                    <span>
+                      已用 {personalWorkspace.componentCount || 0} 个组件
+                    </span>
                   </div>
                 )}
                 {/* 升级提示 */}
                 {personalWorkspace &&
                   quota &&
-                  quota.enterpriseCount < quota.maxEnterprise && (
+                  quota.enterpriseCount < quota.maxEnterprise &&
+                  !enterpriseWorkspace &&
+                  !personalWorkspaceUpgraded && (
                     <div className="mb-2 p-2 bg-gradient-to-r from-[#10b981]/10 to-[#059669]/10 border border-[#10b981]/30 rounded-lg">
                       <div className="flex items-start gap-2">
                         <div className="flex-1">
@@ -1250,7 +1528,7 @@ export default function WorkspaceHub() {
                             e.stopPropagation();
                             handleUpgradeWorkspace();
                           }}
-                          className="px-2 py-1 bg-[#10b981] text-white text-[10px] font-bold rounded hover:bg-[#059669] transition-all flex items-center gap-0.5"
+                          className="px-2 py-1 bg-[#10b981] text-white text-[10px] font-bold rounded hover:bg-[#059669] transition-all flex items-center gap-0.5 cursor-pointer"
                         >
                           <span>升级</span>
                           <ArrowUpRight className="w-2.5 h-2.5" />
@@ -1258,37 +1536,115 @@ export default function WorkspaceHub() {
                       </div>
                     </div>
                   )}
-                {/* 已达上限提示 */}
+                {/* 已升级提示（选项 A：保留个人空间） */}
                 {personalWorkspace &&
-                  quota &&
-                  quota.enterpriseCount >= quota.maxEnterprise && (
-                    <div className="mb-2 p-2 bg-slate-100 border border-slate-200 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-3 h-3 text-slate-400" />
-                        <div className="text-[10px] text-slate-500">
-                          <span className="font-bold">已达空间上限：</span>
-                          {quota.isMember ? (
-                            <span>
-                              会员最多可拥有 3 个企业空间，您已拥有{" "}
-                              {quota.enterpriseCount} 个
-                            </span>
-                          ) : (
-                            <span>免费用户最多可拥有 1 个企业空间</span>
-                          )}
+                  enterpriseWorkspace &&
+                  personalWorkspaceUpgraded && (
+                    <div className="mb-2 p-2 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/30 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1">
+                          <div className="text-[11px] font-bold text-[#f59e0b] mb-0.5">
+                            已升级为企业空间
+                          </div>
+                          <div className="text-[10px] text-slate-600 leading-relaxed">
+                            您的个人空间已成功升级为企业空间，原个人空间已保留。
+                            您可以选择注销这个个人空间，或者继续使用。
+                          </div>
                         </div>
                       </div>
                     </div>
                   )}
-                <div className="flex items-center gap-1 text-sm font-bold text-[#3182ce]">
-                  <span>{personalWorkspace ? "进入空间" : "创建空间"}</span>
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </div>
+                {/* 操作按钮 */}
+                {personalWorkspace &&
+                enterpriseWorkspace &&
+                personalWorkspaceUpgraded ? (
+                  // 选项 A：个人空间和企业空间都存在，且个人空间已升级，显示"进入空间"和"注销"按钮
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEnterWorkspace(personalWorkspace);
+                      }}
+                      className="flex items-center gap-1 text-sm font-bold text-[#3182ce] hover:text-[#2563eb] transition-colors cursor-pointer"
+                    >
+                      <span>进入空间</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteUpgradedPersonal();
+                      }}
+                      className="px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>注销</span>
+                    </button>
+                  </div>
+                ) : personalWorkspaceUpgraded && personalWorkspace ? (
+                  // 个人空间已升级（企业空间可能被删除了），仍然显示"进入空间"和"注销"按钮
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEnterWorkspace(personalWorkspace);
+                      }}
+                      className="flex items-center gap-1 text-sm font-bold text-[#3182ce] hover:text-[#2563eb] transition-colors cursor-pointer"
+                    >
+                      <span>进入空间</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteUpgradedPersonal();
+                      }}
+                      className="px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>注销</span>
+                    </button>
+                  </div>
+                ) : personalWorkspace ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEnterWorkspace(personalWorkspace);
+                    }}
+                    className="flex items-center gap-1 text-sm font-bold text-[#3182ce] hover:text-[#2563eb] transition-colors cursor-pointer"
+                  >
+                    <span>进入空间</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                ) : personalWorkspaceDeleted || personalWorkspaceUpgraded ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRecreatePersonal();
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-sm font-bold rounded-lg hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>重新创建</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCreatePersonal();
+                    }}
+                    className="flex items-center gap-1 text-sm font-bold text-[#3182ce] hover:text-[#2563eb] transition-colors cursor-pointer"
+                  >
+                    <span>创建空间</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           {/* 企业或组织空间 - 占 2/3 */}
-          <div className="lg:col-span-2 group cursor-pointer relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#f59e0b]/30 hover:border-[#f59e0b]/50 hover:shadow-2xl hover:shadow-[#f59e0b]/20 transition-all duration-300 hover:-translate-y-1">
+          <div className="lg:col-span-2 group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#f59e0b]/30 hover:border-[#f59e0b]/50 hover:shadow-2xl hover:shadow-[#f59e0b]/20 transition-all duration-300 hover:-translate-y-1">
             <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-[10px] font-black rounded-full shadow-lg">
               推荐
             </div>
@@ -1394,7 +1750,7 @@ export default function WorkspaceHub() {
                             e.stopPropagation();
                             router.push("/pricing");
                           }}
-                          className="w-full px-2 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1"
+                          className="w-full px-2 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
                         >
                           <span>立即开通会员</span>
                           <ArrowRight className="w-3 h-3" />
@@ -1489,7 +1845,7 @@ export default function WorkspaceHub() {
                                   e.stopPropagation();
                                   router.push(`/workspace/${ws.id}`);
                                 }}
-                                className="px-2 py-1 bg-[#f59e0b]/10 text-[#f59e0b] text-[10px] font-bold rounded hover:bg-[#f59e0b]/20 transition-all"
+                                className="px-2 py-1 bg-[#f59e0b]/10 text-[#f59e0b] text-[10px] font-bold rounded hover:bg-[#f59e0b]/20 transition-all cursor-pointer"
                                 title="进入空间"
                               >
                                 进入
@@ -1499,7 +1855,7 @@ export default function WorkspaceHub() {
                                   e.stopPropagation();
                                   handleExpandEnterprise(ws.id);
                                 }}
-                                className="px-2 py-1 bg-[#10b981]/10 text-[#10b981] text-[10px] font-bold rounded hover:bg-[#10b981]/20 transition-all flex items-center gap-0.5"
+                                className="px-2 py-1 bg-[#10b981]/10 text-[#10b981] text-[10px] font-bold rounded hover:bg-[#10b981]/20 transition-all flex items-center gap-0.5 cursor-pointer"
                                 title="扩容"
                               >
                                 <TrendingUp className="w-2.5 h-2.5" />
@@ -1514,7 +1870,7 @@ export default function WorkspaceHub() {
                                   deletingWorkspaceId === ws.id ||
                                   checkingDelete
                                 }
-                                className="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[50px]"
+                                className="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[50px] cursor-pointer"
                                 title="注销空间"
                               >
                                 {checkingDelete ? (
@@ -1543,7 +1899,7 @@ export default function WorkspaceHub() {
                                   e.stopPropagation();
                                   handleGoToCreateEnterprise();
                                 }}
-                                className="w-full px-3 py-1.5 bg-white border-2 border-[#f59e0b] text-[#f59e0b] text-xs font-bold rounded-lg hover:bg-[#f59e0b]/10 transition-all text-center flex items-center justify-center gap-1"
+                                className="w-full px-3 py-1.5 bg-white border-2 border-[#f59e0b] text-[#f59e0b] text-xs font-bold rounded-lg hover:bg-[#f59e0b]/10 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
                               >
                                 <Plus className="w-3 h-3" />
                                 <span>新建空间</span>
@@ -1568,7 +1924,7 @@ export default function WorkspaceHub() {
                               e.stopPropagation();
                               handleOpenShareModal();
                             }}
-                            className="w-full px-3 py-1.5 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1"
+                            className="w-full px-3 py-1.5 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
                           >
                             <Users className="w-3 h-3" />
                             <span>分享空间</span>
@@ -1580,12 +1936,40 @@ export default function WorkspaceHub() {
                             e.stopPropagation();
                             handleGoToCreateEnterprise();
                           }}
-                          className="w-full px-3 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1"
+                          className="w-full px-3 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
                         >
                           <span>立即创建</span>
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
+
+                      {/* 提示信息 - 当没有企业空间时显示 */}
+                      {enterpriseData &&
+                      enterpriseData.statistics.totalWorkspaces === 0 ? (
+                        <div className="p-3 bg-gradient-to-br from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/20 rounded-xl">
+                          <div className="flex items-start gap-2">
+                            <Lightbulb className="w-4 h-4 text-[#f59e0b] flex-shrink-0 mt-0.5" />
+                            <div className="text-xs text-slate-700">
+                              <p className="font-bold text-[#f59e0b] mb-1">
+                                为什么需要企业空间？
+                              </p>
+                              <ul className="space-y-0.5 text-slate-600">
+                                <li>
+                                  •
+                                  团队协作：支持产品、设计、开发、测试多角色协同
+                                </li>
+                                <li>
+                                  • 权限管理：细粒度的成员权限控制，保障数据安全
+                                </li>
+                                <li>
+                                  • 资源共享：团队组件库、项目资源统一管理和复用
+                                </li>
+                                <li>• 流程规范：完整的业务流程和审批机制</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {/* 提示信息 */}
@@ -1605,10 +1989,7 @@ export default function WorkspaceHub() {
         {/* 第二行：个人空间设置 + 加入已有空间 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           {/* 个人空间设置 */}
-          <div
-            onClick={handleGoToPersonalSettings}
-            className="group cursor-pointer relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border border-[#e2e8f0]/80 hover:border-[#3182ce]/40 hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
-          >
+          <div className="group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border border-[#e2e8f0]/80 hover:border-[#3182ce]/40 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center flex-shrink-0 shadow-lg">
                 <Settings className="w-6 h-6 text-slate-600" />
@@ -1671,19 +2052,19 @@ export default function WorkspaceHub() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 text-sm font-bold text-slate-600">
+                <button
+                  onClick={handleGoToPersonalSettings}
+                  className="flex items-center gap-1 text-sm font-bold text-slate-600 hover:text-[#3182ce] transition-colors cursor-pointer"
+                >
                   <span>管理设置</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </div>
+                </button>
               </div>
             </div>
           </div>
 
           {/* 加入已有空间 */}
-          <div
-            onClick={handleOpenJoinModal}
-            className="group cursor-pointer relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#10b981]/30 hover:border-[#10b981]/50 hover:shadow-2xl hover:shadow-[#10b981]/20 transition-all duration-300 hover:-translate-y-1"
-          >
+          <div className="group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#10b981]/30 hover:border-[#10b981]/50 hover:shadow-2xl hover:shadow-[#10b981]/20 transition-all duration-300 hover:-translate-y-1">
             <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-[10px] font-black rounded-full shadow-lg">
               团队协作
             </div>
@@ -1765,10 +2146,13 @@ export default function WorkspaceHub() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 text-sm font-bold text-[#10b981]">
+                <button
+                  onClick={handleOpenJoinModal}
+                  className="flex items-center gap-1 text-sm font-bold text-[#10b981] hover:text-[#059669] transition-colors cursor-pointer"
+                >
                   <span>立即加入</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </div>
+                </button>
               </div>
             </div>
           </div>
@@ -1795,14 +2179,14 @@ export default function WorkspaceHub() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleGoToGuide}
-                  className="px-4 py-2.5 bg-white/80 backdrop-blur-sm border border-[#e2e8f0] text-slate-700 text-sm font-bold rounded-xl hover:shadow-md transition-all flex items-center gap-2"
+                  className="px-4 py-2.5 bg-white/80 backdrop-blur-sm border border-[#e2e8f0] text-slate-700 text-sm font-bold rounded-xl hover:shadow-md transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <BookOpen className="w-4 h-4" />
                   <span>操作手册</span>
                 </button>
                 <button
                   onClick={handleGoToStudio}
-                  className="px-5 py-2.5 bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white text-sm font-bold rounded-xl hover:shadow-xl transition-all flex items-center gap-2"
+                  className="px-5 py-2.5 bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white text-sm font-bold rounded-xl hover:shadow-xl transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <span>浏览全部组件</span>
                   <ExternalLink className="w-4 h-4" />
@@ -2637,6 +3021,163 @@ export default function WorkspaceHub() {
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {deletingWorkspaceId ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>注销中...</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>确认注销</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 注销已升级个人空间确认模态框 */}
+      {showDeleteConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-8 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+            {/* 头部 */}
+            <div className="p-6 border-b border-slate-200 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-800">
+                    注销个人空间确认
+                  </h2>
+                  <p className="text-xs text-slate-500">请仔细阅读以下信息</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 内容区域 - 可滚动 */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* 警告信息 */}
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-bold text-red-800 mb-2">
+                      ⚠️ 注销后将产生以下影响：
+                    </h3>
+                    <ul className="space-y-1">
+                      <li className="text-sm text-red-700 flex items-start gap-1.5">
+                        <span className="text-red-600 mt-0.5">•</span>
+                        <span>个人空间将被永久注销，所有数据将无法恢复</span>
+                      </li>
+                      <li className="text-sm text-red-700 flex items-start gap-1.5">
+                        <span className="text-red-600 mt-0.5">•</span>
+                        <span>个人空间内的所有组件、项目等资源将被清空</span>
+                      </li>
+                      <li className="text-sm text-red-700 flex items-start gap-1.5">
+                        <span className="text-red-600 mt-0.5">•</span>
+                        <span>企业空间不会受到影响，可以继续使用</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* 空间信息 */}
+              {personalWorkspace && (
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center gap-3 mb-2">
+                    <User className="w-5 h-5 text-slate-400" />
+                    <span className="text-sm font-bold text-slate-700">
+                      即将注销的个人空间：
+                    </span>
+                  </div>
+                  <div className="ml-8">
+                    <div className="text-base font-black text-slate-800 mb-1">
+                      {personalWorkspace.name}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      组件数：{personalWorkspace.componentCount || 0}个
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 确认提示 */}
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-bold text-amber-800 mb-1">
+                      重要提示：
+                    </h3>
+                    <p className="text-sm text-amber-700">
+                      注销操作
+                      <span className="font-black">不可恢复</span>
+                      ，所有个人空间数据将被清空。请确保您已备份重要信息！
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 确认输入 */}
+              <div className="p-4 bg-white border-2 border-slate-200 rounded-xl">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  请输入"注销"以继续：
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="注销"
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none text-sm font-mono"
+                  autoComplete="off"
+                />
+                {deleteConfirmText && deleteConfirmText !== "注销" && (
+                  <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>请输入正确的确认文字</span>
+                  </div>
+                )}
+                {deleteConfirmText === "注销" && (
+                  <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span>可以继续进行注销操作</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 底部按钮 - 固定在底部 */}
+            <div className="p-6 border-t border-slate-200 flex items-center gap-3 bg-slate-50 rounded-b-2xl flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirmModal(false);
+                  setDeleteConfirmText("");
+                }}
+                className="flex-1 px-4 py-3 bg-white border-2 border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-100 transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDeleteUpgradedPersonal}
+                disabled={deleting || deleteConfirmText !== "注销"}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {deleting ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     <span>注销中...</span>

@@ -14,27 +14,33 @@ export async function hashPassword(password: string): Promise<string> {
   return await bcrypt.hash(password, saltRounds);
 }
 
-export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+export async function verifyPassword(
+  password: string,
+  hashedPassword: string,
+): Promise<boolean> {
   return await bcrypt.compare(password, hashedPassword);
 }
 
-export function validatePasswordStrength(password: string): { valid: boolean; error?: string } {
+export function validatePasswordStrength(password: string): {
+  valid: boolean;
+  error?: string;
+} {
   if (password.length < 8) {
     return { valid: false, error: "密码长度至少为 8 位" };
   }
-  
+
   if (!/[A-Z]/.test(password)) {
     return { valid: false, error: "密码必须包含至少一个大写字母" };
   }
-  
+
   if (!/[a-z]/.test(password)) {
     return { valid: false, error: "密码必须包含至少一个小写字母" };
   }
-  
+
   if (!/[0-9]/.test(password)) {
     return { valid: false, error: "密码必须包含至少一个数字" };
   }
-  
+
   return { valid: true };
 }
 
@@ -49,7 +55,7 @@ export async function validateUser(authHeader: string | null): Promise<{
   }
 
   const userId = authHeader.replace("Bearer ", "");
-  
+
   // 验证用户是否在数据库中存在
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -71,18 +77,38 @@ export async function validateUser(authHeader: string | null): Promise<{
     return { valid: false, error: "用户账号已被禁用" };
   }
 
-  return { 
-    valid: true, 
+  return {
+    valid: true,
     user: {
       id: user.id,
       email: user.email || "",
       name: user.name || "",
       role: user.role,
       status: user.status,
-    }
+    },
   };
 }
 
 export function isAdmin(user: AuthenticatedUser): boolean {
-  return user.role === "admin" || user.role === "super_admin";
+  const adminRoles = [
+    "admin",
+    "super_admin",
+    "superadmin",
+    "ADMIN",
+    "SUPERADMIN",
+    "SUPER_ADMIN",
+  ];
+  return adminRoles.includes(user.role);
+}
+
+export function isAdminRole(role: string): boolean {
+  const adminRoles = [
+    "admin",
+    "super_admin",
+    "superadmin",
+    "ADMIN",
+    "SUPERADMIN",
+    "SUPER_ADMIN",
+  ];
+  return adminRoles.includes(role);
 }

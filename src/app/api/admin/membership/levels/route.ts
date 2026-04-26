@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { validateUser } from "@/lib/auth";
+import { validateUser, isAdmin } from "@/lib/auth";
 
 /**
  * GET /api/admin/membership/levels
@@ -11,20 +11,17 @@ export async function GET(request: NextRequest) {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
     const authResult = await validateUser(authHeader);
-    
+
     if (!authResult.valid) {
       return NextResponse.json(
         { message: authResult.error || "未授权访问" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
     // 检查是否是管理员
-    if (authResult.user!.role !== "admin" && authResult.user!.role !== "superadmin" && authResult.user!.role !== "super_admin") {
-      return NextResponse.json(
-        { message: "需要管理员权限" },
-        { status: 403 }
-      );
+    if (!isAdmin(authResult.user!)) {
+      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
     }
 
     // 获取所有会员等级
@@ -35,7 +32,7 @@ export async function GET(request: NextRequest) {
     });
 
     // 将 BigInt 转换为 Number，以便 JSON 序列化
-    const serializedLevels = levels.map(level => ({
+    const serializedLevels = levels.map((level) => ({
       ...level,
       maxPersonalWorkspaces: Number(level.maxPersonalWorkspaces),
       maxEnterpriseWorkspaces: Number(level.maxEnterpriseWorkspaces),
@@ -51,10 +48,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Get membership levels error:", error);
-    return NextResponse.json(
-      { message: "获取会员等级失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "获取会员等级失败" }, { status: 500 });
   }
 }
 
@@ -67,20 +61,17 @@ export async function POST(request: NextRequest) {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
     const authResult = await validateUser(authHeader);
-    
+
     if (!authResult.valid) {
       return NextResponse.json(
         { message: authResult.error || "未授权访问" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
     // 检查是否是管理员
-    if (authResult.user!.role !== "admin" && authResult.user!.role !== "superadmin") {
-      return NextResponse.json(
-        { message: "需要管理员权限" },
-        { status: 403 }
-      );
+    if (!isAdmin(authResult.user!)) {
+      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
     }
 
     // 解析请求体
@@ -103,14 +94,13 @@ export async function POST(request: NextRequest) {
       trialDays,
       sortOrder,
       isActive,
+      isRecommended,
+      isPopular,
     } = body;
 
     // 验证必填字段
     if (!name || !nameZh) {
-      return NextResponse.json(
-        { message: "缺少必填字段" },
-        { status: 400 }
-      );
+      return NextResponse.json({ message: "缺少必填字段" }, { status: 400 });
     }
 
     // 检查是否已存在
@@ -121,7 +111,7 @@ export async function POST(request: NextRequest) {
     if (existing) {
       return NextResponse.json(
         { message: "该会员等级已存在" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -145,6 +135,8 @@ export async function POST(request: NextRequest) {
         trialDays: trialDays || 0,
         sortOrder: sortOrder || 0,
         isActive: isActive !== false,
+        isRecommended: isRecommended === true,
+        isPopular: isPopular === true,
       },
     });
 
@@ -155,9 +147,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Create membership level error:", error);
-    return NextResponse.json(
-      { message: "创建会员等级失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "创建会员等级失败" }, { status: 500 });
   }
 }

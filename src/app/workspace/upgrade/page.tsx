@@ -3,7 +3,13 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import { ArrowLeft, Building2, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
 
 interface PersonalWorkspace {
   id: string;
@@ -24,9 +30,17 @@ function UpgradeWorkspaceForm() {
   const searchParams = useSearchParams();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
-  const [personalWorkspace, setPersonalWorkspace] = useState<PersonalWorkspace | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<{
+    status: "success" | "error" | null;
+    message: string;
+  }>({ status: null, message: "" });
+  const [personalWorkspace, setPersonalWorkspace] =
+    useState<PersonalWorkspace | null>(null);
   const [quota, setQuota] = useState<EnterpriseQuota | null>(null);
-  const [selectedOption, setSelectedOption] = useState<"retain" | "delete" | "upgrade" | null>(null);
+  const [selectedOption, setSelectedOption] = useState<
+    "retain" | "delete" | "upgrade" | null
+  >(null);
 
   useEffect(() => {
     loadWorkspaceInfo();
@@ -41,27 +55,46 @@ function UpgradeWorkspaceForm() {
         return;
       }
 
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
         toast.error("未授权访问");
         router.push("/auth/login");
         return;
       }
 
-      const res = await fetch(`/api/workspace/upgrade?workspaceId=${workspaceId}`, {
-        headers: {
-          Authorization: `Bearer ${userId}`,
+      const res = await fetch(
+        `/api/workspace/upgrade?workspaceId=${workspaceId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${userId}`,
+          },
         },
-      });
-      
+      );
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "加载失败");
+        const errorMsg = errorData.error || "加载失败";
+
+        // 如果是企业空间，给出友好提示
+        if (errorMsg.includes("企业空间")) {
+          toast.error("此空间已经是企业空间，无需升级");
+        } else {
+          toast.error(errorMsg);
+        }
+        setTimeout(() => {
+          router.push("/workspace-hub");
+        }, 1000);
+        return;
       }
 
       const result = await res.json();
       setPersonalWorkspace(result.workspace);
       setQuota(result.quota);
+
+      console.log("配额信息:", result.quota);
+      console.log("是否已有企业空间:", result.quota.hasEnterprise);
+      console.log("是否会员:", result.quota.isMember);
 
       // 检查是否已有企业空间且为免费用户
       if (result.quota.hasEnterprise && !result.quota.isMember) {
@@ -78,6 +111,56 @@ function UpgradeWorkspaceForm() {
     router.push("/workspace-hub");
   };
 
+  const handleOptionChange = async (
+    option: "retain" | "delete" | "upgrade",
+  ) => {
+    setSelectedOption(option);
+
+    // 如果选择删除个人空间，立即进行检测
+    if (option === "delete") {
+      setChecking(true);
+      setCheckResult({ status: null, message: "" });
+
+      try {
+        const userId =
+          typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
+        const checkRes = await fetch(
+          `/api/workspace/check-delete?workspaceId=${personalWorkspace?.id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${userId}`,
+            },
+          },
+        );
+
+        const checkResult = await checkRes.json();
+
+        if (!checkRes.ok) {
+          setCheckResult({
+            status: "error",
+            message: checkResult.error || "检测失败，无法删除个人空间",
+          });
+        } else {
+          setCheckResult({
+            status: "success",
+            message: "检测通过，可以删除个人空间",
+          });
+        }
+      } catch (error) {
+        setCheckResult({
+          status: "error",
+          message: "检测失败，请稍后重试",
+        });
+      } finally {
+        setChecking(false);
+      }
+    } else {
+      // 其他选项，清空检测结果
+      setCheckResult({ status: null, message: "" });
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedOption) {
       toast.error("请选择升级方式");
@@ -89,14 +172,21 @@ function UpgradeWorkspaceForm() {
       return;
     }
 
+    // 如果选择删除个人空间，检查检测结果
+    if (selectedOption === "delete" && checkResult.status === "error") {
+      toast.error(checkResult.message);
+      return;
+    }
+
     try {
       setLoading(true);
 
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
       const res = await fetch("/api/workspace/upgrade", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${userId}`,
         },
@@ -113,12 +203,54 @@ function UpgradeWorkspaceForm() {
       }
 
       toast.success(result.message || "升级成功！");
-      setTimeout(() => {
-        router.push(`/workspace/${result.workspaceId}`);
-      }, 1000);
+
+      console.log("升级结果:", result);
+      console.log("选择的选项:", selectedOption);
+
+      // 根据选项决定跳转逻辑
+      if (selectedOption === "upgrade") {
+        // 选项 C：直接升级，设置升级状态
+        console.log("选项 C：直接升级，设置 personalWorkspaceUpgraded=true");
+        localStorage.setItem("personalWorkspaceUpgraded", "true");
+        // 跳转到企业空间页面
+        setTimeout(() => {
+          router.push(`/workspace/${result.workspaceId}`);
+        }, 1000);
+      } else if (selectedOption === "delete") {
+        // 选项 B：删除个人空间，设置删除状态
+        console.log(
+          "选项 B：删除个人空间，设置 personalWorkspaceDeleted=true, personalWorkspaceUpgraded=false",
+        );
+        localStorage.setItem("personalWorkspaceDeleted", "true");
+        localStorage.setItem("personalWorkspaceUpgraded", "false");
+        console.log(
+          "localStorage 已设置：personalWorkspaceDeleted=",
+          localStorage.getItem("personalWorkspaceDeleted"),
+          "personalWorkspaceUpgraded=",
+          localStorage.getItem("personalWorkspaceUpgraded"),
+        );
+        setTimeout(() => {
+          router.push("/workspace-hub");
+        }, 1000);
+      } else {
+        // 选项 A：保留个人空间，设置升级状态
+        console.log(
+          "选项 A：保留个人空间，设置 personalWorkspaceUpgraded=true, personalWorkspaceDeleted=false",
+        );
+        localStorage.setItem("personalWorkspaceUpgraded", "true");
+        localStorage.setItem("personalWorkspaceDeleted", "false");
+        setTimeout(() => {
+          router.push("/workspace-hub");
+        }, 1000);
+      }
     } catch (error) {
       console.error("Upgrade workspace error:", error);
-      toast.error(error instanceof Error ? error.message : "升级失败，请稍后重试");
+      toast.error(
+        error instanceof Error ? error.message : "升级失败，请稍后重试",
+      );
+      // 升级失败时，清除所有状态
+      localStorage.setItem("personalWorkspaceDeleted", "false");
+      localStorage.setItem("personalWorkspaceUpgraded", "false");
     } finally {
       setLoading(false);
     }
@@ -176,7 +308,9 @@ function UpgradeWorkspaceForm() {
               <div className="flex items-start gap-3">
                 <CheckCircle className="w-5 h-5 text-[#3182ce] flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-slate-700">
-                  <p className="font-bold text-[#3182ce] mb-1">您当前的账户类型：</p>
+                  <p className="font-bold text-[#3182ce] mb-1">
+                    您当前的账户类型：
+                  </p>
                   <p className="text-slate-600">
                     {quota.isMember ? (
                       <span className="text-[#f59e0b] font-bold">会员用户</span>
@@ -184,9 +318,20 @@ function UpgradeWorkspaceForm() {
                       <span>免费用户</span>
                     )}
                     {quota.isMember ? (
-                      <span> · 还可创建 {quota.maxEnterprise - quota.enterpriseCount} 个企业空间</span>
+                      <span>
+                        {" "}
+                        · 还可创建 {quota.maxEnterprise -
+                          quota.enterpriseCount}{" "}
+                        个企业空间
+                      </span>
                     ) : (
-                      <span> · {quota.hasEnterprise ? "已拥有企业空间，无法再创建" : "可创建 1 个企业空间"}</span>
+                      <span>
+                        {" "}
+                        ·{" "}
+                        {quota.hasEnterprise
+                          ? "已拥有企业空间，无法再创建"
+                          : "可创建 1 个企业空间"}
+                      </span>
                     )}
                   </p>
                 </div>
@@ -198,7 +343,9 @@ function UpgradeWorkspaceForm() {
               <div className="flex items-start gap-3">
                 <CheckCircle className="w-5 h-5 text-[#10b981] flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-slate-700">
-                  <p className="font-bold text-[#10b981] mb-1">兼容性检查通过</p>
+                  <p className="font-bold text-[#10b981] mb-1">
+                    兼容性检查通过
+                  </p>
                   <p className="text-slate-600">
                     当前个人空间数据符合升级要求，可以安全升级为企业空间
                   </p>
@@ -208,7 +355,9 @@ function UpgradeWorkspaceForm() {
 
             {/* 升级选项 */}
             <div className="space-y-4 mb-6">
-              <h3 className="text-sm font-bold text-slate-700 mb-3">请选择升级方式：</h3>
+              <h3 className="text-sm font-bold text-slate-700 mb-3">
+                请选择升级方式：
+              </h3>
 
               {/* 选项 A：保留个人空间 */}
               <div
@@ -220,21 +369,33 @@ function UpgradeWorkspaceForm() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    selectedOption === "retain" ? "border-[#3182ce] bg-[#3182ce]" : "border-slate-300"
-                  }`}>
-                    {selectedOption === "retain" && <CheckCircle className="w-3 h-3 text-white" />}
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                      selectedOption === "retain"
+                        ? "border-[#3182ce] bg-[#3182ce]"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    {selectedOption === "retain" && (
+                      <CheckCircle className="w-3 h-3 text-white" />
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-base font-black text-slate-800">保留个人空间，同时新建企业空间</h4>
+                      <h4 className="text-base font-black text-slate-800">
+                        保留个人空间，同时新建企业空间
+                      </h4>
                     </div>
                     <p className="text-sm text-slate-600">
                       创建一个新的企业空间，原个人空间保持不变。两者可以共存，数据互不影响。
                     </p>
                     <div className="mt-2 flex items-center gap-2 text-xs">
-                      <span className="px-2 py-0.5 bg-[#3182ce]/10 text-[#3182ce] font-bold rounded">推荐新手</span>
-                      <span className="text-slate-500">适合想同时保留个人和企业空间的场景</span>
+                      <span className="px-2 py-0.5 bg-[#3182ce]/10 text-[#3182ce] font-bold rounded">
+                        推荐新手
+                      </span>
+                      <span className="text-slate-500">
+                        适合想同时保留个人和企业空间的场景
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -242,7 +403,7 @@ function UpgradeWorkspaceForm() {
 
               {/* 选项 B：删除个人空间 */}
               <div
-                onClick={() => setSelectedOption("delete")}
+                onClick={() => handleOptionChange("delete")}
                 className={`group cursor-pointer p-5 rounded-xl border-2 transition-all ${
                   selectedOption === "delete"
                     ? "border-[#f59e0b] bg-[#f59e0b]/5"
@@ -250,26 +411,61 @@ function UpgradeWorkspaceForm() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    selectedOption === "delete" ? "border-[#f59e0b] bg-[#f59e0b]" : "border-slate-300"
-                  }`}>
-                    {selectedOption === "delete" && <CheckCircle className="w-3 h-3 text-white" />}
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                      selectedOption === "delete"
+                        ? "border-[#f59e0b] bg-[#f59e0b]"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    {selectedOption === "delete" && (
+                      <CheckCircle className="w-3 h-3 text-white" />
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-base font-black text-slate-800">删除个人空间，新建企业空间</h4>
+                      <h4 className="text-base font-black text-slate-800">
+                        删除个人空间，新建企业空间
+                      </h4>
                       <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-bold rounded-full flex items-center gap-1">
                         <XCircle className="w-3 h-3" />
                         会删除原空间
                       </span>
                     </div>
                     <p className="text-sm text-slate-600">
-                      创建一个新的企业空间，同时删除当前的个人空间。<strong className="text-red-600">此操作不可恢复！</strong>
+                      创建一个新的企业空间，同时删除当前的个人空间。
+                      <strong className="text-red-600">此操作不可恢复！</strong>
                     </p>
                     <div className="mt-2 flex items-center gap-2 text-xs">
-                      <span className="px-2 py-0.5 bg-red-100 text-red-600 font-bold rounded">谨慎选择</span>
-                      <span className="text-slate-500">适合确定不再需要个人空间的场景</span>
+                      <span className="px-2 py-0.5 bg-red-100 text-red-600 font-bold rounded">
+                        谨慎选择
+                      </span>
+                      <span className="text-slate-500">
+                        适合确定不再需要个人空间的场景
+                      </span>
                     </div>
+
+                    {/* 检测结果显示 */}
+                    {selectedOption === "delete" && (
+                      <div className="mt-3 pt-3 border-t border-[#f59e0b]/20">
+                        {checking ? (
+                          <div className="flex items-center gap-2 text-sm text-[#f59e0b]">
+                            <span className="w-4 h-4 border-2 border-[#f59e0b] border-t-transparent rounded-full animate-spin" />
+                            <span>正在进行系统检测...</span>
+                          </div>
+                        ) : checkResult.status === "success" ? (
+                          <div className="flex items-center gap-2 text-sm text-[#10b981]">
+                            <CheckCircle className="w-4 h-4" />
+                            <span>{checkResult.message}</span>
+                          </div>
+                        ) : checkResult.status === "error" ? (
+                          <div className="flex items-center gap-2 text-sm text-red-600">
+                            <AlertTriangle className="w-4 h-4" />
+                            <span>{checkResult.message}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -284,25 +480,38 @@ function UpgradeWorkspaceForm() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    selectedOption === "upgrade" ? "border-[#10b981] bg-[#10b981]" : "border-slate-300"
-                  }`}>
-                    {selectedOption === "upgrade" && <CheckCircle className="w-3 h-3 text-white" />}
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                      selectedOption === "upgrade"
+                        ? "border-[#10b981] bg-[#10b981]"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    {selectedOption === "upgrade" && (
+                      <CheckCircle className="w-3 h-3 text-white" />
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-base font-black text-slate-800">直接升级为企业空间（数据迁移）</h4>
+                      <h4 className="text-base font-black text-slate-800">
+                        直接升级为企业空间（数据迁移）
+                      </h4>
                       <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] text-xs font-bold rounded-full flex items-center gap-1">
                         <CheckCircle className="w-3 h-3" />
                         推荐
                       </span>
                     </div>
                     <p className="text-sm text-slate-600">
-                      将当前个人空间直接升级为企业空间，所有数据完整迁移，空间 ID 保持不变。这是最平滑的升级方式。
+                      将当前个人空间直接升级为企业空间，所有数据完整迁移，空间
+                      ID 保持不变。这是最平滑的升级方式。
                     </p>
                     <div className="mt-2 flex items-center gap-2 text-xs">
-                      <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] font-bold rounded">最佳选择</span>
-                      <span className="text-slate-500">保留所有数据，无需重新配置</span>
+                      <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] font-bold rounded">
+                        最佳选择
+                      </span>
+                      <span className="text-slate-500">
+                        保留所有数据，无需重新配置
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -336,10 +545,21 @@ function UpgradeWorkspaceForm() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={loading || !selectedOption}
+                disabled={
+                  loading ||
+                  checking ||
+                  !selectedOption ||
+                  (selectedOption === "delete" &&
+                    checkResult.status === "error")
+                }
                 className="flex-1 px-6 py-3.5 bg-gradient-to-r from-[#10b981] to-[#059669] text-white font-bold rounded-xl hover:shadow-xl hover:shadow-[#10b981]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {loading ? (
+                {checking ? (
+                  <>
+                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>正在检测...</span>
+                  </>
+                ) : loading ? (
                   <>
                     <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     <span>处理中...</span>
