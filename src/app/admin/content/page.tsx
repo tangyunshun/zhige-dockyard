@@ -39,10 +39,12 @@ interface ComponentData {
 }
 
 export default function AdminContentPage() {
-  const [activeTab, setActiveTab] = useState<"components" | "phases" | "documents">(
-    "components",
+  const [activeTab, setActiveTab] = useState<
+    "components" | "phases" | "documents"
+  >("components");
+  const [componentData, setComponentData] = useState<ComponentData | null>(
+    null,
   );
-  const [componentData, setComponentData] = useState<ComponentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -111,67 +113,93 @@ export default function AdminContentPage() {
 
     if (diffInSeconds < 60) return "刚刚";
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}分钟前`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}小时前`;
-    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}天前`;
+    if (diffInSeconds < 86400)
+      return `${Math.floor(diffInSeconds / 3600)}小时前`;
+    if (diffInSeconds < 604800)
+      return `${Math.floor(diffInSeconds / 86400)}天前`;
     return date.toLocaleDateString("zh-CN");
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">内容管理</h1>
-        <p className="text-sm text-slate-500">组件管理、阶段管理、文档管理</p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">
+          内容管理
+        </h1>
+        <p className="text-sm text-slate-500 font-medium">
+          组件管理、阶段管理、文档管理 · 知阁·舟坊
+        </p>
       </div>
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-500 font-medium">总组件数</div>
-            <FileText className="w-5 h-5 text-[#3182ce]" />
-          </div>
-          <div className="text-2xl font-bold text-slate-800">
-            {componentData?.total || 0}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-500 font-medium">已上线</div>
-            <CheckCircle className="w-5 h-5 text-[#10b981]" />
-          </div>
-          <div className="text-2xl font-bold text-slate-800">
-            {componentData?.components.filter((c) => c.status === "completed").length || 0}
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#3182ce]/10 opacity-20 blur-2xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-slate-500 font-semibold">
+                总组件数
+              </div>
+              <FileText className="w-6 h-6 text-[#3182ce]" />
+            </div>
+            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+              {componentData?.total || 0}
+            </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-500 font-medium">开发中</div>
-            <Clock className="w-5 h-5 text-[#f59e0b]" />
-          </div>
-          <div className="text-2xl font-bold text-slate-800">
-            {componentData?.components.filter((c) => c.status === "pending").length || 0}
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-slate-500 font-semibold">已上线</div>
+              <CheckCircle className="w-6 h-6 text-[#10b981]" />
+            </div>
+            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+              {componentData?.components.filter((c) => c.status === "completed")
+                .length || 0}
+            </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-500 font-medium">阶段类型</div>
-            <Tag className="w-5 h-5 text-[#8b5cf6]" />
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-slate-500 font-semibold">开发中</div>
+              <Clock className="w-6 h-6 text-[#f59e0b]" />
+            </div>
+            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+              {componentData?.components.filter((c) => c.status === "pending")
+                .length || 0}
+            </div>
           </div>
-          <div className="text-2xl font-bold text-slate-800">
-            {componentData?.types.length || 0}
+        </div>
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#8b5cf6]/10 opacity-20 blur-2xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-slate-500 font-semibold">
+                阶段类型
+              </div>
+              <Tag className="w-6 h-6 text-[#8b5cf6]" />
+            </div>
+            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+              {componentData?.types.length || 0}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="flex border-b border-slate-200">
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
+        <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+
+        <div className="relative flex border-b border-slate-200">
           <button
             onClick={() => setActiveTab("components")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "components"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -180,9 +208,9 @@ export default function AdminContentPage() {
           </button>
           <button
             onClick={() => setActiveTab("phases")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "phases"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -191,9 +219,9 @@ export default function AdminContentPage() {
           </button>
           <button
             onClick={() => setActiveTab("documents")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "documents"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -204,23 +232,23 @@ export default function AdminContentPage() {
 
         {/* 组件管理 */}
         {activeTab === "components" && (
-          <div className="p-6 space-y-4">
+          <div className="relative p-6 space-y-4">
             {/* 筛选栏 */}
             <div className="flex items-center gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
                   type="text"
                   placeholder="搜索组件名称..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all bg-white/80"
               >
                 <option value="all">全部状态</option>
                 <option value="completed">已上线</option>
@@ -232,7 +260,7 @@ export default function AdminContentPage() {
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all bg-white/80"
                 >
                   <option value="all">全部阶段</option>
                   {componentData.types.map((type) => (
@@ -248,50 +276,59 @@ export default function AdminContentPage() {
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
-                  <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-slate-600 font-medium">加载组件列表中...</p>
+                  <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-slate-600 font-medium">
+                    加载组件列表中...
+                  </p>
                 </div>
               </div>
             ) : componentData?.components.length === 0 ? (
-              <div className="text-center py-20 text-slate-400">
-                <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>暂无组件数据</p>
+              <div className="text-center py-20">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                  <FileText className="w-8 h-8 text-slate-400" />
+                </div>
+                <p className="text-slate-500 font-medium text-sm">
+                  暂无组件数据
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                         组件信息
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                         阶段
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                         状态
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                         进度
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                         更新时间
                       </th>
-                      <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
                         操作
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
+                  <tbody className="divide-y divide-slate-100">
                     {componentData?.components.map((component) => (
-                      <tr key={component.id} className="hover:bg-slate-50">
+                      <tr
+                        key={component.id}
+                        className="group hover:bg-white/60 transition-all duration-300"
+                      >
                         <td className="px-6 py-4">
                           <div>
-                            <div className="text-sm font-bold text-slate-800">
+                            <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
                               {component.name}
                             </div>
                             {component.description && (
-                              <div className="text-xs text-slate-500 mt-1">
+                              <div className="text-xs text-slate-500 font-medium mt-1">
                                 {component.description}
                               </div>
                             )}
@@ -350,7 +387,9 @@ export default function AdminContentPage() {
                   </button>
                   <button
                     onClick={() =>
-                      setCurrentPage((p) => Math.min(componentData.totalPages, p + 1))
+                      setCurrentPage((p) =>
+                        Math.min(componentData.totalPages, p + 1),
+                      )
                     }
                     disabled={currentPage === componentData.totalPages}
                     className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"

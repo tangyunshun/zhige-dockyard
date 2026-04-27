@@ -35,8 +35,19 @@ export default function Header() {
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 检查登录状态
-    checkLoginStatus();
+    // 首先检查 localStorage 中的登录状态，快速显示
+    const userId = localStorage.getItem("userId");
+
+    if (userId) {
+      // 如果 localStorage 中有 userId，先显示登录状态（但不显示具体用户信息）
+      setIsLoggedIn(true);
+      setLoading(false);
+      // 然后再从服务器验证并获取详细信息
+      checkLoginStatus();
+    } else {
+      // 没有本地信息，直接从服务器检查
+      checkLoginStatus();
+    }
 
     // 点击外部关闭下拉菜单
     const handleClickOutside = (event: MouseEvent) => {
@@ -54,22 +65,48 @@ export default function Header() {
 
   const checkLoginStatus = async () => {
     try {
-      const res = await fetch("/api/auth/me");
+      console.log("开始检查登录状态...");
+      const res = await fetch("/api/auth/me", {
+        // 添加超时处理
+        signal: AbortSignal.timeout(5000),
+      });
+
+      console.log("API 响应状态:", res.status);
+      console.log("Content-Type:", res.headers.get("content-type"));
+
+      // 检查响应类型
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("API 返回了非 JSON 响应，可能是 404 页面或其他错误");
+        console.error(
+          "响应内容预览:",
+          await res.text().then((t) => t.substring(0, 200)),
+        );
+        setIsLoggedIn(false);
+        setUser(null);
+        setWorkspaces([]);
+        return;
+      }
+
       if (res.ok) {
         const data = await res.json();
+        console.log("获取用户信息成功:", data.user);
         setIsLoggedIn(true);
         setUser(data.user);
 
         // 获取用户的工作空间列表
         await fetchWorkspaces();
       } else {
+        console.log("用户未登录，状态码:", res.status);
         setIsLoggedIn(false);
         setUser(null);
         setWorkspaces([]);
       }
     } catch (error) {
+      console.error("Check login status error:", error);
       setIsLoggedIn(false);
       setUser(null);
+      setWorkspaces([]);
     } finally {
       setLoading(false);
     }
@@ -167,8 +204,11 @@ export default function Header() {
         {/* Right: Actions */}
         <div className="flex items-center gap-3">
           {loading ? (
-            // 加载中显示占位
-            <div className="w-20 h-9 bg-slate-200 rounded-lg animate-pulse" />
+            // 加载中显示骨架屏
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-slate-200 animate-pulse" />
+              <div className="w-20 h-7 bg-slate-200 rounded animate-pulse hidden lg:block" />
+            </div>
           ) : isLoggedIn && user ? (
             // 已登录：显示用户信息和操作按钮
             <>

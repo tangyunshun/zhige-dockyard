@@ -44,16 +44,32 @@ export async function GET(request: NextRequest) {
           role: true,
           status: true,
           avatar: true,
+          membershipLevel: true,
+          tenantId: true,
           createdAt: true,
+          loginHistories: {
+            orderBy: { loginAt: "desc" },
+            take: 1,
+            select: {
+              loginAt: true,
+            },
+          },
         },
       }),
       prisma.user.count({ where }),
     ]);
 
+    // 格式化用户数据，添加 lastLoginAt 字段
+    const formattedUsers = users.map(user => ({
+      ...user,
+      lastLoginAt: user.loginHistories.length > 0 ? user.loginHistories[0].loginAt : null,
+      loginHistories: undefined, // 移除 loginHistories 字段
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
-        users,
+        users: formattedUsers,
         total,
         page,
         totalPages: Math.ceil(total / limit),

@@ -165,20 +165,25 @@ export default function ForgotPasswordPage() {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.account);
 
     if (!isPhone && !isEmail) {
-      toast.warning("请输入正确的手机号或邮箱");
+      setErrors({ account: "请输入正确的手机号或邮箱" });
       return;
     }
 
     // 检查账号状态
     if (!accountCheckStatus.exists) {
+      setErrors({ account: "账号不存在" });
       return;
     }
 
     if (accountCheckStatus.locked) {
+      setErrors({
+        account: `账号已锁定，请${accountCheckStatus.minutesRemaining}分钟后再试`,
+      });
       return;
     }
 
     if (accountCheckStatus.disabled) {
+      setErrors({ account: "账号已被禁用，请联系管理员" });
       return;
     }
 
@@ -218,10 +223,10 @@ export default function ForgotPasswordPage() {
             });
           }, 1000);
         } else {
-          toast.error(data.message || "发送失败");
+          setErrors({ account: data.message || "发送失败" });
         }
       } catch (error) {
-        toast.error("网络错误，请稍后重试");
+        setErrors({ account: "网络错误，请稍后重试" });
       } finally {
         setLoading(false);
       }
@@ -252,10 +257,10 @@ export default function ForgotPasswordPage() {
             });
           }, 1000);
         } else {
-          toast.error(data.message || "发送失败");
+          setErrors({ account: data.message || "发送失败" });
         }
       } catch (error) {
-        toast.error("网络错误，请稍后重试");
+        setErrors({ account: "网络错误，请稍后重试" });
       } finally {
         setLoading(false);
       }
@@ -317,7 +322,7 @@ export default function ForgotPasswordPage() {
     }
 
     if (formData.password.length < 8) {
-      toast.error("密码长度至少 8 位");
+      setErrors({ password: "密码长度至少 8 位" });
       return;
     }
 
@@ -342,17 +347,21 @@ export default function ForgotPasswordPage() {
 
         if (!verifyRes.ok) {
           if (verifyData.isLocked) {
-            toast.error(`验证失败次数过多，请${verifyData.minutesRemaining}分钟后再试`);
+            setErrors({
+              smsCode: `验证失败次数过多，请${verifyData.minutesRemaining}分钟后再试`,
+            });
           } else if (verifyData.remainingAttempts !== undefined) {
-            toast.error(`${verifyData.message}，剩余${verifyData.remainingAttempts}次尝试机会`);
+            setErrors({
+              smsCode: `${verifyData.message}，剩余${verifyData.remainingAttempts}次尝试机会`,
+            });
           } else {
-            toast.error(verifyData.message || "验证失败");
+            setErrors({ smsCode: verifyData.message || "验证失败" });
           }
           setLoading(false);
           return;
         }
       } catch (error) {
-        toast.error("网络错误，请稍后重试");
+        setErrors({ smsCode: "网络错误，请稍后重试" });
         setLoading(false);
         return;
       }
@@ -372,15 +381,19 @@ export default function ForgotPasswordPage() {
       const data = await res.json();
 
       if (res.ok) {
-        toast.success("密码重置成功！正在跳转到登录页面...");
         setTimeout(() => {
           router.push("/auth/login");
         }, 1500);
       } else {
-        toast.error(data.message || "密码重置失败");
+        // 根据错误字段显示
+        if (data.field === "smsCode") {
+          setErrors({ smsCode: data.message || "密码重置失败" });
+        } else {
+          setErrors({ account: data.message || "密码重置失败" });
+        }
       }
     } catch (error) {
-      toast.error("网络错误，请稍后重试");
+      setErrors({ account: "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
     }

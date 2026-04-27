@@ -124,8 +124,16 @@ export default function AdminWorkspacesPage() {
     router.push(`/workspace/${workspace.id}`);
   };
 
-  const handleToggleStatus = async (workspaceId: string, currentStatus: "ACTIVE" | "DISABLED") => {
-    if (!confirm(`确定要${currentStatus === "ACTIVE" ? "禁用" : "启用"}该企业空间吗？`)) return;
+  const handleToggleStatus = async (
+    workspaceId: string,
+    currentStatus: "ACTIVE" | "DISABLED",
+  ) => {
+    if (
+      !confirm(
+        `确定要${currentStatus === "ACTIVE" ? "禁用" : "启用"}该企业空间吗？`,
+      )
+    )
+      return;
 
     try {
       setTogglingId(workspaceId);
@@ -144,7 +152,10 @@ export default function AdminWorkspacesPage() {
         throw new Error(errorData.error || "操作失败");
       }
 
-      showToast(`空间已${currentStatus === "ACTIVE" ? "禁用" : "启用"}`, "success");
+      showToast(
+        `空间已${currentStatus === "ACTIVE" ? "禁用" : "启用"}`,
+        "success",
+      );
       loadWorkspaces(currentPage);
     } catch (error) {
       console.error("Toggle workspace status error:", error);
@@ -185,7 +196,7 @@ export default function AdminWorkspacesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* Toast 容器 */}
       <div
         id="zg-toast-container"
@@ -193,83 +204,104 @@ export default function AdminWorkspacesPage() {
       ></div>
 
       {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">工作空间管理</h1>
-        <p className="text-sm text-slate-500">
-          审核工作空间、管理资源配额、查看空间统计
+      <div className="mb-8">
+        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">
+          工作空间管理
+        </h1>
+        <p className="text-sm text-slate-500 font-medium">
+          审核工作空间、管理资源配额、查看空间统计 · 知阁·舟坊
         </p>
       </div>
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-[#3182ce]/10 flex items-center justify-center">
-              <Building2 className="w-6 h-6 text-[#3182ce]" />
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#3182ce]/10 opacity-20 blur-2xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 rounded-xl bg-[#3182ce]/10 flex items-center justify-center shadow-sm">
+                <Building2 className="w-7 h-7 text-[#3182ce]" />
+              </div>
+            </div>
+            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+              {workspaceData?.total || 0}
+            </div>
+            <div className="text-sm text-slate-500 font-semibold">
+              总工作空间数
             </div>
           </div>
-          <div className="text-2xl font-bold text-slate-800 mb-1">
-            {workspaceData?.total || 0}
-          </div>
-          <div className="text-sm text-slate-500 font-medium">总工作空间数</div>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-[#10b981]/10 flex items-center justify-center">
-              <Users className="w-6 h-6 text-[#10b981]" />
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 rounded-xl bg-[#10b981]/10 flex items-center justify-center shadow-sm">
+                <Users className="w-7 h-7 text-[#10b981]" />
+              </div>
             </div>
+            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+              {workspaceData?.workspaces.reduce(
+                (sum, ws) => sum + ws._count.members,
+                0,
+              ) || 0}
+            </div>
+            <div className="text-sm text-slate-500 font-semibold">总成员数</div>
           </div>
-          <div className="text-2xl font-bold text-slate-800 mb-1">
-            {workspaceData?.workspaces.reduce(
-              (sum, ws) => sum + ws._count.members,
-              0,
-            ) || 0}
-          </div>
-          <div className="text-sm text-slate-500 font-medium">总成员数</div>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-[#f59e0b]/10 flex items-center justify-center">
-              <AlertCircle className="w-6 h-6 text-[#f59e0b]" />
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 rounded-xl bg-[#f59e0b]/10 flex items-center justify-center shadow-sm">
+                <AlertCircle className="w-7 h-7 text-[#f59e0b]" />
+              </div>
+            </div>
+            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+              0
+            </div>
+            <div className="text-sm text-slate-500 font-semibold">
+              待审核空间
             </div>
           </div>
-          <div className="text-2xl font-bold text-slate-800 mb-1">0</div>
-          <div className="text-sm text-slate-500 font-medium">待审核空间</div>
         </div>
       </div>
 
       {/* 筛选工具栏 */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="搜索工作空间名称..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
-          />
-        </div>
-        <div className="flex gap-2">
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none text-sm"
-          >
-            <option value="all">所有类型</option>
-            <option value="PERSONAL">个人空间</option>
-            <option value="ENTERPRISE">企业空间</option>
-          </select>
-          <button
-            onClick={handleSearch}
-            className="px-4 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#2563eb] transition-colors flex items-center gap-2"
-          >
-            <Filter className="w-4 h-4" />
-            筛选
-          </button>
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/90 shadow-sm overflow-hidden">
+        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
+
+        <div className="relative flex flex-col md:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="搜索工作空间名称..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="w-full pl-11 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+            >
+              <option value="all">所有类型</option>
+              <option value="PERSONAL">个人空间</option>
+              <option value="ENTERPRISE">企业空间</option>
+            </select>
+            <button
+              onClick={handleSearch}
+              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              筛选
+            </button>
+          </div>
         </div>
       </div>
 
@@ -362,7 +394,7 @@ export default function AdminWorkspacesPage() {
                             >
                               <Eye className="w-4 h-4 text-slate-600" />
                             </button>
-                            
+
                             {/* 个人空间：只显示查看按钮，不显示删除和禁用按钮 */}
                             {workspace.type === "PERSONAL" ? null : (
                               <>
@@ -370,7 +402,12 @@ export default function AdminWorkspacesPage() {
                                 {workspace.status === "ACTIVE" ? (
                                   // 活跃状态：显示禁用按钮
                                   <button
-                                    onClick={() => handleToggleStatus(workspace.id, workspace.status)}
+                                    onClick={() =>
+                                      handleToggleStatus(
+                                        workspace.id,
+                                        workspace.status,
+                                      )
+                                    }
                                     disabled={togglingId === workspace.id}
                                     className="p-2 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
                                     title="禁用空间"
@@ -381,7 +418,12 @@ export default function AdminWorkspacesPage() {
                                   // 已禁用状态：显示启用和删除按钮
                                   <>
                                     <button
-                                      onClick={() => handleToggleStatus(workspace.id, workspace.status)}
+                                      onClick={() =>
+                                        handleToggleStatus(
+                                          workspace.id,
+                                          workspace.status,
+                                        )
+                                      }
                                       disabled={togglingId === workspace.id}
                                       className="p-2 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
                                       title="启用空间"
@@ -400,7 +442,7 @@ export default function AdminWorkspacesPage() {
                                 )}
                               </>
                             )}
-                            
+
                             {/* 状态标识 */}
                             {workspace.status === "DISABLED" && (
                               <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">

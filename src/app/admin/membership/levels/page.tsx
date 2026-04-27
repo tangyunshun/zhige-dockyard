@@ -14,7 +14,6 @@ import {
   Users,
   Box,
   Database,
-  Zap,
   TrendingUp,
   ArrowLeft,
   Check,
@@ -329,158 +328,188 @@ export default function AdminMembershipLevelsPage() {
       {/* 主内容区 */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* 操作栏 */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="搜索会员等级..."
-                className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
-              />
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 mb-6 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+          <div className="relative flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="搜索会员等级..."
+                  className="pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                />
+              </div>
             </div>
+            <button
+              onClick={openCreateModal}
+              className="px-5 h-11 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-bold text-sm hover:shadow-xl hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>新增会员等级</span>
+            </button>
           </div>
-          <button
-            onClick={openCreateModal}
-            className="px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-lg font-bold text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>新增会员等级</span>
-          </button>
         </div>
 
         {/* 会员等级列表 */}
         {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block w-8 h-8 border-2 border-[#3182ce] border-t-transparent rounded-full animate-spin" />
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-12 overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-slate-100 opacity-50 blur-3xl"></div>
+            <div className="flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-slate-600 font-medium">加载会员等级中...</p>
+              </div>
+            </div>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    等级信息
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    配额配置
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    价格
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    状态
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-bold text-slate-700">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {levels.map((level) => (
-                  <tr
-                    key={level.name}
-                    className="hover:bg-slate-50 transition-colors"
-                  >
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
-                          style={{ backgroundColor: `${level.color}20` }}
-                        >
-                          {level.icon || "👤"}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <div className="font-bold text-slate-800">
-                              {level.nameZh}
-                            </div>
-                            <div className="flex items-center gap-1">
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+            <div className="relative overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      等级信息
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      配额配置
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      价格
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      状态
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      操作
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {levels.map((level) => (
+                    <tr
+                      key={level.name}
+                      className="group hover:bg-white/60 transition-all duration-300"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform duration-300"
+                            style={{ backgroundColor: `${level.color}20` }}
+                          >
+                            {level.icon || "👤"}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="font-black text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                                {level.nameZh}
+                              </div>
                               {level.isRecommended && (
-                                <span className="text-xs bg-[#3182ce]/10 text-[#3182ce] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                <span className="text-xs bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm">
                                   <TrendingUp className="w-3 h-3" />
                                   推荐
                                 </span>
                               )}
                               {level.isPopular && (
-                                <span className="text-xs bg-[#f59e0b]/10 text-[#f59e0b] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                <span className="text-xs bg-gradient-to-r from-[#f59e0b]/10 to-[#fbbf24]/10 text-[#f59e0b] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm">
                                   <Crown className="w-3 h-3" />
                                   热门
                                 </span>
                               )}
                             </div>
+                            <div className="text-xs text-slate-500 font-medium mt-0.5">
+                              {level.name}
+                            </div>
                           </div>
-                          <div className="text-xs text-slate-500">
-                            {level.name}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-slate-600 space-y-1 font-medium">
+                          <div className="flex items-center gap-2">
+                            <Database className="w-3.5 h-3.5 text-slate-400" />
+                            <span>
+                              企业空间：{Number(level.maxEnterpriseWorkspaces)}
+                              个
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Box className="w-3.5 h-3.5 text-slate-400" />
+                            <span>组件：{Number(level.maxComponents)}个</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                            <span>团队：{Number(level.maxTeamSize)}人</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Database className="w-3.5 h-3.5 text-slate-400" />
+                            <span>
+                              存储：
+                              {(Number(level.maxStorage) / 1073741824).toFixed(
+                                1,
+                              )}
+                              GB
+                            </span>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="text-sm text-slate-600 space-y-1">
-                        <div>
-                          企业空间：{Number(level.maxEnterpriseWorkspaces)}个
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-slate-600 font-medium">
+                          <div className="font-bold text-slate-700">
+                            月付：¥{level.priceMonthly / 100}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            年付：¥{level.priceYearly / 100}
+                          </div>
                         </div>
-                        <div>组件：{Number(level.maxComponents)}个</div>
-                        <div>团队：{Number(level.maxTeamSize)}人</div>
-                        <div>
-                          存储：
-                          {(Number(level.maxStorage) / 1073741824).toFixed(1)}GB
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() =>
+                            handleToggleActive(level.name, level.isActive)
+                          }
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                            level.isActive
+                              ? "bg-gradient-to-r from-[#10b981]/10 to-[#059669]/10 text-[#10b981] hover:shadow-md"
+                              : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                          }`}
+                        >
+                          {level.isActive ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              已启用
+                            </>
+                          ) : (
+                            <>
+                              <X className="w-3.5 h-3.5" />
+                              已禁用
+                            </>
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openEditModal(level)}
+                            className="p-2.5 hover:bg-[#3182ce]/10 hover:text-[#3182ce] rounded-xl transition-all duration-300 group-hover:scale-110"
+                            title="编辑"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(level.name)}
+                            className="p-2.5 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-300 group-hover:scale-110"
+                            title="删除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="text-sm text-slate-600">
-                        <div>月付：¥{level.priceMonthly / 100}</div>
-                        <div>年付：¥{level.priceYearly / 100}</div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <button
-                        onClick={() =>
-                          handleToggleActive(level.name, level.isActive)
-                        }
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
-                          level.isActive
-                            ? "bg-[#10b981]/10 text-[#10b981]"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {level.isActive ? (
-                          <>
-                            <Check className="w-3 h-3" />
-                            已启用
-                          </>
-                        ) : (
-                          <>
-                            <X className="w-3 h-3" />
-                            已禁用
-                          </>
-                        )}
-                      </button>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEditModal(level)}
-                          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                          title="编辑"
-                        >
-                          <Edit className="w-4 h-4 text-slate-600" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(level.name)}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                          title="删除"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </main>

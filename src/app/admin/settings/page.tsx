@@ -35,22 +35,28 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">系统设置</h1>
-        <p className="text-sm text-slate-500">全局配置、邮件模板、第三方集成</p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">
+          系统设置
+        </h1>
+        <p className="text-sm text-slate-500 font-medium">
+          全局配置、邮件模板、第三方集成 · 知阁·舟坊
+        </p>
       </div>
 
       {/* 设置卡片 */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
+        <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+
         {/* Tabs */}
-        <div className="flex border-b border-slate-200">
+        <div className="relative flex border-b border-slate-200">
           <button
             onClick={() => setActiveTab("basic")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "basic"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -59,9 +65,9 @@ export default function AdminSettingsPage() {
           </button>
           <button
             onClick={() => setActiveTab("email")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "email"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -70,9 +76,9 @@ export default function AdminSettingsPage() {
           </button>
           <button
             onClick={() => setActiveTab("sms")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "sms"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -81,9 +87,9 @@ export default function AdminSettingsPage() {
           </button>
           <button
             onClick={() => setActiveTab("oauth")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "oauth"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -92,9 +98,9 @@ export default function AdminSettingsPage() {
           </button>
           <button
             onClick={() => setActiveTab("security")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "security"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -103,9 +109,9 @@ export default function AdminSettingsPage() {
           </button>
           <button
             onClick={() => setActiveTab("database")}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all ${
               activeTab === "database"
-                ? "text-[#3182ce] border-b-2 border-[#3182ce]"
+                ? "text-[#3182ce] border-b-2 border-[#3182ce] bg-[#3182ce]/5"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
@@ -115,7 +121,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* 内容区域 */}
-        <div className="p-6 space-y-6">
+        <div className="relative p-6 space-y-6">
           {activeTab === "basic" && (
             <div className="space-y-4 max-w-2xl">
               <div>
@@ -125,7 +131,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   defaultValue={settings.basic.siteName}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -136,7 +142,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="url"
                   defaultValue={settings.basic.siteUrl}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -147,7 +153,7 @@ export default function AdminSettingsPage() {
                 <textarea
                   rows={3}
                   defaultValue={settings.basic.description}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -158,12 +164,12 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   defaultValue={settings.basic.logo}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
               <div className="pt-4">
-                <button className="px-6 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#2563eb] transition-colors">
+                <button className="px-6 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
                   保存设置
                 </button>
               </div>
@@ -172,8 +178,8 @@ export default function AdminSettingsPage() {
 
           {activeTab === "email" && (
             <div className="space-y-4 max-w-2xl">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-700">
+              <div className="relative bg-gradient-to-br from-[#3182ce]/5 to-blue-500/5 rounded-2xl border border-[#3182ce]/10 p-5">
+                <p className="text-sm text-slate-600 font-medium">
                   配置 SMTP 邮件服务器，用于发送注册验证码、密码找回等系统邮件。
                 </p>
               </div>
@@ -185,7 +191,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   defaultValue={settings.email.smtpHost}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -196,7 +202,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   defaultValue={settings.email.smtpPort}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -207,7 +213,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="email"
                   defaultValue={settings.email.senderEmail}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -218,12 +224,12 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   defaultValue={settings.email.senderName}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
               <div className="pt-4">
-                <button className="px-6 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#2563eb] transition-colors">
+                <button className="px-6 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
                   保存配置
                 </button>
               </div>
@@ -232,8 +238,8 @@ export default function AdminSettingsPage() {
 
           {activeTab === "sms" && (
             <div className="space-y-4 max-w-2xl">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-700">
+              <div className="relative bg-gradient-to-br from-[#3182ce]/5 to-blue-500/5 rounded-2xl border border-[#3182ce]/10 p-5">
+                <p className="text-sm text-slate-600 font-medium">
                   配置短信服务商，用于发送手机验证码、通知短信等。
                 </p>
               </div>
@@ -244,7 +250,7 @@ export default function AdminSettingsPage() {
                 </label>
                 <select
                   defaultValue={settings.sms.provider}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all bg-white/80"
                 >
                   <option value="aliyun">阿里云</option>
                   <option value="tencent">腾讯云</option>
@@ -259,7 +265,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   defaultValue={settings.sms.accessKeyId}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -270,7 +276,7 @@ export default function AdminSettingsPage() {
                 <input
                   type="password"
                   defaultValue={settings.sms.accessKeySecret}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
@@ -281,12 +287,12 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   defaultValue={settings.sms.signName}
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+                  className="w-full px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
 
               <div className="pt-4">
-                <button className="px-6 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#2563eb] transition-colors">
+                <button className="px-6 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
                   保存配置
                 </button>
               </div>
@@ -295,9 +301,13 @@ export default function AdminSettingsPage() {
 
           {activeTab === "oauth" && (
             <div className="space-y-4">
-              <div className="text-center py-12 text-slate-400">
-                <Globe className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>第三方登录配置开发中</p>
+              <div className="text-center py-12">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                  <Globe className="w-8 h-8 text-slate-400" />
+                </div>
+                <p className="text-slate-500 font-medium text-sm">
+                  第三方登录配置开发中
+                </p>
                 <p className="text-sm mt-2">
                   支持微信、QQ、GitHub 等第三方登录
                 </p>

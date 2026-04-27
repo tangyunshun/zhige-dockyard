@@ -54,7 +54,9 @@ export default function AdminComponentsPage() {
   const [loading, setLoading] = useState(true);
   const [components, setComponents] = useState<Component[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingComponent, setEditingComponent] = useState<Component | null>(null);
+  const [editingComponent, setEditingComponent] = useState<Component | null>(
+    null,
+  );
   const [filters, setFilters] = useState({
     search: "",
     type: "",
@@ -81,8 +83,9 @@ export default function AdminComponentsPage() {
   const loadComponents = async () => {
     try {
       setLoading(true);
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
       const params = new URLSearchParams({
         page: "1",
         limit: "100",
@@ -114,8 +117,9 @@ export default function AdminComponentsPage() {
 
   const handleTogglePublished = async (id: string, isPublished: boolean) => {
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
       const res = await fetch(`/api/admin/components?id=${id}`, {
         method: "PATCH",
         headers: {
@@ -143,8 +147,9 @@ export default function AdminComponentsPage() {
     if (!confirm("确定要删除这个组件吗？")) return;
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
       const res = await fetch(`/api/admin/components?id=${id}`, {
         method: "DELETE",
         headers: {
@@ -173,7 +178,10 @@ export default function AdminComponentsPage() {
       icon: "",
       category: "",
       tags: "",
-      sortOrder: components.length > 0 ? Math.max(...components.map(c => c.sortOrder)) + 1 : 1,
+      sortOrder:
+        components.length > 0
+          ? Math.max(...components.map((c) => c.sortOrder)) + 1
+          : 1,
       isPublished: true,
     });
     setShowCreateModal(true);
@@ -204,7 +212,8 @@ export default function AdminComponentsPage() {
     setSubmitting(true);
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       const url = editingComponent
         ? `/api/admin/components?id=${editingComponent.id}`
         : "/api/admin/components";
@@ -238,7 +247,7 @@ export default function AdminComponentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pb-8">
       {/* 顶部导航 */}
       <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -250,7 +259,9 @@ export default function AdminComponentsPage() {
               <ArrowLeft className="w-5 h-5" />
               <span className="font-medium">返回</span>
             </button>
-            <h1 className="text-xl font-bold text-slate-800">组件管理</h1>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+              组件管理
+            </h1>
             <div className="w-20" />
           </div>
         </div>
@@ -258,181 +269,256 @@ export default function AdminComponentsPage() {
 
       {/* 主内容区 */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* 操作栏 */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        {/* 统计卡片 */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#3182ce]/10 opacity-20 blur-2xl"></div>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="搜索组件名称..."
-                value={filters.search}
-                onChange={(e) =>
-                  setFilters({ ...filters, search: e.target.value })
-                }
-                className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
-              />
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-slate-500 font-semibold">
+                  总组件数
+                </div>
+                <PackageIcon className="w-6 h-6 text-[#3182ce]" />
+              </div>
+              <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+                {components.length}
+              </div>
             </div>
-            <select
-              value={filters.type}
-              onChange={(e) =>
-                setFilters({ ...filters, type: e.target.value })
-              }
-              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
-            >
-              <option value="">全部类型</option>
-              {types.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filters.published}
-              onChange={(e) =>
-                setFilters({ ...filters, published: e.target.value })
-              }
-              className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
-            >
-              <option value="">全部状态</option>
-              <option value="true">已上架</option>
-              <option value="false">未上架</option>
-            </select>
           </div>
-          <button
-            onClick={openCreateModal}
-            className="px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-lg font-bold text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>新增组件</span>
-          </button>
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-slate-500 font-semibold">
+                  已上架
+                </div>
+                <Eye className="w-6 h-6 text-[#10b981]" />
+              </div>
+              <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+                {components.filter((c) => c.isPublished).length}
+              </div>
+            </div>
+          </div>
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#8b5cf6]/10 opacity-20 blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-slate-500 font-semibold">
+                  组件类型
+                </div>
+                <Layers className="w-6 h-6 text-[#8b5cf6]" />
+              </div>
+              <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+                {types.length}
+              </div>
+            </div>
+          </div>
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-slate-500 font-semibold">
+                  总使用次数
+                </div>
+                <Star className="w-6 h-6 text-[#f59e0b]" />
+              </div>
+              <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+                {components.reduce((sum, c) => sum + (c.usageCount || 0), 0)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 操作栏 */}
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/90 shadow-sm overflow-hidden mb-6">
+          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
+
+          <div className="relative flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="搜索组件名称..."
+                  value={filters.search}
+                  onChange={(e) =>
+                    setFilters({ ...filters, search: e.target.value })
+                  }
+                  className="w-full pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                />
+              </div>
+              <select
+                value={filters.type}
+                onChange={(e) =>
+                  setFilters({ ...filters, type: e.target.value })
+                }
+                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all bg-white/80"
+              >
+                <option value="">全部类型</option>
+                {types.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filters.published}
+                onChange={(e) =>
+                  setFilters({ ...filters, published: e.target.value })
+                }
+                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all bg-white/80"
+              >
+                <option value="">全部状态</option>
+                <option value="true">已上架</option>
+                <option value="false">未上架</option>
+              </select>
+            </div>
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center gap-2 px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
+            >
+              <Plus className="w-5 h-5" />
+              <span>新增组件</span>
+            </button>
+          </div>
         </div>
 
         {/* 组件列表 */}
         {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block w-8 h-8 border-2 border-[#3182ce] border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-slate-600 font-medium">加载组件列表中...</p>
+            </div>
           </div>
         ) : components.length === 0 ? (
-          <div className="text-center py-12">
-            <PackageIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500">暂无组件数据</p>
+          <div className="text-center py-20">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+              <PackageIcon className="w-8 h-8 text-slate-400" />
+            </div>
+            <p className="text-slate-500 font-medium text-sm">暂无组件数据</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    组件信息
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    类型/分类
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    上架状态
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    使用次数
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-bold text-slate-700">
-                    创建时间
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-bold text-slate-700">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {components.map((component) => (
-                  <tr
-                    key={component.id}
-                    className="hover:bg-slate-50 transition-colors"
-                  >
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold">
-                          {component.icon || "📦"}
-                        </div>
-                        <div>
-                          <div className="font-medium text-slate-800">
-                            {component.name}
-                          </div>
-                          <div className="text-xs text-slate-500 truncate max-w-xs">
-                            {component.description || "-"}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="text-sm text-slate-600">
-                        <div className="font-medium">{component.type}</div>
-                        <div className="text-xs text-slate-400">
-                          {component.category || "-"}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <button
-                        onClick={() =>
-                          handleTogglePublished(
-                            component.id,
-                            component.isPublished
-                          )
-                        }
-                        className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
-                          component.isPublished
-                            ? "bg-green-100 text-green-700 hover:bg-green-200"
-                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                        }`}
-                      >
-                        {component.isPublished ? (
-                          <>
-                            <Eye className="w-3 h-3" />
-                            已上架
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="w-3 h-3" />
-                            未上架
-                          </>
-                        )}
-                      </button>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="text-sm font-bold text-slate-800">
-                        {component.usageCount || 0}
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="text-sm text-slate-600">
-                        {new Date(component.createdAt).toLocaleDateString(
-                          "zh-CN"
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEditModal(component)}
-                          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                          title="编辑"
-                        >
-                          <Edit className="w-4 h-4 text-slate-600" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(component.id)}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                          title="删除"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </button>
-                      </div>
-                    </td>
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+
+            <div className="relative overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      组件信息
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      类型/分类
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      上架状态
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      使用次数
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      创建时间
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      操作
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {components.map((component) => (
+                    <tr
+                      key={component.id}
+                      className="group hover:bg-white/60 transition-all duration-300"
+                    >
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-sm">
+                            {component.icon || "📦"}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                              {component.name}
+                            </div>
+                            <div className="text-xs text-slate-500 font-medium truncate max-w-xs">
+                              {component.description || "-"}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-sm text-slate-600 font-medium">
+                          <div className="font-bold text-slate-800">
+                            {component.type}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {component.category || "-"}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <button
+                          onClick={() =>
+                            handleTogglePublished(
+                              component.id,
+                              component.isPublished,
+                            )
+                          }
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                            component.isPublished
+                              ? "bg-[#10b981]/10 text-[#10b981] hover:bg-[#10b981]/20"
+                              : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                          }`}
+                        >
+                          {component.isPublished ? (
+                            <>
+                              <Eye className="w-3.5 h-3.5" />
+                              已上架
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="w-3.5 h-3.5" />
+                              未上架
+                            </>
+                          )}
+                        </button>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-sm font-bold text-slate-800">
+                          {component.usageCount || 0}
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="text-sm text-slate-600 font-medium">
+                          {new Date(component.createdAt).toLocaleDateString(
+                            "zh-CN",
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openEditModal(component)}
+                            className="p-2.5 hover:bg-[#3182ce]/10 rounded-xl transition-all duration-300 group/btn"
+                            title="编辑"
+                          >
+                            <Edit className="w-4.5 h-4.5 text-slate-600 group-hover/btn:text-[#3182ce]" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(component.id)}
+                            className="p-2.5 hover:bg-red-50 rounded-xl transition-all duration-300 group/btn"
+                            title="删除"
+                          >
+                            <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-700" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </main>
@@ -449,8 +535,18 @@ export default function AdminComponentsPage() {
                 onClick={() => setShowCreateModal(false)}
                 className="text-slate-400 hover:text-slate-600"
               >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -458,7 +554,9 @@ export default function AdminComponentsPage() {
             <div className="p-6 space-y-6">
               {/* 基本信息 */}
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">基本信息</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  基本信息
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -481,7 +579,10 @@ export default function AdminComponentsPage() {
                     <textarea
                       value={formData.description}
                       onChange={(e) =>
-                        setFormData({ ...formData, description: e.target.value })
+                        setFormData({
+                          ...formData,
+                          description: e.target.value,
+                        })
                       }
                       rows={3}
                       placeholder="组件功能描述"
@@ -555,7 +656,10 @@ export default function AdminComponentsPage() {
                       type="number"
                       value={formData.sortOrder}
                       onChange={(e) =>
-                        setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })
+                        setFormData({
+                          ...formData,
+                          sortOrder: parseInt(e.target.value) || 0,
+                        })
                       }
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                     />
@@ -566,11 +670,16 @@ export default function AdminComponentsPage() {
                         type="checkbox"
                         checked={formData.isPublished}
                         onChange={(e) =>
-                          setFormData({ ...formData, isPublished: e.target.checked })
+                          setFormData({
+                            ...formData,
+                            isPublished: e.target.checked,
+                          })
                         }
                         className="w-4 h-4 text-[#3182ce] rounded focus:ring-[#3182ce]"
                       />
-                      <span className="text-sm font-medium text-slate-700">已上架（前端可见）</span>
+                      <span className="text-sm font-medium text-slate-700">
+                        已上架（前端可见）
+                      </span>
                     </label>
                   </div>
                 </div>

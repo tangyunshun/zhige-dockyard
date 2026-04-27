@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, Bell, Settings, Search, CheckCircle, XCircle, Clock } from "lucide-react";
+import {
+  Mail,
+  Bell,
+  Settings,
+  Search,
+  CheckCircle,
+  XCircle,
+  Clock,
+} from "lucide-react";
 
 interface UserNotification {
   id: string;
@@ -30,7 +38,8 @@ interface NotificationData {
 }
 
 export default function AdminNotificationsPage() {
-  const [notificationData, setNotificationData] = useState<NotificationData | null>(null);
+  const [notificationData, setNotificationData] =
+    useState<NotificationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -66,9 +75,9 @@ export default function AdminNotificationsPage() {
 
   const getFrequencyBadge = (frequency: string) => {
     const badges: Record<string, string> = {
-      REALTIME: "bg-green-100 text-green-700",
-      DAILY: "bg-blue-100 text-blue-700",
-      WEEKLY: "bg-purple-100 text-purple-700",
+      REALTIME: "bg-gradient-to-r from-[#10b981] to-[#059669] text-white",
+      DAILY: "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white",
+      WEEKLY: "bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white",
     };
 
     const labels: Record<string, string> = {
@@ -79,7 +88,7 @@ export default function AdminNotificationsPage() {
 
     return (
       <span
-        className={`px-3 py-1 rounded-full text-xs font-bold ${badges[frequency] || "bg-slate-100 text-slate-700"}`}
+        className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg ${badges[frequency] || "bg-gradient-to-r from-slate-400 to-slate-500 text-white"}`}
       >
         {labels[frequency] || frequency}
       </span>
@@ -93,102 +102,142 @@ export default function AdminNotificationsPage() {
 
     if (diffInSeconds < 60) return "刚刚";
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}分钟前`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}小时前`;
-    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}天前`;
+    if (diffInSeconds < 86400)
+      return `${Math.floor(diffInSeconds / 3600)}小时前`;
+    if (diffInSeconds < 604800)
+      return `${Math.floor(diffInSeconds / 86400)}天前`;
     return date.toLocaleDateString("zh-CN");
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">通知管理</h1>
-        <p className="text-sm text-slate-500">用户通知设置与系统消息配置</p>
+      <div className="relative">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#3182ce]/10 via-[#10b981]/10 to-[#f59e0b]/10 rounded-2xl blur-xl"></div>
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-8 border border-white/90 shadow-lg">
+          <h1 className="text-3xl font-bold text-slate-800 mb-2 bg-gradient-to-r from-[#3182ce] via-[#10b981] to-[#f59e0b] bg-clip-text text-transparent">
+            通知管理
+          </h1>
+          <p className="text-sm text-slate-600 font-medium">
+            用户通知设置与系统消息配置
+          </p>
+        </div>
       </div>
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-500 font-medium">总用户数</div>
-            <Bell className="w-5 h-5 text-[#3182ce]" />
-          </div>
-          <div className="text-2xl font-bold text-slate-800">
-            {notificationData?.total || 0}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-500 font-medium">邮件通知开启</div>
-            <Mail className="w-5 h-5 text-[#10b981]" />
-          </div>
-          <div className="text-2xl font-bold text-slate-800">
-            {notificationData?.notifications.filter((n) => n.emailNotifications).length || 0}
+        <div className="group relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#3182ce]/20 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-slate-600 font-bold">总用户数</div>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-lg">
+                <Bell className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <div className="text-3xl font-bold bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] bg-clip-text text-transparent">
+              {notificationData?.total || 0}
+            </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm text-slate-500 font-medium">系统消息开启</div>
-            <Settings className="w-5 h-5 text-[#f59e0b]" />
+        <div className="group relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#10b981]/20 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-slate-600 font-bold">
+                邮件通知开启
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center shadow-lg">
+                <Mail className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <div className="text-3xl font-bold bg-gradient-to-r from-[#10b981] to-[#059669] bg-clip-text text-transparent">
+              {notificationData?.notifications.filter(
+                (n) => n.emailNotifications,
+              ).length || 0}
+            </div>
           </div>
-          <div className="text-2xl font-bold text-slate-800">
-            {notificationData?.notifications.filter((n) => n.systemMessages).length || 0}
+        </div>
+        <div className="group relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#f59e0b]/20 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-slate-600 font-bold">
+                系统消息开启
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center shadow-lg">
+                <Settings className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <div className="text-3xl font-bold bg-gradient-to-r from-[#f59e0b] to-[#d97706] bg-clip-text text-transparent">
+              {notificationData?.notifications.filter((n) => n.systemMessages)
+                .length || 0}
+            </div>
           </div>
         </div>
       </div>
 
       {/* 列表 */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="group relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-lg overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#3182ce]/5 via-[#10b981]/5 to-[#f59e0b]/5 pointer-events-none"></div>
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-600 font-medium">加载通知设置中...</p>
+              <div className="w-16 h-16 border-4 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-slate-600 font-bold">加载通知设置中...</p>
             </div>
           </div>
         ) : notificationData?.notifications.length === 0 ? (
-          <div className="text-center py-20 text-slate-400">
-            <Bell className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <p>暂无通知设置数据</p>
+          <div className="text-center py-20">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[#3182ce]/10 to-[#10b981]/10 flex items-center justify-center">
+              <Bell className="w-10 h-10 text-[#3182ce] opacity-50" />
+            </div>
+            <p className="text-slate-600 font-bold text-lg">暂无通知设置数据</p>
+            <p className="text-slate-500 text-sm mt-2">
+              用户通知偏好设置将显示在这里
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-gradient-to-r from-[#3182ce]/10 via-[#10b981]/10 to-[#f59e0b]/10 border-b border-white/50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     用户
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     通知频率
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     邮件通知
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     系统消息
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     项目更新
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     评论提及
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-white/50">
                 {notificationData?.notifications.map((notification) => (
-                  <tr key={notification.id} className="hover:bg-slate-50">
+                  <tr
+                    key={notification.id}
+                    className="hover:bg-gradient-to-r hover:from-[#3182ce]/5 hover:to-transparent transition-all duration-300"
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         {notification.user.avatar ? (
                           <img
                             src={notification.user.avatar}
                             alt={notification.user.name || ""}
-                            className="w-8 h-8 rounded-full"
+                            className="w-10 h-10 rounded-xl shadow-md"
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs font-bold">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-sm font-bold shadow-md">
                             {notification.user.name?.charAt(0) ||
                               notification.user.email?.charAt(0) ||
                               "?"}
@@ -198,7 +247,7 @@ export default function AdminNotificationsPage() {
                           <div className="text-sm font-bold text-slate-800">
                             {notification.user.name || "未知用户"}
                           </div>
-                          <div className="text-xs text-slate-500">
+                          <div className="text-xs text-slate-500 font-medium">
                             {notification.user.email}
                           </div>
                         </div>
@@ -209,30 +258,46 @@ export default function AdminNotificationsPage() {
                     </td>
                     <td className="px-6 py-4">
                       {notification.emailNotifications ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center shadow-lg">
+                          <CheckCircle className="w-5 h-5 text-white" />
+                        </div>
                       ) : (
-                        <XCircle className="w-5 h-5 text-slate-400" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center shadow-lg">
+                          <XCircle className="w-5 h-5 text-white" />
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4">
                       {notification.systemMessages ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center shadow-lg">
+                          <CheckCircle className="w-5 h-5 text-white" />
+                        </div>
                       ) : (
-                        <XCircle className="w-5 h-5 text-slate-400" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center shadow-lg">
+                          <XCircle className="w-5 h-5 text-white" />
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4">
                       {notification.projectUpdates ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center shadow-lg">
+                          <CheckCircle className="w-5 h-5 text-white" />
+                        </div>
                       ) : (
-                        <XCircle className="w-5 h-5 text-slate-400" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center shadow-lg">
+                          <XCircle className="w-5 h-5 text-white" />
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4">
                       {notification.commentMentions ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center shadow-lg">
+                          <CheckCircle className="w-5 h-5 text-white" />
+                        </div>
                       ) : (
-                        <XCircle className="w-5 h-5 text-slate-400" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center shadow-lg">
+                          <XCircle className="w-5 h-5 text-white" />
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -244,25 +309,33 @@ export default function AdminNotificationsPage() {
 
         {/* 分页 */}
         {notificationData && notificationData.totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-            <div className="text-sm text-slate-500">
-              共 {notificationData.total} 条记录，第 {notificationData.page} /{" "}
-              {notificationData.totalPages} 页
+          <div className="px-6 py-4 border-t border-white/50 bg-gradient-to-r from-[#3182ce]/5 via-[#10b981]/5 to-[#f59e0b]/5 flex items-center justify-between">
+            <div className="text-sm text-slate-600 font-bold">
+              共{" "}
+              <span className="text-[#3182ce]">{notificationData.total}</span>{" "}
+              条记录，第{" "}
+              <span className="text-[#3182ce]">{notificationData.page}</span> /{" "}
+              <span className="text-[#3182ce]">
+                {notificationData.totalPages}
+              </span>{" "}
+              页
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                className="px-5 py-2.5 text-sm font-bold border border-white/50 rounded-xl bg-white/60 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gradient-to-r hover:from-[#3182ce] hover:to-[#2b6cb0] hover:text-white hover:border-transparent hover:shadow-lg transition-all duration-300"
               >
                 上一页
               </button>
               <button
                 onClick={() =>
-                  setCurrentPage((p) => Math.min(notificationData.totalPages, p + 1))
+                  setCurrentPage((p) =>
+                    Math.min(notificationData.totalPages, p + 1),
+                  )
                 }
                 disabled={currentPage === notificationData.totalPages}
-                className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+                className="px-5 py-2.5 text-sm font-bold border border-white/50 rounded-xl bg-white/60 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gradient-to-r hover:from-[#3182ce] hover:to-[#2b6cb0] hover:text-white hover:border-transparent hover:shadow-lg transition-all duration-300"
               >
                 下一页
               </button>

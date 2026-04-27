@@ -126,7 +126,8 @@ model Workspace {
   contactPhone String?          // 联系电话
   plan        String            @default("STANDARD") // 空间套餐：STANDARD | PRO | ENTERPRISE | CUSTOM
   visibility  String            @default("PRIVATE")  // 可见性：PRIVATE | PUBLIC
-  status      String            @default("ACTIVE")   // 状态：ACTIVE | DISABLED
+  status      String            @default("ACTIVE")   // 状态：ACTIVE | DISABLED | ARCHIVED
+  lastActiveAt DateTime?        // 最后活跃时间（用于自动注销判断）
   quota       Json?             // 空间配额配置（组件数、成员数、存储等）
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -138,6 +139,7 @@ model Workspace {
   @@index([type], map: "Workspace_type_idx")
   @@index([plan], map: "Workspace_plan_idx")
   @@index([status], map: "Workspace_status_idx")
+  @@index([lastActiveAt], map: "Workspace_lastActiveAt_idx")
 }
 
 // 工作空间成员关联表

@@ -11,6 +11,11 @@ import {
   UserCheck,
   UserX,
   X,
+  Users,
+  Eye,
+  LogOut,
+  Award,
+  CheckCircle,
 } from "lucide-react";
 
 interface User {
@@ -21,6 +26,9 @@ interface User {
   role: string;
   status: string;
   avatar?: string | null;
+  membershipLevel: string;
+  tenantId?: string | null;
+  lastLoginAt?: string | null;
   createdAt: string;
 }
 
@@ -42,6 +50,10 @@ export default function AdminUsersPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({ role: "", status: "" });
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [showBatchActions, setShowBatchActions] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
 
   useEffect(() => {
     loadUsers(currentPage);
@@ -74,6 +86,104 @@ export default function AdminUsersPage() {
   const handleSearch = () => {
     setCurrentPage(1);
     loadUsers(1);
+  };
+
+  const toggleSelectUser = (userId: string) => {
+    const newSelected = new Set(selectedUsers);
+    if (newSelected.has(userId)) {
+      newSelected.delete(userId);
+    } else {
+      newSelected.add(userId);
+    }
+    setSelectedUsers(newSelected);
+    setShowBatchActions(newSelected.size > 0);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedUsers.size === (userData?.users.length || 0)) {
+      setSelectedUsers(new Set());
+      setShowBatchActions(false);
+    } else {
+      const allIds = new Set(userData?.users.map((u) => u.id) || []);
+      setSelectedUsers(allIds);
+      setShowBatchActions(true);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (
+      !confirm(
+        `确定要删除选中的 ${selectedUsers.size} 个用户吗？此操作不可恢复！`,
+      )
+    )
+      return;
+
+    try {
+      const res = await fetch("/api/admin/users/batch", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds: Array.from(selectedUsers) }),
+      });
+
+      if (!res.ok) throw new Error("批量删除失败");
+
+      showToast(`已删除 ${selectedUsers.size} 个用户`, "success");
+      setSelectedUsers(new Set());
+      setShowBatchActions(false);
+      loadUsers(currentPage);
+    } catch (error) {
+      console.error("Batch delete error:", error);
+      showToast("批量删除失败", "error");
+    }
+  };
+
+  const handleBatchActivate = async () => {
+    try {
+      const res = await fetch("/api/admin/users/batch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userIds: Array.from(selectedUsers),
+          status: "active",
+        }),
+      });
+
+      if (!res.ok) throw new Error("批量激活失败");
+
+      showToast(`已激活 ${selectedUsers.size} 个用户`, "success");
+      setSelectedUsers(new Set());
+      setShowBatchActions(false);
+      loadUsers(currentPage);
+    } catch (error) {
+      console.error("Batch activate error:", error);
+      showToast("批量激活失败", "error");
+    }
+  };
+
+  const handleViewDetails = (user: User) => {
+    setViewingUser(user);
+    setShowViewModal(true);
+  };
+
+  const handleForceLogout = async (userId: string) => {
+    if (!confirm("确定要强制该用户下线吗？用户当前的所有操作将会中断。"))
+      return;
+
+    try {
+      const res = await fetch("/api/admin/user/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!res.ok) throw new Error("强制下线失败");
+
+      showToast("用户已被强制下线", "success");
+      setShowActionMenu(null);
+    } catch (error) {
+      console.error("Force logout error:", error);
+      showToast("强制下线失败", "error");
+    }
   };
 
   const handleEdit = (user: User) => {
@@ -164,6 +274,23 @@ export default function AdminUsersPage() {
     }, 3000);
   };
 
+  const getMembershipLevelBadge = (level: string) => {
+    const levelMap: Record<string, string> = {
+      FREE: "普通会员",
+      BRONZE: "青铜会员",
+      SILVER: "白银会员",
+      GOLD: "黄金会员",
+      DIAMOND: "钻石会员",
+      CROWN: "皇冠会员",
+    };
+
+    return (
+      <span className="px-2 py-1 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 text-[#d97706] text-xs font-bold rounded-lg border border-[#f59e0b]/20">
+        {levelMap[level] || level}
+      </span>
+    );
+  };
+
   const getRoleBadge = (role: string) => {
     switch (role?.toUpperCase()) {
       case "SUPER_ADMIN":
@@ -231,7 +358,7 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       {/* Toast 容器 */}
       <div
         id="zg-toast-container"
@@ -239,249 +366,380 @@ export default function AdminUsersPage() {
       ></div>
 
       {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">用户管理</h1>
-        <p className="text-sm text-slate-500">
+      <div className="mb-8">
+        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">
+          用户管理
+        </h1>
+        <p className="text-sm text-slate-500 font-medium">
           管理系统用户、分配权限、审核用户
         </p>
       </div>
 
       {/* 筛选工具栏 */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="搜索用户名、邮箱、手机号..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
-          />
-        </div>
-        <div className="flex gap-2">
-          <select
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none text-sm"
-          >
-            <option value="all">所有角色</option>
-            <option value="super_admin">超级管理员</option>
-            <option value="admin">管理员</option>
-            <option value="user">普通用户</option>
-          </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none text-sm"
-          >
-            <option value="all">所有状态</option>
-            <option value="active">活跃</option>
-            <option value="inactive">未激活</option>
-            <option value="banned">已封禁</option>
-          </select>
-          <button
-            onClick={handleSearch}
-            className="px-4 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#2563eb] transition-colors flex items-center gap-2"
-          >
-            <Filter className="w-4 h-4" />
-            筛选
-          </button>
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/90 shadow-sm overflow-hidden">
+        {/* 装饰背景 */}
+        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
+
+        <div className="relative flex flex-col md:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="搜索用户名、邮箱、手机号..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="w-full pl-11 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+            >
+              <option value="all">所有角色</option>
+              <option value="super_admin">超级管理员</option>
+              <option value="admin">管理员</option>
+              <option value="user">普通用户</option>
+            </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+            >
+              <option value="all">所有状态</option>
+              <option value="active">活跃</option>
+              <option value="inactive">未激活</option>
+              <option value="banned">已封禁</option>
+            </select>
+            <button
+              onClick={handleSearch}
+              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              筛选
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 用户列表 */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      用户
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      角色
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      状态
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      注册时间
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      操作
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {userData?.users.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="px-6 py-20 text-center text-slate-400"
-                      >
-                        暂无用户数据
-                      </td>
-                    </tr>
-                  ) : (
-                    userData?.users.map((user) => (
-                      <tr
-                        key={user.id}
-                        className="hover:bg-slate-50 transition-colors"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold">
-                              {user.name?.charAt(0) ||
-                                user.email?.charAt(0) ||
-                                "U"}
-                            </div>
-                            <div>
-                              <div className="text-sm font-bold text-slate-800">
-                                {user.name || "匿名用户"}
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                {user.email || "未设置邮箱"}
-                              </div>
-                              {user.phone && (
-                                <div className="text-xs text-slate-400">
-                                  {user.phone}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">{getRoleBadge(user.role)}</td>
-                        <td className="px-6 py-4">
-                          {getStatusBadge(user.status)}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          {formatTimeAgo(user.createdAt)}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="relative inline-block">
-                            <button
-                              onClick={() =>
-                                setShowActionMenu(
-                                  showActionMenu === user.id ? null : user.id,
-                                )
-                              }
-                              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                            >
-                              <MoreVertical className="w-4 h-4 text-slate-600" />
-                            </button>
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
+        {/* 装饰背景 */}
+        <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
 
-                            {showActionMenu === user.id && (
-                              <>
-                                <div
-                                  className="fixed inset-0 z-10"
-                                  onClick={() => setShowActionMenu(null)}
-                                />
-                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-2 z-20">
-                                  <button
-                                    onClick={() => {
-                                      handleEdit(user);
-                                      setShowActionMenu(null);
-                                    }}
-                                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                    编辑用户
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      handleToggleStatus(user);
-                                      setShowActionMenu(null);
-                                    }}
-                                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                                  >
-                                    {user.status === "active" ? (
-                                      <>
-                                        <UserX className="w-4 h-4" />
-                                        停用用户
-                                      </>
-                                    ) : (
-                                      <>
-                                        <UserCheck className="w-4 h-4" />
-                                        激活用户
-                                      </>
-                                    )}
-                                  </button>
-                                  <hr className="my-2 border-slate-200" />
-                                  <button
-                                    onClick={() => {
-                                      handleDelete(user.id);
-                                      setShowActionMenu(null);
-                                    }}
-                                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                    删除用户
-                                  </button>
-                                </div>
-                              </>
-                            )}
+        {/* 批量操作工具栏 */}
+        {showBatchActions && (
+          <div className="relative bg-gradient-to-r from-[#3182ce]/10 to-[#8b5cf6]/10 border-b border-white/50 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-bold text-slate-700">
+                已选择{" "}
+                <span className="text-[#3182ce]">{selectedUsers.size}</span>{" "}
+                个用户
+              </span>
+              <button
+                onClick={() => {
+                  setSelectedUsers(new Set());
+                  setShowBatchActions(false);
+                }}
+                className="text-xs text-slate-500 hover:text-slate-700 font-medium"
+              >
+                取消选择
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleBatchActivate}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
+              >
+                <CheckCircle className="w-4 h-4" />
+                批量激活
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                批量删除
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="relative">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin"></div>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            selectedUsers.size ===
+                              (userData?.users.length || 0) &&
+                            userData?.users.length !== 0
+                          }
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                        />
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        用户信息
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        手机号
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        会员等级
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        角色
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        状态
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        最后登录
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        注册时间
+                      </th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        操作
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {userData?.users.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-20 text-center">
+                          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                            <Users className="w-8 h-8 text-slate-400" />
                           </div>
+                          <p className="text-slate-500 font-medium text-sm">
+                            暂无用户数据
+                          </p>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ) : (
+                      userData?.users.map((user) => (
+                        <tr
+                          key={user.id}
+                          className={`group hover:bg-white/60 transition-all duration-300 ${
+                            selectedUsers.has(user.id) ? "bg-[#3182ce]/5" : ""
+                          }`}
+                        >
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.has(user.id)}
+                              onChange={() => toggleSelectUser(user.id)}
+                              className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                                {user.name?.charAt(0) ||
+                                  user.email?.charAt(0) ||
+                                  "U"}
+                              </div>
+                              <div>
+                                <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                                  {user.name || "匿名用户"}
+                                </div>
+                                <div className="text-xs text-slate-500 font-medium">
+                                  {user.email || "未设置邮箱"}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {user.phone ? (
+                              <div className="text-sm text-slate-700 font-medium">
+                                {user.phone}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                未设置
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {getMembershipLevelBadge(user.membershipLevel)}
+                          </td>
+                          <td className="px-6 py-4">
+                            {getRoleBadge(user.role)}
+                          </td>
+                          <td className="px-6 py-4">
+                            {getStatusBadge(user.status)}
+                          </td>
+                          <td className="px-6 py-4">
+                            {user.lastLoginAt ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                <span className="text-sm text-slate-600 font-medium">
+                                  {formatTimeAgo(user.lastLoginAt)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                从未登录
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600 font-medium">
+                            {formatTimeAgo(user.createdAt)}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="relative inline-block">
+                              <button
+                                onClick={() =>
+                                  setShowActionMenu(
+                                    showActionMenu === user.id ? null : user.id,
+                                  )
+                                }
+                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                              >
+                                <MoreVertical className="w-5 h-5 text-slate-600" />
+                              </button>
 
-            {/* 分页 */}
-            {userData && userData.totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-                <div className="text-sm text-slate-500">
-                  共 {userData.total} 个用户，第 {userData.page}/
-                  {userData.totalPages} 页
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    上一页
-                  </button>
-                  <button
-                    onClick={() =>
-                      setCurrentPage((p) =>
-                        Math.min(userData.totalPages, p + 1),
-                      )
-                    }
-                    disabled={currentPage === userData.totalPages}
-                    className="px-4 py-2 bg-[#3182ce] text-white rounded-lg text-sm hover:bg-[#2563eb] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    下一页
-                  </button>
-                </div>
+                              {showActionMenu === user.id && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-10"
+                                    onClick={() => setShowActionMenu(null)}
+                                  />
+                                  <div className="absolute right-0 mt-2 w-56 bg-white/95 backdrop-blur-xl rounded-xl shadow-xl border border-white/90 py-2 z-20 overflow-hidden">
+                                    <button
+                                      onClick={() => {
+                                        handleEdit(user);
+                                        setShowActionMenu(null);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#3182ce]/5 transition-colors border-b border-slate-50"
+                                    >
+                                      <Edit2 className="w-4 h-4 text-[#3182ce]" />
+                                      编辑用户
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleToggleStatus(user);
+                                        setShowActionMenu(null);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#10b981]/5 transition-colors border-b border-slate-50"
+                                    >
+                                      {user.status === "active" ? (
+                                        <>
+                                          <UserX className="w-4 h-4 text-[#10b981]" />
+                                          停用用户
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserCheck className="w-4 h-4 text-[#10b981]" />
+                                          激活用户
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleViewDetails(user);
+                                        setShowActionMenu(null);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 transition-colors border-b border-slate-50"
+                                    >
+                                      <Eye className="w-4 h-4 text-purple-600" />
+                                      查看详情
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleForceLogout(user.id);
+                                        setShowActionMenu(null);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors"
+                                    >
+                                      <LogOut className="w-4 h-4 text-blue-600" />
+                                      强制下线
+                                    </button>
+                                    <div className="my-2 border-t border-slate-100" />
+                                    <button
+                                      onClick={() => {
+                                        handleDelete(user.id);
+                                        setShowActionMenu(null);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      删除用户
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </>
-        )}
+
+              {/* 分页 */}
+              {userData && userData.totalPages > 1 && (
+                <div className="px-6 py-4 border-t border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent flex items-center justify-between">
+                  <div className="text-sm text-slate-500 font-medium">
+                    共 {userData.total} 个用户，第 {userData.page}/
+                    {userData.totalPages} 页
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      上一页
+                    </button>
+                    <button
+                      onClick={() =>
+                        setCurrentPage((p) =>
+                          Math.min(userData.totalPages, p + 1),
+                        )
+                      }
+                      disabled={currentPage === userData.totalPages}
+                      className="px-4 py-2 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl text-sm font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      下一页
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* 编辑用户弹窗 */}
       {showEditModal && editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
             onClick={() => setShowEditModal(false)}
           />
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h3 className="text-lg font-bold text-slate-800">编辑用户信息</h3>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-white/90">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent">
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
+                编辑用户信息
+              </h3>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
               >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
@@ -496,7 +754,7 @@ export default function AdminUsersPage() {
                   type="text"
                   value={editingUser.name || ""}
                   disabled
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-500 font-medium"
                 />
               </div>
 
@@ -508,7 +766,7 @@ export default function AdminUsersPage() {
                   type="email"
                   value={editingUser.email || ""}
                   disabled
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-500 font-medium"
                 />
               </div>
 
@@ -521,7 +779,7 @@ export default function AdminUsersPage() {
                   onChange={(e) =>
                     setEditForm({ ...editForm, role: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none font-medium transition-all"
                 >
                   <option value="user">普通用户</option>
                   <option value="admin">管理员</option>
@@ -538,7 +796,7 @@ export default function AdminUsersPage() {
                   onChange={(e) =>
                     setEditForm({ ...editForm, status: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none font-medium transition-all"
                 >
                   <option value="active">活跃</option>
                   <option value="inactive">未激活</option>
@@ -547,18 +805,172 @@ export default function AdminUsersPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-slate-200 bg-slate-50">
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 font-semibold hover:bg-slate-100 transition-all"
               >
                 取消
               </button>
               <button
                 onClick={handleUpdateUser}
-                className="flex-1 px-4 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#2563eb] transition-colors"
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300"
               >
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 查看详情弹窗 */}
+      {showViewModal && viewingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowViewModal(false)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden border border-white/90 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent sticky top-0">
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
+                用户详情
+              </h3>
+              <button
+                onClick={() => setShowViewModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* 基本信息 */}
+              <div>
+                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#3182ce]" />
+                  基本信息
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      用户 ID
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {viewingUser.id}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      用户名
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {viewingUser.name || "匿名用户"}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      邮箱
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {viewingUser.email || "未设置"}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      手机号
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {viewingUser.phone || "未设置"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 账户状态 */}
+              <div>
+                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-[#3182ce]" />
+                  账户状态
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      角色
+                    </div>
+                    <div>{getRoleBadge(viewingUser.role)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      状态
+                    </div>
+                    <div>{getStatusBadge(viewingUser.status)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      会员等级
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {getMembershipLevelBadge(viewingUser.membershipLevel)}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      租户 ID
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {viewingUser.tenantId || "无"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 登录信息 */}
+              <div>
+                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
+                  <LogOut className="w-4 h-4 text-[#3182ce]" />
+                  登录信息
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      最后登录
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {viewingUser.lastLoginAt
+                        ? new Date(viewingUser.lastLoginAt).toLocaleString(
+                            "zh-CN",
+                          )
+                        : "从未登录"}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-500 font-medium">
+                      注册时间
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">
+                      {new Date(viewingUser.createdAt).toLocaleString("zh-CN")}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent sticky bottom-0">
+              <button
+                onClick={() => setShowViewModal(false)}
+                className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 font-semibold hover:bg-slate-100 transition-all"
+              >
+                关闭
+              </button>
+              <button
+                onClick={() => {
+                  setShowViewModal(false);
+                  handleEdit(viewingUser);
+                }}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300"
+              >
+                编辑用户
               </button>
             </div>
           </div>

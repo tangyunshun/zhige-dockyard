@@ -97,8 +97,8 @@ export default function AdminMembershipIndex() {
 
       // 只要有部分成功，就显示数据
       setStats({
-        totalMembers: usersData?.data?.pagination?.total || 0,
-        totalOrders: ordersData?.data?.pagination?.total || 0,
+        totalMembers: usersData?.data?.total || 0,
+        totalOrders: ordersData?.data?.total || 0,
         activeLevels: levelsData?.data?.length || 0,
         revenue: 0, // TODO: 从订单统计
       });
@@ -145,7 +145,7 @@ export default function AdminMembershipIndex() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pb-8">
       {/* 顶部导航 */}
       <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -157,7 +157,9 @@ export default function AdminMembershipIndex() {
               <ArrowLeft className="w-5 h-5" />
               <span className="font-medium">返回</span>
             </button>
-            <h1 className="text-xl font-bold text-slate-800">会员管理</h1>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+              会员管理
+            </h1>
             <div className="w-20" />
           </div>
         </div>
@@ -171,65 +173,80 @@ export default function AdminMembershipIndex() {
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="bg-white rounded-xl border border-slate-200 p-6"
+                className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 p-6 shadow-sm overflow-hidden"
               >
-                <div className="h-8 w-8 bg-slate-200 rounded-lg mb-4 animate-pulse" />
-                <div className="h-4 w-20 bg-slate-200 rounded mb-2 animate-pulse" />
-                <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+                <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-slate-100 opacity-50 blur-2xl"></div>
+                <div className="h-8 w-8 bg-slate-200 rounded-lg mb-4 animate-pulse relative" />
+                <div className="h-4 w-20 bg-slate-200 rounded mb-2 animate-pulse relative" />
+                <div className="h-8 w-16 bg-slate-200 rounded animate-pulse relative" />
               </div>
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                  <Crown className="w-6 h-6 text-white" />
+            <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+              <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#3182ce]/10 opacity-20 blur-2xl"></div>
+              <div className="relative">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-sm">
+                    <Crown className="w-6 h-6 text-white" />
+                  </div>
+                  <TrendingUp className="w-5 h-5 text-[#3182ce]" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-blue-600" />
-              </div>
-              <div className="text-sm text-slate-600 mb-1">会员总数</div>
-              <div className="text-2xl font-black text-slate-800">
-                {stats?.totalMembers || 0}
+                <div className="text-sm text-slate-500 font-semibold mb-1">
+                  会员总数
+                </div>
+                <div className="text-3xl font-black text-slate-800 tracking-tight">
+                  {stats?.totalMembers || 0}
+                </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
-                  <FileText className="w-6 h-6 text-white" />
+            <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+              <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
+              <div className="relative">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-sm">
+                    <FileText className="w-6 h-6 text-white" />
+                  </div>
+                  <TrendingUp className="w-5 h-5 text-green-600" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-green-600" />
-              </div>
-              <div className="text-sm text-slate-600 mb-1">订单总数</div>
-              <div className="text-2xl font-black text-slate-800">
-                {stats?.totalOrders || 0}
+                <div className="text-sm text-slate-600 mb-1">订单总数</div>
+                <div className="text-2xl font-black text-slate-800">
+                  {stats?.totalOrders || 0}
+                </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center">
-                  <Award className="w-6 h-6 text-white" />
+            <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+              <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
+              <div className="relative">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-sm">
+                    <Award className="w-6 h-6 text-white" />
+                  </div>
+                  <TrendingUp className="w-5 h-5 text-orange-600" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-orange-600" />
-              </div>
-              <div className="text-sm text-slate-600 mb-1">活跃等级</div>
-              <div className="text-2xl font-black text-slate-800">
-                {stats?.activeLevels || 0}
+                <div className="text-sm text-slate-600 mb-1">活跃等级</div>
+                <div className="text-2xl font-black text-slate-800">
+                  {stats?.activeLevels || 0}
+                </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                  <DollarSign className="w-6 h-6 text-white" />
+            <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+              <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#8b5cf6]/10 opacity-20 blur-2xl"></div>
+              <div className="relative">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-sm">
+                    <DollarSign className="w-6 h-6 text-white" />
+                  </div>
+                  <TrendingUp className="w-5 h-5 text-purple-600" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-purple-600" />
-              </div>
-              <div className="text-sm text-slate-600 mb-1">总收入</div>
-              <div className="text-2xl font-black text-slate-800">
-                ¥{stats?.revenue?.toLocaleString() || 0}
+                <div className="text-sm text-slate-600 mb-1">总收入</div>
+                <div className="text-2xl font-black text-slate-800">
+                  ¥{stats?.revenue?.toLocaleString() || 0}
+                </div>
               </div>
             </div>
           </div>

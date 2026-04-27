@@ -144,6 +144,7 @@ function LoginForm() {
       }
     } catch (error) {
       console.error("Account check error:", error);
+      // 不显示 toast，保持静默
     }
   };
 
@@ -238,7 +239,7 @@ function LoginForm() {
           toast.showToast(
             "sms-code",
             `验证码已发送：${data.debugCode}`,
-            5000, // 显示 5秒
+            5000, // 显示 5 秒
           );
         } else {
           toast.success("验证码已发送，请注意查收");
@@ -254,10 +255,15 @@ function LoginForm() {
           });
         }, 1000);
       } else {
-        toast.error(data.message || "发送失败");
+        // 显示错误在对应字段下方
+        if (data.field === "phone") {
+          setErrors({ phone: data.message || "手机号错误" });
+        } else {
+          setErrors({ phone: data.message || "发送失败" });
+        }
       }
     } catch (error) {
-      toast.error("网络错误，请稍后重试");
+      setErrors({ phone: "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
     }
@@ -308,58 +314,21 @@ function LoginForm() {
       return;
     }
 
-    // 短信登录时，先验证验证码
-    if (loginMethod === "sms") {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/auth/verify-sms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: formData.phone,
-            smsCode: formData.smsCode,
-          }),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          if (data.isLocked) {
-            toast.error(
-              `验证失败次数过多，请${data.minutesRemaining}分钟后再试`,
-            );
-          } else if (data.remainingAttempts !== undefined) {
-            toast.error(
-              `${data.message}，剩余${data.remainingAttempts}次尝试机会`,
-            );
-          } else {
-            toast.error(data.message || "验证失败");
-          }
-          setLoading(false);
-          return;
-        }
-      } catch (error) {
-        toast.error("网络错误，请稍后重试");
-        setLoading(false);
-        return;
-      }
-    }
-
     setLoading(true);
     setErrors({});
 
     // 检查账号是否被锁定
     if (accountCheckStatus.locked) {
-      toast.error(
-        `账号已锁定，请${accountCheckStatus.minutesRemaining}分钟后再试`,
-      );
+      setErrors({
+        account: `账号已锁定，请${accountCheckStatus.minutesRemaining}分钟后再试`,
+      });
       setLoading(false);
       return;
     }
 
     // 检查账号是否被禁用
     if (accountCheckStatus.disabled) {
-      toast.error("账号已被禁用，请联系管理员");
+      setErrors({ account: "账号已被禁用，请联系管理员" });
       setLoading(false);
       return;
     }
@@ -386,42 +355,48 @@ function LoginForm() {
       const data = await res.json();
 
       if (res.ok) {
-        toast.success("登录成功，正在跳转...");
         if (data.token) {
           document.cookie = `auth_token=${data.token}; path=/; max-age=${rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60}`;
         }
-        // 存储 userId 到 localStorage，用于管理员后台等需要身份验证的页面
+        // 存储 userId 到 localStorage
         if (data.user?.id) {
           localStorage.setItem("userId", data.user.id);
         }
         setTimeout(() => {
-          // 登录成功后跳转到回调页面或首页
           router.push(redirectPath);
         }, 1000);
       } else {
-        // 处理各种错误情况
+        // 处理各种错误情况，全部显示在输入框下方
         if (data.accountExists === false) {
-          // 账号不存在
-          // 设置倒计时，由 useEffect 处理跳转
+          // 账号不存在，显示提示并倒计时
           setRedirectCountdown(5);
         } else if (data.remainingAttempts !== undefined) {
           // 密码错误，显示剩余次数
           if (data.remainingAttempts > 0) {
-            toast.error(
-              `${data.message}，剩余${data.remainingAttempts}次尝试机会`,
-            );
+            setErrors({
+              password: `${data.message}，剩余${data.remainingAttempts}次尝试机会`,
+            });
           } else {
-            toast.error(data.message);
+            setErrors({ password: data.message });
           }
         } else if (data.minutesRemaining) {
           // 账号被锁定
-          toast.error(`账号已锁定，请${data.minutesRemaining}分钟后再试`);
+          setErrors({
+            account: `账号已锁定，请${data.minutesRemaining}分钟后再试`,
+          });
+        } else if (data.field === "password") {
+          // 密码错误
+          setErrors({ password: data.message || "密码错误" });
+        } else if (data.field === "account") {
+          // 账号错误
+          setErrors({ account: data.message || "账号错误" });
         } else {
-          toast.error(data.message || "登录失败");
+          // 其他错误显示在账号字段
+          setErrors({ account: data.message || "登录失败" });
         }
       }
     } catch (error) {
-      toast.error("网络错误，请稍后重试");
+      setErrors({ account: "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
     }

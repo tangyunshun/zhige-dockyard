@@ -204,7 +204,7 @@ function RegisterContent() {
     if (formData.account) {
       const validation = validateAccount(formData.account);
       if (validation.valid && validation.type !== "phone") {
-        // 邮箱和用户名在失焦时检测
+        // 邮箱和用户名在失焦时检测是否已注册
         checkAccount(formData.account);
       }
     }
@@ -229,16 +229,15 @@ function RegisterContent() {
       setErrors({ ...errors, phone: undefined });
       setPhoneCheckStatus({});
     }
-
-    // 实时验证手机号格式
-    if (value && !validatePhone(value).valid) {
-      setErrors({ ...errors, phone: validatePhone(value).message });
-    }
   };
 
   // 手机号输入框失焦时检测（仅当账号类型为用户名时使用）
   const handlePhoneBlur = () => {
     if (formData.phone && accountType === "username") {
+      const validation = validatePhone(formData.phone);
+      if (!validation.valid) {
+        setErrors({ ...errors, phone: validation.message });
+      }
       checkPhone(formData.phone);
     }
   };
@@ -262,17 +261,25 @@ function RegisterContent() {
       targetPhone = formData.phone;
     } else {
       // 邮箱注册，应该发送邮件验证码
-      toast.warning("邮箱注册功能开发中");
+      setErrors({ account: "邮箱注册功能开发中" });
       return;
     }
 
     const phoneValidation = validatePhone(targetPhone);
     if (!phoneValidation.valid) {
-      setErrors({ ...errors, phone: phoneValidation.message });
+      setErrors({
+        ...(accountType === "phone"
+          ? { account: phoneValidation.message }
+          : { phone: phoneValidation.message }),
+      });
       return;
     }
 
-    setErrors({ ...errors, phone: undefined });
+    setErrors({
+      ...(accountType === "phone"
+        ? { account: undefined }
+        : { phone: undefined }),
+    });
 
     try {
       setLoading(true);
@@ -309,10 +316,27 @@ function RegisterContent() {
           });
         }, 1000);
       } else {
-        toast.error(data.message || "发送失败");
+        // 显示错误在对应字段下方
+        if (data.field === "phone") {
+          setErrors({
+            ...(accountType === "phone"
+              ? { account: data.message }
+              : { phone: data.message }),
+          });
+        } else {
+          setErrors({
+            ...(accountType === "phone"
+              ? { account: data.message }
+              : { phone: data.message }),
+          });
+        }
       }
     } catch (error) {
-      toast.error("网络错误，请稍后重试");
+      setErrors({
+        ...(accountType === "phone"
+          ? { account: "网络错误，请稍后重试" }
+          : { phone: "网络错误，请稍后重试" }),
+      });
     } finally {
       setLoading(false);
     }
@@ -379,12 +403,12 @@ function RegisterContent() {
     }
 
     if (!agreedToTerms) {
-      toast.warning("请先同意服务条款和隐私政策");
+      setErrors({ account: "请先同意服务条款和隐私政策" });
       return;
     }
 
     if (!passwordStrength.valid) {
-      toast.error("密码强度不足，请满足所有要求");
+      setErrors({ password: "密码强度不足，请满足所有要求" });
       return;
     }
 
@@ -408,21 +432,21 @@ function RegisterContent() {
 
       if (!verifyRes.ok) {
         if (verifyData.isLocked) {
-          toast.error(
-            `验证失败次数过多，请${verifyData.minutesRemaining}分钟后再试`,
-          );
+          setErrors({
+            smsCode: `验证失败次数过多，请${verifyData.minutesRemaining}分钟后再试`,
+          });
         } else if (verifyData.remainingAttempts !== undefined) {
-          toast.error(
-            `${verifyData.message}，剩余${verifyData.remainingAttempts}次尝试机会`,
-          );
+          setErrors({
+            smsCode: `${verifyData.message}，剩余${verifyData.remainingAttempts}次尝试机会`,
+          });
         } else {
-          toast.error(verifyData.message || "验证失败");
+          setErrors({ smsCode: verifyData.message || "验证失败" });
         }
         setLoading(false);
         return;
       }
     } catch (error) {
-      toast.error("网络错误，请稍后重试");
+      setErrors({ smsCode: "网络错误，请稍后重试" });
       setLoading(false);
       return;
     }
@@ -456,15 +480,21 @@ function RegisterContent() {
       const data = await res.json();
 
       if (res.ok) {
-        toast.success("注册成功！正在跳转到登录页面...");
         setTimeout(() => {
           router.push(data.redirectUrl || "/auth/login");
         }, 1500);
       } else {
-        toast.error(data.message || "注册失败");
+        // 根据错误字段显示
+        if (data.field === "phone") {
+          setErrors({ phone: data.message || "注册失败" });
+        } else if (data.field === "account") {
+          setErrors({ account: data.message || "注册失败" });
+        } else {
+          setErrors({ account: data.message || "注册失败" });
+        }
       }
     } catch (error) {
-      toast.error("网络错误，请稍后重试");
+      setErrors({ account: "网络错误，请稍后重试" });
     } finally {
       setLoading(false);
     }
@@ -565,12 +595,12 @@ function RegisterContent() {
                   }`}
                   placeholder={
                     accountType === "phone"
-                      ? "请输入 11 位手机号"
+                      ? "请输入手机号"
                       : accountType === "email"
-                        ? "请输入邮箱地址"
-                        : accountType === "username"
-                          ? "请输入用户名（3-20 位字母、数字、@、下划线）"
-                          : "请输入手机号/邮箱/用户名"
+                      ? "请输入邮箱地址"
+                      : accountType === "username"
+                      ? "请输入用户名（3-20 位字母、数字、@、#、-、下划线）"
+                      : "请输入手机号/邮箱/用户名"
                   }
                 />
                 {accountCheckStatus.checking && (
@@ -627,7 +657,8 @@ function RegisterContent() {
             {(accountType === "username" || accountType === "email") && (
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                  {accountType === "email" ? "绑定手机号" : "绑定手机号"} <span className="text-red-500">*</span>
+                  {accountType === "email" ? "绑定手机号" : "绑定手机号"}{" "}
+                  <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
