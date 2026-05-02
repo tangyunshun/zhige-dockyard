@@ -672,9 +672,9 @@ export default function WorkspaceHub() {
       console.log("开始加载用户信息...");
 
       const res = await fetch("/api/auth/me");
+
       if (!res.ok) {
-        console.error("获取用户信息失败，状态码:", res.status);
-        router.push("/auth/login");
+        // 401 错误由 AuthCheck 组件处理，这里只需静默失败
         return;
       }
 

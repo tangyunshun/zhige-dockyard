@@ -151,14 +151,14 @@ export default function AdminLayout({
     <div className="min-h-screen bg-[#f8fafc] flex">
       {/* 侧边栏 - 桌面端 */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col fixed h-full z-10">
-        {/* Logo */}
+        {/* 返回首页按钮 */}
         <div className="h-16 flex items-center px-6 border-b border-slate-200">
           <button
-            onClick={() => router.push("/workspace-hub")}
-            className="flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-colors"
+            onClick={() => router.push("/")}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
           >
-            <ArrowLeft className="w-5 h-5" />
-            <span className="font-bold text-lg">返回工作空间</span>
+            <ArrowLeft className="w-4 h-4" />
+            <span className="font-bold text-sm">返回首页</span>
           </button>
         </div>
 
@@ -202,36 +202,28 @@ export default function AdminLayout({
 
         {/* 用户信息 */}
         <div className="p-4 border-t border-slate-200">
-          <div className="relative">
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors"
-            >
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold">
-                {user?.name?.charAt(0).toUpperCase() || "A"}
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+              {user?.name?.charAt(0).toUpperCase() || "A"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-slate-800 truncate">
+                {user?.name || "管理员"}
               </div>
-              <div className="flex-1 text-left">
-                <div className="text-sm font-bold text-slate-800">
-                  {user?.name || "管理员"}
-                </div>
-                <div className="text-xs text-slate-500 truncate">
-                  {user?.email || "admin@zhige.os"}
-                </div>
+              <div className="text-xs text-slate-500 truncate">
+                {user?.email || "未设置邮箱"}
               </div>
-            </button>
-
-            {showUserMenu && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50">
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                  退出登录
-                </button>
-              </div>
-            )}
+            </div>
           </div>
+
+          {/* 退出登录按钮 - 直接显示 */}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-bold"
+          >
+            <LogOut className="w-4 h-4" />
+            退出登录
+          </button>
         </div>
       </aside>
 
@@ -257,11 +249,11 @@ export default function AdminLayout({
           <aside className="lg:hidden fixed left-0 top-0 bottom-0 w-72 bg-white z-50 shadow-2xl">
             <div className="h-16 flex items-center px-6 border-b border-slate-200">
               <button
-                onClick={() => router.push("/workspace-hub")}
-                className="flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-colors"
+                onClick={() => router.push("/")}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
               >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="font-bold text-lg">返回工作空间</span>
+                <ArrowLeft className="w-4 h-4" />
+                <span className="font-bold text-sm">返回首页</span>
               </button>
             </div>
 
@@ -304,10 +296,23 @@ export default function AdminLayout({
               })}
             </nav>
 
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 bg-white">
+            <div className="p-4 border-t border-slate-200 bg-white">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+                  {user?.name?.charAt(0).toUpperCase() || "A"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-slate-800 truncate">
+                    {user?.name || "管理员"}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {user?.email || "未设置邮箱"}
+                  </div>
+                </div>
+              </div>
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-lg"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-bold"
               >
                 <LogOut className="w-4 h-4" />
                 退出登录

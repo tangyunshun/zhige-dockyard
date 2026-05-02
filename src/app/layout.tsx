@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
+import AuthCheck from "@/components/AuthCheck";
 
 export const metadata: Metadata = {
   title: "知阁·舟坊 (ZhiGe Dockyard) - 全链路 AI 软件研发效能操作系统",
@@ -27,7 +28,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <ToastProvider>
-          {children}
+          <AuthCheck>{children}</AuthCheck>
         </ToastProvider>
       </body>
     </html>

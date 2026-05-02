@@ -43,7 +43,7 @@ export default function AdminMembershipUsersPage() {
   const [users, setUsers] = useState<MemberUser[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
-    limit: 20,
+    limit: 10,
     total: 0,
     totalPages: 0,
   });

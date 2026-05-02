@@ -28,7 +28,7 @@ export default function AdminAnalyticsPage() {
           数据分析
         </h1>
         <p className="text-sm text-slate-500 font-medium">
-          用户行为分析、功能使用率、性能监控 · 知阁·舟坊
+          用户行为分析、功能使用率、性能监控
         </p>
       </div>
 

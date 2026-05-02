@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Filter,
@@ -16,6 +16,9 @@ import {
   LogOut,
   Award,
   CheckCircle,
+  User,
+  Key,
+  AlertCircle,
 } from "lucide-react";
 
 interface User {
@@ -45,6 +48,8 @@ export default function AdminUsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterRole, setFilterRole] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterMembershipLevel, setFilterMembershipLevel] =
+    useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -54,23 +59,70 @@ export default function AdminUsersPage() {
   const [showBatchActions, setShowBatchActions] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const isProcessingRef = React.useRef(false);
+  const forceLogoutUserIdRef = React.useRef<string | null>(null);
+
+  // 处理 401 错误（未授权/被强制下线）- 现在由全局 AuthCheck 处理
+  const handleUnauthorized = async (response: Response) => {
+    if (response.status === 401) {
+      try {
+        const errorData = await response.json();
+        // 清除本地存储
+        localStorage.removeItem("userId");
+        localStorage.removeItem("userRole");
+        // 清除 cookie
+        document.cookie = "auth_token=; path=/; max-age=0";
+        // 显示提示并重定向
+        showToast(errorData.error || "您已被强制下线，请重新登录", "error");
+        setTimeout(() => {
+          window.location.href = "/auth/login";
+        }, 1500);
+        return true;
+      } catch (e) {
+        console.error("Error parsing 401 response:", e);
+      }
+    }
+    return false;
+  };
 
   useEffect(() => {
+    // 获取当前登录用户 ID 和角色
+    const userId =
+      typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+    const userRole =
+      typeof window !== "undefined" ? localStorage.getItem("userRole") : null;
+    setCurrentUserId(userId);
+    setCurrentUserRole(userRole);
+    console.log("当前用户 ID:", userId, "角色:", userRole);
     loadUsers(currentPage);
-  }, [currentPage, filterRole, filterStatus]);
+  }, [currentPage, filterRole, filterStatus, filterMembershipLevel]);
 
   const loadUsers = async (page: number) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: "20",
+        limit: "10",
         ...(searchQuery && { search: searchQuery }),
         ...(filterRole !== "all" && { role: filterRole }),
         ...(filterStatus !== "all" && { status: filterStatus }),
+        ...(filterMembershipLevel !== "all" && {
+          membershipLevel: filterMembershipLevel,
+        }),
       });
 
       const res = await fetch(`/api/admin/users?${params}`);
+
+      // 处理 401 错误（未授权/被强制下线）
+      if (await handleUnauthorized(res)) {
+        return;
+      }
+
       if (!res.ok) throw new Error("加载用户列表失败");
 
       const result = await res.json();
@@ -80,6 +132,53 @@ export default function AdminUsersPage() {
       showToast("加载用户列表失败", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (forceLogoutUserIdRef.current) {
+      // 执行强制下线操作
+      executeForceLogout(forceLogoutUserIdRef.current);
+      forceLogoutUserIdRef.current = null;
+      setShowConfirmModal(false);
+    } else if (confirmAction) {
+      // 其他确认操作（如停用用户）
+      confirmAction();
+      setConfirmAction(null);
+      setShowConfirmModal(false);
+    }
+  };
+
+  const executeForceLogout = async (userId: string) => {
+    try {
+      const currentUserId = localStorage.getItem("userId");
+
+      const res = await fetch("/api/admin/user/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentUserId}`,
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      // 处理 401 错误（未授权/被强制下线）
+      if (await handleUnauthorized(res)) {
+        return;
+      }
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "强制下线失败");
+      }
+
+      showToast("用户已被强制下线", "success");
+      loadUsers(currentPage);
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "强制下线失败",
+        "error",
+      );
     }
   };
 
@@ -125,6 +224,11 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ userIds: Array.from(selectedUsers) }),
       });
 
+      // 处理 401 错误（未授权/被强制下线）
+      if (await handleUnauthorized(res)) {
+        return;
+      }
+
       if (!res.ok) throw new Error("批量删除失败");
 
       showToast(`已删除 ${selectedUsers.size} 个用户`, "success");
@@ -148,6 +252,11 @@ export default function AdminUsersPage() {
         }),
       });
 
+      // 处理 401 错误（未授权/被强制下线）
+      if (await handleUnauthorized(res)) {
+        return;
+      }
+
       if (!res.ok) throw new Error("批量激活失败");
 
       showToast(`已激活 ${selectedUsers.size} 个用户`, "success");
@@ -166,23 +275,28 @@ export default function AdminUsersPage() {
   };
 
   const handleForceLogout = async (userId: string) => {
-    if (!confirm("确定要强制该用户下线吗？用户当前的所有操作将会中断。"))
-      return;
+    // 防止重复点击
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
 
     try {
-      const res = await fetch("/api/admin/user/logout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
+      // 从当前显示的用户列表中查找用户信息
+      const user = userData?.users.find((u) => u.id === userId);
+      if (!user) return;
 
-      if (!res.ok) throw new Error("强制下线失败");
+      setConfirmMessage(
+        `确定要强制用户 "${user.name || user.email}" 下线吗？用户当前的所有操作将会中断。`,
+      );
 
-      showToast("用户已被强制下线", "success");
+      // 保存用户 ID 到 ref，供确认按钮使用
+      forceLogoutUserIdRef.current = userId;
+
+      setShowConfirmModal(true);
       setShowActionMenu(null);
+      isProcessingRef.current = false;
     } catch (error) {
-      console.error("Force logout error:", error);
-      showToast("强制下线失败", "error");
+      isProcessingRef.current = false;
+      console.error("Force logout setup error:", error);
     }
   };
 
@@ -204,6 +318,11 @@ export default function AdminUsersPage() {
         }),
       });
 
+      // 处理 401 错误（未授权/被强制下线）
+      if (await handleUnauthorized(res)) {
+        return;
+      }
+
       if (!res.ok) throw new Error("更新用户失败");
 
       showToast("用户信息已更新", "success");
@@ -223,6 +342,11 @@ export default function AdminUsersPage() {
         method: "DELETE",
       });
 
+      // 处理 401 错误（未授权/被强制下线）
+      if (await handleUnauthorized(res)) {
+        return;
+      }
+
       if (!res.ok) throw new Error("删除用户失败");
 
       showToast("用户已删除", "success");
@@ -235,23 +359,61 @@ export default function AdminUsersPage() {
 
   const handleToggleStatus = async (user: User) => {
     const newStatus = user.status === "active" ? "inactive" : "active";
-    try {
-      const res = await fetch("/api/admin/user", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          status: newStatus,
-        }),
+
+    // 如果是停用操作，需要二次确认
+    if (newStatus === "inactive") {
+      setConfirmMessage(
+        `确定要停用用户 "${user.name || user.email}" 吗？停用后该用户将无法登录系统。`,
+      );
+      setConfirmAction(async () => {
+        try {
+          const res = await fetch("/api/admin/user", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: user.id,
+              status: newStatus,
+            }),
+          });
+
+          // 处理 401 错误（未授权/被强制下线）
+          if (await handleUnauthorized(res)) {
+            return;
+          }
+
+          if (!res.ok) throw new Error("更新状态失败");
+
+          showToast("用户已停用", "success");
+          loadUsers(currentPage);
+        } catch (error) {
+          showToast("停用失败", "error");
+        }
       });
+      setShowConfirmModal(true);
+    } else {
+      // 激活操作直接执行
+      try {
+        const res = await fetch("/api/admin/user", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: user.id,
+            status: newStatus,
+          }),
+        });
 
-      if (!res.ok) throw new Error("更新状态失败");
+        // 处理 401 错误（未授权/被强制下线）
+        if (await handleUnauthorized(res)) {
+          return;
+        }
 
-      showToast(`用户已${newStatus === "active" ? "激活" : "停用"}`, "success");
-      loadUsers(currentPage);
-    } catch (error) {
-      console.error("Toggle status error:", error);
-      showToast("操作失败", "error");
+        if (!res.ok) throw new Error("更新状态失败");
+
+        showToast("用户已激活", "success");
+        loadUsers(currentPage);
+      } catch (error) {
+        showToast("激活失败", "error");
+      }
     }
   };
 
@@ -261,11 +423,16 @@ export default function AdminUsersPage() {
 
     const toast = document.createElement("div");
     toast.className = `zg-toast ${type === "success" ? "show" : ""}`;
+
+    // 根据设计系统规范，使用正确的颜色和图标
+    const iconColor = type === "success" ? "#10b981" : "#ef4444";
+    const icon = type === "success" ? "✓" : "✕";
+
     toast.innerHTML = `
-      <span class="${type === "success" ? "text-green-600" : "text-red-600"} font-bold">
-        ${type === "success" ? "✓" : "✕"}
+      <span style="color: ${iconColor}; font-weight: 700; font-size: 16px; line-height: 1; display: flex; align-items: center;">
+        ${icon}
       </span>
-      <span class="text-sm font-medium text-slate-700">${message}</span>
+      <span style="font-size: 14px; font-weight: 600; color: #0f172a; white-space: nowrap;">${message}</span>
     `;
     container.appendChild(toast);
 
@@ -314,20 +481,34 @@ export default function AdminUsersPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status?.toUpperCase()) {
-      case "ACTIVE":
+  const getStatusBadge = (user: any) => {
+    const status = user.status?.toUpperCase();
+    const isOnline = user.isOnline;
+
+    if (status === "ACTIVE") {
+      if (isOnline) {
         return (
           <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-            活跃
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+            在线
           </span>
         );
+      } else {
+        return (
+          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+            离线
+          </span>
+        );
+      }
+    }
+
+    switch (status) {
       case "INACTIVE":
         return (
           <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-            未激活
+            已停用
           </span>
         );
       case "BANNED":
@@ -340,7 +521,7 @@ export default function AdminUsersPage() {
       default:
         return (
           <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
-            {status}
+            {user.status}
           </span>
         );
     }
@@ -359,6 +540,46 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6 pb-8">
+      {/* Toast 容器 - 按照设计系统规范 */}
+      <style jsx global>{`
+        #zg-toast-container {
+          position: fixed;
+          top: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 9999;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          pointer-events: none;
+          align-items: center;
+        }
+        .zg-toast {
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(226, 232, 240, 0.9);
+          border-radius: 99px;
+          box-shadow:
+            0 8px 24px -6px rgba(15, 23, 42, 0.1),
+            0 2px 6px -2px rgba(15, 23, 42, 0.04);
+          padding: 8px 12px 8px 10px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: fit-content;
+          max-width: 480px;
+          transform: translateY(-20px) scale(0.95);
+          opacity: 0;
+          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+          pointer-events: auto;
+        }
+        .zg-toast.show {
+          transform: translateY(0) scale(1);
+          opacity: 1;
+        }
+      `}</style>
+
       {/* Toast 容器 */}
       <div
         id="zg-toast-container"
@@ -413,6 +634,19 @@ export default function AdminUsersPage() {
               <option value="inactive">未激活</option>
               <option value="banned">已封禁</option>
             </select>
+            <select
+              value={filterMembershipLevel}
+              onChange={(e) => setFilterMembershipLevel(e.target.value)}
+              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+            >
+              <option value="all">所有等级</option>
+              <option value="FREE">普通会员</option>
+              <option value="BRONZE">青铜会员</option>
+              <option value="SILVER">白银会员</option>
+              <option value="GOLD">黄金会员</option>
+              <option value="DIAMOND">钻石会员</option>
+              <option value="CROWN">皇冠会员</option>
+            </select>
             <button
               onClick={handleSearch}
               className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
@@ -425,7 +659,7 @@ export default function AdminUsersPage() {
       </div>
 
       {/* 用户列表 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm">
         {/* 装饰背景 */}
         <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
 
@@ -474,7 +708,7 @@ export default function AdminUsersPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div className="overflow-visible">
                 <table className="w-full">
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
@@ -516,7 +750,10 @@ export default function AdminUsersPage() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody
+                    className="divide-y divide-slate-100"
+                    onClick={() => setShowActionMenu(null)}
+                  >
                     {userData?.users.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-6 py-20 text-center">
@@ -578,9 +815,7 @@ export default function AdminUsersPage() {
                           <td className="px-6 py-4">
                             {getRoleBadge(user.role)}
                           </td>
-                          <td className="px-6 py-4">
-                            {getStatusBadge(user.status)}
-                          </td>
+                          <td className="px-6 py-4">{getStatusBadge(user)}</td>
                           <td className="px-6 py-4">
                             {user.lastLoginAt ? (
                               <div className="flex items-center gap-2">
@@ -599,13 +834,14 @@ export default function AdminUsersPage() {
                             {formatTimeAgo(user.createdAt)}
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <div className="relative inline-block">
+                            <div className="relative">
                               <button
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setShowActionMenu(
                                     showActionMenu === user.id ? null : user.id,
-                                  )
-                                }
+                                  );
+                                }}
                                 className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                               >
                                 <MoreVertical className="w-5 h-5 text-slate-600" />
@@ -613,40 +849,90 @@ export default function AdminUsersPage() {
 
                               {showActionMenu === user.id && (
                                 <>
+                                  {/* 下拉菜单 - 显示在数据列表上层 */}
                                   <div
-                                    className="fixed inset-0 z-10"
-                                    onClick={() => setShowActionMenu(null)}
-                                  />
-                                  <div className="absolute right-0 mt-2 w-56 bg-white/95 backdrop-blur-xl rounded-xl shadow-xl border border-white/90 py-2 z-20 overflow-hidden">
-                                    <button
-                                      onClick={() => {
-                                        handleEdit(user);
-                                        setShowActionMenu(null);
-                                      }}
-                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#3182ce]/5 transition-colors border-b border-slate-50"
-                                    >
-                                      <Edit2 className="w-4 h-4 text-[#3182ce]" />
-                                      编辑用户
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        handleToggleStatus(user);
-                                        setShowActionMenu(null);
-                                      }}
-                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#10b981]/5 transition-colors border-b border-slate-50"
-                                    >
-                                      {user.status === "active" ? (
-                                        <>
-                                          <UserX className="w-4 h-4 text-[#10b981]" />
-                                          停用用户
-                                        </>
-                                      ) : (
-                                        <>
-                                          <UserCheck className="w-4 h-4 text-[#10b981]" />
-                                          激活用户
-                                        </>
+                                    className="absolute right-0 top-full mt-2 w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {/* 强制下线 - 只对在线的活跃用户显示，超级管理员专属操作，不能操作超级管理员和自己 */}
+                                    {currentUserRole === "super_admin" &&
+                                      user.status === "active" &&
+                                      user.isOnline &&
+                                      user.role !== "super_admin" &&
+                                      user.id !== currentUserId && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleForceLogout(user.id);
+                                            setShowActionMenu(null);
+                                          }}
+                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                                        >
+                                          <LogOut className="w-4 h-4 text-blue-600" />
+                                          强制下线
+                                        </button>
                                       )}
-                                    </button>
+
+                                    {/* 禁用登录 - 对离线的活跃用户显示（包括从未登录和已登录但当前离线的），超级管理员专属操作，不能操作超级管理员和自己 */}
+                                    {currentUserRole === "super_admin" &&
+                                      user.status === "active" &&
+                                      !user.isOnline &&
+                                      user.role !== "super_admin" &&
+                                      user.id !== currentUserId && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleStatus(user);
+                                            setShowActionMenu(null);
+                                          }}
+                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-orange-50 transition-colors border-b border-slate-50"
+                                        >
+                                          <UserX className="w-4 h-4 text-orange-600" />
+                                          禁用登录
+                                        </button>
+                                      )}
+
+                                    {/* 修改角色 - 只对非活跃用户显示，不能操作超级管理员 */}
+                                    {user.status !== "active" &&
+                                      user.role !== "super_admin" && (
+                                        <button
+                                          onClick={() => {
+                                            handleEdit(user);
+                                            setShowActionMenu(null);
+                                          }}
+                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#3182ce]/5 transition-colors border-b border-slate-50"
+                                        >
+                                          <Edit2 className="w-4 h-4 text-[#3182ce]" />
+                                          修改角色
+                                        </button>
+                                      )}
+
+                                    {/* 停用/激活用户 - 只对非活跃用户显示（激活），不能操作超级管理员和自己 */}
+                                    {user.status !== "active" &&
+                                      user.role !== "super_admin" &&
+                                      user.id !== currentUserId && (
+                                        <button
+                                          onClick={() => {
+                                            handleToggleStatus(user);
+                                            setShowActionMenu(null);
+                                          }}
+                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#10b981]/5 transition-colors border-b border-slate-50"
+                                        >
+                                          {user.status === "inactive" ? (
+                                            <>
+                                              <UserCheck className="w-4 h-4 text-green-600" />
+                                              激活用户
+                                            </>
+                                          ) : (
+                                            <>
+                                              <UserX className="w-4 h-4 text-orange-600" />
+                                              停用用户
+                                            </>
+                                          )}
+                                        </button>
+                                      )}
+
+                                    {/* 查看详情 - 所有用户都可以查看 */}
                                     <button
                                       onClick={() => {
                                         handleViewDetails(user);
@@ -657,27 +943,25 @@ export default function AdminUsersPage() {
                                       <Eye className="w-4 h-4 text-purple-600" />
                                       查看详情
                                     </button>
-                                    <button
-                                      onClick={() => {
-                                        handleForceLogout(user.id);
-                                        setShowActionMenu(null);
-                                      }}
-                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors"
-                                    >
-                                      <LogOut className="w-4 h-4 text-blue-600" />
-                                      强制下线
-                                    </button>
-                                    <div className="my-2 border-t border-slate-100" />
-                                    <button
-                                      onClick={() => {
-                                        handleDelete(user.id);
-                                        setShowActionMenu(null);
-                                      }}
-                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                      删除用户
-                                    </button>
+
+                                    {/* 删除用户 - 只对已停用用户显示，不能删除超级管理员和自己 */}
+                                    {user.status === "banned" &&
+                                      user.role !== "super_admin" &&
+                                      user.id !== currentUserId && (
+                                        <>
+                                          <div className="my-2 border-t border-slate-100" />
+                                          <button
+                                            onClick={() => {
+                                              handleDelete(user.id);
+                                              setShowActionMenu(null);
+                                            }}
+                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                            删除用户
+                                          </button>
+                                        </>
+                                      )}
                                   </div>
                                 </>
                               )}
@@ -731,11 +1015,11 @@ export default function AdminUsersPage() {
             className="absolute inset-0 bg-black/30 backdrop-blur-sm"
             onClick={() => setShowEditModal(false)}
           />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-white/90">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent">
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden border border-white/90 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent sticky top-0">
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
                 <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
-                编辑用户信息
+                修改角色信息
               </h3>
               <button
                 onClick={() => setShowEditModal(false)}
@@ -745,63 +1029,148 @@ export default function AdminUsersPage() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  用户名
-                </label>
-                <input
-                  type="text"
-                  value={editingUser.name || ""}
-                  disabled
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-500 font-medium"
-                />
+            <div className="p-6 space-y-5">
+              {/* 基本信息区域 */}
+              <div className="bg-gradient-to-r from-blue-50/50 to-purple-50/50 rounded-xl p-4 border border-slate-100">
+                <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></span>
+                  基本信息
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      用户名
+                    </label>
+                    <div className="text-sm font-semibold text-slate-800 px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
+                      {editingUser.name || "未设置"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      邮箱
+                    </label>
+                    <div className="text-sm font-semibold text-slate-800 px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
+                      {editingUser.email || "未设置"}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      手机号
+                    </label>
+                    <div className="text-sm font-semibold text-slate-800 px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
+                      {editingUser.phone || "未设置"}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  邮箱
-                </label>
-                <input
-                  type="email"
-                  value={editingUser.email || ""}
-                  disabled
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-500 font-medium"
-                />
+              {/* 系统信息区域 */}
+              <div className="bg-gradient-to-r from-green-50/50 to-teal-50/50 rounded-xl p-4 border border-slate-100">
+                <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-gradient-to-b from-[#10b981] to-[#059669] rounded-full"></span>
+                  系统信息
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      当前角色
+                    </label>
+                    <div className="text-sm font-semibold px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
+                      {editingUser.role === "super_admin" ? (
+                        <span className="text-red-600">超级管理员</span>
+                      ) : editingUser.role === "admin" ? (
+                        <span className="text-blue-600">管理员</span>
+                      ) : (
+                        <span className="text-slate-600">普通用户</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      当前状态
+                    </label>
+                    <div className="text-sm font-semibold px-3 py-2 bg-white/60 rounded-lg border border-slate-100 flex items-center gap-2">
+                      {editingUser.status === "active" ? (
+                        <>
+                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                          <span className="text-green-600">活跃</span>
+                        </>
+                      ) : editingUser.status === "inactive" ? (
+                        <>
+                          <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                          <span className="text-yellow-600">未激活</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                          <span className="text-red-600">已封禁</span>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      * 状态由系统自动判断，不可手动修改
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      会员等级
+                    </label>
+                    <div className="text-sm font-semibold px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
+                      {editingUser.membershipLevel === "premium" ? (
+                        <span className="text-orange-600">普通会员</span>
+                      ) : editingUser.membershipLevel === "vip" ? (
+                        <span className="text-purple-600">VIP 会员</span>
+                      ) : editingUser.membershipLevel === "svip" ? (
+                        <span className="text-red-600">SVIP 会员</span>
+                      ) : (
+                        <span className="text-slate-600">普通会员</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">
+                      注册时间
+                    </label>
+                    <div className="text-sm font-semibold text-slate-800 px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
+                      {new Date(editingUser.createdAt).toLocaleString("zh-CN")}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  角色
-                </label>
-                <select
-                  value={editForm.role}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, role: e.target.value })
-                  }
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none font-medium transition-all"
-                >
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
-                  <option value="super_admin">超级管理员</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  状态
-                </label>
-                <select
-                  value={editForm.status}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, status: e.target.value })
-                  }
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none font-medium transition-all"
-                >
-                  <option value="active">活跃</option>
-                  <option value="inactive">未激活</option>
-                  <option value="banned">已封禁</option>
-                </select>
+              {/* 可编辑字段 */}
+              <div className="bg-gradient-to-r from-slate-50/50 to-gray-50/50 rounded-xl p-4 border border-slate-100">
+                <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-gradient-to-b from-[#6b7280] to-[#4b5563] rounded-full"></span>
+                  修改角色权限
+                </h4>
+                {editingUser.role === "super_admin" ? (
+                  <div className="text-sm text-slate-500 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
+                    <span className="text-lg">⚠️</span>
+                    超级管理员角色不可修改
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1">
+                      <span className="text-red-500">*</span>
+                      新角色
+                    </label>
+                    <select
+                      value={editForm.role}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, role: e.target.value })
+                      }
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none font-medium transition-all"
+                    >
+                      <option value="user">普通用户</option>
+                      <option value="admin">管理员</option>
+                    </select>
+                    <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                      <span className="text-red-500">*</span>
+                      修改角色将立即生效，请谨慎操作
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -814,9 +1183,10 @@ export default function AdminUsersPage() {
               </button>
               <button
                 onClick={handleUpdateUser}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300"
+                disabled={editingUser.role === "super_admin"}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                保存
+                保存修改
               </button>
             </div>
           </div>
@@ -848,18 +1218,10 @@ export default function AdminUsersPage() {
               {/* 基本信息 */}
               <div>
                 <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-[#3182ce]" />
+                  <User className="w-4 h-4 text-[#3182ce]" />
                   基本信息
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      用户 ID
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {viewingUser.id}
-                    </div>
-                  </div>
                   <div className="space-y-1">
                     <div className="text-xs text-slate-500 font-medium">
                       用户名
@@ -904,7 +1266,7 @@ export default function AdminUsersPage() {
                     <div className="text-xs text-slate-500 font-medium">
                       状态
                     </div>
-                    <div>{getStatusBadge(viewingUser.status)}</div>
+                    <div>{getStatusBadge(viewingUser)}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="text-xs text-slate-500 font-medium">
@@ -928,7 +1290,7 @@ export default function AdminUsersPage() {
               {/* 登录信息 */}
               <div>
                 <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
-                  <LogOut className="w-4 h-4 text-[#3182ce]" />
+                  <Key className="w-4 h-4 text-[#3182ce]" />
                   登录信息
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
@@ -963,15 +1325,50 @@ export default function AdminUsersPage() {
               >
                 关闭
               </button>
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  handleEdit(viewingUser);
-                }}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300"
-              >
-                编辑用户
-              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 自定义确认弹窗 */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowConfirmModal(false)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-white/90">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-orange-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">确认操作</h3>
+              </div>
+              <p className="text-slate-600 mb-6">{confirmMessage}</p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowConfirmModal(false);
+                    setConfirmAction(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors font-semibold text-sm"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleConfirm();
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 font-semibold text-sm"
+                >
+                  确认
+                </button>
+              </div>
             </div>
           </div>
         </div>

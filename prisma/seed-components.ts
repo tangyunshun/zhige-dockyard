@@ -11,7 +11,7 @@ const componentData = [
     description: "提取标书关键条款，自动对比产品能力生成偏离表",
     type: "第一阶段：商机捕获与售前打单",
     category: "分析类",
-    icon: "📄",
+    icon: "FileText",
     tags: "标书，解析，偏离表",
     usageCount: 3421,
     sortOrder: 100,
@@ -23,7 +23,7 @@ const componentData = [
     description: "离线扫描技术方案，检查等保、国密等合规风险",
     type: "第一阶段：商机捕获与售前打单",
     category: "分析类",
-    icon: "🛡️",
+    icon: "ShieldCheck",
     tags: "合规，审查，等保，国密",
     usageCount: 2156,
     sortOrder: 99,
@@ -35,7 +35,7 @@ const componentData = [
     description: "提取竞品文档核心数据，生成多维度对比矩阵",
     type: "第一阶段：商机捕获与售前打单",
     category: "分析类",
-    icon: "⚔️",
+    icon: "TrendingUp",
     tags: "竞品，对比，分析",
     usageCount: 1876,
     sortOrder: 98,
@@ -47,7 +47,7 @@ const componentData = [
     description: "根据汇报对象（高管/技术），自动调整技术方案的表达深度",
     type: "第一阶段：商机捕获与售前打单",
     category: "工具类",
-    icon: "🗣️",
+    icon: "Languages",
     tags: "汇报，话术，转换",
     usageCount: 2543,
     sortOrder: 97,
@@ -59,7 +59,7 @@ const componentData = [
     description: "结合历史数据推算项目隐性成本与预估毛利",
     type: "第一阶段：商机捕获与售前打单",
     category: "分析类",
-    icon: "🧮",
+    icon: "Calculator",
     tags: "成本，测算，毛利",
     usageCount: 1234,
     sortOrder: 96,
@@ -71,7 +71,7 @@ const componentData = [
     description: "量化功能收益与开发成本，生成投入产出比报告",
     type: "第一阶段：商机捕获与售前打单",
     category: "分析类",
-    icon: "📈",
+    icon: "BarChart3",
     tags: "商业价值，评估，ROI",
     usageCount: 987,
     sortOrder: 95,
@@ -84,7 +84,7 @@ const componentData = [
     description: "将会议纪要或聊天记录，整理为结构化需求文档",
     type: "第二阶段：需求定义与产品设计",
     category: "生成类",
-    icon: "🧩",
+    icon: "FileText",
     tags: "需求，PRD，文档",
     usageCount: 4521,
     sortOrder: 94,
@@ -96,7 +96,7 @@ const componentData = [
     description: "根据主流程自动补充边界、并发等异常场景的处理建议",
     type: "第二阶段：需求定义与产品设计",
     category: "分析类",
-    icon: "🕸️",
+    icon: "AlertTriangle",
     tags: "异常场景，边界，并发",
     usageCount: 3245,
     sortOrder: 93,
@@ -108,7 +108,7 @@ const componentData = [
     description: "聚类分析多渠道客诉数据，自动生成研发缺陷单",
     type: "第二阶段：需求定义与产品设计",
     category: "分析类",
-    icon: "🎭",
+    icon: "MessageCircleWarning",
     tags: "客诉，归因，缺陷",
     usageCount: 2876,
     sortOrder: 92,
@@ -120,7 +120,7 @@ const componentData = [
     description: "依据真实行业规则，批量生成高逼真的业务测试数据",
     type: "第二阶段：需求定义与产品设计",
     category: "生成类",
-    icon: "💉",
+    icon: "Database",
     tags: "仿真数据，测试数据",
     usageCount: 5432,
     sortOrder: 91,
@@ -133,7 +133,7 @@ const componentData = [
     description: "分析旧项目冗余样式，精简代码并提取设计规范 Token",
     type: "第三阶段：大前端与交互",
     category: "工具类",
-    icon: "🧹",
+    icon: "Palette",
     tags: "CSS，样式，重构",
     usageCount: 2134,
     sortOrder: 90,
@@ -688,11 +688,14 @@ async function main() {
           status: "published",
         },
       });
-      
+
       created++;
       console.log(`✓ 组件 ${component.id} - ${component.name} 已准备就绪`);
     } catch (error) {
-      console.error(`Failed to create/update component ${component.id}:`, error);
+      console.error(
+        `Failed to create/update component ${component.id}:`,
+        error,
+      );
     }
   }
 

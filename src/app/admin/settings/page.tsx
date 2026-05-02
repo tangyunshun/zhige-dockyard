@@ -42,7 +42,7 @@ export default function AdminSettingsPage() {
           系统设置
         </h1>
         <p className="text-sm text-slate-500 font-medium">
-          全局配置、邮件模板、第三方集成 · 知阁·舟坊
+          全局配置、邮件模板、第三方集成
         </p>
       </div>
 

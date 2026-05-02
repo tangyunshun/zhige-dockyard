@@ -37,9 +37,26 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [hasShownError, setHasShownError] = useState(false);
 
   // 获取回调参数
   const redirectPath = searchParams.get("redirect") || "/";
+  const errorMessage = searchParams.get("error");
+
+  // 显示错误提示（如果有）
+  useEffect(() => {
+    if (errorMessage && !hasShownError) {
+      // 使用 sessionStorage 防止重复显示
+      const sessionKey = `error_shown_${errorMessage}`;
+      const alreadyShown = sessionStorage.getItem(sessionKey);
+
+      if (!alreadyShown) {
+        sessionStorage.setItem(sessionKey, "true");
+        setHasShownError(true);
+        toast.error(errorMessage);
+      }
+    }
+  }, [errorMessage]);
 
   const [formData, setFormData] = useState({
     account: "",
@@ -358,9 +375,12 @@ function LoginForm() {
         if (data.token) {
           document.cookie = `auth_token=${data.token}; path=/; max-age=${rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60}`;
         }
-        // 存储 userId 到 localStorage
+        // 存储 userId 和 userRole 到 localStorage
         if (data.user?.id) {
           localStorage.setItem("userId", data.user.id);
+        }
+        if (data.user?.role) {
+          localStorage.setItem("userRole", data.user.role);
         }
         setTimeout(() => {
           router.push(redirectPath);

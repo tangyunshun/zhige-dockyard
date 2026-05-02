@@ -5,7 +5,11 @@ export async function GET(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
       return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
@@ -21,18 +25,44 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
-    const status = searchParams.get("status") || "";
-    const type = searchParams.get("type") || "";
+    const search = searchParams.get("search") || "";
+    const stage = searchParams.get("stage") || "";
+    const published = searchParams.get("published") || "";
+    const startDate = searchParams.get("startDate") || "";
+    const endDate = searchParams.get("endDate") || "";
 
     const skip = (page - 1) * limit;
     const where: any = {};
 
-    if (status) {
-      where.status = status;
+    // 模糊搜索组件名称
+    if (search) {
+      where.name = {
+        contains: search,
+      };
     }
 
-    if (type) {
-      where.type = type;
+    // 按阶段筛选
+    if (stage) {
+      where.type = stage;
+    }
+
+    // 按上架状态筛选
+    if (published) {
+      where.isPublished = published === "true";
+    }
+
+    // 按日期范围筛选（创建时间）
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        // 包含结束日期的整天
+        const endDateObj = new Date(endDate);
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        where.createdAt.lt = endDateObj;
+      }
     }
 
     const [components, total] = await Promise.all([
@@ -56,8 +86,8 @@ export async function GET(request: NextRequest) {
       prisma.componenttask.count({ where }),
     ]);
 
-    // 获取所有类型（阶段）
-    const types = await prisma.componenttask.findMany({
+    // 获取所有阶段
+    const stages = await prisma.componenttask.findMany({
       select: {
         type: true,
       },
@@ -71,14 +101,17 @@ export async function GET(request: NextRequest) {
         total,
         page,
         totalPages: Math.ceil(total / limit),
-        types: types.map((t) => t.type),
+        stages: stages.map((t) => t.type),
       },
     });
   } catch (error) {
     console.error("Get components error:", error);
     return NextResponse.json(
-      { error: "获取组件列表失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "获取组件列表失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }
@@ -87,7 +120,11 @@ export async function PATCH(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
       return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
@@ -117,6 +154,22 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "缺少组件 ID" }, { status: 400 });
     }
 
+    // 如果是下架操作，检查组件是否正在使用
+    if (isPublished === false) {
+      const component = await prisma.componenttask.findUnique({
+        where: { id },
+      });
+
+      if (component && component.usageCount && component.usageCount > 0) {
+        return NextResponse.json(
+          {
+            error: `该组件已被使用 ${component.usageCount} 次，存在关联数据，无法下架。请先处理相关数据后再试。`,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     const updateData: any = {};
     if (status) updateData.status = status;
     if (type) updateData.type = type;
@@ -140,8 +193,11 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error("Update component error:", error);
     return NextResponse.json(
-      { error: "更新组件失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "更新组件失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }
@@ -150,7 +206,11 @@ export async function POST(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
       return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
@@ -203,8 +263,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Create component error:", error);
     return NextResponse.json(
-      { error: "创建组件失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "创建组件失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }
@@ -213,7 +276,11 @@ export async function DELETE(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
       return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
@@ -233,6 +300,33 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "缺少组件 ID" }, { status: 400 });
     }
 
+    // 检查组件是否存在
+    const component = await prisma.componenttask.findUnique({
+      where: { id },
+    });
+
+    if (!component) {
+      return NextResponse.json({ error: "组件不存在" }, { status: 404 });
+    }
+
+    // 检查组件是否已上架
+    if (component.isPublished) {
+      return NextResponse.json(
+        { error: "已上架的组件不支持删除，请先下架后再删除" },
+        { status: 400 },
+      );
+    }
+
+    // 检查组件是否正在使用
+    if (component.usageCount && component.usageCount > 0) {
+      return NextResponse.json(
+        {
+          error: `该组件已被使用 ${component.usageCount} 次，存在关联数据，无法删除。请先处理相关数据后再试。`,
+        },
+        { status: 400 },
+      );
+    }
+
     await prisma.componenttask.delete({
       where: { id },
     });
@@ -244,8 +338,11 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("Delete component error:", error);
     return NextResponse.json(
-      { error: "删除组件失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "删除组件失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }

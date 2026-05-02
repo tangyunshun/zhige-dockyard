@@ -5,7 +5,11 @@ export async function POST(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
       return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
@@ -34,11 +38,29 @@ export async function POST(request: NextRequest) {
     }
 
     if (targetUser.role === "admin" || targetUser.role === "super_admin") {
-      return NextResponse.json({ error: "不能强制管理员下线" }, { status: 400 });
+      return NextResponse.json(
+        { error: "不能强制管理员下线" },
+        { status: 400 },
+      );
     }
 
-    // 这里可以添加会话管理逻辑，比如清除 Redis 中的会话
-    // 暂时只返回成功响应
+    // 更新用户的 lastForcedLogoutAt 字段，记录强制下线时间
+    // 宽限期（2 分钟）内用户仍然可以正常操作
+    // 宽限期过后，API 会返回 401
+    const now = new Date();
+    await prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        lastForcedLogoutAt: now,
+        // 宽限期内保持 sessionToken 不变，让用户能继续操作
+        // sessionToken 和 sessionExpiresAt 保持不变
+        updatedAt: now,
+      },
+    });
+
+    console.log(
+      `[强制下线 API] 用户 ${targetUserId} 已被强制下线，时间：${now.toISOString()}`,
+    );
 
     return NextResponse.json({
       success: true,
@@ -47,8 +69,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Force logout error:", error);
     return NextResponse.json(
-      { error: "强制下线失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "强制下线失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }

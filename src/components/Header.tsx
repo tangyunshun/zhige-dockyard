@@ -65,45 +65,34 @@ export default function Header() {
 
   const checkLoginStatus = async () => {
     try {
-      console.log("开始检查登录状态...");
       const res = await fetch("/api/auth/me", {
         // 添加超时处理
         signal: AbortSignal.timeout(5000),
       });
 
-      console.log("API 响应状态:", res.status);
-      console.log("Content-Type:", res.headers.get("content-type"));
-
       // 检查响应类型
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        console.error("API 返回了非 JSON 响应，可能是 404 页面或其他错误");
-        console.error(
-          "响应内容预览:",
-          await res.text().then((t) => t.substring(0, 200)),
-        );
-        setIsLoggedIn(false);
-        setUser(null);
-        setWorkspaces([]);
+        // 可能是开发环境中的编译中状态，忽略此错误
+        console.log("API 尚未准备好，跳过本次检查");
         return;
       }
 
       if (res.ok) {
         const data = await res.json();
-        console.log("获取用户信息成功:", data.user);
         setIsLoggedIn(true);
         setUser(data.user);
 
         // 获取用户的工作空间列表
         await fetchWorkspaces();
       } else {
-        console.log("用户未登录，状态码:", res.status);
         setIsLoggedIn(false);
         setUser(null);
         setWorkspaces([]);
       }
     } catch (error) {
-      console.error("Check login status error:", error);
+      // 忽略超时等错误
+      console.log("Check login status error (ignored):", error);
       setIsLoggedIn(false);
       setUser(null);
       setWorkspaces([]);

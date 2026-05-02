@@ -236,7 +236,7 @@ export default function AdminDashboard() {
           管理仪表盘
         </h1>
         <p className="text-sm text-slate-500 font-medium">
-          系统概览、实时监控、数据分析 · 知阁·舟坊
+          系统概览、实时监控、数据分析
         </p>
       </div>
 

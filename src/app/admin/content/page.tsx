@@ -60,7 +60,7 @@ export default function AdminContentPage() {
       setLoading(true);
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: "20",
+        limit: "10",
         ...(filterStatus !== "all" && { status: filterStatus }),
         ...(filterType !== "all" && { type: filterType }),
       });
@@ -128,7 +128,7 @@ export default function AdminContentPage() {
           内容管理
         </h1>
         <p className="text-sm text-slate-500 font-medium">
-          组件管理、阶段管理、文档管理 · 知阁·舟坊
+          组件管理、阶段管理、文档管理
         </p>
       </div>
 
@@ -156,8 +156,9 @@ export default function AdminContentPage() {
               <CheckCircle className="w-6 h-6 text-[#10b981]" />
             </div>
             <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
-              {componentData?.components.filter((c) => c.status === "completed")
-                .length || 0}
+              {componentData?.components?.filter(
+                (c) => c.status === "completed",
+              ).length || 0}
             </div>
           </div>
         </div>
@@ -169,7 +170,7 @@ export default function AdminContentPage() {
               <Clock className="w-6 h-6 text-[#f59e0b]" />
             </div>
             <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
-              {componentData?.components.filter((c) => c.status === "pending")
+              {componentData?.components?.filter((c) => c.status === "pending")
                 .length || 0}
             </div>
           </div>
@@ -184,7 +185,7 @@ export default function AdminContentPage() {
               <Tag className="w-6 h-6 text-[#8b5cf6]" />
             </div>
             <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
-              {componentData?.types.length || 0}
+              {componentData?.types?.length || 0}
             </div>
           </div>
         </div>
@@ -263,7 +264,7 @@ export default function AdminContentPage() {
                   className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all bg-white/80"
                 >
                   <option value="all">全部阶段</option>
-                  {componentData.types.map((type) => (
+                  {componentData?.types.map((type) => (
                     <option key={type} value={type}>
                       {type}
                     </option>
@@ -374,8 +375,9 @@ export default function AdminContentPage() {
             {componentData && componentData.totalPages > 1 && (
               <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
                 <div className="text-sm text-slate-500">
-                  共 {componentData.total} 条记录，第 {componentData.page} /{" "}
-                  {componentData.totalPages} 页
+                  共 {componentData?.total || 0} 条记录，第{" "}
+                  {componentData?.page || 1} / {componentData?.totalPages || 1}{" "}
+                  页
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -388,10 +390,10 @@ export default function AdminContentPage() {
                   <button
                     onClick={() =>
                       setCurrentPage((p) =>
-                        Math.min(componentData.totalPages, p + 1),
+                        Math.min(componentData?.totalPages || 1, p + 1),
                       )
                     }
-                    disabled={currentPage === componentData.totalPages}
+                    disabled={currentPage === (componentData?.totalPages || 1)}
                     className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
                   >
                     下一页

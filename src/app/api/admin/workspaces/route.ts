@@ -5,7 +5,11 @@ export async function GET(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
       return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
@@ -23,6 +27,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const search = searchParams.get("search") || "";
     const type = searchParams.get("type") || "";
+    const componentCount = searchParams.get("componentCount") || "";
 
     const skip = (page - 1) * limit;
 
@@ -58,20 +63,79 @@ export async function GET(request: NextRequest) {
       prisma.workspace.count({ where }),
     ]);
 
+    // 统计每个空间的组件数量（去重）并筛选
+    const workspacesWithComponentCount = await Promise.all(
+      workspaces.map(async (workspace) => {
+        // 获取空间的所有成员
+        const members = await prisma.workspaceMember.findMany({
+          where: { workspaceId: workspace.id },
+          select: { userId: true },
+        });
+
+        const memberIds = members.map((m) => m.userId);
+
+        // 统计成员创建的组件数量（去重）
+        const componentCountValue = await prisma.componenttask.count({
+          where: {
+            userId: { in: memberIds },
+          },
+        });
+
+        // 保留原始的 members 数据（包含用户信息）
+        return {
+          ...workspace,
+          componentCount: componentCountValue,
+          members: workspace.members,
+        };
+      }),
+    );
+
+    // 根据组件数量筛选
+    let filteredWorkspaces = workspacesWithComponentCount;
+    if (componentCount) {
+      filteredWorkspaces = workspacesWithComponentCount.filter((ws) => {
+        const count = ws.componentCount;
+        if (componentCount === "0") return count === 0;
+        if (componentCount === "1-10") return count >= 1 && count <= 10;
+        if (componentCount === "11-50") return count >= 11 && count <= 50;
+        if (componentCount === "51-100") return count >= 51 && count <= 100;
+        if (componentCount === "100+") return count > 100;
+        return true;
+      });
+    }
+
+    // 计算统计数据
+    const totalComponentCount = workspacesWithComponentCount.reduce(
+      (sum, ws) => sum + ws.componentCount,
+      0,
+    );
+
+    // 待审核空间：这里暂时用 DISABLED 状态作为待审核（实际应该有 PENDING 状态）
+    const pendingCount = workspacesWithComponentCount.filter(
+      (ws) => ws.status === "DISABLED",
+    ).length;
+
     return NextResponse.json({
       success: true,
       data: {
-        workspaces,
-        total,
+        workspaces: filteredWorkspaces,
+        total: filteredWorkspaces.length,
         page,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(filteredWorkspaces.length / limit),
+        stats: {
+          totalComponentCount,
+          pendingCount,
+        },
       },
     });
   } catch (error) {
     console.error("Get workspaces error:", error);
     return NextResponse.json(
-      { error: "获取工作空间列表失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "获取工作空间列表失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }
@@ -80,7 +144,11 @@ export async function DELETE(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
       return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
@@ -116,7 +184,10 @@ export async function DELETE(request: NextRequest) {
 
     // 企业空间必须先禁用才能删除
     if (workspace.type === "ENTERPRISE" && workspace.status !== "DISABLED") {
-      return NextResponse.json({ error: "企业空间必须先禁用才能删除" }, { status: 400 });
+      return NextResponse.json(
+        { error: "企业空间必须先禁用才能删除" },
+        { status: 400 },
+      );
     }
 
     // 删除工作空间 (级联删除相关数据)
@@ -131,8 +202,11 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("Delete workspace error:", error);
     return NextResponse.json(
-      { error: "删除工作空间失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "删除工作空间失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }

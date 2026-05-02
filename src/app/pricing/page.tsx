@@ -35,7 +35,6 @@ import {
   Plug,
   FolderLock,
   Activity,
-  Star,
   Award,
   Target,
   Rocket,

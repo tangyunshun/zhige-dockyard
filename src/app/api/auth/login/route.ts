@@ -101,12 +101,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 登录成功，重置失败次数
+    // 登录成功，重置失败次数并记录登录历史
+    const now = new Date();
+
+    // 生成会话令牌（用于强制下线检查）
+    const sessionToken = `sess_${user.id}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    const sessionExpiresAt = rememberMe
+      ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // 7 天
+      : new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 小时
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
         loginAttempts: 0,
         lockedUntil: null,
+        lastLoginAt: now,
+        lastForcedLogoutAt: null, // 清除强制下线记录，重新计算在线状态
+        sessionToken,
+        sessionExpiresAt,
+      },
+    });
+
+    // 记录登录历史
+    await prisma.loginHistory.create({
+      data: {
+        userId: user.id,
+        loginAt: now,
+        ipAddress:
+          request.headers.get("x-forwarded-for") ||
+          request.headers.get("x-real-ip") ||
+          "unknown",
+        userAgent: request.headers.get("user-agent") || "unknown",
       },
     });
 
@@ -129,7 +154,7 @@ export async function POST(request: NextRequest) {
 
     // 查找是否有个人空间
     const personalWorkspace = workspaceMembers.find(
-      (member) => member.workspace.type === 'PERSONAL'
+      (member) => member.workspace.type === "PERSONAL",
     );
 
     // 如果没有个人空间，自动创建一个
@@ -138,9 +163,9 @@ export async function POST(request: NextRequest) {
       const newWorkspace = await prisma.workspace.create({
         data: {
           name: workspaceName,
-          type: 'PERSONAL',
+          type: "PERSONAL",
           ownerId: user.id,
-          description: `${user.name || '用户'}的个人工作空间`,
+          description: `${user.name || "用户"}的个人工作空间`,
         },
       });
 
@@ -149,7 +174,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId: user.id,
           workspaceId: newWorkspace.id,
-          role: 'OWNER',
+          role: "OWNER",
         },
       });
 
@@ -166,14 +191,14 @@ export async function POST(request: NextRequest) {
         id: newWorkspace.id,
         userId: user.id,
         workspaceId: newWorkspace.id,
-        role: 'OWNER',
+        role: "OWNER",
         joinedAt: new Date(),
         workspace: {
           id: newWorkspace.id,
           name: workspaceName,
-          type: 'PERSONAL',
+          type: "PERSONAL",
           ownerId: user.id,
-          description: `${user.name || '用户'}的个人工作空间`,
+          description: `${user.name || "用户"}的个人工作空间`,
           logo: null,
         },
       });
@@ -225,7 +250,10 @@ export async function POST(request: NextRequest) {
 
     // 计算建议的重定向 URL
     let redirectUrl = "/workspace-hub";
-    if (lastWorkspaceId && workspaceMembers.some((m) => m.workspaceId === lastWorkspaceId)) {
+    if (
+      lastWorkspaceId &&
+      workspaceMembers.some((m) => m.workspaceId === lastWorkspaceId)
+    ) {
       redirectUrl = `/dashboard?wid=${lastWorkspaceId}`;
     } else if (workspaceMembers.length > 0) {
       // 如果有工作空间，直接进入 workspace-hub 或最后一个工作空间
@@ -273,6 +301,7 @@ export async function POST(request: NextRequest) {
         phone: user.phone,
         role: user.role,
         avatar: user.avatar,
+        sessionToken, // 返回会话令牌用于前端存储
       },
       workspaces,
       lastWorkspaceId,

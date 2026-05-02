@@ -286,7 +286,7 @@ const componentStages = [
         emoji: "🇨",
         name: "国产库语法转换",
         description: "将 Oracle 等传统 SQL 自动转换为达梦或人大金仓语法",
-        icon: Chinese,
+        icon: BookOpen,
         calls: 1234,
         successRate: 93.5,
       },
@@ -2172,7 +2172,7 @@ export default function StudioPage() {
                                   boxShadow: `0 4px 12px -2px ${theme.color}40`,
                                 }}
                               >
-                                <Zap className="w-3.5 h-3.5" />
+                                <ZapIcon className="w-3.5 h-3.5" />
                                 使用
                               </button>
                               {/* 分享按钮 */}
@@ -2444,14 +2444,14 @@ export default function StudioPage() {
                               {/* 调用统计 */}
                               <div className="w-full space-y-1.5">
                                 <div className="flex items-center justify-center gap-2">
-                                  <Zap className="w-3.5 h-3.5 text-[#f59e0b]" />
+                                  <ZapIcon className="w-3.5 h-3.5 text-[#f59e0b]" />
                                   <span className="text-[11px] font-bold text-slate-600">
                                     近 30 天 调用
                                     {monthlyUsage[component.id] || 0} 次
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-center gap-2">
-                                  <Zap className="w-3.5 h-3.5 text-[#3182ce]" />
+                                  <ZapIcon className="w-3.5 h-3.5 text-[#3182ce]" />
                                   <span className="text-[11px] font-bold text-slate-600">
                                     近 180 天调用{" "}
                                     {semiAnnualUsage[component.id] || 0} 次
@@ -2473,7 +2473,7 @@ export default function StudioPage() {
                                   boxShadow: `0 4px 12px -2px ${theme.color}40`,
                                 }}
                               >
-                                <Zap className="w-3.5 h-3.5" />
+                                <ZapIcon className="w-3.5 h-3.5" />
                                 使用
                               </button>
                               <button
@@ -2670,7 +2670,7 @@ export default function StudioPage() {
                       onClick={() => useComponent(selectedComponent)}
                       className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
                     >
-                      <Zap className="w-4 h-4" />
+                      <ZapIcon className="w-4 h-4" />
                       立即使用
                     </button>
                   </div>
