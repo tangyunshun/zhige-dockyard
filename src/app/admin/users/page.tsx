@@ -709,7 +709,7 @@ export default function AdminUsersPage() {
           ) : (
             <>
               <div className="overflow-visible">
-                <table className="w-full">
+                <table className="w-full table-fixed">
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
                       <th className="px-6 py-4 text-center">
@@ -782,17 +782,23 @@ export default function AdminUsersPage() {
                             />
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
                                 {user.name?.charAt(0) ||
                                   user.email?.charAt(0) ||
                                   "U"}
                               </div>
-                              <div>
-                                <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                              <div className="min-w-0">
+                                <div
+                                  className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                                  title={user.name || "匿名用户"}
+                                >
                                   {user.name || "匿名用户"}
                                 </div>
-                                <div className="text-xs text-slate-500 font-medium">
+                                <div
+                                  className="text-xs text-slate-500 font-medium truncate"
+                                  title={user.email || "未设置邮箱"}
+                                >
                                   {user.email || "未设置邮箱"}
                                 </div>
                               </div>
@@ -800,7 +806,10 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="px-6 py-4">
                             {user.phone ? (
-                              <div className="text-sm text-slate-700 font-medium">
+                              <div
+                                className="text-sm text-slate-700 font-medium whitespace-nowrap truncate"
+                                title={user.phone}
+                              >
                                 {user.phone}
                               </div>
                             ) : (
@@ -818,9 +827,12 @@ export default function AdminUsersPage() {
                           <td className="px-6 py-4">{getStatusBadge(user)}</td>
                           <td className="px-6 py-4">
                             {user.lastLoginAt ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                <span className="text-sm text-slate-600 font-medium">
+                              <div className="flex items-center gap-2 whitespace-nowrap">
+                                <div className="w-2 h-2 shrink-0 rounded-full bg-green-500"></div>
+                                <span
+                                  className="text-sm text-slate-600 font-medium truncate"
+                                  title={formatTimeAgo(user.lastLoginAt)}
+                                >
                                   {formatTimeAgo(user.lastLoginAt)}
                                 </span>
                               </div>
@@ -830,7 +842,10 @@ export default function AdminUsersPage() {
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 font-medium">
+                          <td
+                            className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap truncate"
+                            title={formatTimeAgo(user.createdAt)}
+                          >
                             {formatTimeAgo(user.createdAt)}
                           </td>
                           <td className="px-6 py-4 text-right">
