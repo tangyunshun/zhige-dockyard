@@ -150,7 +150,7 @@ export default function AdminLayout({
   return (
     <div className="h-screen w-screen overflow-hidden flex">
       {/* 侧边栏 - 桌面端 */}
-      <aside className="hidden lg:flex w-64 shrink-0 bg-white border-r border-slate-200 flex-col">
+      <aside className="hidden xl:flex w-64 shrink-0 bg-white border-r border-slate-200 flex-col">
         {/* 返回首页按钮 */}
         <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
           <button
@@ -230,7 +230,7 @@ export default function AdminLayout({
       {/* 移动端菜单按钮 */}
       <button
         onClick={() => setShowMobileMenu(!showMobileMenu)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg border border-slate-200"
+        className="xl:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg border border-slate-200"
       >
         {showMobileMenu ? (
           <X className="w-6 h-6 text-slate-600" />
@@ -243,10 +243,10 @@ export default function AdminLayout({
       {showMobileMenu && (
         <>
           <div
-            className="lg:hidden fixed inset-0 bg-black/50 z-40"
+            className="xl:hidden fixed inset-0 bg-black/50 z-40"
             onClick={() => setShowMobileMenu(false)}
           />
-          <aside className="lg:hidden fixed left-0 top-0 bottom-0 w-72 bg-white z-50 shadow-2xl flex flex-col">
+          <aside className="xl:hidden fixed left-0 top-0 bottom-0 w-72 bg-white z-50 shadow-2xl flex flex-col">
             <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
               <button
                 onClick={() => router.push("/")}
@@ -325,7 +325,7 @@ export default function AdminLayout({
       )}
 
       {/* 主内容区 - 应用 Flex 防溢出规范 */}
-      <main className="flex-1 lg:ml-64 min-h-0 min-w-0 flex flex-col">
+      <main className="flex-1 ml-0 xl:ml-64 min-h-0 min-w-0 flex flex-col">
         {/* 顶部栏 */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-4 min-w-0">
