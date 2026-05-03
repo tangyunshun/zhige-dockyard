@@ -10,9 +10,62 @@
   --tech-blue-dark: #2b6cb0;
 }
 
+/* ===================================
+   全局视口与滚动管控 (Viewport & Scroll Management)
+   =================================== */
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* 锁死全局滚动 */
+}
+
 body {
   font-family: "Inter", "Noto Sans SC", sans-serif;
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===================================
+   自定义细窄滚动条样式 (Custom Scrollbar)
+   适用于所有局部滚动容器
+   =================================== */
+/* Webkit 浏览器 (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(49, 130, 206, 0.3);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(49, 130, 206, 0.5);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(49, 130, 206, 0.3) rgba(0, 0, 0, 0.02);
+}
+
+/* 隐藏滚动条但保留功能 (用于需要隐藏滚动条的场景) */
+.scrollbar-hidden {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .glass-nav {

@@ -229,25 +229,25 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">
+      <div className="shrink-0">
+        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight truncate">
           管理仪表盘
         </h1>
-        <p className="text-sm text-slate-500 font-medium">
+        <p className="text-sm text-slate-500 font-medium truncate">
           系统概览、实时监控、数据分析
         </p>
       </div>
 
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* 统计卡片 - Grid 自适应布局 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 shrink-0">
         {statCards.map((card, index) => {
           const Icon = card.icon;
           return (
             <div
               key={index}
-              className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+              className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden min-w-0"
             >
               {/* 装饰背景 */}
               <div
@@ -257,20 +257,20 @@ export default function AdminDashboard() {
               <div className="relative">
                 <div className="flex items-center justify-between mb-4">
                   <div
-                    className={`w-14 h-14 rounded-xl ${card.bgColor} flex items-center justify-center shadow-sm`}
+                    className={`w-14 h-14 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-sm`}
                   >
                     <Icon className={`w-7 h-7 ${card.color}`} />
                   </div>
                   <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${card.trend === "up" ? "text-[#10b981] bg-[#10b981]/10" : "text-red-500 bg-red-500/10"}`}
+                    className={`inline-flex shrink-0 items-center px-2.5 py-1 rounded-full text-xs font-bold ${card.trend === "up" ? "text-[#10b981] bg-[#10b981]/10" : "text-red-500 bg-red-500/10"}`}
                   >
                     {card.trend === "up" ? "↑" : "↓"} {card.change}
                   </span>
                 </div>
-                <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+                <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight truncate">
                   {card.value.toLocaleString()}
                 </div>
-                <div className="text-sm text-slate-500 font-semibold">
+                <div className="text-sm text-slate-500 font-semibold truncate">
                   {card.label}
                 </div>
               </div>
@@ -279,14 +279,14 @@ export default function AdminDashboard() {
         })}
       </div>
 
-      {/* 系统状态卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* 系统状态卡片 - Grid 自适应布局 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 shrink-0">
         {systemCards.map((card, index) => {
           const Icon = card.icon;
           return (
             <div
               key={index}
-              className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+              className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden min-w-0"
             >
               {/* 装饰背景 */}
               <div
@@ -296,20 +296,20 @@ export default function AdminDashboard() {
               <div className="relative">
                 <div className="flex items-center justify-between mb-4">
                   <div
-                    className={`w-14 h-14 rounded-xl ${card.bgColor} flex items-center justify-center shadow-sm`}
+                    className={`w-14 h-14 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-sm`}
                   >
                     <Icon className={`w-7 h-7 ${card.color}`} />
                   </div>
                   <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${card.color} bg-opacity-10`}
+                    className={`inline-flex shrink-0 items-center px-2.5 py-1 rounded-full text-xs font-bold ${card.color} bg-opacity-10`}
                   >
                     {card.status}
                   </span>
                 </div>
-                <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+                <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight truncate">
                   {card.value}
                 </div>
-                <div className="text-sm text-slate-500 font-semibold">
+                <div className="text-sm text-slate-500 font-semibold truncate">
                   {card.label}
                 </div>
               </div>

@@ -26,7 +26,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased">
+      <body className="antialiased h-screen w-screen overflow-hidden flex flex-col">
         <ToastProvider>
           <AuthCheck>{children}</AuthCheck>
         </ToastProvider>

@@ -148,11 +148,11 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex">
+    <div className="h-screen w-screen overflow-hidden flex">
       {/* 侧边栏 - 桌面端 */}
-      <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col fixed h-full z-10">
+      <aside className="hidden lg:flex w-64 shrink-0 bg-white border-r border-slate-200 flex-col">
         {/* 返回首页按钮 */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-200">
+        <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
           <button
             onClick={() => router.push("/")}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
@@ -163,7 +163,7 @@ export default function AdminLayout({
         </div>
 
         {/* 管理员标识 */}
-        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200">
+        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-2 text-[#3182ce]">
             <Shield className="w-5 h-5" />
             <span className="font-bold text-sm">管理员后台</span>
@@ -171,7 +171,7 @@ export default function AdminLayout({
         </div>
 
         {/* 导航菜单 */}
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
           {adminMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -186,11 +186,11 @@ export default function AdminLayout({
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                <Icon className="w-5 h-5" />
-                <div className="text-left">
-                  <div className="text-sm font-bold">{item.label}</div>
+                <Icon className="w-5 h-5 shrink-0" />
+                <div className="text-left min-w-0">
+                  <div className="text-sm font-bold truncate">{item.label}</div>
                   <div
-                    className={`text-xs ${isActive ? "text-white/80" : "text-slate-400"}`}
+                    className={`text-xs truncate ${isActive ? "text-white/80" : "text-slate-400"}`}
                   >
                     {item.description}
                   </div>
@@ -201,9 +201,9 @@ export default function AdminLayout({
         </nav>
 
         {/* 用户信息 */}
-        <div className="p-4 border-t border-slate-200">
+        <div className="p-4 border-t border-slate-200 shrink-0">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+            <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
               {user?.name?.charAt(0).toUpperCase() || "A"}
             </div>
             <div className="flex-1 min-w-0">
@@ -246,8 +246,8 @@ export default function AdminLayout({
             className="lg:hidden fixed inset-0 bg-black/50 z-40"
             onClick={() => setShowMobileMenu(false)}
           />
-          <aside className="lg:hidden fixed left-0 top-0 bottom-0 w-72 bg-white z-50 shadow-2xl">
-            <div className="h-16 flex items-center px-6 border-b border-slate-200">
+          <aside className="lg:hidden fixed left-0 top-0 bottom-0 w-72 bg-white z-50 shadow-2xl flex flex-col">
+            <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
               <button
                 onClick={() => router.push("/")}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
@@ -257,14 +257,14 @@ export default function AdminLayout({
               </button>
             </div>
 
-            <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200">
+            <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200 shrink-0">
               <div className="flex items-center gap-2 text-[#3182ce]">
                 <Shield className="w-5 h-5" />
                 <span className="font-bold text-sm">管理员后台</span>
               </div>
             </div>
 
-            <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+            <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
               {adminMenuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
@@ -282,11 +282,13 @@ export default function AdminLayout({
                         : "text-slate-600 hover:bg-slate-50"
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
-                    <div className="text-left">
-                      <div className="text-sm font-bold">{item.label}</div>
+                    <Icon className="w-5 h-5 shrink-0" />
+                    <div className="text-left min-w-0">
+                      <div className="text-sm font-bold truncate">
+                        {item.label}
+                      </div>
                       <div
-                        className={`text-xs ${isActive ? "text-white/80" : "text-slate-400"}`}
+                        className={`text-xs truncate ${isActive ? "text-white/80" : "text-slate-400"}`}
                       >
                         {item.description}
                       </div>
@@ -296,9 +298,9 @@ export default function AdminLayout({
               })}
             </nav>
 
-            <div className="p-4 border-t border-slate-200 bg-white">
+            <div className="p-4 border-t border-slate-200 shrink-0 bg-white">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+                <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
                   {user?.name?.charAt(0).toUpperCase() || "A"}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -322,19 +324,19 @@ export default function AdminLayout({
         </>
       )}
 
-      {/* 主内容区 */}
-      <main className="flex-1 lg:ml-64 min-h-screen">
+      {/* 主内容区 - 应用 Flex 防溢出规范 */}
+      <main className="flex-1 lg:ml-64 min-h-0 min-w-0 flex flex-col">
         {/* 顶部栏 */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-10">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-slate-800">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
+          <div className="flex items-center gap-4 min-w-0">
+            <h1 className="text-xl font-bold text-slate-800 truncate">
               {adminMenuItems.find((item) => item.href === pathname)?.label ||
                 "管理员后台"}
             </h1>
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-500">
+          <div className="flex items-center gap-4 shrink-0">
+            <span className="text-sm text-slate-500 whitespace-nowrap">
               {new Date().toLocaleDateString("zh-CN", {
                 year: "numeric",
                 month: "long",
@@ -344,8 +346,8 @@ export default function AdminLayout({
           </div>
         </header>
 
-        {/* 内容区 */}
-        <div className="p-6">{children}</div>
+        {/* 内容区 - 局部滚动 */}
+        <div className="flex-1 overflow-y-auto p-6 min-h-0">{children}</div>
       </main>
     </div>
   );
