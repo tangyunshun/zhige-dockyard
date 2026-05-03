@@ -708,11 +708,11 @@ export default function AdminUsersPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-visible">
+              <div className="overflow-x-auto">
                 <table className="w-full table-auto">
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
-                      <th className="px-6 py-4 text-center">
+                      <th className="px-6 py-4 text-center whitespace-nowrap">
                         <input
                           type="checkbox"
                           checked={
@@ -724,28 +724,28 @@ export default function AdminUsersPage() {
                           className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
                         />
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         用户信息
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         手机号
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         会员等级
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         角色
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         状态
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         最后登录
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         注册时间
                       </th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         操作
                       </th>
                     </tr>
@@ -850,8 +850,8 @@ export default function AdminUsersPage() {
                           >
                             {formatTimeAgo(user.createdAt)}
                           </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="relative">
+                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                            <div className="relative inline-block">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -859,16 +859,16 @@ export default function AdminUsersPage() {
                                     showActionMenu === user.id ? null : user.id,
                                   );
                                 }}
-                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors inline-flex items-center justify-center"
                               >
                                 <MoreVertical className="w-5 h-5 text-slate-600" />
                               </button>
 
                               {showActionMenu === user.id && (
                                 <>
-                                  {/* 下拉菜单 - 显示在数据列表上层 */}
+                                  {/* 下拉菜单 - 使用 fixed 定位避免溢出 */}
                                   <div
-                                    className="absolute right-0 top-full mt-2 w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
+                                    className="fixed right-8 top-[calc(50%+20px)] w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     {/* 强制下线 - 只对在线的活跃用户显示，超级管理员专属操作，不能操作超级管理员和自己 */}
