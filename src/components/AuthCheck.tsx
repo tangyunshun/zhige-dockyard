@@ -46,59 +46,106 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      // 1. 先调用 /api/auth/me 检查基本认证
       const res = await fetch("/api/auth/me", {
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(10000), // 10 秒超时
       });
 
-      console.log("AuthCheck: API 响应状态：" + res.status);
+      console.log("AuthCheck: /api/auth/me 响应状态：" + res.status);
 
-      // 处理 401 错误（未授权/被强制下线）
+      // 处理 401 错误（未授权/被强制下线/超时）
       if (res.status === 401) {
         const errorData = await res.json();
         const errorMessage =
           errorData.error || errorData.message || "您已被强制下线，请重新登录";
         console.log("AuthCheck: 未授权，错误信息:", errorMessage);
 
-        // 防止重复处理
-        if (hasHandledErrorRef.current) {
-          console.log("AuthCheck: 已经处理过错误，跳过");
+        // 被管理员强制下线（宽限期已过）或超时，立即跳转登录页
+        if (
+          errorMessage.includes("管理员强制下线") ||
+          errorMessage.includes("长时间未操作")
+        ) {
+          handleAuthError(errorMessage);
           return;
         }
-        hasHandledErrorRef.current = true;
-        isRedirectingRef.current = true;
-
-        // 清除定时器
-        if (checkIntervalRef.current) {
-          clearInterval(checkIntervalRef.current);
-        }
-
-        // 使用 sessionStorage 防止重复显示 toast
-        const sessionKey = `auth_error_${Date.now()}`;
-        const alreadyShown = sessionStorage.getItem(sessionKey);
-
-        if (!alreadyShown) {
-          sessionStorage.setItem(sessionKey, "true");
-          // 强制下线提示显示 5 秒
-          toast.error(errorMessage, 5000);
-        }
-
-        // 清除本地存储
-        localStorage.removeItem("userId");
-        localStorage.removeItem("userRole");
-        document.cookie = "auth_token=; path=/; max-age=0";
-
-        // 5 秒后 toast 消失，立即跳转到登录页
-        setTimeout(() => {
-          window.location.href = `/auth/login?error=${encodeURIComponent(errorMessage)}`;
-        }, 6100);
+        // 其他 401 错误，由 ActivityMonitor 处理
+        console.log("AuthCheck: 其他错误，由 ActivityMonitor 处理");
         return;
       } else if (res.status === 200) {
-        console.log("AuthCheck: 认证通过");
+        console.log("AuthCheck: /api/auth/me 认证通过");
+
+        // 2. 不再调用 /api/auth/touch 检查超时（由 ActivityMonitor 负责）
+
+        // 检测是否是关闭浏览器后重新打开
+        const hasSession = sessionStorage.getItem("hasActiveSession");
+        const userId =
+          typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+        const rememberMe = localStorage.getItem("rememberMe");
+
+        if (userId && !hasSession) {
+          // 浏览器关闭后重新打开（localStorage 有 userId，但 sessionStorage 没有）
+          // 设置 sessionStorage 标记
+          sessionStorage.setItem("hasActiveSession", "true");
+
+          // 检查是否是"记住我"登录
+          if (rememberMe === "true") {
+            // "记住我"登录，关闭浏览器后重新打开，直接重定向到首页
+            console.log(
+              "AuthCheck: 检测到浏览器重新打开（记住我模式），重定向到首页",
+            );
+            isRedirectingRef.current = true;
+            router.push("/");
+            return;
+          } else {
+            // 普通登录，关闭浏览器后重新打开，需要重新验证会话
+            console.log(
+              "AuthCheck: 检测到浏览器重新打开（普通模式），验证会话",
+            );
+            // 会话验证已通过（/api/auth/me 返回 200），重定向到首页
+            isRedirectingRef.current = true;
+            router.push("/");
+            return;
+          }
+        } else if (userId && hasSession) {
+          // 浏览器没有关闭过，正常访问
+          console.log("AuthCheck: 浏览器会话持续中，正常访问");
+        }
       }
     } catch (error) {
       console.error("AuthCheck: 检查认证失败:", error);
       // 忽略错误
     }
+  };
+
+  // 处理认证错误的统一函数
+  const handleAuthError = (errorMessage: string) => {
+    // 防止重复处理
+    if (hasHandledErrorRef.current) {
+      console.log("AuthCheck: 已经处理过错误，跳过");
+      return;
+    }
+    hasHandledErrorRef.current = true;
+    isRedirectingRef.current = true;
+
+    // 清除定时器
+    if (checkIntervalRef.current) {
+      clearInterval(checkIntervalRef.current);
+    }
+
+    // 清除本地存储
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("rememberMe"); // 清除"记住我"标记
+    document.cookie = "auth_token=; path=/; max-age=0";
+    sessionStorage.clear();
+
+    // 显示 toast 提示语（3 秒后消失）
+    toast.error(errorMessage, 3000);
+
+    // 等待 toast 消失后再跳转（3.1 秒，确保 toast 完全消失）
+    setTimeout(() => {
+      window.location.href = "/auth/login";
+    }, 3100);
   };
 
   useEffect(() => {

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const userId = request.headers.get('x-user-id');
     if (!userId) {
       return NextResponse.json(
-        { message: '未授权访问' },
+        { message: 'UNAUTHORIZED' },
         { status: 401 }
       );
     }

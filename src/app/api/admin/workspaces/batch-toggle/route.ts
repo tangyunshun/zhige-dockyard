@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { isAdminRole } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest) {
       authHeader === "Bearer null" ||
       authHeader === "Bearer "
     ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
@@ -18,14 +19,21 @@ export async function POST(request: NextRequest) {
       where: { id: userId },
     });
 
-    if (!user || (user.role !== "admin" && user.role !== "super_admin")) {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { workspaceIds, status } = await request.json();
 
-    if (!workspaceIds || !Array.isArray(workspaceIds) || workspaceIds.length === 0) {
-      return NextResponse.json({ error: "缺少工作空间 ID 列表" }, { status: 400 });
+    if (
+      !workspaceIds ||
+      !Array.isArray(workspaceIds) ||
+      workspaceIds.length === 0
+    ) {
+      return NextResponse.json(
+        { error: "缺少工作空间 ID 列表" },
+        { status: 400 },
+      );
     }
 
     if (!status || !["ACTIVE", "DISABLED"].includes(status)) {

@@ -51,7 +51,7 @@ export async function validateUser(authHeader: string | null): Promise<{
 }> {
   // 检查 authorization header
   if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-    return { valid: false, error: "未授权访问" };
+    return { valid: false, error: "UNAUTHORIZED" };
   }
 
   const userId = authHeader.replace("Bearer ", "");
@@ -69,12 +69,12 @@ export async function validateUser(authHeader: string | null): Promise<{
   });
 
   if (!user) {
-    return { valid: false, error: "用户不存在" };
+    return { valid: false, error: "USER_NOT_FOUND" };
   }
 
   // 检查用户状态
   if (user.status !== "active") {
-    return { valid: false, error: "用户账号已被禁用" };
+    return { valid: false, error: "ACCOUNT_DISABLED" };
   }
 
   return {

@@ -160,7 +160,7 @@ export default function AdminMembershipOrdersPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
+      <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <button
@@ -245,31 +245,31 @@ export default function AdminMembershipOrdersPage() {
             <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
               <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
               <div className="relative overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full table-auto">
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         订单信息
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         用户
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         会员等级
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         订单类型
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         支付方式
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         金额
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         状态
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         有效期
                       </th>
                     </tr>
@@ -280,13 +280,16 @@ export default function AdminMembershipOrdersPage() {
                         key={order.id}
                         className="group hover:bg-white/60 transition-all duration-300"
                       >
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div>
-                            <div className="font-mono text-xs font-bold text-slate-700 group-hover:text-[#3182ce] transition-colors mb-1">
+                            <div
+                              className="font-mono text-xs font-bold text-slate-700 group-hover:text-[#3182ce] transition-colors mb-1 truncate"
+                              title={order.id}
+                            >
                               {order.id}
                             </div>
-                            <div className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
+                            <div className="text-xs text-slate-500 font-medium flex items-center gap-1 whitespace-nowrap">
+                              <Calendar className="w-3 h-3 shrink-0" />
                               {new Date(order.createdAt).toLocaleString(
                                 "zh-CN",
                               )}
@@ -295,43 +298,52 @@ export default function AdminMembershipOrdersPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                            <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs font-bold shadow-sm">
                               {order.user.name.charAt(0).toUpperCase()}
                             </div>
-                            <div>
-                              <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                            <div className="min-w-0">
+                              <div
+                                className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                                title={order.user.name}
+                              >
                                 {order.user.name}
                               </div>
-                              <div className="text-xs text-slate-500 font-medium">
+                              <div
+                                className="text-xs text-slate-500 font-medium truncate"
+                                title={order.user.email}
+                              >
                                 {order.user.email}
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <div
-                              className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shadow-sm group-hover:scale-110 transition-transform duration-300"
+                              className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-lg shadow-sm group-hover:scale-110 transition-transform duration-300"
                               style={{
                                 backgroundColor: `${order.level.color}20`,
                               }}
                             >
                               {order.level.icon || "👑"}
                             </div>
-                            <div className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                            <div
+                              className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                              title={order.level.nameZh}
+                            >
                               {order.level.nameZh}
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-sm text-slate-600 font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="text-sm text-slate-600 font-medium whitespace-nowrap">
                             {getOrderTypeLabel(order.orderType)}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2 text-slate-600 font-medium">
                             {getPaymentMethodIcon(order.paymentMethod)}
-                            <span className="text-sm">
+                            <span className="text-sm whitespace-nowrap">
                               {order.paymentMethod === "WECHAT" && "微信支付"}
                               {order.paymentMethod === "ALIPAY" && "支付宝"}
                               {order.paymentMethod === "BANK_TRANSFER" &&
@@ -339,22 +351,25 @@ export default function AdminMembershipOrdersPage() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="font-black text-slate-800 text-lg tracking-tight">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="font-black text-slate-800 text-lg tracking-tight whitespace-nowrap">
                             ¥{(order.amount / 100).toFixed(2)}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           {getStatusBadge(order.status)}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-slate-600 font-medium">
-                            <div className="font-bold text-slate-700">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-slate-600 font-medium whitespace-nowrap">
+                            <div
+                              className="font-bold text-slate-700 whitespace-nowrap"
+                              title={`${new Date(order.startDate).toLocaleDateString("zh-CN")} 至 ${new Date(order.endDate).toLocaleDateString("zh-CN")}`}
+                            >
                               {new Date(order.startDate).toLocaleDateString(
                                 "zh-CN",
                               )}
                             </div>
-                            <div className="text-xs text-slate-400 font-medium mt-0.5">
+                            <div className="text-xs text-slate-400 font-medium mt-0.5 whitespace-nowrap">
                               至{" "}
                               {new Date(order.endDate).toLocaleDateString(
                                 "zh-CN",

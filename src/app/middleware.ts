@@ -40,7 +40,7 @@ export async function middleware(request: NextRequest) {
   if (!token) {
     // 如果是 API 请求，返回 401
     if (pathname.startsWith("/api")) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
     // 否则重定向到登录页
     return NextResponse.redirect(new URL("/auth/login", request.url));
@@ -113,7 +113,8 @@ export async function middleware(request: NextRequest) {
 
     // 检查管理员权限（只针对管理后台 API 和页面）
     if (pathname.startsWith("/api/admin") || pathname.startsWith("/admin")) {
-      if (user.role !== "admin" && user.role !== "super_admin") {
+      const userRole = user.role.toUpperCase();
+      if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN") {
         console.log(
           `[Middleware] 用户 ${userId} 没有管理员权限，role: ${user.role}`,
         );
@@ -181,7 +182,7 @@ export async function middleware(request: NextRequest) {
 
     // Token 无效或过期
     if (pathname.startsWith("/api")) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     return NextResponse.redirect(

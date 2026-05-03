@@ -46,6 +46,7 @@ function CreateEnterpriseWorkspaceForm() {
   const searchParams = useSearchParams();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // 添加初始加载状态
   const [mode, setMode] = useState<"create" | "edit" | "expand">("create");
   const [editingWorkspace, setEditingWorkspace] =
     useState<WorkspaceInfo | null>(null);
@@ -73,17 +74,54 @@ function CreateEnterpriseWorkspaceForm() {
   });
 
   useEffect(() => {
-    loadQuota();
-    loadWorkspaceInfo();
-    loadUserInfo();
+    // 首先检查用户是否已登录
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      console.warn("用户未登录，即将重定向到登录页面...");
+      router.push("/auth/login");
+      return;
+    }
+
+    // 已登录，加载数据
+    Promise.all([loadQuota(), loadWorkspaceInfo(), loadUserInfo()]).finally(
+      () => {
+        setIsLoading(false);
+      },
+    );
   }, []);
 
   const loadQuota = async () => {
     try {
-      const res = await fetch("/api/workspace/quota");
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
+      if (!userId) {
+        console.warn("User ID not found, redirecting to login...");
+        router.push("/auth/login");
+        return;
+      }
+
+      const res = await fetch("/api/workspace/quota", {
+        headers: {
+          Authorization: `Bearer ${userId}`,
+        },
+      });
+
       if (res.ok) {
         const data = await res.json();
         setQuota(data.quota);
+      } else {
+        const errorText = await res.text();
+        console.error("Load quota error:", errorText);
+
+        // 如果是 401 或 404 错误，说明用户未授权或不存在，需要重新登录
+        if (res.status === 401 || res.status === 404) {
+          console.warn("用户认证失效，请重新登录");
+          localStorage.removeItem("userId");
+          localStorage.removeItem("userRole");
+          router.push("/auth/login");
+          return;
+        }
       }
     } catch (error) {
       console.error("Load quota error:", error);
@@ -112,7 +150,6 @@ function CreateEnterpriseWorkspaceForm() {
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
 
       if (!userId) {
-        toast.error("请先登录");
         return;
       }
 
@@ -343,6 +380,18 @@ function CreateEnterpriseWorkspaceForm() {
       setLoading(false);
     }
   };
+
+  // 如果正在加载，显示加载界面
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#f0f8ff]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">正在加载...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full relative bg-[#f0f8ff]">

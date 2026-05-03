@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     const userId = request.headers.get("authorization")?.replace("Bearer ", "");
     if (!userId) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const body = await request.json();

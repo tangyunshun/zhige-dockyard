@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
+        { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
       );
     }
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
+        { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
       );
     }

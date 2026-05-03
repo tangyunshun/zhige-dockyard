@@ -215,25 +215,25 @@ export default function AdminApiKeysPage() {
           </div>
         ) : (
           <div className="relative overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-auto">
               <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     密钥信息
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     用户
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     密钥前缀
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     最后使用
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     创建时间
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     操作
                   </th>
                 </tr>
@@ -244,13 +244,22 @@ export default function AdminApiKeysPage() {
                     key={apiKey.id}
                     className="group hover:bg-white/60 transition-all duration-300"
                   >
-                    <td className="px-6 py-4">
+                    <td
+                      className="px-6 py-4 whitespace-nowrap"
+                      title={apiKey.name}
+                    >
                       <div>
-                        <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                        <div
+                          className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                          title={apiKey.name}
+                        >
                           {apiKey.name}
                         </div>
                         {apiKey.description && (
-                          <div className="text-xs text-slate-500 font-medium mt-1">
+                          <div
+                            className="text-xs text-slate-500 font-medium mt-1 truncate"
+                            title={apiKey.description}
+                          >
                             {apiKey.description}
                           </div>
                         )}
@@ -262,55 +271,67 @@ export default function AdminApiKeysPage() {
                           <img
                             src={apiKey.user.avatar}
                             alt={apiKey.user.name || ""}
-                            className="w-9 h-9 rounded-full shadow-sm group-hover:scale-110 transition-transform duration-300"
+                            className="w-9 h-9 shrink-0 rounded-full shadow-sm group-hover:scale-110 transition-transform duration-300"
                           />
                         ) : (
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs font-bold shadow-sm group-hover:scale-110 transition-transform duration-300">
+                          <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs font-bold shadow-sm group-hover:scale-110 transition-transform duration-300">
                             {apiKey.user.name?.charAt(0) ||
                               apiKey.user.email?.charAt(0) ||
                               "?"}
                           </div>
                         )}
-                        <div>
-                          <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                        <div className="min-w-0">
+                          <div
+                            className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                            title={apiKey.user.name || "未知用户"}
+                          >
                             {apiKey.user.name || "未知用户"}
                           </div>
-                          <div className="text-xs text-slate-500 font-medium">
+                          <div
+                            className="text-xs text-slate-500 font-medium truncate"
+                            title={apiKey.user.email}
+                          >
                             {apiKey.user.email}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <code className="px-2.5 py-1.5 bg-slate-100 rounded-xl text-xs font-mono text-slate-600 font-bold">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <code className="px-2.5 py-1.5 bg-slate-100 rounded-xl text-xs font-mono text-slate-600 font-bold whitespace-nowrap">
                         {apiKey.keyPrefix}••••••••
                       </code>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       {apiKey.lastUsedAt ? (
                         <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-                          <Clock className="w-4 h-4 text-slate-400" />
-                          <span className="font-bold text-slate-700">
+                          <Clock className="w-4 h-4 shrink-0 text-slate-400" />
+                          <span
+                            className="font-bold text-slate-700 whitespace-nowrap"
+                            title={formatTimeAgo(apiKey.lastUsedAt)}
+                          >
                             {formatTimeAgo(apiKey.lastUsedAt)}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-slate-400 text-sm font-medium">
+                        <span className="text-slate-400 text-sm font-medium whitespace-nowrap">
                           从未使用
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 font-medium">
+                    <td
+                      className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap"
+                      title={formatTimeAgo(apiKey.createdAt)}
+                    >
                       {formatTimeAgo(apiKey.createdAt)}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right whitespace-nowrap">
                       <button
                         onClick={() => handleDelete(apiKey.id)}
                         disabled={deletingId === apiKey.id}
-                        className="p-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-300 disabled:opacity-50 group-hover:scale-110"
+                        className="p-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-300 disabled:opacity-50 group-hover:scale-110 inline-flex items-center justify-center"
                         title="删除密钥"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4 shrink-0" />
                       </button>
                     </td>
                   </tr>

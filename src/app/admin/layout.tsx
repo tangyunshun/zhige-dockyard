@@ -108,9 +108,8 @@ export default function AdminLayout({
       // 检查是否是管理员（不区分大小写）
       const userRole = data.user?.role?.toUpperCase() || "";
       if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN") {
-        // 不是管理员，跳转到首页
-        alert("您没有权限访问管理员后台");
-        router.push("/workspace-hub");
+        // 不是管理员，直接重定向到首页，不显示提示
+        router.replace("/workspace-hub");
         return;
       }
 

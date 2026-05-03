@@ -65,28 +65,57 @@ export async function GET(request: NextRequest) {
     const formattedUsers = users.map((user) => {
       // 判断用户是否在线：
       // 1. 用户状态必须是 active
-      // 2. 会话未过期
-      // 3. 没有被强制下线
+      // 2. 有 sessionToken 且未过期
+      // 3. 没有被强制下线（lastForcedLogoutAt 为 null）
+      // 4. 用户最近有活跃行为（lastLoginAt 在 5 分钟内）
+      // 必须同时满足以上 4 个条件才显示在线
       let isOnline = false;
       
       if (user.status === 'active') {
-        // 检查会话是否过期
-        const sessionExpired = user.sessionExpiresAt && new Date(user.sessionExpiresAt).getTime() < Date.now();
-        
-        if (!sessionExpired) {
-          // 检查是否被强制下线（只要有 lastForcedLogoutAt 记录，就立即显示离线）
-          if (user.lastForcedLogoutAt) {
-            isOnline = false; // 强制下线后立即显示离线
+        // 首先检查是否被强制下线
+        if (user.lastForcedLogoutAt) {
+          // 被强制下线后，立即显示离线
+          isOnline = false;
+          console.log(
+            `[Admin API] 用户 ${user.id} 被强制下线，isOnline=false`,
+          );
+        } else if (user.sessionToken && user.sessionExpiresAt) {
+          // 检查会话是否过期
+          const sessionExpired = new Date(user.sessionExpiresAt).getTime() < Date.now();
+          
+          if (!sessionExpired) {
+            // 检查用户是否最近活跃（5 分钟 = 300 秒）
+            const now = Date.now();
+            const lastLoginTime = user.lastLoginAt ? new Date(user.lastLoginAt).getTime() : 0;
+            const timeSinceLastLogin = (now - lastLoginTime) / 1000; // 秒
+            const isActiveRecently = timeSinceLastLogin < 300; // 5 分钟内
+            
+            if (isActiveRecently) {
+              // 有会话令牌、未过期、且最近活跃，才是真的在线
+              isOnline = true;
+              console.log(
+                `[Admin API] 用户 ${user.id} isOnline=true (会话有效且${Math.round(timeSinceLastLogin)}秒前有活跃)`,
+              );
+            } else {
+              // 会话有效但长时间未活跃，显示离线（用户可能去吃饭了或者关闭了浏览器）
+              isOnline = false;
+              console.log(
+                `[Admin API] 用户 ${user.id} isOnline=false (会话有效但已${Math.round(timeSinceLastLogin / 60)}分钟未活跃)`,
+              );
+            }
+          } else {
+            // 会话已过期，显示离线
+            isOnline = false;
             console.log(
-              `[Admin API] 用户 ${user.id} 被强制下线，isOnline=false`,
-            );
-          } else if (user.sessionToken) {
-            // 有会话令牌且未过期，就是在线的
-            isOnline = true;
-            console.log(
-              `[Admin API] 用户 ${user.id} isOnline=true (有 sessionToken 且未过期)`,
+              `[Admin API] 用户 ${user.id} isOnline=false (会话已过期)`,
             );
           }
+        } else {
+          // 没有会话令牌，显示离线
+          isOnline = false;
+          console.log(
+            `[Admin API] 用户 ${user.id} isOnline=false (无会话令牌)`,
+          );
         }
       }
 

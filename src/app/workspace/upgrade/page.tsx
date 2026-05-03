@@ -58,7 +58,6 @@ function UpgradeWorkspaceForm() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("未授权访问");
         router.push("/auth/login");
         return;
       }

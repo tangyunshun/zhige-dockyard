@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { isAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
@@ -14,7 +19,7 @@ export async function GET(request: NextRequest) {
       where: { id: userId },
     });
 
-    if (!user || (user.role !== "admin" && user.role !== "super_admin")) {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
@@ -63,8 +68,11 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Get API keys error:", error);
     return NextResponse.json(
-      { error: "获取 API 密钥失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "获取 API 密钥失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }
@@ -73,8 +81,12 @@ export async function DELETE(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    if (
+      !authHeader ||
+      authHeader === "Bearer null" ||
+      authHeader === "Bearer "
+    ) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
@@ -82,7 +94,7 @@ export async function DELETE(request: NextRequest) {
       where: { id: userId },
     });
 
-    if (!user || (user.role !== "admin" && user.role !== "super_admin")) {
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
@@ -103,8 +115,11 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("Delete API key error:", error);
     return NextResponse.json(
-      { error: "删除 API 密钥失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      {
+        error: "删除 API 密钥失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
     );
   }
 }

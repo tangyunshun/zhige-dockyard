@@ -94,7 +94,7 @@ export default function AdminMembershipUsersPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
+      <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <button
@@ -178,16 +178,16 @@ export default function AdminMembershipUsersPage() {
             <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
               <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
               <div className="relative overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full table-auto">
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         用户信息
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         会员等级
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         注册时间
                       </th>
                     </tr>
@@ -200,60 +200,84 @@ export default function AdminMembershipUsersPage() {
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-sm group-hover:scale-110 transition-transform duration-300">
+                            <div className="w-10 h-10 shrink-0 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-sm group-hover:scale-110 transition-transform duration-300">
                               {user.name[0]?.toUpperCase()}
                             </div>
-                            <div>
-                              <div className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                            <div className="min-w-0">
+                              <div
+                                className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                                title={user.name}
+                              >
                                 {user.name}
                               </div>
                               <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-medium">
-                                <span className="flex items-center gap-1">
-                                  <Mail className="w-3 h-3" />
-                                  {user.email}
+                                <span
+                                  className="flex items-center gap-1 whitespace-nowrap"
+                                  title={user.email}
+                                >
+                                  <Mail className="w-3 h-3 shrink-0" />
+                                  <span className="truncate">{user.email}</span>
                                 </span>
                                 {user.phone && (
-                                  <span className="flex items-center gap-1">
-                                    <Phone className="w-3 h-3" />
-                                    {user.phone}
+                                  <span
+                                    className="flex items-center gap-1 whitespace-nowrap"
+                                    title={user.phone}
+                                  >
+                                    <Phone className="w-3 h-3 shrink-0" />
+                                    <span className="truncate">
+                                      {user.phone}
+                                    </span>
                                   </span>
                                 )}
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           {user.membershipConfig ? (
                             <div className="flex items-center gap-2">
                               <div
-                                className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shadow-sm group-hover:scale-110 transition-transform duration-300"
+                                className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-lg shadow-sm group-hover:scale-110 transition-transform duration-300"
                                 style={{
                                   backgroundColor: `${user.membershipConfig.color}20`,
                                 }}
                               >
                                 {user.membershipConfig.icon || "👑"}
                               </div>
-                              <div>
-                                <div className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                              <div className="min-w-0">
+                                <div
+                                  className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                                  title={user.membershipConfig.nameZh}
+                                >
                                   {user.membershipConfig.nameZh}
                                 </div>
-                                <div className="text-xs text-slate-500 font-medium">
+                                <div
+                                  className="text-xs text-slate-500 font-medium truncate"
+                                  title={user.membershipConfig.name}
+                                >
                                   {user.membershipConfig.name}
                                 </div>
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm text-slate-500 font-medium">
+                            <span className="text-sm text-slate-500 font-medium whitespace-nowrap">
                               未知等级
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-                            <Calendar className="w-4 h-4 text-slate-400" />
-                            {new Date(user.createdAt).toLocaleDateString(
-                              "zh-CN",
-                            )}
+                            <Calendar className="w-4 h-4 shrink-0 text-slate-400" />
+                            <span
+                              className="whitespace-nowrap"
+                              title={new Date(
+                                user.createdAt,
+                              ).toLocaleDateString("zh-CN")}
+                            >
+                              {new Date(user.createdAt).toLocaleDateString(
+                                "zh-CN",
+                              )}
+                            </span>
                           </div>
                         </td>
                       </tr>

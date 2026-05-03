@@ -600,6 +600,7 @@ export default function WorkspaceHub() {
     useState(false);
   const [personalWorkspaceUpgraded, setPersonalWorkspaceUpgraded] =
     useState(false);
+  const [isLoading, setIsLoading] = useState(true); // 添加加载状态
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(
     null,
   );
@@ -664,6 +665,8 @@ export default function WorkspaceHub() {
         setPersonalWorkspaceUpgraded(true);
       }
     }
+
+    // 加载用户信息
     loadUserInfo();
   }, []);
 
@@ -809,7 +812,17 @@ export default function WorkspaceHub() {
         console.log("配额信息数据:", quotaData);
         setQuota(quotaData); // 直接使用 quotaData，因为 API 返回的就是配额对象
       } else {
-        console.error("加载配额信息失败:", await quotaRes.text());
+        const errorText = await quotaRes.text();
+        console.error("加载配额信息失败:", errorText);
+
+        // 如果是 401 或 404 错误，说明用户未授权或不存在，需要重新登录
+        if (quotaRes.status === 401 || quotaRes.status === 404) {
+          console.warn("用户认证失效，请重新登录");
+          localStorage.removeItem("userId");
+          localStorage.removeItem("userRole");
+          router.push("/auth/login");
+          return;
+        }
       }
 
       // 加载企业空间列表
@@ -823,7 +836,9 @@ export default function WorkspaceHub() {
         console.log("企业空间数据:", data);
         setEnterpriseData(data);
       } else {
-        console.error("加载企业空间列表失败:", await enterpriseRes.text());
+        const errorText = await enterpriseRes.text();
+        console.error("加载企业空间列表失败:", errorText);
+        // 如果是认证错误，不重复跳转，由配额检查统一处理
       }
 
       // 加载使用统计
@@ -835,11 +850,16 @@ export default function WorkspaceHub() {
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setUsageStats(statsData.statistics);
+      } else {
+        const errorText = await statsRes.text();
+        console.error("加载使用统计失败:", errorText);
       }
     } catch (error) {
       console.error("加载用户信息失败:", error);
       setPersonalWorkspace(null);
       setEnterpriseWorkspace(null);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -872,7 +892,6 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("未授权访问");
         return;
       }
 
@@ -931,7 +950,6 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("未授权访问");
         return;
       }
 
@@ -989,7 +1007,6 @@ export default function WorkspaceHub() {
       console.log("userId:", userId);
 
       if (!userId) {
-        toast.error("未授权访问");
         return;
       }
 
@@ -1034,7 +1051,6 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("未授权访问");
         return;
       }
 
@@ -1075,7 +1091,6 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("未授权访问");
         return;
       }
 
@@ -1169,6 +1184,17 @@ export default function WorkspaceHub() {
       });
 
       if (res.ok) {
+        // 清除所有本地存储
+        localStorage.removeItem("userId");
+        localStorage.removeItem("userRole");
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("userEmail");
+        localStorage.removeItem("userName");
+        localStorage.removeItem("rememberMe"); // 清除"记住我"标记
+        sessionStorage.clear(); // 清除 sessionStorage，包括 hasActiveSession
+        document.cookie = "auth_token=; path=/; max-age=0";
+
+        // 跳转到首页
         router.push("/");
       } else {
         toast.error("退出登录失败");
@@ -1185,7 +1211,6 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("请先登录");
         return;
       }
 
@@ -1227,7 +1252,6 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("未授权访问");
         return;
       }
 
@@ -1281,7 +1305,6 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
-        toast.error("请先登录");
         return;
       }
 
@@ -1375,6 +1398,18 @@ export default function WorkspaceHub() {
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
+  // 如果正在加载，显示加载界面
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#f0f8ff]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">正在加载工作空间...</p>
+        </div>
+      </div>
+    );
+  }
+
   // 如果正在重定向，不渲染任何内容
   if (redirecting) {
     return (
@@ -1388,7 +1423,7 @@ export default function WorkspaceHub() {
   }
 
   return (
-    <div className="min-h-screen w-full relative bg-[#f0f8ff]">
+    <div className="min-h-screen w-full relative bg-[#f0f8ff] overflow-y-auto">
       {/* 背景：渐变效果 */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
         <div

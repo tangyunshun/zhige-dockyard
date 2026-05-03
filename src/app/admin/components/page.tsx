@@ -852,10 +852,10 @@ export default function AdminComponentsPage() {
             <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
 
             <div className="relative overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-auto">
                 <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-4 text-center">
+                    <th className="px-6 py-4 text-center whitespace-nowrap">
                       <input
                         type="checkbox"
                         checked={
@@ -874,22 +874,22 @@ export default function AdminComponentsPage() {
                         className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
                       />
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       组件信息
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       组件阶段
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       上架状态
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       使用次数
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       创建时间
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       操作
                     </th>
                   </tr>
@@ -931,57 +931,63 @@ export default function AdminComponentsPage() {
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-sm">
+                          <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-sm">
                             {renderComponentIcon(component.icon)}
                           </div>
-                          <div>
-                            <div className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                          <div className="min-w-0">
+                            <div
+                              className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                              title={component.name}
+                            >
                               {component.name}
                             </div>
-                            <div className="text-xs text-slate-500 font-medium truncate max-w-xs">
+                            <div
+                              className="text-xs text-slate-500 font-medium truncate"
+                              title={component.description || "-"}
+                            >
                               {component.description || "-"}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-6 whitespace-nowrap">
                         <div className="text-sm text-slate-600 font-medium">
-                          <div className="font-bold text-slate-800">
+                          <div className="font-bold text-slate-800 whitespace-nowrap">
                             {component.type}
                           </div>
-                          <div className="text-xs text-slate-400">
+                          <div className="text-xs text-slate-400 whitespace-nowrap">
                             {component.category || "-"}
                           </div>
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-6 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           {component.isPublished ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-[#10b981]/10 text-[#10b981]">
-                              <Eye className="w-3.5 h-3.5" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-[#10b981]/10 text-[#10b981] whitespace-nowrap">
+                              <Eye className="w-3.5 h-3.5 shrink-0" />
                               已上架
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500">
-                              <EyeOff className="w-3.5 h-3.5" />
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500 whitespace-nowrap">
+                              <EyeOff className="w-3.5 h-3.5 shrink-0" />
                               未上架
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-6 whitespace-nowrap">
                         <div className="text-sm font-bold text-slate-800">
                           {component.usageCount || 0}
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-6 whitespace-nowrap">
                         <div className="text-sm text-slate-600 font-medium">
                           {new Date(component.createdAt).toLocaleDateString(
                             "zh-CN",
                           )}
                         </div>
                       </td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-6 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
                           {!component.isPublished && (
                             <button

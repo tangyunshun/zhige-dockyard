@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req });
     if (!token?.id) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = token.id as string;
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req });
     if (!token?.id) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = token.id as string;
@@ -93,7 +93,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const token = await getToken({ req });
     if (!token?.id) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = token.id as string;

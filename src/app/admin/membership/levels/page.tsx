@@ -309,7 +309,7 @@ export default function AdminMembershipLevelsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
+      <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <button
@@ -366,22 +366,22 @@ export default function AdminMembershipLevelsPage() {
           <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
             <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
             <div className="relative overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-auto">
                 <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       等级信息
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       配额配置
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       价格
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       状态
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       操作
                     </th>
                   </tr>
@@ -395,55 +395,65 @@ export default function AdminMembershipLevelsPage() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div
-                            className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform duration-300"
+                            className="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform duration-300"
                             style={{ backgroundColor: `${level.color}20` }}
                           >
                             {level.icon || "👤"}
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <div className="font-black text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                              <div
+                                className="font-black text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                                title={level.nameZh}
+                              >
                                 {level.nameZh}
                               </div>
                               {level.isRecommended && (
-                                <span className="text-xs bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm">
-                                  <TrendingUp className="w-3 h-3" />
+                                <span className="text-xs bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                  <TrendingUp className="w-3 h-3 shrink-0" />
                                   推荐
                                 </span>
                               )}
                               {level.isPopular && (
-                                <span className="text-xs bg-gradient-to-r from-[#f59e0b]/10 to-[#fbbf24]/10 text-[#f59e0b] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm">
-                                  <Crown className="w-3 h-3" />
+                                <span className="text-xs bg-gradient-to-r from-[#f59e0b]/10 to-[#fbbf24]/10 text-[#f59e0b] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                  <Crown className="w-3 h-3 shrink-0" />
                                   热门
                                 </span>
                               )}
                             </div>
-                            <div className="text-xs text-slate-500 font-medium mt-0.5">
+                            <div
+                              className="text-xs text-slate-500 font-medium mt-0.5 truncate"
+                              title={level.name}
+                            >
                               {level.name}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-slate-600 space-y-1 font-medium">
-                          <div className="flex items-center gap-2">
-                            <Database className="w-3.5 h-3.5 text-slate-400" />
-                            <span>
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <Database className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                            <span className="whitespace-nowrap">
                               企业空间：{Number(level.maxEnterpriseWorkspaces)}
                               个
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Box className="w-3.5 h-3.5 text-slate-400" />
-                            <span>组件：{Number(level.maxComponents)}个</span>
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <Box className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                            <span className="whitespace-nowrap">
+                              组件：{Number(level.maxComponents)}个
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
-                            <span>团队：{Number(level.maxTeamSize)}人</span>
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <Users className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                            <span className="whitespace-nowrap">
+                              团队：{Number(level.maxTeamSize)}人
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Database className="w-3.5 h-3.5 text-slate-400" />
-                            <span>
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <Database className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                            <span className="whitespace-nowrap">
                               存储：
                               {(Number(level.maxStorage) / 1073741824).toFixed(
                                 1,
@@ -453,22 +463,22 @@ export default function AdminMembershipLevelsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-slate-600 font-medium">
-                          <div className="font-bold text-slate-700">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-600 font-medium whitespace-nowrap">
+                          <div className="font-bold text-slate-700 whitespace-nowrap">
                             月付：¥{level.priceMonthly / 100}
                           </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
+                          <div className="text-xs text-slate-500 mt-0.5 whitespace-nowrap">
                             年付：¥{level.priceYearly / 100}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <button
                           onClick={() =>
                             handleToggleActive(level.name, level.isActive)
                           }
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-300 ${
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-300 whitespace-nowrap ${
                             level.isActive
                               ? "bg-gradient-to-r from-[#10b981]/10 to-[#059669]/10 text-[#10b981] hover:shadow-md"
                               : "bg-slate-100 text-slate-500 hover:bg-slate-200"
@@ -476,32 +486,32 @@ export default function AdminMembershipLevelsPage() {
                         >
                           {level.isActive ? (
                             <>
-                              <Check className="w-3.5 h-3.5" />
+                              <Check className="w-3.5 h-3.5 shrink-0" />
                               已启用
                             </>
                           ) : (
                             <>
-                              <X className="w-3.5 h-3.5" />
+                              <X className="w-3.5 h-3.5 shrink-0" />
                               已禁用
                             </>
                           )}
                         </button>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => openEditModal(level)}
-                            className="p-2.5 hover:bg-[#3182ce]/10 hover:text-[#3182ce] rounded-xl transition-all duration-300 group-hover:scale-110"
+                            className="p-2.5 hover:bg-[#3182ce]/10 hover:text-[#3182ce] rounded-xl transition-all duration-300 group-hover:scale-110 inline-flex items-center justify-center"
                             title="编辑"
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-4 h-4 shrink-0" />
                           </button>
                           <button
                             onClick={() => handleDelete(level.name)}
-                            className="p-2.5 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-300 group-hover:scale-110"
+                            className="p-2.5 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-300 group-hover:scale-110 inline-flex items-center justify-center"
                             title="删除"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4 shrink-0" />
                           </button>
                         </div>
                       </td>

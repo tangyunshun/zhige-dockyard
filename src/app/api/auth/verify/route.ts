@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
     if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const token = authHeader.replace("Bearer ", "");

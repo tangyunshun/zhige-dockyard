@@ -168,8 +168,9 @@ export default function AdminUsersPage() {
       }
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "强制下线失败");
+        // 不显示错误，ActivityMonitor 会处理超时跳转
+        console.error("Force logout failed:", res.status);
+        return;
       }
 
       showToast("用户已被强制下线", "success");

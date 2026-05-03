@@ -89,8 +89,9 @@ export default function AdminDashboard() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "加载数据失败");
+        // 不显示错误，ActivityMonitor 会处理超时跳转
+        console.error("Load dashboard failed:", res.status);
+        return;
       }
 
       const result = await res.json();

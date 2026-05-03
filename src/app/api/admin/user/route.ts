@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { isAdminRole } from "@/lib/auth";
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -17,7 +18,7 @@ export async function PATCH(request: NextRequest) {
       authHeader === "Bearer null" ||
       authHeader === "Bearer "
     ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const adminId = authHeader.replace("Bearer ", "");
@@ -25,7 +26,7 @@ export async function PATCH(request: NextRequest) {
       where: { id: adminId },
     });
 
-    if (!admin || (admin.role !== "admin" && admin.role !== "super_admin")) {
+    if (!admin || !isAdminRole(admin.role)) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
@@ -105,7 +106,7 @@ export async function DELETE(request: NextRequest) {
       authHeader === "Bearer null" ||
       authHeader === "Bearer "
     ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const adminId = authHeader.replace("Bearer ", "");
@@ -113,7 +114,7 @@ export async function DELETE(request: NextRequest) {
       where: { id: adminId },
     });
 
-    if (!admin || (admin.role !== "admin" && admin.role !== "super_admin")) {
+    if (!admin || !isAdminRole(admin.role)) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
@@ -127,7 +128,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 不能删除超级管理员和自己
-    if (targetUser.role === "super_admin" || targetUser.id === adminId) {
+    if (isAdminRole(targetUser.role) || targetUser.id === adminId) {
       return NextResponse.json(
         { error: "不能删除超级管理员或自己的账号" },
         { status: 403 },

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { validateUser } from "@/lib/auth";
+import { validateUser, isAdminRole } from "@/lib/auth";
 
 /**
  * GET /api/admin/membership/users
@@ -14,21 +14,14 @@ export async function GET(request: NextRequest) {
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
-        { status: 401 }
+        { message: authResult.error || "UNAUTHORIZED" },
+        { status: 401 },
       );
     }
 
     // 检查是否是管理员
-    if (
-      authResult.user!.role !== "admin" &&
-      authResult.user!.role !== "superadmin" &&
-      authResult.user!.role !== "super_admin"
-    ) {
-      return NextResponse.json(
-        { message: "需要管理员权限" },
-        { status: 403 }
-      );
+    if (!isAdminRole(authResult.user!.role)) {
+      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
     }
 
     // 解析查询参数
@@ -76,10 +69,13 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const levelMap = levels.reduce((acc, level) => {
-      acc[level.name] = level;
-      return acc;
-    }, {} as Record<string, any>);
+    const levelMap = levels.reduce(
+      (acc, level) => {
+        acc[level.name] = level;
+        return acc;
+      },
+      {} as Record<string, any>,
+    );
 
     return NextResponse.json({
       success: true,
@@ -98,9 +94,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Get membership users error:", error);
-    return NextResponse.json(
-      { message: "获取会员用户失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "获取会员用户失败" }, { status: 500 });
   }
 }

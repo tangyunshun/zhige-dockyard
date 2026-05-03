@@ -115,8 +115,9 @@ export default function AdminWorkspacesPage() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "加载工作空间列表失败");
+        // 不显示错误，ActivityMonitor 会处理超时跳转
+        console.error("Load workspaces failed:", res.status);
+        return;
       }
 
       const result = await res.json();
@@ -148,8 +149,9 @@ export default function AdminWorkspacesPage() {
         );
 
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData.error || "删除失败");
+          // 不显示错误，ActivityMonitor 会处理超时跳转
+          console.error("Delete workspace failed:", res.status);
+          return;
         }
 
         showToast("工作空间已删除", "success");
@@ -219,8 +221,9 @@ export default function AdminWorkspacesPage() {
           );
 
           if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            throw new Error(errorData.error || "操作失败");
+            // 不显示错误，ActivityMonitor 会处理超时跳转
+            console.error("Toggle workspace status failed:", res.status);
+            return;
           }
 
           showToast(

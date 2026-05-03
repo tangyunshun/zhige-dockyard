@@ -59,6 +59,9 @@ export async function GET(request: NextRequest) {
 
     // 检查用户状态
     if (user.status !== "active") {
+      console.log(
+        `[API /auth/me] ❌ 用户 ${userId} 状态为 ${user.status}，拒绝访问`,
+      );
       return NextResponse.json(
         { error: "账号已被禁用", message: "账号已被禁用" },
         { status: 403 },
@@ -67,43 +70,59 @@ export async function GET(request: NextRequest) {
 
     // 检查会话是否过期
     if (user.sessionExpiresAt && new Date(user.sessionExpiresAt) < new Date()) {
+      console.log(`[API /auth/me] ❌ 用户 ${userId} 会话已过期，拒绝访问`);
       return NextResponse.json(
         { error: "会话已过期，请重新登录", message: "会话已过期" },
         { status: 401 },
       );
     }
 
-    // 检查用户是否被强制下线（给 2 分钟宽限期）
+    // 检查用户是否被强制下线
     if (user.lastForcedLogoutAt) {
+      const now = new Date().getTime();
       const forcedLogoutTime = new Date(user.lastForcedLogoutAt).getTime();
-      const gracePeriod = 2 * 60 * 1000; // 2 分钟宽限期（毫秒）
-      const timeSinceForcedLogout = Date.now() - forcedLogoutTime;
-      const minutesRemaining = Math.max(
-        0,
-        (gracePeriod - timeSinceForcedLogout) / 60000,
-      ).toFixed(2);
+      const timeSinceForcedLogout = (now - forcedLogoutTime) / 1000 / 60; // 分钟
 
-      console.log(`[API /auth/me] 用户 ${userId} 强制下线检查开始`);
-      console.log(
-        `  - forcedLogoutTime: ${forcedLogoutTime} (${new Date(forcedLogoutTime).toISOString()})`,
-      );
-      console.log(
-        `  - timeSinceForcedLogout: ${timeSinceForcedLogout}ms (${(timeSinceForcedLogout / 60000).toFixed(2)}分钟)`,
-      );
-      console.log(`  - gracePeriod: ${gracePeriod}ms (2 分钟)`);
-      console.log(`  - 剩余宽限期：${minutesRemaining}分钟`);
-
-      // 只有在超过宽限期后，才返回错误
-      if (timeSinceForcedLogout > gracePeriod) {
-        console.log(`[API /auth/me] ❌ 用户 ${userId} 已超过宽限期，返回 401`);
-        return NextResponse.json(
-          { error: "您已被强制下线，请重新登录", message: "强制下线" },
-          { status: 401 },
+      // 2 分钟宽限期：被强制下线后 2 分钟内仍然允许访问
+      if (timeSinceForcedLogout < 2) {
+        console.log(
+          `[API /auth/me] ⏳ 用户 ${userId} 被强制下线 ${timeSinceForcedLogout.toFixed(1)} 分钟，仍在宽限期内，允许访问`,
         );
       } else {
-        console.log(`[API /auth/me] ✅ 用户 ${userId} 在宽限期内，允许访问`);
+        // 超过 2 分钟宽限期，拒绝访问
+        console.log(
+          `[API /auth/me] ❌ 用户 ${userId} 被强制下线 ${timeSinceForcedLogout.toFixed(1)} 分钟，已超过宽限期，拒绝访问`,
+        );
+        return NextResponse.json(
+          { error: "您已被管理员强制下线，请重新登录", message: "强制下线" },
+          { status: 401 },
+        );
       }
     }
+
+    // 检查用户是否超过 5 分钟未活跃（300 秒）
+    const now = Date.now();
+    const lastLoginTime = user.lastLoginAt
+      ? new Date(user.lastLoginAt).getTime()
+      : 0;
+    const timeSinceLastLogin = (now - lastLoginTime) / 1000; // 秒
+
+    if (timeSinceLastLogin > 300) {
+      // 超过 5 分钟未操作，显示离线，拒绝访问
+      console.log(
+        `[API /auth/me] ⏰ 用户 ${userId} 超过 ${Math.round(timeSinceLastLogin / 60)} 分钟未操作，显示离线，拒绝访问`,
+      );
+      return NextResponse.json(
+        { error: "您已长时间未操作，请重新登录", message: "超时" },
+        { status: 401 },
+      );
+    }
+
+    // 验证通过，返回用户信息
+    // 注意：不更新 lastLoginAt，只有用户真正操作时才更新
+    // 这样关闭浏览器后重新打开，lastLoginAt 还是关闭前的时间，显示离线状态
+
+    console.log(`[API /auth/me] ✅ 用户 ${userId} 认证通过`);
 
     // 返回用户信息（包含角色、手机号和会员等级）
     return NextResponse.json({

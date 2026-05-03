@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { validateUser } from "@/lib/auth";
+import { validateUser, isAdminRole } from "@/lib/auth";
 
 /**
  * GET /api/admin/membership/orders
@@ -14,21 +14,14 @@ export async function GET(request: NextRequest) {
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
-        { status: 401 }
+        { message: authResult.error || "UNAUTHORIZED" },
+        { status: 401 },
       );
     }
 
     // 检查是否是管理员
-    if (
-      authResult.user!.role !== "admin" &&
-      authResult.user!.role !== "superadmin" &&
-      authResult.user!.role !== "super_admin"
-    ) {
-      return NextResponse.json(
-        { message: "需要管理员权限" },
-        { status: 403 }
-      );
+    if (!isAdminRole(authResult.user!.role)) {
+      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
     }
 
     // 解析查询参数
@@ -100,10 +93,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Get membership orders error:", error);
-    return NextResponse.json(
-      { message: "获取会员订单失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "获取会员订单失败" }, { status: 500 });
   }
 }
 
@@ -119,20 +109,14 @@ export async function POST(request: NextRequest) {
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
-        { status: 401 }
+        { message: authResult.error || "UNAUTHORIZED" },
+        { status: 401 },
       );
     }
 
     // 检查是否是管理员
-    if (
-      authResult.user!.role !== "admin" &&
-      authResult.user!.role !== "superadmin"
-    ) {
-      return NextResponse.json(
-        { message: "需要管理员权限" },
-        { status: 403 }
-      );
+    if (!isAdminRole(authResult.user!.role)) {
+      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
     }
 
     // 解析请求体
@@ -151,10 +135,7 @@ export async function POST(request: NextRequest) {
 
     // 验证必填字段
     if (!userId || !levelId || !startDate || !endDate) {
-      return NextResponse.json(
-        { message: "缺少必填字段" },
-        { status: 400 }
-      );
+      return NextResponse.json({ message: "缺少必填字段" }, { status: 400 });
     }
 
     // 检查用户是否存在
@@ -163,10 +144,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json(
-        { message: "用户不存在" },
-        { status: 400 }
-      );
+      return NextResponse.json({ message: "用户不存在" }, { status: 400 });
     }
 
     // 检查会员等级是否存在
@@ -175,10 +153,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!level) {
-      return NextResponse.json(
-        { message: "会员等级不存在" },
-        { status: 400 }
-      );
+      return NextResponse.json({ message: "会员等级不存在" }, { status: 400 });
     }
 
     // 创建订单
@@ -246,9 +221,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Create membership order error:", error);
-    return NextResponse.json(
-      { message: "创建会员订单失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "创建会员订单失败" }, { status: 500 });
   }
 }

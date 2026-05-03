@@ -260,25 +260,25 @@ export default function AdminTenantsPage() {
           </div>
         ) : (
           <div className="relative overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-auto">
               <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     租户信息
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     状态
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     用户数
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     任务数
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     创建时间
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     操作
                   </th>
                 </tr>
@@ -295,26 +295,32 @@ export default function AdminTenantsPage() {
                           <img
                             src={tenant.logo}
                             alt={tenant.name}
-                            className="w-10 h-10 rounded-xl shadow-sm group-hover:scale-110 transition-transform duration-300"
+                            className="w-10 h-10 shrink-0 rounded-xl shadow-sm group-hover:scale-110 transition-transform duration-300"
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-sm font-bold shadow-sm group-hover:scale-110 transition-transform duration-300">
+                          <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-sm font-bold shadow-sm group-hover:scale-110 transition-transform duration-300">
                             {tenant.name.charAt(0).toUpperCase()}
                           </div>
                         )}
-                        <div>
-                          <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                        <div className="min-w-0">
+                          <div
+                            className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                            title={tenant.name}
+                          >
                             {tenant.name}
                           </div>
                           {tenant.description && (
-                            <div className="text-xs text-slate-500 font-medium mt-0.5">
+                            <div
+                              className="text-xs text-slate-500 font-medium mt-0.5 truncate"
+                              title={tenant.description}
+                            >
                               {tenant.description}
                             </div>
                           )}
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <span
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
                           tenant.status === "active"
@@ -325,26 +331,29 @@ export default function AdminTenantsPage() {
                         {tenant.status === "active" ? "活跃" : "停用"}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-                        <Users className="w-4 h-4 text-slate-400" />
-                        <span className="font-bold text-slate-700">
+                        <Users className="w-4 h-4 shrink-0 text-slate-400" />
+                        <span className="font-bold text-slate-700 whitespace-nowrap">
                           {tenant._count.user}
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-                        <FileText className="w-4 h-4 text-slate-400" />
-                        <span className="font-bold text-slate-700">
+                        <FileText className="w-4 h-4 shrink-0 text-slate-400" />
+                        <span className="font-bold text-slate-700 whitespace-nowrap">
                           {tenant._count.componenttask}
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-600 font-medium">
+                    <td
+                      className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap"
+                      title={formatTimeAgo(tenant.createdAt)}
+                    >
                       {formatTimeAgo(tenant.createdAt)}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         {tenant.status === "active" ? (
                           <button

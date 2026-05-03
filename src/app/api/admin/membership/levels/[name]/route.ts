@@ -17,7 +17,7 @@ export async function GET(
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
+        { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
       );
     }
@@ -62,7 +62,7 @@ export async function PUT(
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
+        { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
       );
     }
@@ -161,7 +161,7 @@ export async function DELETE(
 
     if (!authResult.valid) {
       return NextResponse.json(
-        { message: authResult.error || "未授权访问" },
+        { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
       );
     }

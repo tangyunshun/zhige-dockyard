@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     const sessionToken = `sess_${user.id}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
     const sessionExpiresAt = rememberMe
       ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // 7 天
-      : new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 小时
+      : new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 小时（但 cookie 是 session 的，关闭浏览器就失效）
 
     await prisma.user.update({
       where: { id: user.id },
@@ -290,7 +290,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    // 设置 Cookie
+    const response = NextResponse.json({
       success: true,
       token,
       refreshToken,
@@ -307,6 +308,26 @@ export async function POST(request: NextRequest) {
       lastWorkspaceId,
       redirectUrl,
     });
+
+    // 设置 auth_token cookie
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
+      path: "/",
+      maxAge: rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60, // 记住我：7 天，不记住我：24 小时
+    };
+
+    response.cookies.set("auth_token", token, cookieOptions);
+
+    if (refreshToken) {
+      response.cookies.set("refresh_token", refreshToken, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60, // 30 天
+      });
+    }
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json({ message: "服务器错误" }, { status: 500 });

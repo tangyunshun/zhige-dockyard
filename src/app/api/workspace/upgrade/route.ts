@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { isAdminRole } from "@/lib/auth";
 
 // 获取企业空间配额
 async function getEnterpriseQuota(userId: string) {
@@ -23,7 +24,7 @@ async function getEnterpriseQuota(userId: string) {
     },
   });
 
-  const isMember = user.role === "admin" || user.role === "super_admin";
+  const isMember = isAdminRole(user.role);
   const maxEnterprise = isMember ? 3 : 1;
 
   return {
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
       authHeader === "Bearer null" ||
       authHeader === "Bearer "
     ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
       authHeader === "Bearer null" ||
       authHeader === "Bearer "
     ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");

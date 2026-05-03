@@ -373,6 +373,7 @@ function LoginForm() {
 
       if (res.ok) {
         if (data.token) {
+          // "记住我"：cookie 有效期 7 天；否则 1 天
           document.cookie = `auth_token=${data.token}; path=/; max-age=${rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60}`;
         }
         // 存储 userId 和 userRole 到 localStorage
@@ -382,6 +383,16 @@ function LoginForm() {
         if (data.user?.role) {
           localStorage.setItem("userRole", data.user.role);
         }
+        // 设置 sessionStorage 标记，表示当前浏览器会话是活跃的
+        sessionStorage.setItem("hasActiveSession", "true");
+        
+        // 如果是"记住我"登录，额外标记
+        if (rememberMe) {
+          localStorage.setItem("rememberMe", "true");
+        } else {
+          localStorage.removeItem("rememberMe");
+        }
+        
         setTimeout(() => {
           router.push(redirectPath);
         }, 1000);
