@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
@@ -50,6 +50,8 @@ export default function ForgotPasswordPage() {
     smsCode: "",
     password: "",
     confirmPassword: "",
+    phone: "",
+    email: "",
   });
 
   const [smsCountdown, setSmsCountdown] = useState(0);
@@ -465,7 +467,7 @@ export default function ForgotPasswordPage() {
         {steps.map((s, idx) => (
           <div key={s.num} className="flex items-center">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
                 step >= s.num
                   ? "bg-[#3182ce] text-white"
                   : "bg-[#e2e8f0] text-slate-500"
@@ -474,7 +476,7 @@ export default function ForgotPasswordPage() {
               {s.num}
             </div>
             <span
-              className={`ml-2 text-sm ${
+              className={`ml-2 text-xs ${
                 step >= s.num ? "text-[#3182ce]" : "text-slate-400"
               }`}
             >
@@ -482,7 +484,7 @@ export default function ForgotPasswordPage() {
             </span>
             {idx < steps.length - 1 && (
               <div
-                className={`w-12 h-0.5 mx-2 ${
+                className={`w-8 h-0.5 mx-2 ${
                   step > s.num ? "bg-[#3182ce]" : "bg-[#e2e8f0]"
                 }`}
               />
@@ -851,29 +853,66 @@ export default function ForgotPasswordPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-6">
-          <Logo />
+    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden">
+      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[16px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50">
+        {/* 左侧品牌区 - 固定 */}
+        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-300 rounded-full blur-3xl" />
+          </div>
+
+          <div className="relative z-10 text-center">
+            <div className="w-16 h-16 mb-4 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm mx-auto shadow-lg">
+              <svg
+                className="w-10 h-10"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 6c1.4 0 2.8 1.1 2.8 2.5V11c.6 0 1.2.6 1.2 1.2v3.5c0 .7-.6 1.3-1.2 1.3H9.2c-.6 0-1.2-.6-1.2-1.2v-3.5c0-.7.6-1.3 1.2-1.3V9.5C9.2 8.1 10.6 7 12 7zm0 1c-.8 0-1.5.7-1.5 1.5V11h3V9.5c0-.8-.7-1.5-1.5-1.5zm-1.5 5v3.5h3v-3.5h-3z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold mb-2">知阁·舟坊</h1>
+            <p className="text-blue-100 mb-6 text-sm">
+              全链路 AI 软件研发效能操作系统
+            </p>
+
+            <div className="space-y-3 text-left">
+              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
+                <CheckCircle className="w-4 h-4 text-green-300" />
+                <span className="text-xs">企业级安全架构</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
+                <CheckCircle className="w-4 h-4 text-green-300" />
+                <span className="text-xs">AI 智能驱动</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
+                <CheckCircle className="w-4 h-4 text-green-300" />
+                <span className="text-xs">全链路提效 300%</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-6">
+        {/* 右侧表单区 */}
+        <div className="md:col-span-3 p-6 md:p-8">
+          <div className="mb-6 flex items-center justify-between">
+            <button
+              onClick={() => router.push("/")}
+              className="group flex items-center gap-1.5 text-slate-600 hover:text-[#3182ce] transition-colors text-sm cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+              返回首页
+            </button>
+            <Logo variant="light" />
+          </div>
+
           {renderStepIndicator()}
           
           {step === 1 && renderStep1()}
           {step === 1.5 && renderStep1_5()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
-        </div>
-
-        <div className="text-center mt-6">
-          <Link
-            href="/auth/login"
-            className="text-sm text-slate-600 hover:text-[#3182ce] flex items-center justify-center gap-1"
-          >
-            <ArrowLeft className="w-3 h-3" />
-            返回登录
-          </Link>
         </div>
       </div>
     </div>
