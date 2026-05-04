@@ -29,6 +29,14 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
         console.log("AuthCheck: 已经处理过错误，跳过");
         return;
       }
+      
+      // 检查是否正在退出登录，如果是，让 useLogout 处理
+      const isLoggingOut = localStorage.getItem("is_logging_out") === "true";
+      if (isLoggingOut) {
+        console.log("AuthCheck: 用户正在退出登录，由 useLogout 处理，AuthCheck 跳过");
+        return;
+      }
+      
       hasHandledErrorRef.current = true;
       isRedirectingRef.current = true;
 
@@ -37,10 +45,10 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
         clearInterval(checkIntervalRef.current);
       }
 
-      // 清除本地存储
+      // 清除本地存储（但不包括 is_logging_out）
       localStorage.removeItem("userId");
       localStorage.removeItem("userRole");
-      localStorage.removeItem("rememberMe"); // 清除"记住我"标记
+      localStorage.removeItem("rememberMe");
       document.cookie = "auth_token=; path=/; max-age=0";
       sessionStorage.clear();
 
