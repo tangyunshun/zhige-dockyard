@@ -715,7 +715,7 @@ function LoginForm() {
                       </label>
                     </div>
                     <Link
-                      href="/auth/forgot-password"
+                      href={`/auth/forgot-password${formData.account ? `?account=${encodeURIComponent(formData.account)}` : ""}`}
                       className="text-xs text-[#3182ce] hover:underline"
                     >
                       忘记密码？

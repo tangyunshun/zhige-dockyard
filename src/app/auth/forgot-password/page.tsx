@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
@@ -30,6 +30,7 @@ type Step = 1 | 2 | 3;
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
@@ -41,6 +42,18 @@ export default function ForgotPasswordPage() {
     password: "",
     confirmPassword: "",
   });
+
+  // 从 URL 参数中读取账号信息（来自登录页面）
+  useEffect(() => {
+    const accountParam = searchParams.get("account");
+    if (accountParam) {
+      setFormData((prev) => ({
+        ...prev,
+        account: decodeURIComponent(accountParam),
+      }));
+      console.log("忘记密码页面：自动填充账号", decodeURIComponent(accountParam));
+    }
+  }, [searchParams]);
 
   const [smsCountdown, setSmsCountdown] = useState(0);
   // 验证码发送提示
