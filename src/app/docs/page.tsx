@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useLogout } from "@/hooks/useLogout";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import {
@@ -35,8 +36,8 @@ interface DocArticle {
 
 export default function DocsPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const handleLogout = useLogout();
+  const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSection, setActiveSection] = useState("quickstart");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -57,34 +58,6 @@ export default function DocsPage() {
       setUser(data.user);
     } catch (error) {
       console.error("加载用户信息失败:", error);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      // 显示加载中提示
-      toast.info("正在退出登录...", 1500);
-      
-      // 等待 1.5 秒，让用户看到提示
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const res = await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (res.ok) {
-        // 显示成功提示
-        toast.success("已退出登录", 1500);
-        
-        // 等待提示显示完后跳转
-        await new Promise(resolve => setTimeout(resolve, 1600));
-        
-        router.push("/");
-      }
-    } catch (error) {
-      console.error("退出登录失败:", error);
-      toast.error("退出登录失败，请重试");
     }
   };
 
