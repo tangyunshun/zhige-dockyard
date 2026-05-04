@@ -43,6 +43,8 @@ export default function ForgotPasswordPage() {
   });
 
   const [smsCountdown, setSmsCountdown] = useState(0);
+  // 验证码发送提示
+  const [smsMessage, setSmsMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<{
     account?: string;
     smsCode?: string;
@@ -202,24 +204,24 @@ export default function ForgotPasswordPage() {
         const data = await res.json();
 
         if (res.ok) {
-          // 开发环境显示验证码
-          if (data.debugCode) {
-            toast.showToast(
-              "sms-code",
-              `验证码已发送：${data.debugCode}`,
-              5000 // 显示 5 秒
-            );
-          } else {
-            toast.success("验证码已发送，请注意查收");
-          }
           setSmsCountdown(60);
           const timer = setInterval(() => {
             setSmsCountdown((prev) => {
               if (prev <= 1) {
                 clearInterval(timer);
+                setSmsMessage(null); // 倒计时结束时清除消息
                 return 0;
               }
-              return prev - 1;
+              const newCount = prev - 1;
+              // 实时更新提示消息
+              if (data.debugCode) {
+                setSmsMessage(
+                  `验证码已发送：${data.debugCode}，${newCount}秒后可重新发送`,
+                );
+              } else {
+                setSmsMessage(`验证码已发送，${newCount}秒后可重新发送`);
+              }
+              return newCount;
             });
           }, 1000);
         } else {
@@ -641,6 +643,9 @@ export default function ForgotPasswordPage() {
                         : "获取验证码"}
                     </button>
                   </div>
+                  {smsMessage && (
+                    <p className="mt-1 text-xs text-green-600">{smsMessage}</p>
+                  )}
                   {errors.smsCode && (
                     <p className="mt-1 text-xs text-red-500">
                       {errors.smsCode}
