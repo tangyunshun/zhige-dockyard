@@ -386,14 +386,14 @@ function LoginForm() {
         }
         // 设置 sessionStorage 标记，表示当前浏览器会话是活跃的
         sessionStorage.setItem("hasActiveSession", "true");
-        
+
         // 如果是"记住我"登录，额外标记
         if (rememberMe) {
           localStorage.setItem("rememberMe", "true");
         } else {
           localStorage.removeItem("rememberMe");
         }
-        
+
         setTimeout(() => {
           router.push(redirectPath);
         }, 1000);
@@ -695,7 +695,6 @@ function LoginForm() {
                   >
                     <Phone className="w-4 h-4" />
                     <span className="font-medium">手机号验证码快捷登录</span>
-                    <span className="text-xs text-slate-500 ml-1">（无需记忆密码）</span>
                   </button>
                 </div>
               </div>
@@ -831,11 +830,10 @@ function LoginForm() {
                       setLoginMethod("password");
                       setErrors({});
                     }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-[#3182ce]/30 rounded-lg text-sm text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer"
                   >
                     <Lock className="w-4 h-4" />
-                    <span className="font-medium">账号密码登录</span>
-                    <span className="text-xs text-slate-500 ml-1">（使用账号/邮箱/手机号 + 密码）</span>
+                    <span className="font-medium">选择账号密码登录</span>
                   </button>
                 </div>
               </div>
