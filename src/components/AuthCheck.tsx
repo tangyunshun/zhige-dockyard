@@ -177,7 +177,8 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [pathname, router, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   return <>{children}</>;
 }

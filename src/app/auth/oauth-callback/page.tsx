@@ -55,7 +55,8 @@ export default function OAuthCallback() {
     };
 
     handleOAuthCallback();
-  }, [searchParams, router, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
