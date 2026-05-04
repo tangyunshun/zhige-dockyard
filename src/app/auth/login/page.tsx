@@ -329,6 +329,20 @@ function LoginForm() {
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      // 显示错误提示
+      if (loginMethod === "sms") {
+        if (newErrors.phone) {
+          toast.error("请输入正确的手机号");
+        } else if (newErrors.smsCode) {
+          toast.error("请输入 6 位验证码");
+        }
+      } else {
+        if (newErrors.account) {
+          toast.error("请输入正确的账号");
+        } else if (newErrors.password) {
+          toast.error("请输入密码");
+        }
+      }
       return;
     }
 
