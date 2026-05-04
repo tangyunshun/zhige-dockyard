@@ -56,6 +56,8 @@ export async function GET(request: NextRequest) {
           where: { qqUnionId: mockOpenid },
         });
 
+        let isNewUser = false;
+        
         if (!user) {
           console.log('➕ 创建新用户');
           user = await prisma.user.create({
@@ -69,8 +71,63 @@ export async function GET(request: NextRequest) {
             },
           });
           console.log('✅ 用户创建成功:', user.id);
+          isNewUser = true;
         } else {
           console.log('📂 找到已存在用户:', user.id);
+        }
+
+        // 检查用户是否有个人空间，如果没有则创建
+        const workspaceMembers = await prisma.workspaceMember.findMany({
+          where: { userId: user.id },
+          include: {
+            workspace: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                ownerId: true,
+                description: true,
+                logo: true,
+              },
+            },
+          },
+        });
+
+        // 查找是否有个人空间
+        const personalWorkspace = workspaceMembers.find(
+          (member) => member.workspace.type === 'PERSONAL',
+        );
+
+        // 如果没有个人空间，自动创建一个
+        if (!personalWorkspace) {
+          const workspaceName = `个人空间 - ${user.name || user.phone || user.email || '用户'}`;
+          const newWorkspace = await prisma.workspace.create({
+            data: {
+              name: workspaceName,
+              type: 'PERSONAL',
+              ownerId: user.id,
+              description: `${user.name || '用户'}的个人工作空间`,
+            },
+          });
+
+          // 创建 WorkspaceMember 记录
+          await prisma.workspaceMember.create({
+            data: {
+              userId: user.id,
+              workspaceId: newWorkspace.id,
+              role: 'OWNER',
+            },
+          });
+
+          // 更新用户的 lastWorkspaceId
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              lastWorkspaceId: newWorkspace.id,
+            },
+          });
+
+          console.log('✅ 为用户创建个人空间:', newWorkspace.id);
         }
 
         // 生成 Token
@@ -159,6 +216,8 @@ export async function GET(request: NextRequest) {
       where: { qqUnionId: openid },
     });
 
+    let isNewUser = false;
+    
     if (!user) {
       // 创建新用户
       user = await prisma.user.create({
@@ -171,6 +230,61 @@ export async function GET(request: NextRequest) {
           password: 'oauth_user_no_password_' + openid, // OAuth 用户不需要密码
         },
       });
+      isNewUser = true;
+    }
+
+    // 检查用户是否有个人空间，如果没有则创建
+    const workspaceMembers = await prisma.workspaceMember.findMany({
+      where: { userId: user.id },
+      include: {
+        workspace: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            ownerId: true,
+            description: true,
+            logo: true,
+          },
+        },
+      },
+    });
+
+    // 查找是否有个人空间
+    const personalWorkspace = workspaceMembers.find(
+      (member) => member.workspace.type === 'PERSONAL',
+    );
+
+    // 如果没有个人空间，自动创建一个
+    if (!personalWorkspace) {
+      const workspaceName = `个人空间 - ${user.name || user.phone || user.email || '用户'}`;
+      const newWorkspace = await prisma.workspace.create({
+        data: {
+          name: workspaceName,
+          type: 'PERSONAL',
+          ownerId: user.id,
+          description: `${user.name || '用户'}的个人工作空间`,
+        },
+      });
+
+      // 创建 WorkspaceMember 记录
+      await prisma.workspaceMember.create({
+        data: {
+          userId: user.id,
+          workspaceId: newWorkspace.id,
+          role: 'OWNER',
+        },
+      });
+
+      // 更新用户的 lastWorkspaceId
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastWorkspaceId: newWorkspace.id,
+        },
+      });
+
+      console.log('✅ 为用户创建个人空间:', newWorkspace.id);
     }
 
     // 5. 生成 JWT Token

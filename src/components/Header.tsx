@@ -65,9 +65,19 @@ export default function Header() {
 
   const checkLoginStatus = async () => {
     try {
+      // 从 localStorage 获取 token
+      const token = localStorage.getItem("auth_token");
+      
+      const headers: HeadersInit = {};
+      // 如果有 token，添加到 header
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      
       const res = await fetch("/api/auth/me", {
         // 添加超时处理
         signal: AbortSignal.timeout(5000),
+        headers,
       });
 
       // 检查响应类型

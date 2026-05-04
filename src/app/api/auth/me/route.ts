@@ -21,7 +21,16 @@ export async function GET(request: NextRequest) {
     }
 
     // 从 Cookie 中获取 token
-    const token = request.cookies.get("auth_token")?.value;
+    let token = request.cookies.get("auth_token")?.value;
+
+    // 如果 Cookie 中没有，尝试从 Authorization header 获取（支持 localStorage 方案）
+    if (!token) {
+      const authHeader = request.headers.get("Authorization");
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+        console.log("[/api/auth/me] 从 Authorization header 获取 token");
+      }
+    }
 
     if (!token) {
       return NextResponse.json(
