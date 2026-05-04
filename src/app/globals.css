@@ -17,7 +17,7 @@ html,
 body {
   height: 100%;
   width: 100%;
-  overflow: hidden; /* 锁死全局滚动 */
+  /* 移除 overflow: hidden，让各个页面自己管理滚动 */
 }
 
 body {
