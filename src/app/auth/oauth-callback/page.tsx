@@ -36,15 +36,8 @@ export default function OAuthCallback() {
         // 设置 sessionStorage 标记，表示当前浏览器会话是活跃的
         sessionStorage.setItem("hasActiveSession", "true");
 
-        // 显示欢迎提示
-        if (isNewUser) {
-          toast.success(`欢迎注册！${user.name || "用户"}`);
-        } else {
-          toast.success(`欢迎回来！${user.name || "用户"}`);
-        }
-
-        // 跳转到首页或 workspace-hub
-        router.push("/workspace-hub");
+        // 直接跳转到首页
+        router.push("/");
       } catch (error) {
         console.error("OAuth 回调处理失败:", error);
         toast.error("登录失败，请重试");
