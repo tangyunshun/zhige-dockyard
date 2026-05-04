@@ -516,10 +516,7 @@ export default function AdminWorkspacesPage() {
               </div>
             </div>
             <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
-              {workspaceData?.workspaces.reduce(
-                (sum, ws) => sum + ws._count.members,
-                0,
-              ) || 0}
+              {workspaceData?.stats?.totalMembers || 0}
             </div>
             <div className="text-sm text-slate-500 font-semibold">总成员数</div>
           </div>

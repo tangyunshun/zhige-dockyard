@@ -116,6 +116,12 @@ export async function GET(request: NextRequest) {
       (ws) => ws.status === "DISABLED",
     ).length;
 
+    // 总成员数（基于筛选后的数据）
+    const totalMembers = filteredWorkspaces.reduce(
+      (sum, ws) => sum + ws._count.members,
+      0,
+    );
+
     return NextResponse.json({
       success: true,
       data: {
@@ -126,6 +132,7 @@ export async function GET(request: NextRequest) {
         stats: {
           totalComponentCount,
           pendingCount,
+          totalMembers,
         },
       },
     });
