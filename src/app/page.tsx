@@ -14,7 +14,7 @@ export default function Home() {
     // 如果是关闭浏览器后重新打开，设置 sessionStorage 标记
     const userId = localStorage.getItem("userId");
     const hasSession = sessionStorage.getItem("hasActiveSession");
-    
+
     if (userId && !hasSession) {
       sessionStorage.setItem("hasActiveSession", "true");
       console.log("首页：检测到浏览器重新打开，已激活会话");
@@ -22,7 +22,7 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#f8fafc]">
+    <main className="min-h-screen bg-[#f8fafc] w-full overflow-x-hidden">
       <Header />
       <HeroSection />
       <CoreFeatures />

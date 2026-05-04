@@ -13,14 +13,16 @@
 /* ===================================
    全局视口与滚动管控 (Viewport & Scroll Management)
    =================================== */
-html,
-body {
-  height: 100%;
+html {
+  height: auto;
   width: 100%;
-  /* 移除 overflow: hidden，让各个页面自己管理滚动 */
+  overflow-x: hidden;
 }
 
 body {
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
   font-family: "Inter", "Noto Sans SC", sans-serif;
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;

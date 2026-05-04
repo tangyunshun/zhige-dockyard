@@ -27,7 +27,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased min-h-screen w-screen flex flex-col">
+      <body className="antialiased min-h-screen w-full flex flex-col overflow-y-auto">
         <ToastProvider>
           <AuthCheck>{children}</AuthCheck>
           <ActivityMonitor />
