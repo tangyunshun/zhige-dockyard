@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, User, LogOut, Hammer, Settings } from "lucide-react";
 import { Logo } from "./Logo";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import { useToast } from "./Toast";
 
 interface UserInfo {
   id: string;
@@ -24,6 +25,7 @@ interface Workspace {
 
 export default function Header() {
   const router = useRouter();
+  const toast = useToast();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
