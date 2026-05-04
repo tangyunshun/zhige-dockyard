@@ -105,19 +105,19 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 计算统计数据（基于筛选后的数据）
-    const totalComponentCount = filteredWorkspaces.reduce(
+    // 计算统计数据（基于所有工作空间，不受筛选影响）
+    const totalComponentCount = workspacesWithComponentCount.reduce(
       (sum, ws) => sum + ws.componentCount,
       0,
     );
 
     // 待审核空间：这里暂时用 DISABLED 状态作为待审核（实际应该有 PENDING 状态）
-    const pendingCount = filteredWorkspaces.filter(
+    const pendingCount = workspacesWithComponentCount.filter(
       (ws) => ws.status === "DISABLED",
     ).length;
 
-    // 总成员数（基于筛选后的数据）
-    const totalMembers = filteredWorkspaces.reduce(
+    // 总成员数（基于所有工作空间，不受筛选影响）
+    const totalMembers = workspacesWithComponentCount.reduce(
       (sum, ws) => sum + ws._count.members,
       0,
     );
