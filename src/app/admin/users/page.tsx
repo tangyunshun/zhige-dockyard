@@ -133,6 +133,7 @@ export default function AdminUsersPage() {
     loadUsers(currentPage);
   }, [
     currentPage,
+    searchQuery,
     filterRole,
     filterAccountStatus,
     filterLoginStatus,
@@ -227,18 +228,9 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleSearch = useCallback(
-    (searchValue: string = searchQuery) => {
-      setCurrentPage(1);
-      loadUsers(1, searchValue);
-    },
-    [searchQuery],
-  );
-
-  // 实时搜索处理函数（带防抖）
-  const handleRealTimeSearch = useCallback((value: string) => {
+  const handleSearch = useCallback(() => {
     setCurrentPage(1);
-    loadUsers(1, value);
+    loadUsers(1);
   }, []);
 
   const handleResetFilters = () => {
@@ -711,7 +703,6 @@ export default function AdminUsersPage() {
             <SearchInput
               value={searchQuery}
               onChange={setSearchQuery}
-              onSearch={handleRealTimeSearch}
               placeholder="搜索用户名、邮箱、手机号..."
               debounceMs={300}
             />
