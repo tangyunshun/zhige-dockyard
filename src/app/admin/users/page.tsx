@@ -747,8 +747,7 @@ export default function AdminUsersPage() {
                 if (key === "loginStatus") setFilterLoginStatus(value);
                 if (key === "membershipLevel") setFilterMembershipLevel(value);
               }}
-              onReset={handleResetFilters}
-              showResetButton={true}
+              showResetButton={false}
             />
             <button
               onClick={handleSearch}

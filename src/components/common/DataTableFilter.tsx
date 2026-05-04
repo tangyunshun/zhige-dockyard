@@ -45,15 +45,11 @@ export default function DataTableFilter({
             <select
               value={currentValue}
               onChange={(e) => onChange(filter.key, e.target.value)}
-              className={`appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium border transition-all cursor-pointer ${
-                isSelected
-                  ? "bg-[#3182ce] text-white border-[#3182ce] shadow-sm"
-                  : "bg-white text-slate-700 border-[#e2e8f0] hover:border-[#3182ce]"
-              }`}
+              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80 cursor-pointer"
             >
               {/* 全部选项 */}
               <option value="all">
-                {filter.placeholder || `全部${filter.label}`}
+                {filter.placeholder || `所有${filter.label}`}
               </option>
 
               {/* 动态生成的选项 */}
@@ -66,11 +62,9 @@ export default function DataTableFilter({
             </select>
 
             {/* 下拉箭头图标 */}
-            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
               <svg
-                className={`w-4 h-4 transition-transform ${
-                  isSelected ? "text-white" : "text-slate-500"
-                }`}
+                className="w-4 h-4 text-slate-500 transition-transform"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
