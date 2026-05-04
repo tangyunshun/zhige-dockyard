@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         workspaces: filteredWorkspaces,
-        total: filteredWorkspaces.length,
+        total: workspacesWithComponentCount.length, // 显示所有工作空间总数，不受筛选影响
         page,
         totalPages: Math.ceil(filteredWorkspaces.length / limit),
         stats: {
