@@ -756,9 +756,10 @@ function LoginForm() {
                       }`}
                       placeholder="请输入 11 位手机号"
                     />
-                  </div>
                     {errors.phone && (
-                      <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
+                      <p className="mt-1 text-xs text-red-500">
+                        {errors.phone}
+                      </p>
                     )}
                     {/* 手机号状态提示 */}
                     {accountCheckStatus.exists === false &&
