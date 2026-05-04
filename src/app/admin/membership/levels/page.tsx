@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import {
@@ -19,6 +19,7 @@ import {
   Check,
   X,
 } from "lucide-react";
+import SearchInput from "@/components/common/SearchInput";
 
 interface MembershipLevel {
   name: string;
@@ -96,9 +97,14 @@ export default function AdminMembershipLevelsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // 筛选状态
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterPrice, setFilterPrice] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+
   useEffect(() => {
     loadLevels();
-  }, []);
+  }, [searchQuery, filterPrice, filterStatus]);
 
   const loadLevels = async () => {
     try {
@@ -108,7 +114,13 @@ export default function AdminMembershipLevelsPage() {
 
       console.log("Loading levels with userId:", userId);
 
-      const res = await fetch("/api/admin/membership/levels", {
+      const params = new URLSearchParams({
+        ...(searchQuery && { search: searchQuery }),
+        ...(filterPrice !== "all" && { priceType: filterPrice }),
+        ...(filterStatus !== "all" && { status: filterStatus }),
+      });
+
+      const res = await fetch(`/api/admin/membership/levels?${params}`, {
         headers: {
           Authorization: `Bearer ${userId}`,
         },
@@ -330,24 +342,46 @@ export default function AdminMembershipLevelsPage() {
         {/* 操作栏 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 mb-6 overflow-hidden">
           <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="搜索会员等级..."
-                  className="pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
-                />
-              </div>
+          <div className="relative flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <SearchInput
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="搜索会员等级..."
+                debounceMs={300}
+              />
             </div>
-            <button
-              onClick={openCreateModal}
-              className="px-5 h-11 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-bold text-sm hover:shadow-xl hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              <span>新增会员等级</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 价格筛选 */}
+              <select
+                value={filterPrice}
+                onChange={(e) => setFilterPrice(e.target.value)}
+                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+              >
+                <option value="all">所有价格</option>
+                <option value="free">免费</option>
+                <option value="paid">付费</option>
+              </select>
+
+              {/* 状态筛选 */}
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+              >
+                <option value="all">所有状态</option>
+                <option value="active">已启用</option>
+                <option value="inactive">已禁用</option>
+              </select>
+
+              <button
+                onClick={openCreateModal}
+                className="px-5 h-11 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-bold text-sm hover:shadow-xl hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>新增会员等级</span>
+              </button>
+            </div>
           </div>
         </div>
 

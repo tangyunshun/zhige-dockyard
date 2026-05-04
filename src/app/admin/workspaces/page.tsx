@@ -123,6 +123,9 @@ export default function AdminWorkspacesPage() {
       }
 
       const result = await res.json();
+      console.log("API 返回的数据:", result.data);
+      console.log("统计数据:", result.data.stats);
+      console.log("总数:", result.data.total);
       setWorkspaceData(result.data);
     } catch (error) {
       console.error("Load workspaces error:", error);

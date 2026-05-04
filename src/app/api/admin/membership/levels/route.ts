@@ -24,8 +24,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
     }
 
+    // 获取查询参数
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get("search") || "";
+    const priceType = searchParams.get("priceType") || "";
+    const status = searchParams.get("status") || "";
+
+    // 构建筛选条件
+    const where: any = {};
+
+    // 搜索筛选
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { nameZh: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    // 价格筛选
+    if (priceType === "free") {
+      where.priceMonthly = 0;
+    } else if (priceType === "paid") {
+      where.priceMonthly = { gt: 0 };
+    }
+
+    // 状态筛选
+    if (status === "active") {
+      where.isActive = true;
+    } else if (status === "inactive") {
+      where.isActive = false;
+    }
+
     // 获取所有会员等级
     const levels = await prisma.membershipLevel.findMany({
+      where,
       orderBy: {
         sortOrder: "asc",
       },

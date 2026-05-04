@@ -42,6 +42,42 @@ export async function GET(request: NextRequest) {
       where.type = type;
     }
 
+    // 先获取所有工作空间（用于统计，不受筛选影响）
+    const allWorkspaces = await prisma.workspace.findMany({
+      include: {
+        members: {
+          include: {
+            user: {
+              select: { name: true, email: true },
+            },
+          },
+        },
+        _count: {
+          select: { members: true },
+        },
+      },
+    });
+
+    // 统计所有工作空间的组件数量
+    const allWorkspacesWithComponentCount = await Promise.all(
+      allWorkspaces.map(async (workspace) => {
+        const members = await prisma.workspaceMember.findMany({
+          where: { workspaceId: workspace.id },
+          select: { userId: true },
+        });
+        const memberIds = members.map((m) => m.userId);
+        const componentCountValue = await prisma.componenttask.count({
+          where: { userId: { in: memberIds } },
+        });
+        return {
+          ...workspace,
+          componentCount: componentCountValue,
+          members: workspace.members,
+        };
+      }),
+    );
+
+    // 再获取筛选后的工作空间（用于列表显示）
     const [workspaces, total] = await Promise.all([
       prisma.workspace.findMany({
         where,
@@ -64,25 +100,17 @@ export async function GET(request: NextRequest) {
       prisma.workspace.count({ where }),
     ]);
 
-    // 统计每个空间的组件数量（去重）并筛选
+    // 统计筛选后的工作空间的组件数量
     const workspacesWithComponentCount = await Promise.all(
       workspaces.map(async (workspace) => {
-        // 获取空间的所有成员
         const members = await prisma.workspaceMember.findMany({
           where: { workspaceId: workspace.id },
           select: { userId: true },
         });
-
         const memberIds = members.map((m) => m.userId);
-
-        // 统计成员创建的组件数量（去重）
         const componentCountValue = await prisma.componenttask.count({
-          where: {
-            userId: { in: memberIds },
-          },
+          where: { userId: { in: memberIds } },
         });
-
-        // 保留原始的 members 数据（包含用户信息）
         return {
           ...workspace,
           componentCount: componentCountValue,
@@ -106,18 +134,18 @@ export async function GET(request: NextRequest) {
     }
 
     // 计算统计数据（基于所有工作空间，不受筛选影响）
-    const totalComponentCount = workspacesWithComponentCount.reduce(
+    const totalComponentCount = allWorkspacesWithComponentCount.reduce(
       (sum, ws) => sum + ws.componentCount,
       0,
     );
 
     // 待审核空间：这里暂时用 DISABLED 状态作为待审核（实际应该有 PENDING 状态）
-    const pendingCount = workspacesWithComponentCount.filter(
+    const pendingCount = allWorkspacesWithComponentCount.filter(
       (ws) => ws.status === "DISABLED",
     ).length;
 
     // 总成员数（基于所有工作空间，不受筛选影响）
-    const totalMembers = workspacesWithComponentCount.reduce(
+    const totalMembers = allWorkspacesWithComponentCount.reduce(
       (sum, ws) => sum + ws._count.members,
       0,
     );
@@ -126,7 +154,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         workspaces: filteredWorkspaces,
-        total: workspacesWithComponentCount.length, // 显示所有工作空间总数，不受筛选影响
+        total: allWorkspacesWithComponentCount.length, // 显示所有工作空间总数，不受筛选影响
         page,
         totalPages: Math.ceil(filteredWorkspaces.length / limit),
         stats: {
