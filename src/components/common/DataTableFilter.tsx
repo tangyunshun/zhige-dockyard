@@ -41,43 +41,26 @@ export default function DataTableFilter({
         const isSelected = currentValue !== "all";
 
         return (
-          <div key={filter.key} className="relative">
-            <select
-              value={currentValue}
-              onChange={(e) => onChange(filter.key, e.target.value)}
-              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80 cursor-pointer appearance-none pr-10"
-            >
-              {/* 全部选项 */}
-              <option value="all">
-                {filter.placeholder || `所有${filter.label}`}
+          <select
+            key={filter.key}
+            value={currentValue}
+            onChange={(e) => onChange(filter.key, e.target.value)}
+            className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80 cursor-pointer"
+          >
+            {/* 全部选项 */}
+            <option value="all">
+              {filter.placeholder || `所有${filter.label}`}
+            </option>
+
+            {/* 动态生成的选项 */}
+            {filter.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+                {option.count !== undefined && ` (${option.count})`}
               </option>
-
-              {/* 动态生成的选项 */}
-              {filter.options.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                  {option.count !== undefined && ` (${option.count})`}
-                </option>
-              ))}
-            </select>
-
-            {/* 自定义下拉箭头 - 覆盖浏览器默认样式 */}
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-              <svg
-                className="w-4 h-4 text-slate-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </div>
-          </div>
+            ))}
+          </select>
+        );
         );
       })}
 
