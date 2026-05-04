@@ -16,12 +16,57 @@ import { useToast } from "./Toast";
 export function ActivityMonitor() {
   const lastCheckRef = useRef<number>(0);
   const checkingRef = useRef<boolean>(false);
+  const isLoggingOutRef = useRef<boolean>(false); // 标记是否正在退出登录
   const toast = useToast();
+
+  // 监听退出登录事件
+  useEffect(() => {
+    const handleLogoutStart = () => {
+      isLoggingOutRef.current = true;
+      console.log("[ActivityMonitor] 用户开始退出登录，暂停检查");
+    };
+
+    const handleLogoutEnd = () => {
+      isLoggingOutRef.current = false;
+      console.log("[ActivityMonitor] 用户退出登录完成，恢复检查");
+    };
+
+    window.addEventListener("logout-start", handleLogoutStart);
+    window.addEventListener("logout-end", handleLogoutEnd);
+
+    return () => {
+      window.removeEventListener("logout-start", handleLogoutStart);
+      window.removeEventListener("logout-end", handleLogoutEnd);
+    };
+  }, []);
 
   // 检查是否超时
   const checkTimeout = async () => {
+    // 如果正在退出登录，跳过检查
+    if (isLoggingOutRef.current) {
+      console.log("[ActivityMonitor] 用户正在退出登录，跳过检查");
+      return;
+    }
+
     // 如果正在检查，跳过
     if (checkingRef.current) {
+      return;
+    }
+
+    const userId =
+      typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+    const hasCookie =
+      typeof window !== "undefined"
+        ? document.cookie.includes("auth_token=")
+        : false;
+
+    // 关键检查：用户必须已登录（有 userId 且有 auth_token）
+    if (!userId || !hasCookie) {
+      console.log("[ActivityMonitor] 用户未登录，跳过检查", {
+        userId,
+        hasCookie,
+      });
+      checkingRef.current = false;
       return;
     }
 
@@ -35,23 +80,6 @@ export function ActivityMonitor() {
     checkingRef.current = true;
 
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : null;
-      const hasCookie =
-        typeof window !== "undefined"
-          ? document.cookie.includes("auth_token=")
-          : false;
-
-      // 关键检查：用户必须已登录（有 userId 且有 auth_token）
-      if (!userId || !hasCookie) {
-        console.log("[ActivityMonitor] 用户未登录，跳过检查", {
-          userId,
-          hasCookie,
-        });
-        checkingRef.current = false;
-        return;
-      }
-
       // 调用 touch API 检查是否超时
       const res = await fetch("/api/auth/touch", {
         method: "POST",
