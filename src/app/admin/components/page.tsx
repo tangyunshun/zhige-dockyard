@@ -334,11 +334,14 @@ export default function AdminComponentsPage() {
       selectedComponents?.some((c) => c.isPublished) || false;
     const hasUnpublished =
       selectedComponents?.some((c) => !c.isPublished) || false;
-    const hasUsed = selectedComponents?.some((c) => c.usageCount > 0) || false;
+    // 检查是否有未上架且未被使用的组件（可以删除的）
+    const hasDeletable = selectedComponents?.some(
+      (c) => !c.isPublished && c.usageCount === 0,
+    ) || false;
 
     return (
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-slate-600">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-medium text-slate-600 whitespace-nowrap">
           已选择 {selectedIds.length} 项
         </span>
         {/* 批量上架：只有存在未上架组件时显示 */}
@@ -359,20 +362,14 @@ export default function AdminComponentsPage() {
             批量下架
           </button>
         )}
-        {/* 批量删除：只有存在未使用的组件时显示 */}
-        {!hasUsed && (
+        {/* 批量删除：只有存在未上架且未使用的组件时显示 */}
+        {hasDeletable && (
           <button
             onClick={handleBatchDelete}
             className="px-4 h-10 bg-[#ef4444]/10 text-[#ef4444] font-semibold rounded-xl hover:bg-[#ef4444]/20 transition-all duration-300 whitespace-nowrap"
           >
             批量删除
           </button>
-        )}
-        {/* 如果有已使用的组件，显示提示 */}
-        {hasUsed && (
-          <span className="text-sm text-slate-500">
-            （选中的组件中已有被使用的，无法删除）
-          </span>
         )}
       </div>
     );
@@ -859,16 +856,32 @@ export default function AdminComponentsPage() {
                       <input
                         type="checkbox"
                         checked={
-                          selectedIds.length === components.length &&
-                          components.length > 0
+                          components.length > 0 &&
+                          components.every((c) => selectedIds.includes(c.id))
                         }
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedIds(components.map((c) => c.id));
-                            setSelectedComponents(components);
+                            // 选中当前页面的所有组件
+                            const newIds = Array.from(
+                              new Set([...selectedIds, ...components.map((c) => c.id)]),
+                            );
+                            setSelectedIds(newIds);
+                            setSelectedComponents([
+                              ...selectedComponents,
+                              ...components.filter(
+                                (c) => !selectedIds.includes(c.id),
+                              ),
+                            ]);
                           } else {
-                            setSelectedIds([]);
-                            setSelectedComponents([]);
+                            // 取消选中当前页面的所有组件
+                            setSelectedIds(
+                              selectedIds.filter((id) => !components.map((c) => c.id).includes(id)),
+                            );
+                            setSelectedComponents(
+                              selectedComponents.filter(
+                                (c) => !components.map((comp) => comp.id).includes(c.id),
+                              ),
+                            );
                           }
                         }}
                         className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"

@@ -23,23 +23,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
-    // 获取全局统计数据（不受筛选影响）
-    const [total, published, stages, totalUsage] = await Promise.all([
-      prisma.componenttask.count(),
-      prisma.componenttask.count({
-        where: {
-          isPublished: true,
-        },
-      }),
-      prisma.componenttask.groupBy({
-        by: ["type"],
-      }),
-      prisma.componenttask.aggregate({
-        _sum: {
-          usageCount: true,
-        },
-      }),
-    ]);
+    // 查询所有记录，然后在内存中过滤掉阶段配置
+    const allComponents = await prisma.componenttask.findMany();
+
+    // 过滤掉阶段配置数据
+    const filteredComponents = allComponents.filter(
+      (component) => component.config?.isStageConfig !== true,
+    );
+
+    // 计算统计数据
+    const total = filteredComponents.length;
+    const published = filteredComponents.filter((c) => c.isPublished).length;
+    const stages = Array.from(new Set(filteredComponents.map((c) => c.type))).filter(Boolean);
+    const totalUsage = filteredComponents.reduce(
+      (sum, c) => sum + (c.usageCount || 0),
+      0,
+    );
 
     return NextResponse.json({
       success: true,
@@ -47,7 +46,7 @@ export async function GET(request: NextRequest) {
         total,
         published,
         stages: stages.length,
-        totalUsage: totalUsage._sum.usageCount || 0,
+        totalUsage,
       },
     });
   } catch (error) {

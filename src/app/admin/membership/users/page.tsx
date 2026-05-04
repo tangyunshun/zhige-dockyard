@@ -71,20 +71,35 @@ export default function AdminMembershipUsersPage() {
 
       const res = await fetch(`/api/admin/membership/users?${params}`, {
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${userId}`,
         },
       });
+
+      console.log("=== API 响应 ===");
+      console.log("状态码:", res.status);
+
+      const responseData = await res.json();
+      console.log("响应数据:", responseData);
+
       if (res.ok) {
-        const data = await res.json();
-        setUsers(data.data.users);
-        setPagination(data.data.pagination);
+        console.log("✓ 加载成功");
+        setUsers(responseData.data.users);
+        setPagination(responseData.data.pagination);
       } else {
-        const error = await res.json();
-        console.error("Load users error:", error);
-        toast.error(error.message || "加载用户失败");
+        console.error("✗ 加载失败");
+        console.error("错误详情:", responseData);
+        if (responseData.error) {
+          console.error("错误消息:", responseData.error);
+        }
+        if (responseData.code) {
+          console.error("错误代码:", responseData.code);
+        }
+        toast.error(responseData.message || "加载用户失败");
       }
     } catch (error) {
-      console.error("Load users error:", error);
+      console.error("=== 捕获异常 ===");
+      console.error("错误:", error);
       toast.error("加载失败");
     } finally {
       setLoading(false);
@@ -137,7 +152,6 @@ export default function AdminMembershipUsersPage() {
                 className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
               >
                 <option value="">全部等级</option>
-                <option value="FREE">免费版</option>
                 <option value="BRONZE">青铜版</option>
                 <option value="SILVER">白银版</option>
                 <option value="GOLD">黄金版</option>

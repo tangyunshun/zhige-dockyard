@@ -8,11 +8,20 @@ import { validateUser, isAdminRole } from "@/lib/auth";
  */
 export async function GET(request: NextRequest) {
   try {
+    console.log("=== 获取会员用户列表 ===");
+
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
+    console.log(
+      "Auth Header:",
+      authHeader ? authHeader.substring(0, 20) + "..." : "无",
+    );
+
     const authResult = await validateUser(authHeader);
+    console.log("Auth Result:", authResult);
 
     if (!authResult.valid) {
+      console.log("认证失败:", authResult.error);
       return NextResponse.json(
         { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
@@ -21,6 +30,7 @@ export async function GET(request: NextRequest) {
 
     // 检查是否是管理员
     if (!isAdminRole(authResult.user!.role)) {
+      console.log("用户不是管理员:", authResult.user);
       return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
     }
 
@@ -30,13 +40,41 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const membershipLevel = searchParams.get("membershipLevel");
 
+    console.log("查询参数:", { page, limit, membershipLevel });
+
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    // 获取所有会员等级配置
+    const levels = await prisma.membershipLevel.findMany({
+      select: {
+        name: true,
+        nameZh: true,
+        icon: true,
+        color: true,
+      },
+    });
+
+    const levelNames = levels.map((level) => level.name);
+    console.log("可用的会员等级:", levelNames);
+
+    // 只显示真正的会员等级（排除 FREE 免费版）
+    const memberLevels = ["BRONZE", "SILVER", "GOLD", "DIAMOND", "CROWN"];
+    const validLevels = levelNames.length > 0 
+      ? levelNames.filter(level => memberLevels.includes(level))
+      : memberLevels;
+
+    const where: any = {
+      // 只显示会员用户（排除免费版、空字符串和 null）
+      membershipLevel: {
+        in: validLevels,
+      },
+    };
 
     if (membershipLevel) {
       where.membershipLevel = membershipLevel;
     }
+
+    console.log("查询条件:", where);
 
     // 获取用户列表
     const [users, total] = await Promise.all([
@@ -59,15 +97,7 @@ export async function GET(request: NextRequest) {
       prisma.user.count({ where }),
     ]);
 
-    // 获取所有会员等级配置
-    const levels = await prisma.membershipLevel.findMany({
-      select: {
-        name: true,
-        nameZh: true,
-        icon: true,
-        color: true,
-      },
-    });
+    console.log("查询结果:", { usersCount: users.length, total });
 
     const levelMap = levels.reduce(
       (acc, level) => {
@@ -92,8 +122,23 @@ export async function GET(request: NextRequest) {
         },
       },
     });
-  } catch (error) {
-    console.error("Get membership users error:", error);
-    return NextResponse.json({ message: "获取会员用户失败" }, { status: 500 });
+  } catch (error: any) {
+    console.error("=== 获取会员用户失败 ===");
+    console.error("错误类型:", error.constructor.name);
+    console.error("错误消息:", error.message);
+    console.error("错误代码:", error.code);
+    console.error("错误堆栈:", error.stack);
+    if (error.meta) {
+      console.error("错误详情:", error.meta);
+    }
+
+    return NextResponse.json(
+      {
+        message: "获取会员用户失败",
+        error: error.message,
+        code: error.code,
+      },
+      { status: 500 },
+    );
   }
 }

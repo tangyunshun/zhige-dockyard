@@ -169,6 +169,7 @@ export default function AdminWorkspacesPage() {
         }
 
         showToast("工作空间已删除", "success");
+        setCurrentPage(1);
         loadWorkspaces(currentPage);
       } catch (error) {
         console.error("Delete workspace error:", error);
@@ -673,9 +674,11 @@ export default function AdminWorkspacesPage() {
                       <input
                         type="checkbox"
                         checked={
-                          selectedWorkspaces.size ===
-                            workspaceData?.workspaces.length &&
-                          workspaceData?.workspaces.length > 0
+                          workspaceData?.workspaces.length !== undefined &&
+                          workspaceData.workspaces.length > 0 &&
+                          workspaceData.workspaces.every((ws) =>
+                            selectedWorkspaces.has(ws.id),
+                          )
                         }
                         onChange={toggleSelectAll}
                         className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"

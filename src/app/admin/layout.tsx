@@ -60,9 +60,15 @@ const adminMenuItems = [
   },
   {
     icon: FileText,
-    label: "内容管理",
+    label: "阶段管理",
     href: "/admin/content",
-    description: "组件审核、文档管理",
+    description: "管理组件开发阶段",
+  },
+  {
+    icon: FileText,
+    label: "文档管理",
+    href: "/admin/documents",
+    description: "系统文档、用户指南",
   },
   {
     icon: BarChart3,

@@ -32,68 +32,68 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate") || "";
     const endDate = searchParams.get("endDate") || "";
 
-    const skip = (page - 1) * limit;
-    const where: any = {};
-
-    // 模糊搜索组件名称
-    if (search) {
-      where.name = {
-        contains: search,
-      };
-    }
-
-    // 按阶段筛选
-    if (stage) {
-      where.type = stage;
-    }
-
-    // 按上架状态筛选
-    if (published) {
-      where.isPublished = published === "true";
-    }
-
-    // 按日期范围筛选（创建时间）
-    if (startDate || endDate) {
-      where.createdAt = {};
-      if (startDate) {
-        where.createdAt.gte = new Date(startDate);
-      }
-      if (endDate) {
-        // 包含结束日期的整天
-        const endDateObj = new Date(endDate);
-        endDateObj.setDate(endDateObj.getDate() + 1);
-        where.createdAt.lt = endDateObj;
-      }
-    }
-
-    const [components, total] = await Promise.all([
-      prisma.componenttask.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true,
-              role: true,
-            },
+    // 查询所有记录，然后在内存中过滤掉阶段配置
+    const allComponents = await prisma.componenttask.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+            role: true,
           },
         },
-      }),
-      prisma.componenttask.count({ where }),
-    ]);
-
-    // 获取所有阶段
-    const stages = await prisma.componenttask.findMany({
-      select: {
-        type: true,
       },
-      distinct: ["type"],
     });
+
+    // 在内存中过滤：排除阶段配置数据
+    let filteredComponents = allComponents.filter(
+      (component) => component.config?.isStageConfig !== true,
+    );
+
+    // 应用其他筛选条件
+    if (search) {
+      filteredComponents = filteredComponents.filter((c) =>
+        c.name?.includes(search),
+      );
+    }
+
+    if (stage) {
+      filteredComponents = filteredComponents.filter((c) => c.type === stage);
+    }
+
+    if (published) {
+      filteredComponents = filteredComponents.filter(
+        (c) => c.isPublished === (published === "true"),
+      );
+    }
+
+    if (startDate) {
+      const startDateObj = new Date(startDate);
+      filteredComponents = filteredComponents.filter(
+        (c) => new Date(c.createdAt) >= startDateObj,
+      );
+    }
+
+    if (endDate) {
+      const endDateObj = new Date(endDate);
+      endDateObj.setDate(endDateObj.getDate() + 1);
+      filteredComponents = filteredComponents.filter(
+        (c) => new Date(c.createdAt) < endDateObj,
+      );
+    }
+
+    // 分页
+    const total = filteredComponents.length;
+    const skip = (page - 1) * limit;
+    const components = filteredComponents.slice(skip, skip + limit);
+
+    // 获取所有阶段（排除阶段配置）
+    const stages = Array.from(
+      new Set(filteredComponents.map((c) => c.type)),
+    ).filter(Boolean);
 
     return NextResponse.json({
       success: true,
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         total,
         page,
         totalPages: Math.ceil(total / limit),
-        stages: stages.map((t) => t.type),
+        stages: stages,
       },
     });
   } catch (error) {

@@ -61,7 +61,6 @@ export default function DataTableFilter({
             ))}
           </select>
         );
-        );
       })}
 
       {/* 重置按钮 */}

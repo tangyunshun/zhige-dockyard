@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/Toast";
 import { useLogout } from "@/hooks/useLogout";
 import { Logo } from "@/components/Logo";
 import {
@@ -584,6 +585,7 @@ const componentStages: ComponentStage[] = componentStagesData.map(
 
 export default function WorkspaceHub() {
   const router = useRouter();
+  const toast = useToast();
   const handleLogout = useLogout();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [personalWorkspace, setPersonalWorkspace] = useState<Workspace | null>(

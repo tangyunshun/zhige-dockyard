@@ -96,6 +96,7 @@ export default function AdminMembershipLevelsPage() {
     isPopular: false,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // 筛选状态
   const [searchQuery, setSearchQuery] = useState("");
@@ -173,6 +174,7 @@ export default function AdminMembershipLevelsPage() {
 
       if (res.ok) {
         toast.success("删除成功");
+        setCurrentPage(1);
         loadLevels();
       } else {
         const error = await res.json();
@@ -262,56 +264,168 @@ export default function AdminMembershipLevelsPage() {
     setShowCreateModal(true);
   };
 
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    // 等级标识验证
+    if (!formData.name) {
+      errors.name = "等级标识不能为空";
+    } else if (!/^[A-Z_]+$/.test(formData.name)) {
+      errors.name = "等级标识只能包含大写字母和下划线";
+    }
+
+    // 中文名称验证
+    if (!formData.nameZh) {
+      errors.nameZh = "中文名称不能为空";
+    } else if (formData.nameZh.length < 2 || formData.nameZh.length > 20) {
+      errors.nameZh = "中文名称长度必须在 2-20 个字符之间";
+    }
+
+    // 颜色验证
+    if (!formData.color) {
+      errors.color = "主题色不能为空";
+    } else if (!/^#[0-9A-Fa-f]{6}$/.test(formData.color)) {
+      errors.color = "颜色格式不正确，请使用 #RRGGBB 格式";
+    }
+
+    // 数值验证（-1 表示无限制）
+    if (formData.maxPersonalWorkspaces < -1) {
+      errors.maxPersonalWorkspaces = "个人空间数量不能小于 -1";
+    } else if (formData.maxPersonalWorkspaces === -1) {
+      // -1 表示无限制，允许
+    } else if (formData.maxPersonalWorkspaces < 0) {
+      errors.maxPersonalWorkspaces = "个人空间数量不能为负数";
+    }
+
+    if (formData.maxEnterpriseWorkspaces < -1) {
+      errors.maxEnterpriseWorkspaces = "企业空间数量不能小于 -1";
+    } else if (formData.maxEnterpriseWorkspaces === -1) {
+      // -1 表示无限制，允许
+    } else if (formData.maxEnterpriseWorkspaces < 0) {
+      errors.maxEnterpriseWorkspaces = "企业空间数量不能为负数";
+    }
+
+    if (formData.maxComponents < -1) {
+      errors.maxComponents = "组件数量不能小于 -1";
+    } else if (formData.maxComponents === -1) {
+      // -1 表示无限制，允许
+    } else if (formData.maxComponents < 0) {
+      errors.maxComponents = "组件数量不能为负数";
+    }
+
+    if (formData.maxTeamSize < -1) {
+      errors.maxTeamSize = "团队规模不能小于 -1";
+    } else if (formData.maxTeamSize === -1) {
+      // -1 表示无限制，允许
+    } else if (formData.maxTeamSize < 1) {
+      errors.maxTeamSize = "团队规模至少为 1 人";
+    }
+
+    if (formData.maxStorage < -1) {
+      errors.maxStorage = "存储空间不能小于 -1";
+    } else if (formData.maxStorage === -1) {
+      // -1 表示无限制，允许
+    } else if (formData.maxStorage < 0) {
+      errors.maxStorage = "存储空间不能为负数";
+    }
+
+    if (formData.maxApiCalls < -1) {
+      errors.maxApiCalls = "API 调用次数不能小于 -1";
+    } else if (formData.maxApiCalls === -1) {
+      // -1 表示无限制，允许
+    } else if (formData.maxApiCalls < 0) {
+      errors.maxApiCalls = "API 调用次数不能为负数";
+    }
+    if (formData.priceMonthly < 0) {
+      errors.priceMonthly = "月付价格不能为负数";
+    }
+    if (formData.priceYearly < 0) {
+      errors.priceYearly = "年付价格不能为负数";
+    }
+    if (formData.trialDays < 0) {
+      errors.trialDays = "试用天数不能为负数";
+    }
+
+    console.log("=== 表单验证结果 ===");
+    console.log("表单数据:", formData);
+    console.log("验证错误:", errors);
+    console.log("错误数量:", Object.keys(errors).length);
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async () => {
-    // 验证必填字段
-    if (!formData.name || !formData.nameZh) {
-      toast.error("请填写等级标识和中文名称");
+    // 验证表单
+    if (!validateForm()) {
+      toast.error("请修正表单中的错误");
+      // 滚动到第一个错误字段
+      const firstErrorField = document.querySelector('[data-error="true"]');
+      if (firstErrorField) {
+        firstErrorField.scrollIntoView({ behavior: "smooth", block: "center" });
+        (firstErrorField as HTMLElement).focus();
+      }
       return;
     }
 
-    // 验证等级标识格式
-    if (!/^[A-Z_]+$/.test(formData.name)) {
-      toast.error("等级标识只能包含大写字母和下划线");
-      return;
-    }
+    // 调试：打印更新信息
+    console.log("=== 提交更新 ===");
+    console.log("editingLevel:", editingLevel);
+    console.log("formData.name:", formData.name);
+    console.log("is editing:", !!editingLevel);
 
     setSubmitting(true);
 
+    const userId =
+      typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+    const url = editingLevel
+      ? `/api/admin/membership/levels/${formData.name}`
+      : "/api/admin/membership/levels";
+
+    const method = editingLevel ? "PUT" : "POST";
+
+    const requestBody = {
+      ...formData,
+      maxStorage: formData.maxStorage * 1073741824, // 转换为字节
+      features: formData.features
+        ? formData.features.split("\n").filter((f) => f.trim())
+        : [],
+    };
+
+    console.log("发送请求:", url, method);
+    console.log("请求体:", requestBody);
+
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      const url = editingLevel
-        ? `/api/admin/membership/levels/${formData.name}`
-        : "/api/admin/membership/levels";
-
-      const method = editingLevel ? "PUT" : "POST";
-
       const res = await fetch(url, {
         method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${userId}`,
         },
-        body: JSON.stringify({
-          ...formData,
-          maxStorage: formData.maxStorage * 1073741824, // 转换为字节
-          features: formData.features
-            ? formData.features.split("\n").filter((f) => f.trim())
-            : [],
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json();
+      console.log("=== API 响应 ===");
+      console.log("状态码:", res.status);
+      console.log("响应数据:", data);
 
       if (res.ok) {
+        console.log("✓ 更新成功");
         toast.success(editingLevel ? "更新成功" : "创建成功");
         setShowCreateModal(false);
         loadLevels();
       } else {
+        console.error("✗ 更新失败");
+        console.error("错误详情:", data);
+        if (data.debug) {
+          console.error("调试信息:", data.debug);
+        }
         toast.error(data.message || "操作失败");
       }
     } catch (error) {
-      console.error("Submit level error:", error);
+      console.error("=== 捕获异常 ===");
+      console.error("错误:", error);
       toast.error("操作失败");
     } finally {
       setSubmitting(false);
@@ -469,30 +583,37 @@ export default function AdminMembershipLevelsPage() {
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <Database className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                             <span className="whitespace-nowrap">
-                              企业空间：{Number(level.maxEnterpriseWorkspaces)}
-                              个
+                              企业空间：
+                              {Number(level.maxEnterpriseWorkspaces) === -1
+                                ? "无限制"
+                                : `${Number(level.maxEnterpriseWorkspaces)}个`}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <Box className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                             <span className="whitespace-nowrap">
-                              组件：{Number(level.maxComponents)}个
+                              组件：
+                              {Number(level.maxComponents) === -1
+                                ? "无限制"
+                                : `${Number(level.maxComponents)}个`}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <Users className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                             <span className="whitespace-nowrap">
-                              团队：{Number(level.maxTeamSize)}人
+                              团队：
+                              {Number(level.maxTeamSize) === -1
+                                ? "无限制"
+                                : `${Number(level.maxTeamSize)}人`}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 whitespace-nowrap">
                             <Database className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                             <span className="whitespace-nowrap">
                               存储：
-                              {(Number(level.maxStorage) / 1073741824).toFixed(
-                                1,
-                              )}
-                              GB
+                              {Number(level.maxStorage) === -1
+                                ? "无限制"
+                                : `${(Number(level.maxStorage) / 1073741824).toFixed(1)}GB`}
                             </span>
                           </div>
                         </div>
@@ -583,7 +704,7 @@ export default function AdminMembershipLevelsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      等级标识 *
+                      等级标识 <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -596,12 +717,20 @@ export default function AdminMembershipLevelsPage() {
                       }
                       disabled={!!editingLevel}
                       placeholder="如：FREE, BRONZE, SILVER"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] disabled:bg-slate-100"
+                      data-error={!!formErrors.name}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] disabled:bg-slate-100 ${
+                        formErrors.name ? "border-red-500" : "border-slate-200"
+                      }`}
                     />
+                    {formErrors.name && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formErrors.name}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      中文名称 *
+                      中文名称 <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -610,8 +739,18 @@ export default function AdminMembershipLevelsPage() {
                         setFormData({ ...formData, nameZh: e.target.value })
                       }
                       placeholder="如：免费版，青铜版"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      data-error={!!formErrors.nameZh}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
+                        formErrors.nameZh
+                          ? "border-red-500"
+                          : "border-slate-200"
+                      }`}
                     />
+                    {formErrors.nameZh && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formErrors.nameZh}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -629,7 +768,7 @@ export default function AdminMembershipLevelsPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      主题色
+                      主题色 <span className="text-red-500">*</span>
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -647,9 +786,19 @@ export default function AdminMembershipLevelsPage() {
                           setFormData({ ...formData, color: e.target.value })
                         }
                         placeholder="#3182ce"
-                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                        data-error={!!formErrors.color}
+                        className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
+                          formErrors.color
+                            ? "border-red-500"
+                            : "border-slate-200"
+                        }`}
                       />
                     </div>
+                    {formErrors.color && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formErrors.color}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -681,25 +830,78 @@ export default function AdminMembershipLevelsPage() {
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       个人空间数量
                     </label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="unlimited-personal"
+                        checked={formData.maxPersonalWorkspaces === -1}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            maxPersonalWorkspaces: e.target.checked ? -1 : 1,
+                          })
+                        }
+                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
+                      />
+                      <label
+                        htmlFor="unlimited-personal"
+                        className="text-sm text-slate-600"
+                      >
+                        无限制
+                      </label>
+                    </div>
                     <input
                       type="number"
-                      value={formData.maxPersonalWorkspaces}
+                      value={
+                        formData.maxPersonalWorkspaces === -1
+                          ? ""
+                          : formData.maxPersonalWorkspaces
+                      }
                       onChange={(e) =>
                         setFormData({
                           ...formData,
                           maxPersonalWorkspaces: parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      disabled={formData.maxPersonalWorkspaces === -1}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
+                        formData.maxPersonalWorkspaces === -1
+                          ? "bg-slate-100 text-slate-400"
+                          : ""
+                      } ${formErrors.maxPersonalWorkspaces ? "border-red-500" : "border-slate-200"}`}
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       企业空间数量
                     </label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="unlimited-enterprise"
+                        checked={formData.maxEnterpriseWorkspaces === -1}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            maxEnterpriseWorkspaces: e.target.checked ? -1 : 1,
+                          })
+                        }
+                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
+                      />
+                      <label
+                        htmlFor="unlimited-enterprise"
+                        className="text-sm text-slate-600"
+                      >
+                        无限制
+                      </label>
+                    </div>
                     <input
                       type="number"
-                      value={formData.maxEnterpriseWorkspaces}
+                      value={
+                        formData.maxEnterpriseWorkspaces === -1
+                          ? ""
+                          : formData.maxEnterpriseWorkspaces
+                      }
                       onChange={(e) =>
                         setFormData({
                           ...formData,
@@ -707,39 +909,100 @@ export default function AdminMembershipLevelsPage() {
                             parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      disabled={formData.maxEnterpriseWorkspaces === -1}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
+                        formData.maxEnterpriseWorkspaces === -1
+                          ? "bg-slate-100 text-slate-400"
+                          : ""
+                      } ${formErrors.maxEnterpriseWorkspaces ? "border-red-500" : "border-slate-200"}`}
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       组件数量上限
                     </label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="unlimited-components"
+                        checked={formData.maxComponents === -1}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            maxComponents: e.target.checked ? -1 : 100,
+                          })
+                        }
+                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
+                      />
+                      <label
+                        htmlFor="unlimited-components"
+                        className="text-sm text-slate-600"
+                      >
+                        无限制
+                      </label>
+                    </div>
                     <input
                       type="number"
-                      value={formData.maxComponents}
+                      value={
+                        formData.maxComponents === -1
+                          ? ""
+                          : formData.maxComponents
+                      }
                       onChange={(e) =>
                         setFormData({
                           ...formData,
                           maxComponents: parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      disabled={formData.maxComponents === -1}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
+                        formData.maxComponents === -1
+                          ? "bg-slate-100 text-slate-400"
+                          : ""
+                      } ${formErrors.maxComponents ? "border-red-500" : "border-slate-200"}`}
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       团队规模上限（人）
                     </label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="unlimited-team"
+                        checked={formData.maxTeamSize === -1}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            maxTeamSize: e.target.checked ? -1 : 5,
+                          })
+                        }
+                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
+                      />
+                      <label
+                        htmlFor="unlimited-team"
+                        className="text-sm text-slate-600"
+                      >
+                        无限制
+                      </label>
+                    </div>
                     <input
                       type="number"
-                      value={formData.maxTeamSize}
+                      value={
+                        formData.maxTeamSize === -1 ? "" : formData.maxTeamSize
+                      }
                       onChange={(e) =>
                         setFormData({
                           ...formData,
                           maxTeamSize: parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      disabled={formData.maxTeamSize === -1}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
+                        formData.maxTeamSize === -1
+                          ? "bg-slate-100 text-slate-400"
+                          : ""
+                      } ${formErrors.maxTeamSize ? "border-red-500" : "border-slate-200"}`}
                     />
                   </div>
                   <div>

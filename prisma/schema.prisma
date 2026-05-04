@@ -7,41 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 工作空间类型枚举
-enum WorkspaceType {
-  PERSONAL
-  ENTERPRISE
-}
-
-// 工作空间角色枚举
-enum WorkspaceRole {
-  OWNER
-  ADMIN
-  MEMBER
-}
-
-
-
 model componenttask {
   id          String    @id
   name        String
   description String?
-  type        String    // 组件类型/阶段
-  status      String    @default("pending")  // pending | published | offline (上架/下架状态)
+  type        String
+  status      String    @default("pending")
   progress    Int       @default(0)
   config      Json?
   result      Json?
   userId      String?
   tenantId    String?
-  icon        String?   // 组件图标
-  category    String?   // 组件分类
-  tags        String?   // 组件标签（逗号分隔）
-  sortOrder   Int       @default(0)  // 排序权重
-  isPublished Boolean   @default(false)  // 是否已上架（用于前端过滤）
-  usageCount  Int       @default(0)  // 使用次数统计
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+  category    String?
+  icon        String?
+  isPublished Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  tags        String?
+  usageCount  Int       @default(0)
   tenant      tenant?   @relation(fields: [tenantId], references: [id], map: "ComponentTask_tenantId_fkey")
   user        user?     @relation(fields: [userId], references: [id], map: "ComponentTask_userId_fkey")
 
@@ -69,51 +54,45 @@ model tenant {
   @@index([status], map: "Tenant_status_idx")
 }
 
-// 用户状态枚举
-enum UserStatus {
-  active    // 正常
-  inactive  // 停用（可恢复）
-  banned    // 封禁（永久）
-}
-
 model user {
-  id                    String            @id @default(cuid())
-  email                 String?           @unique(map: "User_email_key")
-  name                  String?
-  password              String
-  phone                 String?           @unique(map: "User_phone_key")
-  avatar                String?
-  role                  String            @default("user")
-  membershipLevel       String            @default("FREE") // FREE | BRONZE | SILVER | GOLD | DIAMOND | CROWN
-  tenantId              String?
-  wechatUnionId         String?           @unique(map: "User_wechatUnionId_key")
-  qqUnionId             String?           @unique(map: "User_qqUnionId_key")
-  refreshToken          String?
-  refreshTokenExpiresAt DateTime?
-  loginAttempts         Int               @default(0)
-  lockedUntil           DateTime?
-  status                UserStatus        @default(active)
-  lastWorkspaceId       String?           @map("last_workspace_id")
-  lastLoginAt           DateTime?         @map("last_login_at")
-  lastForcedLogoutAt    DateTime?         @map("last_forced_logout_at")
-  sessionToken          String?           @map("session_token")
-  sessionExpiresAt      DateTime?         @map("session_expires_at")
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  componenttask         componenttask[]
-  tenant                tenant?           @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
-  workspaces            WorkspaceMember[]
-  componentRatings      ComponentRating[]
-  componentReviews      ComponentReview[]
-  apiKeys               ApiKey[]
-  loginHistories        LoginHistory[]
-  notifications         UserNotification[]
-  operationLogs         OperationLog[]
-  preferences           UserPreference[]
-  upgradeApplications   UpgradeApplication[]
-  membershipOrders      MembershipOrder[]
-  membershipChangeLogs  MembershipChangeLog[]
-  operatorLogs          MembershipChangeLog[] @relation("OperatorMembershipChangeLogs")
+  id                                                       String                @id @default(cuid())
+  email                                                    String?               @unique(map: "User_email_key")
+  name                                                     String?
+  password                                                 String
+  avatar                                                   String?
+  role                                                     String                @default("user")
+  tenantId                                                 String?
+  createdAt                                                DateTime              @default(now())
+  updatedAt                                                DateTime              @updatedAt
+  lastWorkspaceId                                          String?               @map("last_workspace_id")
+  lockedUntil                                              DateTime?
+  loginAttempts                                            Int                   @default(0)
+  phone                                                    String?               @unique(map: "User_phone_key")
+  qqUnionId                                                String?               @unique(map: "User_qqUnionId_key")
+  refreshToken                                             String?
+  refreshTokenExpiresAt                                    DateTime?
+  status                                                   UserStatus            @default(active)
+  wechatUnionId                                            String?               @unique(map: "User_wechatUnionId_key")
+  membershipLevel                                          String                @default("FREE")
+  lastForcedLogoutAt                                       DateTime?             @map("last_forced_logout_at")
+  lastLoginAt                                              DateTime?             @map("last_login_at")
+  sessionExpiresAt                                         DateTime?             @map("session_expires_at")
+  sessionToken                                             String?               @map("session_token")
+  apikey                                                   apikey[]
+  componentrating                                          componentrating[]
+  componentreview                                          componentreview[]
+  componenttask                                            componenttask[]
+  loginhistory                                             loginhistory[]
+  membershipchangelog_membershipchangelog_operatorIdTouser membershipchangelog[] @relation("membershipchangelog_operatorIdTouser")
+  membershipchangelog_membershipchangelog_userIdTouser     membershipchangelog[] @relation("membershipchangelog_userIdTouser")
+  membershiporder                                          membershiporder[]
+  operationlog                                             operationlog[]
+  systemdocument                                           systemdocument[]
+  upgradeapplication                                       upgradeapplication[]
+  tenant                                                   tenant?               @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
+  usernotification                                         usernotification?
+  userpreference                                           userpreference?
+  workspacemember                                          workspacemember[]
 
   @@index([email], map: "User_email_idx")
   @@index([phone], map: "User_phone_idx")
@@ -123,54 +102,8 @@ model user {
   @@index([lastWorkspaceId], map: "User_lastWorkspaceId_idx")
 }
 
-// 工作空间模型
-model Workspace {
-  id          String            @id @default(cuid())
-  name        String
-  type        WorkspaceType
-  ownerId     String
-  description String?
-  logo        String?           @db.LongText  // 空间图标（base64 编码或 URL）
-  teamSize    String?           // 团队规模：1-5, 6-20, 21-50, 51-100, 100+
-  industry    String?           // 所属行业
-  contactEmail String?          // 联系邮箱
-  contactPhone String?          // 联系电话
-  plan        String            @default("STANDARD") // 空间套餐：STANDARD | PRO | ENTERPRISE | CUSTOM
-  visibility  String            @default("PRIVATE")  // 可见性：PRIVATE | PUBLIC
-  status      String            @default("ACTIVE")   // 状态：ACTIVE | DISABLED | ARCHIVED
-  lastActiveAt DateTime?        // 最后活跃时间（用于自动注销判断）
-  quota       Json?             // 空间配额配置（组件数、成员数、存储等）
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  members     WorkspaceMember[]
-  invitations WorkspaceInvitation[]  // 邀请码关系
-  upgradeApplications UpgradeApplication[]  // 升级申请关系
-
-  @@index([ownerId], map: "Workspace_ownerId_idx")
-  @@index([type], map: "Workspace_type_idx")
-  @@index([plan], map: "Workspace_plan_idx")
-  @@index([status], map: "Workspace_status_idx")
-  @@index([lastActiveAt], map: "Workspace_lastActiveAt_idx")
-}
-
-// 工作空间成员关联表
-model WorkspaceMember {
-  id          String        @id @default(cuid())
-  userId      String
-  workspaceId String
-  role        WorkspaceRole
-  joinedAt    DateTime      @default(now())
-  user        user          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
-
-  @@unique([userId, workspaceId], map: "WorkspaceMember_userId_workspaceId_key")
-  @@index([userId], map: "WorkspaceMember_userId_idx")
-  @@index([workspaceId], map: "WorkspaceMember_workspaceId_idx")
-}
-
-// API Key 模型
-model ApiKey {
-  id          String    @id @default(cuid())
+model apikey {
+  id          String    @id
   userId      String
   name        String
   description String?
@@ -178,157 +111,15 @@ model ApiKey {
   keyPrefix   String
   lastUsedAt  DateTime?
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
+  updatedAt   DateTime
   user        user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ApiKey_userId_fkey")
 
-  @@index([userId], map: "ApiKey_userId_idx")
   @@index([keyPrefix], map: "ApiKey_keyPrefix_idx")
+  @@index([userId], map: "ApiKey_userId_idx")
 }
 
-// 用户通知设置
-model UserNotification {
-  id                 String   @id @default(cuid())
-  userId             String
-  emailNotifications Boolean  @default(true)
-  systemMessages     Boolean  @default(true)
-  projectUpdates     Boolean  @default(true)
-  commentMentions    Boolean  @default(true)
-  frequency          String   @default("REALTIME") // REALTIME | DAILY | WEEKLY
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  user               user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserNotification_userId_fkey")
-
-  @@unique([userId], map: "UserNotification_userId_key")
-  @@index([userId], map: "UserNotification_userId_idx")
-}
-
-// 登录历史
-model LoginHistory {
-  id        String   @id @default(cuid())
-  userId    String
-  ipAddress String?
-  userAgent String?
-  location  String?
-  device    String?
-  loginAt   DateTime @default(now())
-
-  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "LoginHistory_userId_fkey")
-
-  @@index([userId], map: "LoginHistory_userId_idx")
-  @@index([loginAt], map: "LoginHistory_loginAt_idx")
-}
-
-// 用户偏好设置
-model UserPreference {
-  id               String   @id @default(cuid())
-  userId           String
-  aiEngine         String   @default("zhige") // zhige | openai | azure
-  systemPrompt     String?
-  defaultModel     String   @default("zhige-v3")
-  temperature      Float    @default(0.7)
-  maxTokens        Int      @default(2000)
-  topP             Float    @default(0.9)
-  frequencyPenalty Float    @default(0.0)
-  presencePenalty  Float    @default(0.0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  user             user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserPreference_userId_fkey")
-
-  @@unique([userId], map: "UserPreference_userId_key")
-  @@index([userId], map: "UserPreference_userId_idx")
-}
-
-// 集成配置
-model Integration {
-  id          String   @id @default(cuid())
-  workspaceId String
-  provider    String // github | gitlab | gitee
-  tokenHash   String
-  name        String?
-  configured  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([workspaceId, provider], map: "Integration_workspaceId_provider_key")
-  @@index([workspaceId], map: "Integration_workspaceId_idx")
-}
-
-// 升级申请
-model UpgradeApplication {
-  id           String   @id @default(cuid())
-  workspaceId  String
-  userId       String
-  companyName  String
-  contactName  String
-  contactPhone String
-  phone        String? // 用户手机号（可选）
-  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED
-  submittedAt  DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  user         user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UpgradeApplication_userId_fkey")
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "UpgradeApplication_workspaceId_fkey")
-
-  @@index([workspaceId], map: "UpgradeApplication_workspaceId_idx")
-  @@index([status], map: "UpgradeApplication_status_idx")
-}
-
-// 操作日志
-model OperationLog {
-  id          String   @id @default(cuid())
-  userId      String
-  workspaceId String?
-  action      String
-  resource    String?
-  details     Json?
-  ipAddress   String?
-  createdAt   DateTime @default(now())
-
-  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "OperationLog_userId_fkey")
-
-  @@index([userId], map: "OperationLog_userId_idx")
-  @@index([workspaceId], map: "OperationLog_workspaceId_idx")
-  @@index([action], map: "OperationLog_action_idx")
-}
-
-// 文档模型
-model Document {
-  id          String   @id @default(cuid())
-  workspaceId String
-  title       String
-  content     String?
-  parentId    String?
-  type        String   @default("doc") // doc | folder
-  status      String   @default("active") // active | archived | deleted
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([workspaceId], map: "Document_workspaceId_idx")
-  @@index([parentId], map: "Document_parentId_idx")
-  @@index([status], map: "Document_status_idx")
-}
-
-// 项目模型
-model Project {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  description String?
-  status      String   @default("active") // active | archived | deleted
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([workspaceId], map: "Project_workspaceId_idx")
-  @@index([status], map: "Project_status_idx")
-}
-
-// 资产模型
-model Asset {
-  id          String   @id @default(cuid())
+model asset {
+  id          String   @id
   workspaceId String
   name        String
   type        String
@@ -336,94 +127,61 @@ model Asset {
   metadata    Json?
   status      String   @default("active")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime
 
-  @@index([workspaceId], map: "Asset_workspaceId_idx")
   @@index([type], map: "Asset_type_idx")
+  @@index([workspaceId], map: "Asset_workspaceId_idx")
 }
 
-// 对话模型
-model Conversation {
-  id          String   @id @default(cuid())
-  workspaceId String
-  userId      String
-  title       String?
-  messages    Json?
-  model       String?
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([workspaceId], map: "Conversation_workspaceId_idx")
-  @@index([userId], map: "Conversation_userId_idx")
-}
-
-// 组件收藏
-model ComponentFavorite {
-  id          String   @id @default(cuid())
+model componentfavorite {
+  id          String   @id
   userId      String
   componentId String
   createdAt   DateTime @default(now())
 
   @@unique([userId, componentId], map: "ComponentFavorite_userId_componentId_key")
-  @@index([userId], map: "ComponentFavorite_userId_idx")
   @@index([componentId], map: "ComponentFavorite_componentId_idx")
+  @@index([userId], map: "ComponentFavorite_userId_idx")
 }
 
-// 组件使用记录
-model ComponentUsage {
-  id          String   @id @default(cuid())
+model componentrating {
+  id          String   @id
   userId      String
   componentId String
-  workspaceId String?
-  usedAt      DateTime @default(now())
-  metadata    Json?
-
-  @@index([userId], map: "ComponentUsage_userId_idx")
-  @@index([componentId], map: "ComponentUsage_componentId_idx")
-  @@index([usedAt], map: "ComponentUsage_usedAt_idx")
-}
-
-// 组件评分
-model ComponentRating {
-  id          String   @id @default(cuid())
-  userId      String
-  componentId String
-  rating      Int // 1-5 分
+  rating      Int
   comment     String?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        user?    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentRating_userId_fkey")
+  updatedAt   DateTime
+  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentRating_userId_fkey")
 
   @@unique([userId, componentId], map: "ComponentRating_userId_componentId_key")
   @@index([componentId], map: "ComponentRating_componentId_idx")
   @@index([rating], map: "ComponentRating_rating_idx")
 }
 
-// 组件评论
-model ComponentReview {
-  id          String            @id @default(cuid())
-  userId      String
-  componentId String
-  parentId    String? // 回复哪条评论
-  content     String
-  rating      Int? // 只有主评论可以有评分
-  status      String            @default("active") // active | hidden
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  user        user?             @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentReview_userId_fkey")
-  parent      ComponentReview?  @relation("ReviewReplies", fields: [parentId], references: [id])
-  replies     ComponentReview[] @relation("ReviewReplies")
+model componentreview {
+  id                    String            @id
+  userId                String
+  componentId           String
+  parentId              String?
+  content               String
+  rating                Int?
+  status                String            @default("active")
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime
+  componentreview       componentreview?  @relation("componentreviewTocomponentreview", fields: [parentId], references: [id], map: "ComponentReview_parentId_fkey")
+  other_componentreview componentreview[] @relation("componentreviewTocomponentreview")
+  user                  user              @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentReview_userId_fkey")
 
   @@index([componentId], map: "ComponentReview_componentId_idx")
   @@index([parentId], map: "ComponentReview_parentId_idx")
   @@index([status], map: "ComponentReview_status_idx")
+  @@index([userId], map: "ComponentReview_userId_fkey")
 }
 
-// 组件统计
-model ComponentStats {
-  id             String    @id @default(cuid())
-  componentId    String    @unique
+model componentstats {
+  id             String    @id
+  componentId    String    @unique(map: "ComponentStats_componentId_key")
   totalUses      Int       @default(0)
   totalFavorites Int       @default(0)
   averageRating  Float     @default(0)
@@ -433,131 +191,363 @@ model ComponentStats {
   weeklyUses     Int       @default(0)
   monthlyUses    Int       @default(0)
   lastUsedAt     DateTime?
-  updatedAt      DateTime  @updatedAt
+  updatedAt      DateTime
 
+  @@index([averageRating], map: "ComponentStats_averageRating_idx")
   @@index([componentId], map: "ComponentStats_componentId_idx")
   @@index([totalUses], map: "ComponentStats_totalUses_idx")
-  @@index([averageRating], map: "ComponentStats_averageRating_idx")
 }
 
-// 空间邀请码
-model WorkspaceInvitation {
-  id          String   @id @default(cuid())
+model componentusage {
+  id          String   @id
+  userId      String
+  componentId String
+  workspaceId String?
+  usedAt      DateTime @default(now())
+  metadata    Json?
+
+  @@index([componentId], map: "ComponentUsage_componentId_idx")
+  @@index([usedAt], map: "ComponentUsage_usedAt_idx")
+  @@index([userId], map: "ComponentUsage_userId_idx")
+}
+
+model conversation {
+  id          String   @id
   workspaceId String
-  code        String   @unique
-  createdBy   String
-  email       String?  // 可选：指定被邀请人邮箱
-  role        WorkspaceRole @default(MEMBER)
-  status      String   @default("PENDING") // PENDING | USED | EXPIRED
-  expiresAt   DateTime?
-  usedAt      DateTime?
-  usedBy      String?  // 使用者的用户 ID
+  userId      String
+  title       String?
+  messages    Json?
+  model       String?
+  status      String   @default("active")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime
 
-  // 关系定义
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId], map: "WorkspaceInvitation_workspaceId_idx")
-  @@index([code], map: "WorkspaceInvitation_code_idx")
-  @@index([status], map: "WorkspaceInvitation_status_idx")
-  @@index([createdBy], map: "WorkspaceInvitation_createdBy_idx")
+  @@index([userId], map: "Conversation_userId_idx")
+  @@index([workspaceId], map: "Conversation_workspaceId_idx")
 }
 
-// 会员等级配置
-model MembershipLevel {
-  id                     String   @id @default(cuid())
-  name                   String   @unique // FREE | BRONZE | SILVER | GOLD | DIAMOND | CROWN
-  nameZh                 String   // 中文名
-  icon                   String?  // 图标 emoji 或 URL
-  color                  String   @default("#94a3b8") // 主题色
-  description            String?  // 描述
-  maxPersonalWorkspaces  Int      @default(1) // 个人空间数量
-  maxEnterpriseWorkspaces BigInt   @default(1) // 企业空间数量
-  maxComponents          BigInt   @default(100) // 组件数量上限
-  maxTeamSize            BigInt   @default(5) // 团队规模上限
-  maxStorage             BigInt   @default(1073741824) // 存储空间（字节）
-  maxApiCalls            BigInt   @default(1000) // 每月 API 调用次数
-  features               Json?    // 功能权益配置（JSON 格式）
-  priceMonthly           Int      @default(0) // 月付价格（分）
-  priceYearly            Int      @default(0) // 年付价格（分）
-  trialDays              Int      @default(0) // 试用天数
-  sortOrder              Int      @default(0) // 排序
-  isActive               Boolean  @default(true) // 是否启用
-  isRecommended          Boolean  @default(false) // 是否推荐
-  isPopular              Boolean  @default(false) // 是否热门
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-  
-  membershipOrders       MembershipOrder[]
-  membershipChangeLogs   MembershipChangeLog[]
-  
-  @@index([name], map: "MembershipLevel_name_idx")
+model document {
+  id          String   @id
+  workspaceId String
+  title       String
+  content     String?
+  parentId    String?
+  type        String   @default("doc")
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([parentId], map: "Document_parentId_idx")
+  @@index([status], map: "Document_status_idx")
+  @@index([workspaceId], map: "Document_workspaceId_idx")
+}
+
+model integration {
+  id          String   @id
+  workspaceId String
+  provider    String
+  tokenHash   String
+  name        String?
+  configured  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@unique([workspaceId, provider], map: "Integration_workspaceId_provider_key")
+  @@index([workspaceId], map: "Integration_workspaceId_idx")
+}
+
+model loginhistory {
+  id        String   @id
+  userId    String
+  ipAddress String?
+  userAgent String?
+  location  String?
+  device    String?
+  loginAt   DateTime @default(now())
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "LoginHistory_userId_fkey")
+
+  @@index([loginAt], map: "LoginHistory_loginAt_idx")
+  @@index([userId], map: "LoginHistory_userId_idx")
+}
+
+model membershipchangelog {
+  id                                        String           @id
+  userId                                    String
+  levelId                                   String?
+  operatorId                                String?
+  changeType                                String
+  oldValue                                  Json?
+  newValue                                  Json
+  reason                                    String?
+  createdAt                                 DateTime         @default(now())
+  membershiplevel                           membershiplevel? @relation(fields: [levelId], references: [id], map: "MembershipChangeLog_levelId_fkey")
+  user_membershipchangelog_operatorIdTouser user?            @relation("membershipchangelog_operatorIdTouser", fields: [operatorId], references: [id], map: "MembershipChangeLog_operatorId_fkey")
+  user_membershipchangelog_userIdTouser     user             @relation("membershipchangelog_userIdTouser", fields: [userId], references: [id], map: "MembershipChangeLog_userId_fkey")
+
+  @@index([changeType], map: "MembershipChangeLog_changeType_idx")
+  @@index([createdAt], map: "MembershipChangeLog_createdAt_idx")
+  @@index([levelId], map: "MembershipChangeLog_levelId_fkey")
+  @@index([operatorId], map: "MembershipChangeLog_operatorId_idx")
+  @@index([userId], map: "MembershipChangeLog_userId_idx")
+}
+
+model membershiplevel {
+  id                      String                @id
+  name                    String                @unique(map: "MembershipLevel_name_key")
+  nameZh                  String
+  icon                    String?
+  color                   String                @default("#94a3b8")
+  description             String?
+  maxPersonalWorkspaces   Int                   @default(1)
+  maxEnterpriseWorkspaces BigInt                @default(1)
+  maxComponents           BigInt                @default(100)
+  maxTeamSize             BigInt                @default(5)
+  maxStorage              BigInt                @default(1073741824)
+  maxApiCalls             BigInt                @default(1000)
+  features                Json?
+  priceMonthly            Int                   @default(0)
+  priceYearly             Int                   @default(0)
+  trialDays               Int                   @default(0)
+  sortOrder               Int                   @default(0)
+  isActive                Boolean               @default(true)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime
+  isPopular               Boolean               @default(false)
+  isRecommended           Boolean               @default(false)
+  membershipchangelog     membershipchangelog[]
+  membershiporder         membershiporder[]
+
   @@index([isActive], map: "MembershipLevel_isActive_idx")
+  @@index([name], map: "MembershipLevel_name_idx")
   @@index([sortOrder], map: "MembershipLevel_sortOrder_idx")
 }
 
-// 会员订单
-model MembershipOrder {
-  id             String   @id @default(cuid())
-  userId         String
-  levelId        String
-  orderType      String   @default("NEW") // NEW | RENEW | UPGRADE
-  paymentMethod  String?  // WECHAT | ALIPAY | BANK_TRANSFER
-  amount         Int      @default(0) // 支付金额（分）
-  currency       String   @default("CNY")
-  startDate      DateTime
-  endDate        DateTime
-  status         String   @default("PENDING") // PENDING | PAID | REFUNDED | CANCELLED
-  transactionId  String?  // 第三方交易 ID
-  metadata       Json?    // 额外信息
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
-  user           user     @relation(fields: [userId], references: [id], map: "MembershipOrder_userId_fkey")
-  level          MembershipLevel @relation(fields: [levelId], references: [id], map: "MembershipOrder_levelId_fkey")
-  
-  @@index([userId], map: "MembershipOrder_userId_idx")
+model membershiporder {
+  id              String          @id
+  userId          String
+  levelId         String
+  orderType       String          @default("NEW")
+  paymentMethod   String?
+  amount          Int             @default(0)
+  currency        String          @default("CNY")
+  startDate       DateTime
+  endDate         DateTime
+  status          String          @default("PENDING")
+  transactionId   String?
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime
+  membershiplevel membershiplevel @relation(fields: [levelId], references: [id], map: "MembershipOrder_levelId_fkey")
+  user            user            @relation(fields: [userId], references: [id], map: "MembershipOrder_userId_fkey")
+
+  @@index([createdAt], map: "MembershipOrder_createdAt_idx")
   @@index([levelId], map: "MembershipOrder_levelId_idx")
   @@index([status], map: "MembershipOrder_status_idx")
-  @@index([createdAt], map: "MembershipOrder_createdAt_idx")
+  @@index([userId], map: "MembershipOrder_userId_idx")
 }
 
-// 会员变更日志
-model MembershipChangeLog {
-  id          String   @id @default(cuid())
+model operationlog {
+  id          String   @id
   userId      String
-  levelId     String?  // 变更的会员等级 ID（可选）
-  operatorId  String?  // 操作者 ID（管理员操作时）
-  changeType  String   // LEVEL_UP | LEVEL_DOWN | QUOTA_CHANGE | MANUAL_ADJUST
-  oldValue    Json?    // 变更前配置
-  newValue    Json     // 变更后配置
-  reason      String?  // 变更原因
+  workspaceId String?
+  action      String
+  resource    String?
+  details     Json?
+  ipAddress   String?
   createdAt   DateTime @default(now())
-  
-  user        user     @relation(fields: [userId], references: [id], map: "MembershipChangeLog_userId_fkey")
-  operator    user?    @relation("OperatorMembershipChangeLogs", fields: [operatorId], references: [id])
-  level       MembershipLevel? @relation(fields: [levelId], references: [id], map: "MembershipChangeLog_levelId_fkey")
-  
-  @@index([userId], map: "MembershipChangeLog_userId_idx")
-  @@index([operatorId], map: "MembershipChangeLog_operatorId_idx")
-  @@index([changeType], map: "MembershipChangeLog_changeType_idx")
-  @@index([createdAt], map: "MembershipChangeLog_createdAt_idx")
+  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "OperationLog_userId_fkey")
+
+  @@index([action], map: "OperationLog_action_idx")
+  @@index([userId], map: "OperationLog_userId_idx")
+  @@index([workspaceId], map: "OperationLog_workspaceId_idx")
 }
 
-// 短信验证码
-model SmsCode {
-  id        String   @id @default(cuid())
-  phone     String   // 手机号
-  code      String   // 验证码
-  type      String   @default("reset-password") // 验证码类型：reset-password, register, login 等
-  used      Boolean  @default(false) // 是否已使用
-  usedAt    DateTime? // 使用时间
-  createdAt DateTime @default(now()) // 创建时间
-  
-  @@index([phone], map: "SmsCode_phone_idx")
+model project {
+  id          String   @id
+  workspaceId String
+  name        String
+  description String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([status], map: "Project_status_idx")
+  @@index([workspaceId], map: "Project_workspaceId_idx")
+}
+
+model smscode {
+  id        String    @id
+  phone     String
+  code      String
+  type      String    @default("reset-password")
+  used      Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
   @@index([code], map: "SmsCode_code_idx")
+  @@index([createdAt], map: "SmsCode_createdAt_idx")
+  @@index([phone], map: "SmsCode_phone_idx")
   @@index([type], map: "SmsCode_type_idx")
   @@index([used], map: "SmsCode_used_idx")
-  @@index([createdAt], map: "SmsCode_createdAt_idx")
+}
+
+model systemdocument {
+  id          String   @id
+  title       String
+  content     String?
+  category    String
+  tags        String?
+  isPublished Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  viewCount   Int      @default(0)
+  authorId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  user        user?    @relation(fields: [authorId], references: [id], map: "SystemDocument_authorId_fkey")
+
+  @@index([authorId], map: "SystemDocument_authorId_fkey")
+  @@index([category], map: "SystemDocument_category_idx")
+  @@index([createdAt], map: "SystemDocument_createdAt_idx")
+  @@index([isPublished], map: "SystemDocument_isPublished_idx")
+  @@index([sortOrder], map: "SystemDocument_sortOrder_idx")
+}
+
+model upgradeapplication {
+  id           String    @id
+  workspaceId  String
+  userId       String
+  companyName  String
+  contactName  String
+  contactPhone String
+  phone        String?
+  status       String    @default("PENDING")
+  submittedAt  DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  user         user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UpgradeApplication_userId_fkey")
+  workspace    workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "UpgradeApplication_workspaceId_fkey")
+
+  @@index([status], map: "UpgradeApplication_status_idx")
+  @@index([userId], map: "UpgradeApplication_userId_fkey")
+  @@index([workspaceId], map: "UpgradeApplication_workspaceId_idx")
+}
+
+model usernotification {
+  id                 String   @id
+  userId             String   @unique(map: "UserNotification_userId_key")
+  emailNotifications Boolean  @default(true)
+  systemMessages     Boolean  @default(true)
+  projectUpdates     Boolean  @default(true)
+  commentMentions    Boolean  @default(true)
+  frequency          String   @default("REALTIME")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  user               user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserNotification_userId_fkey")
+
+  @@index([userId], map: "UserNotification_userId_idx")
+}
+
+model userpreference {
+  id               String   @id
+  userId           String   @unique(map: "UserPreference_userId_key")
+  aiEngine         String   @default("zhige")
+  systemPrompt     String?
+  defaultModel     String   @default("zhige-v3")
+  temperature      Float    @default(0.7)
+  maxTokens        Int      @default(2000)
+  topP             Float    @default(0.9)
+  frequencyPenalty Float    @default(0)
+  presencePenalty  Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  user             user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserPreference_userId_fkey")
+
+  @@index([userId], map: "UserPreference_userId_idx")
+}
+
+model workspace {
+  id                  String                @id
+  name                String
+  type                workspace_type
+  ownerId             String
+  description         String?
+  logo                String?               @db.LongText
+  teamSize            String?
+  industry            String?
+  contactEmail        String?
+  contactPhone        String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  plan                String                @default("STANDARD")
+  quota               Json?
+  status              String                @default("ACTIVE")
+  visibility          String                @default("PRIVATE")
+  lastActiveAt        DateTime?
+  upgradeapplication  upgradeapplication[]
+  workspaceinvitation workspaceinvitation[]
+  workspacemember     workspacemember[]
+
+  @@index([lastActiveAt], map: "Workspace_lastActiveAt_idx")
+  @@index([ownerId], map: "Workspace_ownerId_idx")
+  @@index([plan], map: "Workspace_plan_idx")
+  @@index([status], map: "Workspace_status_idx")
+  @@index([type], map: "Workspace_type_idx")
+}
+
+model workspaceinvitation {
+  id          String                   @id
+  workspaceId String
+  code        String                   @unique(map: "WorkspaceInvitation_code_key")
+  createdBy   String
+  email       String?
+  role        workspaceinvitation_role @default(MEMBER)
+  status      String                   @default("PENDING")
+  expiresAt   DateTime?
+  usedAt      DateTime?
+  usedBy      String?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime
+  workspace   workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceInvitation_workspaceId_fkey")
+
+  @@index([code], map: "WorkspaceInvitation_code_idx")
+  @@index([createdBy], map: "WorkspaceInvitation_createdBy_idx")
+  @@index([status], map: "WorkspaceInvitation_status_idx")
+  @@index([workspaceId], map: "WorkspaceInvitation_workspaceId_idx")
+}
+
+model workspacemember {
+  id          String               @id
+  userId      String
+  workspaceId String
+  role        workspacemember_role
+  joinedAt    DateTime             @default(now())
+  user        user                 @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
+  workspace   workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
+
+  @@unique([userId, workspaceId], map: "WorkspaceMember_userId_workspaceId_key")
+  @@index([userId], map: "WorkspaceMember_userId_idx")
+  @@index([workspaceId], map: "WorkspaceMember_workspaceId_idx")
+}
+
+enum UserStatus {
+  active
+  inactive
+  banned
+}
+
+enum workspace_type {
+  PERSONAL
+  ENTERPRISE
+}
+
+enum workspacemember_role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum workspaceinvitation_role {
+  OWNER
+  ADMIN
+  MEMBER
 }

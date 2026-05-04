@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查是否有组件被使用（usageCount > 0）
+    // 检查组件状态
     const components = await prisma.componenttask.findMany({
       where: {
         id: {
@@ -38,32 +38,34 @@ export async function POST(request: NextRequest) {
         id: true,
         name: true,
         usageCount: true,
+        isPublished: true,
       },
     });
 
-    const usedComponents = components.filter((c) => c.usageCount > 0);
-    if (usedComponents.length > 0) {
-      const names = usedComponents.map((c) => c.name).join("、");
+    // 过滤出可以删除的组件（未上架且未被使用）
+    const deletableComponents = components.filter(
+      (c) => !c.isPublished && c.usageCount === 0,
+    );
+
+    if (deletableComponents.length === 0) {
       return NextResponse.json(
-        {
-          error: `以下组件已被使用，无法删除：${names}`,
-        },
+        { error: "选中的组件中没有可以删除的组件" },
         { status: 400 },
       );
     }
 
-    // 批量删除组件
+    // 只删除可以删除的组件
     await prisma.componenttask.deleteMany({
       where: {
         id: {
-          in: ids,
+          in: deletableComponents.map((c) => c.id),
         },
       },
     });
 
     return NextResponse.json({
       success: true,
-      message: "批量删除成功",
+      message: `成功删除 ${deletableComponents.length} 个组件`,
     });
   } catch (error) {
     console.error("Batch delete error:", error);

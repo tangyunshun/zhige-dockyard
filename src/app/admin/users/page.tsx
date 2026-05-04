@@ -438,6 +438,7 @@ export default function AdminUsersPage() {
       if (!res.ok) throw new Error("删除用户失败");
 
       showToast("用户已删除", "success");
+      setCurrentPage(1);
       loadUsers(currentPage);
     } catch (error) {
       console.error("Delete user error:", error);
@@ -818,9 +819,9 @@ export default function AdminUsersPage() {
                         <input
                           type="checkbox"
                           checked={
-                            selectedUsers.size ===
-                              (userData?.users.length || 0) &&
-                            userData?.users.length !== 0
+                            userData?.users.length !== undefined &&
+                            userData.users.length > 0 &&
+                            userData.users.every((u) => selectedUsers.has(u.id))
                           }
                           onChange={toggleSelectAll}
                           className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
