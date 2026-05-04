@@ -56,8 +56,8 @@ export function useLogout() {
         // 等待提示显示完后跳转
         await new Promise(resolve => setTimeout(resolve, 1600));
 
-        // 跳转到首页
-        router.push("/");
+        // 使用 window.location.href 直接跳转，避免触发 AuthCheck
+        window.location.href = "/";
       } else {
         toast.error("退出登录失败");
       }
