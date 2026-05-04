@@ -757,46 +757,47 @@ function LoginForm() {
                       placeholder="请输入 11 位手机号"
                     />
                   </div>
-                  {errors.phone && (
-                    <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
-                  )}
-                  {/* 手机号状态提示 */}
-                  {accountCheckStatus.exists === false &&
-                    redirectCountdown !== null && (
-                      <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
-                        <p className="text-xs text-orange-700">
-                          ⚠️ 该手机号未注册，{redirectCountdown}秒后跳转注册页面
+                    {errors.phone && (
+                      <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
+                    )}
+                    {/* 手机号状态提示 */}
+                    {accountCheckStatus.exists === false &&
+                      redirectCountdown !== null && (
+                        <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+                          <p className="text-xs text-orange-700">
+                            ️ 该手机号未注册，{redirectCountdown}秒后跳转注册页面
+                          </p>
+                          <button
+                            onClick={() => {
+                              setRedirectCountdown(null);
+                              // 带手机号参数跳转到注册页面
+                              router.push(
+                                `/auth/register?account=${encodeURIComponent(formData.phone)}`,
+                              );
+                            }}
+                            className="text-xs text-[#3182ce] hover:underline font-medium"
+                          >
+                            立即注册 →
+                          </button>
+                        </div>
+                      )}
+                    {accountCheckStatus.locked && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs text-red-700">
+                          🔒 手机号已被锁定，请
+                          {accountCheckStatus.minutesRemaining}
+                          分钟后再试
                         </p>
-                        <button
-                          onClick={() => {
-                            setRedirectCountdown(null);
-                            // 带手机号参数跳转到注册页面
-                            router.push(
-                              `/auth/register?account=${encodeURIComponent(formData.phone)}`,
-                            );
-                          }}
-                          className="text-xs text-[#3182ce] hover:underline font-medium"
-                        >
-                          立即注册 →
-                        </button>
                       </div>
                     )}
-                  {accountCheckStatus.locked && (
-                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-xs text-red-700">
-                        🔒 手机号已被锁定，请
-                        {accountCheckStatus.minutesRemaining}
-                        分钟后再试
-                      </p>
-                    </div>
-                  )}
-                  {accountCheckStatus.disabled && (
-                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-xs text-red-700">
-                        ⛔ 该手机号对应的账号已被禁用，请联系管理员
-                      </p>
-                    </div>
-                  )}
+                    {accountCheckStatus.disabled && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-xs text-red-700">
+                          ⛔ 该手机号对应的账号已被禁用，请联系管理员
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
