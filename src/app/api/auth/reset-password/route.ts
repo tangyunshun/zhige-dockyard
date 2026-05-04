@@ -1,40 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth";
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    const { account, smsCode, password } = await request.json();
+    const { account, newPassword } = await request.json();
 
-    // 查找用户
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [{ email: account }, { phone: account }],
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({ message: "账号不存在" }, { status: 404 });
-    }
-
-    // TODO: 验证验证码（生产环境需要验证）
-    if (!smsCode || smsCode.length !== 6) {
+    if (!account || !newPassword) {
       return NextResponse.json(
-        { message: "验证码格式不正确" },
-        { status: 400 },
+        { message: "账号和新密码不能为空" },
+        { status: 400 }
       );
     }
 
-    // 哈希新密码
-    const hashedPassword = await hashPassword(password);
+    // 验证密码强度
+    if (newPassword.length < 6) {
+      return NextResponse.json(
+        { message: "密码长度不能少于 6 位" },
+        { status: 400 }
+      );
+    }
+
+    // 根据账号类型查找用户
+    let user;
+    const isPhone = /^1[3-9]\d{9}$/.test(account);
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account);
+
+    if (isPhone) {
+      user = await prisma.user.findUnique({
+        where: { phone: account },
+      });
+    } else if (isEmail) {
+      user = await prisma.user.findUnique({
+        where: { email: account },
+      });
+    } else {
+      // 用户名
+      user = await prisma.user.findFirst({
+        where: { name: account },
+      });
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { message: "账号不存在" },
+        { status: 404 }
+      );
+    }
+
+    // 加密新密码
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     // 更新密码
     await prisma.user.update({
       where: { id: user.id },
       data: {
         password: hashedPassword,
-        loginAttempts: 0,
-        lockedUntil: null,
       },
     });
 
@@ -44,6 +67,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Reset password error:", error);
-    return NextResponse.json({ message: "服务器错误" }, { status: 500 });
+    return NextResponse.json(
+      { message: "服务器错误" },
+      { status: 500 }
+    );
   }
 }
