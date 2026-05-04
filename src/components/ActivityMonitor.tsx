@@ -37,8 +37,17 @@ export function ActivityMonitor() {
     try {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      const hasCookie =
+        typeof window !== "undefined"
+          ? document.cookie.includes("auth_token=")
+          : false;
 
-      if (!userId) {
+      // 关键检查：用户必须已登录（有 userId 且有 auth_token）
+      if (!userId || !hasCookie) {
+        console.log("[ActivityMonitor] 用户未登录，跳过检查", {
+          userId,
+          hasCookie,
+        });
         checkingRef.current = false;
         return;
       }
