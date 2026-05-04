@@ -31,10 +31,10 @@ export function useLogout() {
       localStorage.setItem("is_logging_out", "true");
       
       // 显示加载中提示
-      toast.info("正在退出登录...", 1500);
+      toast.info("正在退出登录...", 1000);
       
-      // 等待 1.5 秒，让用户看到提示
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // 等待 1 秒，让用户看到提示
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // 调用退出登录 API
       const res = await fetch("/api/auth/logout", {
@@ -43,7 +43,11 @@ export function useLogout() {
       });
 
       if (res.ok) {
-        // 清除所有本地存储（但不包括 is_logging_out）
+        // 设置标记，告诉首页显示退出成功提示
+        // 注意：必须在 sessionStorage.clear() 之前设置，且使用 localStorage
+        localStorage.setItem("just_logged_out", "true");
+
+        // 清除所有本地存储
         localStorage.removeItem("userId");
         localStorage.removeItem("userRole");
         localStorage.removeItem("auth_token");
@@ -53,16 +57,10 @@ export function useLogout() {
         sessionStorage.clear();
         document.cookie = "auth_token=; path=/; max-age=0";
 
-        // 显示成功提示
-        toast.success("已退出登录", 1500);
-        
-        // 等待提示显示完后跳转
-        await new Promise(resolve => setTimeout(resolve, 1600));
-
         // 清除退出登录标志
         localStorage.removeItem("is_logging_out");
 
-        // 使用 window.location.href 直接跳转，避免触发 AuthCheck
+        // 使用 window.location.href 直接跳转到首页
         window.location.href = "/";
       } else {
         // 清除退出登录标志
