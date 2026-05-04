@@ -47,6 +47,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 如果是注册验证，自动激活账号
+    if (type === "register") {
+      await prisma.user.updateMany({
+        where: { phone: phone },
+        data: {
+          status: "active",
+        },
+      });
+    }
+
     return NextResponse.json({
       success: true,
     });

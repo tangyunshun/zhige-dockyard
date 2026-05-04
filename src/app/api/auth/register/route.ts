@@ -40,10 +40,10 @@ export async function POST(request: NextRequest) {
       // 哈希密码
       const hashedPassword = await hashPassword(password);
 
-      // 插入数据
+      // 插入数据（默认状态为 inactive，需要验证后激活）
       const result = await prisma.$executeRaw`
-        INSERT INTO user (id, phone, password, name, role, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${`用户${phone.slice(-4)}`}, 'user', NOW(), NOW())
+        INSERT INTO user (id, phone, password, name, role, status, createdAt, updatedAt)
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${`用户${phone.slice(-4)}`}, 'user', 'inactive', NOW(), NOW())
       `;
 
       if (result < 0) {
@@ -130,10 +130,10 @@ export async function POST(request: NextRequest) {
       // 哈希密码
       const hashedPassword = await hashPassword(password);
 
-      // 插入数据
+      // 插入数据（默认状态为 inactive，需要验证后激活）
       const result = await prisma.$executeRaw`
-        INSERT INTO user (id, phone, password, name, role, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${username}, 'user', NOW(), NOW())
+        INSERT INTO user (id, phone, password, name, role, status, createdAt, updatedAt)
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${username}, 'user', 'inactive', NOW(), NOW())
       `;
 
       if (result < 0) {
@@ -247,10 +247,10 @@ export async function POST(request: NextRequest) {
       // 哈希密码
       const hashedPassword = await hashPassword(password);
 
-      // 插入数据
+      // 插入数据（默认状态为 inactive，需要验证后激活）
       const result = await prisma.$executeRaw`
-        INSERT INTO user (id, phone, password, name, email, role, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${email.split("@")[0]}, ${email}, 'user', NOW(), NOW())
+        INSERT INTO user (id, phone, password, name, email, role, status, createdAt, updatedAt)
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${email.split("@")[0]}, ${email}, 'user', 'inactive', NOW(), NOW())
       `;
 
       if (result < 0) {

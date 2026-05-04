@@ -20,6 +20,36 @@ import {
   Key,
   AlertCircle,
 } from "lucide-react";
+import DataTableFilter, {
+  FilterConfig,
+} from "@/components/common/DataTableFilter";
+
+// 定义完整的筛选项值（不依赖动态数据）
+const ROLE_OPTIONS = [
+  { value: "super_admin", label: "超级管理员" },
+  { value: "admin", label: "管理员" },
+  { value: "user", label: "普通用户" },
+];
+
+const ACCOUNT_STATUS_OPTIONS = [
+  { value: "active", label: "活跃" },
+  { value: "inactive", label: "未激活" },
+  { value: "banned", label: "已封禁" },
+];
+
+const LOGIN_STATUS_OPTIONS = [
+  { value: "online", label: "在线" },
+  { value: "offline", label: "离线" },
+];
+
+const MEMBERSHIP_LEVEL_OPTIONS = [
+  { value: "FREE", label: "非会员" },
+  { value: "BRONZE", label: "青铜会员" },
+  { value: "SILVER", label: "白银会员" },
+  { value: "GOLD", label: "黄金会员" },
+  { value: "DIAMOND", label: "钻石会员" },
+  { value: "CROWN", label: "皇冠会员" },
+];
 
 interface User {
   id: string;
@@ -47,7 +77,8 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterRole, setFilterRole] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterAccountStatus, setFilterAccountStatus] = useState<string>("all"); // 账号状态
+  const [filterLoginStatus, setFilterLoginStatus] = useState<string>("all"); // 登录状态
   const [filterMembershipLevel, setFilterMembershipLevel] =
     useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -100,7 +131,13 @@ export default function AdminUsersPage() {
     setCurrentUserRole(userRole);
     console.log("当前用户 ID:", userId, "角色:", userRole);
     loadUsers(currentPage);
-  }, [currentPage, filterRole, filterStatus, filterMembershipLevel]);
+  }, [
+    currentPage,
+    filterRole,
+    filterAccountStatus,
+    filterLoginStatus,
+    filterMembershipLevel,
+  ]);
 
   const loadUsers = async (page: number) => {
     try {
@@ -110,7 +147,12 @@ export default function AdminUsersPage() {
         limit: "10",
         ...(searchQuery && { search: searchQuery }),
         ...(filterRole !== "all" && { role: filterRole }),
-        ...(filterStatus !== "all" && { status: filterStatus }),
+        ...(filterAccountStatus !== "all" && {
+          accountStatus: filterAccountStatus,
+        }),
+        ...(filterLoginStatus !== "all" && {
+          loginStatus: filterLoginStatus,
+        }),
         ...(filterMembershipLevel !== "all" && {
           membershipLevel: filterMembershipLevel,
         }),
@@ -186,6 +228,15 @@ export default function AdminUsersPage() {
   const handleSearch = () => {
     setCurrentPage(1);
     loadUsers(1);
+  };
+
+  const handleResetFilters = () => {
+    setFilterRole("all");
+    setFilterAccountStatus("all");
+    setFilterLoginStatus("all");
+    setFilterMembershipLevel("all");
+    setSearchQuery("");
+    setCurrentPage(1);
   };
 
   const toggleSelectUser = (userId: string) => {
@@ -305,6 +356,38 @@ export default function AdminUsersPage() {
     setEditingUser(user);
     setEditForm({ role: user.role, status: user.status });
     setShowEditModal(true);
+  };
+
+  const handleChangeStatus = async (userId: string, newStatus: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/admin/users/${userId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (await handleUnauthorized(res)) {
+        return;
+      }
+
+      if (!res.ok) throw new Error("修改状态失败");
+
+      const statusText =
+        newStatus === "active"
+          ? "已激活"
+          : newStatus === "inactive"
+            ? "已停用"
+            : "已封禁";
+      showToast(`用户状态已${statusText}`, "success");
+      loadUsers(currentPage);
+    } catch (error) {
+      console.error("Change status error:", error);
+      showToast("修改状态失败", "error");
+    }
   };
 
   const handleUpdateUser = async () => {
@@ -444,13 +527,22 @@ export default function AdminUsersPage() {
 
   const getMembershipLevelBadge = (level: string) => {
     const levelMap: Record<string, string> = {
-      FREE: "普通会员",
+      FREE: "非会员",
       BRONZE: "青铜会员",
       SILVER: "白银会员",
       GOLD: "黄金会员",
       DIAMOND: "钻石会员",
       CROWN: "皇冠会员",
     };
+
+    // 如果是 FREE 等级，显示普通文本
+    if (level === "FREE") {
+      return (
+        <span className="px-2 py-1 bg-slate-100 text-slate-500 text-xs font-medium rounded-lg">
+          {levelMap[level] || "非会员"}
+        </span>
+      );
+    }
 
     return (
       <span className="px-2 py-1 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 text-[#d97706] text-xs font-bold rounded-lg border border-[#f59e0b]/20">
@@ -482,49 +574,49 @@ export default function AdminUsersPage() {
     }
   };
 
-  const getStatusBadge = (user: any) => {
-    const status = user.status?.toUpperCase();
-    const isOnline = user.isOnline;
-
-    if (status === "ACTIVE") {
-      if (isOnline) {
+  const getAccountStatusBadge = (status: string) => {
+    switch (status?.toUpperCase()) {
+      case "ACTIVE":
         return (
-          <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-            在线
+          <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
+            活跃
           </span>
         );
-      } else {
-        return (
-          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-            离线
-          </span>
-        );
-      }
-    }
-
-    switch (status) {
       case "INACTIVE":
         return (
-          <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-            已停用
+          <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full">
+            未激活
           </span>
         );
       case "BANNED":
         return (
-          <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+          <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">
             已封禁
           </span>
         );
       default:
         return (
           <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
-            {user.status}
+            未知
           </span>
         );
+    }
+  };
+
+  const getLoginStatusBadge = (isOnline: boolean) => {
+    if (isOnline) {
+      return (
+        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+          在线
+        </span>
+      );
+    } else {
+      return (
+        <span className="px-2 py-1 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">
+          离线
+        </span>
+      );
     }
   };
 
@@ -614,40 +706,49 @@ export default function AdminUsersPage() {
               className="w-full pl-11 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
             />
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
-              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
-            >
-              <option value="all">所有角色</option>
-              <option value="super_admin">超级管理员</option>
-              <option value="admin">管理员</option>
-              <option value="user">普通用户</option>
-            </select>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
-            >
-              <option value="all">所有状态</option>
-              <option value="active">活跃</option>
-              <option value="inactive">未激活</option>
-              <option value="banned">已封禁</option>
-            </select>
-            <select
-              value={filterMembershipLevel}
-              onChange={(e) => setFilterMembershipLevel(e.target.value)}
-              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
-            >
-              <option value="all">所有等级</option>
-              <option value="FREE">普通会员</option>
-              <option value="BRONZE">青铜会员</option>
-              <option value="SILVER">白银会员</option>
-              <option value="GOLD">黄金会员</option>
-              <option value="DIAMOND">钻石会员</option>
-              <option value="CROWN">皇冠会员</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <DataTableFilter
+              filters={[
+                {
+                  key: "role",
+                  label: "角色",
+                  placeholder: "所有角色",
+                  options: ROLE_OPTIONS,
+                },
+                {
+                  key: "accountStatus",
+                  label: "账号状态",
+                  placeholder: "所有账号状态",
+                  options: ACCOUNT_STATUS_OPTIONS,
+                },
+                {
+                  key: "loginStatus",
+                  label: "登录状态",
+                  placeholder: "所有登录状态",
+                  options: LOGIN_STATUS_OPTIONS,
+                },
+                {
+                  key: "membershipLevel",
+                  label: "等级",
+                  placeholder: "所有等级",
+                  options: MEMBERSHIP_LEVEL_OPTIONS,
+                },
+              ]}
+              values={{
+                role: filterRole,
+                accountStatus: filterAccountStatus,
+                loginStatus: filterLoginStatus,
+                membershipLevel: filterMembershipLevel,
+              }}
+              onChange={(key, value) => {
+                if (key === "role") setFilterRole(value);
+                if (key === "accountStatus") setFilterAccountStatus(value);
+                if (key === "loginStatus") setFilterLoginStatus(value);
+                if (key === "membershipLevel") setFilterMembershipLevel(value);
+              }}
+              onReset={handleResetFilters}
+              showResetButton={true}
+            />
             <button
               onClick={handleSearch}
               className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
@@ -738,7 +839,10 @@ export default function AdminUsersPage() {
                         角色
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                        状态
+                        账号状态
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        登录状态
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         最后登录
@@ -826,7 +930,10 @@ export default function AdminUsersPage() {
                             {getRoleBadge(user.role)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(user)}
+                            {getAccountStatusBadge(user.status)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getLoginStatusBadge(user.isOnline)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {user.lastLoginAt ? (
@@ -923,6 +1030,105 @@ export default function AdminUsersPage() {
                                           <Edit2 className="w-4 h-4 text-[#3182ce]" />
                                           修改角色
                                         </button>
+                                      )}
+
+                                    {/* 修改状态 - 所有用户都可以修改（除了超级管理员和自己） */}
+                                    {user.role !== "super_admin" &&
+                                      user.id !== currentUserId && (
+                                        <div className="relative group">
+                                          <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#3182ce]/5 transition-colors border-b border-slate-50 cursor-pointer">
+                                            <UserCheck className="w-4 h-4 text-[#3182ce]" />
+                                            修改状态
+                                            <svg
+                                              className="w-4 h-4 ml-auto text-slate-400"
+                                              fill="none"
+                                              viewBox="0 0 24 24"
+                                              stroke="currentColor"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M9 5l7 7-7 7"
+                                              />
+                                            </svg>
+                                          </button>
+                                          {/* 状态选择子菜单 */}
+                                          <div className="absolute left-full top-0 ml-2 w-40 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                                            <button
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                await handleChangeStatus(
+                                                  user.id,
+                                                  "active",
+                                                );
+                                                setShowActionMenu(null);
+                                              }}
+                                              className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
+                                                user.status === "active"
+                                                  ? "bg-green-50 text-green-700 font-bold"
+                                                  : "text-slate-700 hover:bg-green-50"
+                                              }`}
+                                            >
+                                              <span
+                                                className={`w-2 h-2 rounded-full ${
+                                                  user.status === "active"
+                                                    ? "bg-green-500"
+                                                    : "bg-slate-300"
+                                                }`}
+                                              ></span>
+                                              活跃
+                                            </button>
+                                            <button
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                await handleChangeStatus(
+                                                  user.id,
+                                                  "inactive",
+                                                );
+                                                setShowActionMenu(null);
+                                              }}
+                                              className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
+                                                user.status === "inactive"
+                                                  ? "bg-orange-50 text-orange-700 font-bold"
+                                                  : "text-slate-700 hover:bg-orange-50"
+                                              }`}
+                                            >
+                                              <span
+                                                className={`w-2 h-2 rounded-full ${
+                                                  user.status === "inactive"
+                                                    ? "bg-orange-500"
+                                                    : "bg-slate-300"
+                                                }`}
+                                              ></span>
+                                              未激活
+                                            </button>
+                                            <button
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                await handleChangeStatus(
+                                                  user.id,
+                                                  "banned",
+                                                );
+                                                setShowActionMenu(null);
+                                              }}
+                                              className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
+                                                user.status === "banned"
+                                                  ? "bg-red-50 text-red-700 font-bold"
+                                                  : "text-slate-700 hover:bg-red-50"
+                                              }`}
+                                            >
+                                              <span
+                                                className={`w-2 h-2 rounded-full ${
+                                                  user.status === "banned"
+                                                    ? "bg-red-500"
+                                                    : "bg-slate-300"
+                                                }`}
+                                              ></span>
+                                              已封禁
+                                            </button>
+                                          </div>
+                                        </div>
                                       )}
 
                                     {/* 停用/激活用户 - 只对非活跃用户显示（激活），不能操作超级管理员和自己 */}

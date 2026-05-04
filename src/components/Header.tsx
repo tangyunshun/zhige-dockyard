@@ -13,6 +13,7 @@ interface UserInfo {
   avatar?: string | null;
   email?: string | null;
   role?: string | null;
+  membershipLevel?: string | null;
 }
 
 interface Workspace {
@@ -270,6 +271,18 @@ export default function Header() {
                           <p className="text-xs text-slate-500 truncate mt-0.5">
                             {user.email || "未绑定邮箱"}
                           </p>
+                          {/* 会员等级 - 仅非 FREE 等级显示 */}
+                          {user.membershipLevel && user.membershipLevel !== "FREE" && (
+                            <div className="mt-1">
+                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 text-[#d97706] text-[10px] font-bold rounded border border-[#f59e0b]/20">
+                                {user.membershipLevel === "BRONZE" && "青铜会员"}
+                                {user.membershipLevel === "SILVER" && "白银会员"}
+                                {user.membershipLevel === "GOLD" && "黄金会员"}
+                                {user.membershipLevel === "DIAMOND" && "钻石会员"}
+                                {user.membershipLevel === "CROWN" && "皇冠会员"}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -14,11 +14,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 查找最近的验证码记录（5 分钟内）
+    // 查找最近的验证码记录（5 分钟内）- 使用 SmsCode 表
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const emailCodeRecord = await prisma.emailCode.findFirst({
+    const smsRecord = await prisma.smsCode.findFirst({
       where: {
-        email: email,
+        phone: email, // 邮箱存储在 phone 字段
         code: code,
         type: type || "reset-password-email",
         used: false,
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (!emailCodeRecord) {
+    if (!smsRecord) {
       return NextResponse.json(
         { message: "验证码错误或已过期" },
         { status: 400 }
@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 标记验证码为已使用
-    await prisma.emailCode.update({
-      where: { id: emailCodeRecord.id },
+    await prisma.smsCode.update({
+      where: { id: smsRecord.id },
       data: {
         used: true,
         usedAt: new Date(),

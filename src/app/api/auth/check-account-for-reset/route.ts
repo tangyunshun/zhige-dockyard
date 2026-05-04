@@ -48,12 +48,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 返回用户的绑定信息
+    // 返回用户的绑定信息（手机号和邮箱保存完整格式用于发送验证码）
     const bindInfo = {
       hasPhone: !!user.phone,
       hasEmail: !!user.email,
-      phone: user.phone ? user.phone.replace(/(\d{3})\d{4}(\d{4})/, "$1****$2") : undefined,
-      email: user.email ? user.email.replace(/(.{2}).+(@.+)/, "$1***$2") : undefined,
+      phone: user.phone || undefined,
+      email: user.email || undefined,
     };
 
     return NextResponse.json({

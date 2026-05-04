@@ -31,13 +31,27 @@ export async function POST(request: NextRequest) {
 
     // 检查账号状态
     if (user.status !== "active") {
+      let statusMessage = "账号状态异常";
+      let statusCode = 403;
+      
+      if (user.status === "inactive") {
+        statusMessage = "账号未激活，请先验证邮箱或手机号";
+        statusCode = 403;
+      } else if (user.status === "banned") {
+        statusMessage = "账号已被封禁，无法登录";
+        statusCode = 403;
+      } else if (user.status === "deleted") {
+        statusMessage = "账号已被注销";
+        statusCode = 403;
+      }
+      
       return NextResponse.json(
         {
-          message: "账号已被禁用",
+          message: statusMessage,
           accountExists: true,
-          status: "disabled",
+          status: user.status,
         },
-        { status: 403 },
+        { status: statusCode },
       );
     }
 

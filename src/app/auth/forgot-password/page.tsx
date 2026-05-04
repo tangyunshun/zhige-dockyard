@@ -65,6 +65,17 @@ export default function ForgotPasswordPage() {
 
   const [confirmPasswordError, setConfirmPasswordError] = useState<string>();
 
+  // 密码强度状态
+  const [passwordStrength, setPasswordStrength] = useState<{
+    valid: boolean;
+    score: number;
+    requirements: string[];
+  }>({
+    valid: false,
+    score: 0,
+    requirements: [],
+  });
+
   const [accountType, setAccountType] = useState<
     "phone" | "email" | "username" | "unknown"
   >("unknown");
@@ -257,6 +268,12 @@ export default function ForgotPasswordPage() {
 
   const handleSelectVerificationMethod = (method: "phone" | "email") => {
     setVerificationMethod(method);
+    // 设置对应的手机号或邮箱
+    if (method === "phone" && userBindInfo?.phone) {
+      setFormData(prev => ({ ...prev, phone: userBindInfo.phone }));
+    } else if (method === "email" && userBindInfo?.email) {
+      setFormData(prev => ({ ...prev, email: userBindInfo.email }));
+    }
     setStep(2 as Step);
   };
 
@@ -271,10 +288,12 @@ export default function ForgotPasswordPage() {
       target = formData.account;
       type = "reset-password-email";
     } else if (verificationMethod === "phone") {
-      target = formData.phone || "";
+      // 用户名账号选择手机验证时，使用已绑定的手机号
+      target = formData.phone || userBindInfo?.phone || "";
       type = "reset-password";
     } else if (verificationMethod === "email") {
-      target = formData.email || "";
+      // 用户名账号选择邮箱验证时，使用已绑定的邮箱
+      target = formData.email || userBindInfo?.email || "";
       type = "reset-password-email";
     }
 
@@ -364,9 +383,13 @@ export default function ForgotPasswordPage() {
         ? "/api/auth/verify-sms-code"
         : "/api/auth/verify-email-code";
 
+      // 获取实际的手机号或邮箱
+      const targetPhone = accountType === "phone" ? formData.account : (formData.phone || userBindInfo?.phone || "");
+      const targetEmail = accountType === "email" ? formData.account : (formData.email || userBindInfo?.email || "");
+
       const requestBody = (verificationMethod === "phone" || accountType === "phone")
-        ? { phone: formData.account, code: formData.smsCode, type: "reset-password" }
-        : { email: formData.account, code: formData.smsCode, type: "reset-password-email" };
+        ? { phone: targetPhone, code: formData.smsCode, type: "reset-password" }
+        : { email: targetEmail, code: formData.smsCode, type: "reset-password-email" };
 
       const res = await fetch(verifyEndpoint, {
         method: "POST",
@@ -396,6 +419,12 @@ export default function ForgotPasswordPage() {
 
     if (!formData.password) {
       setErrors({ password: "请输入新密码" });
+      return;
+    }
+
+    // 密码格式验证
+    if (formData.password.length < 8) {
+      setErrors({ password: "密码长度至少 8 位" });
       return;
     }
 
@@ -635,11 +664,8 @@ export default function ForgotPasswordPage() {
 
       <button
         onClick={() => {
+          // 返回第一步，但保留账号信息
           setStep(1 as Step);
-          setFormData({ ...formData, account: "" });
-          setAccountType("unknown");
-          setAccountCheckStatus({});
-          setUserBindInfo(null);
         }}
         className="w-full mt-4 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
       >
@@ -652,19 +678,51 @@ export default function ForgotPasswordPage() {
   const renderStep2 = () => {
     const isPhoneVerification = verificationMethod === "phone" || accountType === "phone";
     
+    // 获取用于显示的手机号或邮箱
+    const displayPhone = formData.phone || userBindInfo?.phone || '';
+    const displayEmail = formData.email || userBindInfo?.email || '';
+    
+    // 判断是否已发送验证码（有倒计时或有消息提示）
+    const hasSentCode = smsCountdown > 0 || smsMessage;
+    
     return (
       <div>
         <h2 className="text-xl font-semibold text-slate-800 mb-1">
           {isPhoneVerification ? "短信验证" : "邮箱验证"}
         </h2>
         <p className="text-sm text-slate-500 mb-6">
-          {isPhoneVerification 
-            ? `验证码已发送至手机 ${formData.account || formData.phone}`
-            : `验证码已发送至邮箱 ${formData.account || formData.email}`
+          {hasSentCode
+            ? "验证码已发送，请输入验证码"
+            : isPhoneVerification
+              ? "请点击获取验证码按钮获取短信验证码"
+              : "请点击获取验证码按钮获取邮箱验证码"
           }
         </p>
 
         <form onSubmit={handleStep2} className="space-y-4">
+          {/* 显示已绑定的手机号或邮箱 */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1.5">
+              {isPhoneVerification ? "手机号" : "邮箱"}
+            </label>
+            <div className="relative">
+              {isPhoneVerification ? (
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              ) : (
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              )}
+              <input
+                type="text"
+                value={isPhoneVerification 
+                  ? displayPhone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
+                  : displayEmail.replace(/(.{2}).+(@.+)/, '$1***$2')
+                }
+                readOnly
+                className="w-full pl-9 pr-4 py-2.5 border border-[#e2e8f0] rounded-lg text-sm bg-slate-50 text-slate-600 cursor-not-allowed"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1.5">
               验证码 <span className="text-red-500">*</span>
@@ -712,35 +770,42 @@ export default function ForgotPasswordPage() {
             )}
           </div>
 
-          <button
-            type="submit"
-            disabled={loading || formData.smsCode.length !== 6}
-            className="w-full py-2.5 bg-[#3182ce] text-white rounded-lg font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                下一步
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                // 如果是从选择验证方式页面来的，返回选择验证方式页面
+                // 否则返回第一步
+                // 判断是否经过了选择验证方式页面
+                const cameFromStep1_5 = accountType === "username" && verificationMethod !== null;
+                
+                if (cameFromStep1_5) {
+                  setStep(1.5 as Step);
+                } else {
+                  setStep(1 as Step);
+                }
+              }}
+              className="flex-1 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              上一步
+            </button>
+            <button
+              type="submit"
+              disabled={loading || formData.smsCode.length !== 6}
+              className="flex-1 py-2.5 bg-[#3182ce] text-white rounded-lg font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  下一步
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
         </form>
-
-        <button
-          onClick={() => {
-            if (accountType === "username") {
-              setStep(1.5 as Step);
-            } else {
-              setStep(1 as Step);
-            }
-          }}
-          className="w-full mt-3 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          返回上一步
-        </button>
       </div>
     );
   };
@@ -763,7 +828,17 @@ export default function ForgotPasswordPage() {
               type={showPassword ? "text" : "password"}
               value={formData.password}
               onChange={(e) => {
-                setFormData({ ...formData, password: e.target.value });
+                const value = e.target.value;
+                setFormData({ ...formData, password: value });
+                
+                // 验证密码强度
+                const result = validatePasswordStrength(value);
+                setPasswordStrength({
+                  valid: result.valid,
+                  score: result.score,
+                  requirements: result.requirements || [],
+                });
+                
                 if (errors.password) {
                   setErrors({ ...errors, password: undefined });
                 }
@@ -771,7 +846,7 @@ export default function ForgotPasswordPage() {
               className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
                 errors.password ? "border-red-500" : "border-[#e2e8f0]"
               }`}
-              placeholder="请输入新密码"
+              placeholder="请设置新密码"
             />
             <button
               type="button"
@@ -784,8 +859,34 @@ export default function ForgotPasswordPage() {
           {errors.password && (
             <p className="mt-1 text-xs text-red-500">{errors.password}</p>
           )}
-          {formData.password && !errors.password && (
-            <p className="mt-1 text-xs text-green-600">密码格式正确</p>
+
+          {/* 密码强度指示器 */}
+          {formData.password && (
+            <div className="mt-1.5 space-y-1.5">
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((level) => (
+                  <div
+                    key={level}
+                    className={`flex-1 h-1.5 rounded-full transition-colors ${
+                      level <= passwordStrength.score
+                        ? passwordStrength.score === 5
+                          ? "bg-green-500"
+                          : level <= 2
+                            ? "bg-red-500"
+                            : level <= 4
+                              ? "bg-orange-500"
+                              : "bg-yellow-500"
+                        : "bg-slate-200"
+                    }`}
+                  />
+                ))}
+              </div>
+              {passwordStrength.requirements.length > 0 && (
+                <p className="text-[10px] text-slate-500">
+                  还需满足：{passwordStrength.requirements.join("、")}
+                </p>
+              )}
+            </div>
           )}
         </div>
 
@@ -802,6 +903,16 @@ export default function ForgotPasswordPage() {
                 setFormData({ ...formData, confirmPassword: e.target.value });
                 if (confirmPasswordError) {
                   setConfirmPasswordError(undefined);
+                }
+              }}
+              onBlur={() => {
+                // 失焦时验证密码一致性
+                if (formData.confirmPassword && formData.password) {
+                  if (formData.password !== formData.confirmPassword) {
+                    setConfirmPasswordError("两次输入的密码不一致");
+                  } else {
+                    setConfirmPasswordError(undefined);
+                  }
                 }
               }}
               className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
@@ -826,29 +937,31 @@ export default function ForgotPasswordPage() {
           )}
         </div>
 
-        <button
-          type="submit"
-          disabled={loading || !formData.password || !formData.confirmPassword}
-          className="w-full py-2.5 bg-[#3182ce] text-white rounded-lg font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <>
-              <Key className="w-4 h-4" />
-              重置密码
-            </>
-          )}
-        </button>
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => setStep(2 as Step)}
+            className="flex-1 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            上一步
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !formData.password || !formData.confirmPassword}
+            className="flex-1 py-2.5 bg-[#3182ce] text-white rounded-lg font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <Key className="w-4 h-4" />
+                重置密码
+              </>
+            )}
+          </button>
+        </div>
       </form>
-
-      <button
-        onClick={() => setStep(2 as Step)}
-        className="w-full mt-3 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        返回上一步
-      </button>
     </div>
   );
 

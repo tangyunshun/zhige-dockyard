@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const search = searchParams.get("search") || "";
     const role = searchParams.get("role") || "";
-    const status = searchParams.get("status") || "";
+    const accountStatus = searchParams.get("accountStatus") || ""; // 账号状态
+    const loginStatus = searchParams.get("loginStatus") || ""; // 登录状态
     const membershipLevel = searchParams.get("membershipLevel") || "";
 
     const skip = (page - 1) * limit;
@@ -27,8 +28,8 @@ export async function GET(request: NextRequest) {
       where.role = role;
     }
 
-    if (status) {
-      where.status = status;
+    if (accountStatus) {
+      where.status = accountStatus;
     }
 
     if (membershipLevel) {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // 格式化用户数据，添加 isOnline 字段
-    const formattedUsers = users.map((user) => {
+    let formattedUsers = users.map((user) => {
       // 判断用户是否在线：
       // 1. 用户状态必须是 active
       // 2. 有 sessionToken 且未过期
@@ -76,9 +77,6 @@ export async function GET(request: NextRequest) {
         if (user.lastForcedLogoutAt) {
           // 被强制下线后，立即显示离线
           isOnline = false;
-          console.log(
-            `[Admin API] 用户 ${user.id} 被强制下线，isOnline=false`,
-          );
         } else if (user.sessionToken && user.sessionExpiresAt) {
           // 检查会话是否过期
           const sessionExpired = new Date(user.sessionExpiresAt).getTime() < Date.now();
@@ -93,29 +91,17 @@ export async function GET(request: NextRequest) {
             if (isActiveRecently) {
               // 有会话令牌、未过期、且最近活跃，才是真的在线
               isOnline = true;
-              console.log(
-                `[Admin API] 用户 ${user.id} isOnline=true (会话有效且${Math.round(timeSinceLastLogin)}秒前有活跃)`,
-              );
             } else {
               // 会话有效但长时间未活跃，显示离线（用户可能去吃饭了或者关闭了浏览器）
               isOnline = false;
-              console.log(
-                `[Admin API] 用户 ${user.id} isOnline=false (会话有效但已${Math.round(timeSinceLastLogin / 60)}分钟未活跃)`,
-              );
             }
           } else {
             // 会话已过期，显示离线
             isOnline = false;
-            console.log(
-              `[Admin API] 用户 ${user.id} isOnline=false (会话已过期)`,
-            );
           }
         } else {
           // 没有会话令牌，显示离线
           isOnline = false;
-          console.log(
-            `[Admin API] 用户 ${user.id} isOnline=false (无会话令牌)`,
-          );
         }
       }
 
@@ -124,6 +110,12 @@ export async function GET(request: NextRequest) {
         isOnline,
       };
     });
+
+    // 如果指定了登录状态筛选，则过滤结果
+    if (loginStatus) {
+      const isOnlineFilter = loginStatus === "online";
+      formattedUsers = formattedUsers.filter(user => user.isOnline === isOnlineFilter);
+    }
 
     return NextResponse.json({
       success: true,

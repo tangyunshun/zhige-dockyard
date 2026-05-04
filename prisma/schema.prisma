@@ -544,3 +544,20 @@ model MembershipChangeLog {
   @@index([changeType], map: "MembershipChangeLog_changeType_idx")
   @@index([createdAt], map: "MembershipChangeLog_createdAt_idx")
 }
+
+// 短信验证码
+model SmsCode {
+  id        String   @id @default(cuid())
+  phone     String   // 手机号
+  code      String   // 验证码
+  type      String   @default("reset-password") // 验证码类型：reset-password, register, login 等
+  used      Boolean  @default(false) // 是否已使用
+  usedAt    DateTime? // 使用时间
+  createdAt DateTime @default(now()) // 创建时间
+  
+  @@index([phone], map: "SmsCode_phone_idx")
+  @@index([code], map: "SmsCode_code_idx")
+  @@index([type], map: "SmsCode_type_idx")
+  @@index([used], map: "SmsCode_used_idx")
+  @@index([createdAt], map: "SmsCode_createdAt_idx")
+}

@@ -9,8 +9,17 @@ interface SmsCodeRecord {
   sentAt: number; // 发送时间戳
 }
 
+// 使用全局变量确保热重载时数据不丢失
+const globalForSms = globalThis as unknown as {
+  smsCodeStore: Map<string, SmsCodeRecord>;
+};
+
 // 内存存储 Map<phone, SmsCodeRecord>
-const smsCodeStore = new Map<string, SmsCodeRecord>();
+const smsCodeStore = globalForSms.smsCodeStore || new Map<string, SmsCodeRecord>();
+
+if (!globalForSms.smsCodeStore) {
+  globalForSms.smsCodeStore = smsCodeStore;
+}
 
 // 验证码有效期（5 分钟）
 const CODE_EXPIRY_MS = 5 * 60 * 1000;

@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,13 +15,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // TODO: 验证图形验证码（如果提供了 captcha 参数）
+    // 生产环境需要验证图形验证码
+    
+    // 检查是否还在发送间隔内（60 秒）
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const recentCode = await prisma.smsCode.findFirst({
+      where: {
+        phone: email, // 邮箱存储在 phone 字段
+        type: type || 'reset-password-email',
+        used: false,
+        createdAt: {
+          gte: oneMinuteAgo,
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (recentCode) {
+      const timeSinceLastSend = Date.now() - recentCode.createdAt.getTime();
+      const countdown = Math.ceil((60000 - timeSinceLastSend) / 1000);
+      return NextResponse.json(
+        { 
+          message: `验证码已发送，请${countdown}秒后再试`,
+          countdown
+        },
+        { status: 400 }
+      );
+    }
+    
     // TODO: 调用邮件服务商 API 发送邮件
     // 生成 6 位随机验证码
-    const code = Math.random().toString().slice(2, 8);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // 生产环境需要：
-    // 1. 将验证码存储到 Redis，设置 5 分钟过期
-    // 2. 调用 SendGrid/阿里云邮件推送等 API 发送邮件
+    // 存储验证码到数据库（使用 phone 字段存储邮箱）
+    await prisma.smsCode.create({
+      data: {
+        phone: email, // 邮箱存储在 phone 字段
+        code: code,
+        type: type || 'reset-password-email',
+        used: false,
+      },
+    });
     
     console.log(`发送邮件验证码到 ${email}: ${code} (类型：${type})`);
 

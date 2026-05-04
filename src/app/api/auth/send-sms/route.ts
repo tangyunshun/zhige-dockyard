@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateSmsCode, storeSmsCode } from '@/lib/sms-store';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,21 +18,46 @@ export async function POST(request: NextRequest) {
     // TODO: 验证图形验证码（如果提供了 captcha 参数）
     // 生产环境需要验证图形验证码
     
-    // 生成 6 位随机验证码
-    const smsCode = generateSmsCode();
-    
-    // 存储验证码
-    const storeResult = storeSmsCode(phone, smsCode);
-    
-    if (!storeResult.success) {
+    // 检查是否还在发送间隔内（60 秒）
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const recentSms = await prisma.smsCode.findFirst({
+      where: {
+        phone: phone,
+        type: type || 'reset-password',
+        used: false,
+        createdAt: {
+          gte: oneMinuteAgo,
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (recentSms) {
+      const timeSinceLastSend = Date.now() - recentSms.createdAt.getTime();
+      const countdown = Math.ceil((60000 - timeSinceLastSend) / 1000);
       return NextResponse.json(
         { 
-          message: storeResult.message,
-          countdown: storeResult.countdown 
+          message: `验证码已发送，请${countdown}秒后再试`,
+          countdown
         },
         { status: 400 }
       );
     }
+    
+    // 生成 6 位随机验证码
+    const smsCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // 存储验证码到数据库
+    await prisma.smsCode.create({
+      data: {
+        phone: phone,
+        code: smsCode,
+        type: type || 'reset-password',
+        used: false,
+      },
+    });
     
     // TODO: 调用阿里云/腾讯云短信 API 发送短信
     // 这里只在控制台输出，生产环境需要调用短信服务商 API
