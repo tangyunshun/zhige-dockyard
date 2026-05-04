@@ -27,8 +27,8 @@ export function useLogout() {
 
   const handleLogout = async () => {
     try {
-      // 触发退出登录开始事件
-      window.dispatchEvent(new CustomEvent("logout-start"));
+      // 设置退出登录标志，防止 ActivityMonitor 误判
+      localStorage.setItem("is_logging_out", "true");
       
       // 显示加载中提示
       toast.info("正在退出登录...", 1500);
@@ -43,7 +43,7 @@ export function useLogout() {
       });
 
       if (res.ok) {
-        // 清除所有本地存储
+        // 清除所有本地存储（但不包括 is_logging_out）
         localStorage.removeItem("userId");
         localStorage.removeItem("userRole");
         localStorage.removeItem("auth_token");
@@ -59,19 +59,19 @@ export function useLogout() {
         // 等待提示显示完后跳转
         await new Promise(resolve => setTimeout(resolve, 1600));
 
-        // 触发退出登录结束事件
-        window.dispatchEvent(new CustomEvent("logout-end"));
+        // 清除退出登录标志
+        localStorage.removeItem("is_logging_out");
 
         // 使用 window.location.href 直接跳转，避免触发 AuthCheck
         window.location.href = "/";
       } else {
-        // 触发退出登录结束事件
-        window.dispatchEvent(new CustomEvent("logout-end"));
+        // 清除退出登录标志
+        localStorage.removeItem("is_logging_out");
         toast.error("退出登录失败");
       }
     } catch (error) {
-      // 触发退出登录结束事件
-      window.dispatchEvent(new CustomEvent("logout-end"));
+      // 清除退出登录标志
+      localStorage.removeItem("is_logging_out");
       console.error("退出登录失败:", error);
       toast.error("退出登录失败，请稍后重试");
     }
