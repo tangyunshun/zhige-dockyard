@@ -215,6 +215,16 @@ function LoginForm() {
     }
   };
 
+  // 手机号输入框失焦时检测
+  const handlePhoneBlur = async () => {
+    if (formData.phone) {
+      const validation = validatePhone(formData.phone);
+      if (validation.valid) {
+        checkAccount(formData.phone);
+      }
+    }
+  };
+
   // 选择邮箱建议
   const handleEmailSuggestionClick = (suggestion: string) => {
     setFormData({ ...formData, account: suggestion });
@@ -740,6 +750,7 @@ function LoginForm() {
                           });
                         }
                       }}
+                      onBlur={handlePhoneBlur}
                       className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
                         errors.phone ? "border-red-500" : "border-[#e2e8f0]"
                       }`}
@@ -748,6 +759,43 @@ function LoginForm() {
                   </div>
                   {errors.phone && (
                     <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
+                  )}
+                  {/* 手机号状态提示 */}
+                  {accountCheckStatus.exists === false &&
+                    redirectCountdown !== null && (
+                      <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+                        <p className="text-xs text-orange-700">
+                          ⚠️ 该手机号未注册，{redirectCountdown}秒后跳转注册页面
+                        </p>
+                        <button
+                          onClick={() => {
+                            setRedirectCountdown(null);
+                            // 带手机号参数跳转到注册页面
+                            router.push(
+                              `/auth/register?account=${encodeURIComponent(formData.phone)}`,
+                            );
+                          }}
+                          className="text-xs text-[#3182ce] hover:underline font-medium"
+                        >
+                          立即注册 →
+                        </button>
+                      </div>
+                    )}
+                  {accountCheckStatus.locked && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs text-red-700">
+                        🔒 手机号已被锁定，请
+                        {accountCheckStatus.minutesRemaining}
+                        分钟后再试
+                      </p>
+                    </div>
+                  )}
+                  {accountCheckStatus.disabled && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs text-red-700">
+                        ⛔ 该手机号对应的账号已被禁用，请联系管理员
+                      </p>
+                    </div>
                   )}
                 </div>
 
