@@ -33,7 +33,7 @@ export function ActivityMonitor() {
         : false;
     const isLoggingOut =
       typeof window !== "undefined"
-        ? localStorage.getItem("is_logging_out") === "true"
+        ? sessionStorage.getItem("is_logging_out") === "true"
         : false;
 
     // 关键检查：用户必须已登录（有 userId 且有 auth_token）且不在退出登录过程中

@@ -29,14 +29,16 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
         console.log("AuthCheck: 已经处理过错误，跳过");
         return;
       }
-      
+
       // 检查是否正在退出登录，如果是，让 useLogout 处理
-      const isLoggingOut = localStorage.getItem("is_logging_out") === "true";
+      const isLoggingOut = sessionStorage.getItem("is_logging_out") === "true";
       if (isLoggingOut) {
-        console.log("AuthCheck: 用户正在退出登录，由 useLogout 处理，AuthCheck 跳过");
+        console.log(
+          "AuthCheck: 用户正在退出登录，由 useLogout 处理，AuthCheck 跳过",
+        );
         return;
       }
-      
+
       hasHandledErrorRef.current = true;
       isRedirectingRef.current = true;
 

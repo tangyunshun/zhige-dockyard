@@ -28,7 +28,8 @@ export function useLogout() {
   const handleLogout = async () => {
     try {
       // 设置退出登录标志，防止 ActivityMonitor 误判
-      localStorage.setItem("is_logging_out", "true");
+      // 使用 sessionStorage，页面刷新后会自动消失
+      sessionStorage.setItem("is_logging_out", "true");
       
       // 显示加载中提示
       toast.info("正在退出登录...", 1000);
@@ -44,7 +45,6 @@ export function useLogout() {
 
       if (res.ok) {
         // 设置标记，告诉首页显示退出成功提示
-        // 注意：必须在 sessionStorage.clear() 之前设置，且使用 localStorage
         localStorage.setItem("just_logged_out", "true");
 
         // 清除所有本地存储
@@ -57,19 +57,12 @@ export function useLogout() {
         sessionStorage.clear();
         document.cookie = "auth_token=; path=/; max-age=0";
 
-        // 清除退出登录标志
-        localStorage.removeItem("is_logging_out");
-
         // 使用 window.location.href 直接跳转到首页
         window.location.href = "/";
       } else {
-        // 清除退出登录标志
-        localStorage.removeItem("is_logging_out");
         toast.error("退出登录失败");
       }
     } catch (error) {
-      // 清除退出登录标志
-      localStorage.removeItem("is_logging_out");
       console.error("退出登录失败:", error);
       toast.error("退出登录失败，请稍后重试");
     }
