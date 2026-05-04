@@ -28,9 +28,19 @@ export default function Home() {
     if (justLoggedOut === "true") {
       // 清除标记
       localStorage.removeItem("just_logged_out");
+      
+      // 设置临时标志，防止 ActivityMonitor 误判
+      sessionStorage.setItem("just_showed_logout", "true");
+      
       // 显示退出成功提示
       toast.success("已退出登录", 2000);
       console.log("首页：显示退出登录成功提示");
+      
+      // 2.5 秒后清除标志（确保 toast 已消失）
+      setTimeout(() => {
+        sessionStorage.removeItem("just_showed_logout");
+        console.log("首页：清除 just_showed_logout 标志");
+      }, 2500);
     }
   }, [toast]);
 

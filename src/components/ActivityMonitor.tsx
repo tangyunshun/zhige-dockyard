@@ -35,10 +35,17 @@ export function ActivityMonitor() {
       typeof window !== "undefined"
         ? sessionStorage.getItem("is_logging_out") === "true"
         : false;
+    const justShowedLogout =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("just_showed_logout") === "true"
+        : false;
 
     // 关键检查：用户必须已登录（有 userId 且有 auth_token）且不在退出登录过程中
-    if (isLoggingOut) {
-      console.log("[ActivityMonitor] 用户正在退出登录，跳过检查");
+    if (isLoggingOut || justShowedLogout) {
+      console.log("[ActivityMonitor] 用户正在退出登录或刚显示退出提示，跳过检查", {
+        isLoggingOut,
+        justShowedLogout,
+      });
       checkingRef.current = false;
       return;
     }

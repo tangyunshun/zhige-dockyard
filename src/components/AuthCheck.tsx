@@ -32,10 +32,10 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
 
       // 检查是否正在退出登录，如果是，让 useLogout 处理
       const isLoggingOut = sessionStorage.getItem("is_logging_out") === "true";
-      if (isLoggingOut) {
-        console.log(
-          "AuthCheck: 用户正在退出登录，由 useLogout 处理，AuthCheck 跳过",
-        );
+      const justShowedLogout =
+        sessionStorage.getItem("just_showed_logout") === "true";
+      if (isLoggingOut || justShowedLogout) {
+        console.log("AuthCheck: 用户正在退出登录或刚显示退出提示，跳过处理");
         return;
       }
 

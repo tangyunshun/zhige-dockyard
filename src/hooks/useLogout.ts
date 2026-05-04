@@ -54,7 +54,13 @@ export function useLogout() {
         localStorage.removeItem("userEmail");
         localStorage.removeItem("userName");
         localStorage.removeItem("rememberMe");
+        
+        // 重要：先清除 is_logging_out，让首页可以显示提示
+        sessionStorage.removeItem("is_logging_out");
+        
+        // 然后清除其他 sessionStorage
         sessionStorage.clear();
+        
         document.cookie = "auth_token=; path=/; max-age=0";
 
         // 使用 window.location.href 直接跳转到首页
