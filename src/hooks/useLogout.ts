@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useToast } from "./Toast";
+import { useToast } from "@/components/Toast";
 
 /**
  * 全局退出登录 Hook
