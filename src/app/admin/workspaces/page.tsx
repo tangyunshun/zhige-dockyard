@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Search,
-  Filter,
   Building2,
   Users,
   Trash2,
@@ -15,6 +13,7 @@ import {
   XCircle,
   X,
 } from "lucide-react";
+import SearchInput from "@/components/common/SearchInput";
 
 interface Workspace {
   id: string;
@@ -95,13 +94,15 @@ export default function AdminWorkspacesPage() {
     loadWorkspaces(currentPage);
   }, [currentPage, filterType, filterComponentCount]);
 
-  const loadWorkspaces = async (page: number) => {
+  const loadWorkspaces = async (page: number, searchValue?: string) => {
     try {
       setLoading(true);
+      const currentSearch =
+        searchValue !== undefined ? searchValue : searchQuery;
       const params = new URLSearchParams({
         page: page.toString(),
         limit: "10",
-        ...(searchQuery && { search: searchQuery }),
+        ...(currentSearch && { search: currentSearch }),
         ...(filterType !== "all" && { type: filterType }),
         ...(filterComponentCount !== "all" && {
           componentCount: filterComponentCount,
@@ -129,10 +130,19 @@ export default function AdminWorkspacesPage() {
     }
   };
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(
+    (searchValue: string = searchQuery) => {
+      setCurrentPage(1);
+      loadWorkspaces(1, searchValue);
+    },
+    [searchQuery],
+  );
+
+  // 实时搜索处理函数（带防抖）
+  const handleRealTimeSearch = useCallback((value: string) => {
     setCurrentPage(1);
-    loadWorkspaces(1);
-  };
+    loadWorkspaces(1, value);
+  }, []);
 
   const handleDelete = async (workspaceId: string) => {
     showConfirm("确定要删除该工作空间吗？此操作不可恢复！", async () => {
@@ -552,15 +562,13 @@ export default function AdminWorkspacesPage() {
         <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
 
         <div className="relative flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="搜索工作空间名称..."
+          <div className="flex-1">
+            <SearchInput
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="w-full pl-11 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+              onChange={setSearchQuery}
+              onSearch={handleRealTimeSearch}
+              placeholder="搜索工作空间名称..."
+              debounceMs={300}
             />
           </div>
           <div className="flex flex-wrap gap-2">

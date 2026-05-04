@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { useLogout } from "@/hooks/useLogout";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/Logo";
+import SearchInput from "@/components/common/SearchInput";
 import {
   BookOpen,
-  Search,
   ChevronRight,
   ExternalLink,
   FileText,
@@ -270,14 +270,12 @@ export default function DocsPage() {
             </div>
 
             {/* 搜索框 */}
-            <div className="relative max-w-2xl mx-auto">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
+            <div className="max-w-2xl mx-auto">
+              <SearchInput
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={setSearchQuery}
                 placeholder="搜索文档..."
-                className="w-full pl-12 pr-4 py-3.5 border border-[#e2e8f0] rounded-xl text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95 shadow-lg shadow-slate-200/50"
+                debounceMs={300}
               />
             </div>
           </div>

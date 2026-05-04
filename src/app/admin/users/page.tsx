@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  Search,
   Filter,
   MoreVertical,
   Edit2,
@@ -23,6 +22,7 @@ import {
 import DataTableFilter, {
   FilterConfig,
 } from "@/components/common/DataTableFilter";
+import SearchInput from "@/components/common/SearchInput";
 
 // 定义完整的筛选项值（不依赖动态数据）
 const ROLE_OPTIONS = [
@@ -139,13 +139,15 @@ export default function AdminUsersPage() {
     filterMembershipLevel,
   ]);
 
-  const loadUsers = async (page: number) => {
+  const loadUsers = async (page: number, searchValue?: string) => {
     try {
       setLoading(true);
+      const currentSearch =
+        searchValue !== undefined ? searchValue : searchQuery;
       const params = new URLSearchParams({
         page: page.toString(),
         limit: "10",
-        ...(searchQuery && { search: searchQuery }),
+        ...(currentSearch && { search: currentSearch }),
         ...(filterRole !== "all" && { role: filterRole }),
         ...(filterAccountStatus !== "all" && {
           accountStatus: filterAccountStatus,
@@ -225,10 +227,19 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(
+    (searchValue: string = searchQuery) => {
+      setCurrentPage(1);
+      loadUsers(1, searchValue);
+    },
+    [searchQuery],
+  );
+
+  // 实时搜索处理函数（带防抖）
+  const handleRealTimeSearch = useCallback((value: string) => {
     setCurrentPage(1);
-    loadUsers(1);
-  };
+    loadUsers(1, value);
+  }, []);
 
   const handleResetFilters = () => {
     setFilterRole("all");
@@ -237,6 +248,7 @@ export default function AdminUsersPage() {
     setFilterMembershipLevel("all");
     setSearchQuery("");
     setCurrentPage(1);
+    loadUsers(1, "");
   };
 
   const toggleSelectUser = (userId: string) => {
@@ -695,15 +707,13 @@ export default function AdminUsersPage() {
         <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
 
         <div className="relative flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="搜索用户名、邮箱、手机号..."
+          <div className="flex-1">
+            <SearchInput
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="w-full pl-11 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+              onChange={setSearchQuery}
+              onSearch={handleRealTimeSearch}
+              placeholder="搜索用户名、邮箱、手机号..."
+              debounceMs={300}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
