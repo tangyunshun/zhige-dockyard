@@ -492,337 +492,355 @@ function LoginForm() {
           <h2 className="text-xl font-bold text-slate-800 mb-1">欢迎回来</h2>
           <p className="text-slate-600 mb-6 text-sm">请登录您的账号</p>
 
-          {/* 账号密码登录表单 */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            {/* 账号输入框 */}
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                账号 / 邮箱 / 手机号 <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                {accountType === "email" ? (
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                ) : accountType === "phone" ? (
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                ) : (
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                )}
-                <input
-                  type="text"
-                  value={formData.account}
-                  onChange={handleAccountChange}
-                  onBlur={handleAccountBlur}
-                  className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                    errors.account ? "border-red-500" : "border-[#e2e8f0]"
-                  }`}
-                  placeholder="请输入账号/邮箱/手机号"
-                />
-              </div>
-              {errors.account && (
-                <p className="mt-1 text-xs text-red-500">
-                  {errors.account}
-                </p>
-              )}
-
-              {/* 邮箱自动补全建议 */}
-              {showEmailSuggestions && emailSuggestions.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-[#e2e8f0] rounded-lg shadow-lg">
-                  {emailSuggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => handleEmailSuggestionClick(suggestion)}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-[#f0f8ff] text-slate-700 first:rounded-t-lg last:rounded-b-lg"
-                    >
-                      <Mail className="inline w-3 h-3 mr-2 text-[#3182ce]" />
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* 账号状态提示 */}
-              {accountCheckStatus.exists === false &&
-                redirectCountdown !== null && (
-                  <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
-                    <p className="text-xs text-orange-700">
-                      ⚠️ 该账号未注册，{redirectCountdown}秒后跳转注册页面
+          {/* 根据 showSmsLogin 决定显示哪个表单 */}
+          {!showSmsLogin ? (
+            <>
+              {/* 账号密码登录表单 */}
+              <form onSubmit={handleLogin} className="space-y-4">
+                {/* 账号输入框 */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    账号 / 邮箱 / 手机号 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    {accountType === "email" ? (
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    ) : accountType === "phone" ? (
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    ) : (
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    )}
+                    <input
+                      type="text"
+                      value={formData.account}
+                      onChange={handleAccountChange}
+                      onBlur={handleAccountBlur}
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                        errors.account ? "border-red-500" : "border-[#e2e8f0]"
+                      }`}
+                      placeholder="请输入账号/邮箱/手机号"
+                    />
+                  </div>
+                  {errors.account && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.account}
                     </p>
-                    <button
-                      onClick={() => {
-                        setRedirectCountdown(null);
-                        // 带账号参数跳转到注册页面
-                        router.push(
-                          `/auth/register?account=${encodeURIComponent(formData.account)}`,
-                        );
+                  )}
+
+                  {/* 邮箱自动补全建议 */}
+                  {showEmailSuggestions && emailSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-[#e2e8f0] rounded-lg shadow-lg">
+                      {emailSuggestions.map((suggestion, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => handleEmailSuggestionClick(suggestion)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-[#f0f8ff] text-slate-700 first:rounded-t-lg last:rounded-b-lg"
+                        >
+                          <Mail className="inline w-3 h-3 mr-2 text-[#3182ce]" />
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* 账号状态提示 */}
+                  {accountCheckStatus.exists === false &&
+                    redirectCountdown !== null && (
+                      <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+                        <p className="text-xs text-orange-700">
+                          ⚠️ 该账号未注册，{redirectCountdown}秒后跳转注册页面
+                        </p>
+                        <button
+                          onClick={() => {
+                            setRedirectCountdown(null);
+                            // 带账号参数跳转到注册页面
+                            router.push(
+                              `/auth/register?account=${encodeURIComponent(formData.account)}`,
+                            );
+                          }}
+                          className="text-xs text-[#3182ce] hover:underline font-medium"
+                        >
+                          立即注册 →
+                        </button>
+                      </div>
+                    )}
+                  {accountCheckStatus.locked && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs text-red-700">
+                        🔒 账号已锁定，请{accountCheckStatus.minutesRemaining}
+                        分钟后再试
+                      </p>
+                    </div>
+                  )}
+                  {accountCheckStatus.disabled && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-xs text-red-700">
+                        ⛔ 账号已被禁用，请联系管理员
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 密码输入框 */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    密码 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      onChange={(e) => {
+                        setFormData({ ...formData, password: e.target.value });
+                        if (errors.password)
+                          setErrors({ ...errors, password: undefined });
                       }}
-                      className="text-xs text-[#3182ce] hover:underline font-medium"
+                      className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                        errors.password ? "border-red-500" : "border-[#e2e8f0]"
+                      }`}
+                      placeholder="请输入密码"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
-                      立即注册 →
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
                     </button>
                   </div>
-                )}
-              {accountCheckStatus.locked && (
-                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs text-red-700">
-                    🔒 账号已锁定，请{accountCheckStatus.minutesRemaining}
-                    分钟后再试
-                  </p>
+                  {errors.password && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.password}
+                    </p>
+                  )}
+                  <div className="flex justify-between items-center mt-1.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRememberMe(!rememberMe)}
+                        className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                          rememberMe
+                            ? "bg-[#3182ce] border-[#3182ce]"
+                            : "border-[#e2e8f0]"
+                        }`}
+                      >
+                        {rememberMe && (
+                          <CheckCircle className="w-3 h-3 text-white" />
+                        )}
+                      </button>
+                      <label
+                        onClick={() => setRememberMe(!rememberMe)}
+                        className="text-xs text-slate-600 cursor-pointer select-none"
+                      >
+                        记住我
+                      </label>
+                    </div>
+                    <Link
+                      href="/auth/forgot-password"
+                      className="text-xs text-[#3182ce] hover:underline"
+                    >
+                      忘记密码？
+                    </Link>
+                  </div>
                 </div>
-              )}
-              {accountCheckStatus.disabled && (
-                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs text-red-700">
-                    ⛔ 账号已被禁用，请联系管理员
-                  </p>
-                </div>
-              )}
-            </div>
 
-            {/* 密码输入框 */}
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                密码 <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) => {
-                    setFormData({ ...formData, password: e.target.value });
-                    if (errors.password)
-                      setErrors({ ...errors, password: undefined });
-                  }}
-                  className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                    errors.password ? "border-red-500" : "border-[#e2e8f0]"
-                  }`}
-                  placeholder="请输入密码"
-                />
+                {/* 登录按钮 */}
                 <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>登录中...</span>
+                    </>
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <>
+                      <span>登录</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
                   )}
                 </button>
-              </div>
-              {errors.password && (
-                <p className="mt-1 text-xs text-red-500">
-                  {errors.password}
-                </p>
-              )}
-              <div className="flex justify-between items-center mt-1.5">
-                <div className="flex items-center gap-2">
+              </form>
+
+              {/* 手机号验证码快捷登录入口 */}
+              <div className="mt-6">
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="px-4 bg-white text-slate-500 text-sm">
+                      其他登录方式
+                    </span>
+                  </div>
+                </div>
+
+                {/* 手机号验证码登录入口（可展开） */}
+                <div className="mt-4">
                   <button
                     type="button"
-                    onClick={() => setRememberMe(!rememberMe)}
-                    className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                      rememberMe
-                        ? "bg-[#3182ce] border-[#3182ce]"
-                        : "border-[#e2e8f0]"
-                    }`}
+                    onClick={() => {
+                      setShowSmsLogin(true);
+                      setLoginMethod("sms");
+                      setErrors({});
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-[#3182ce]/30 rounded-lg text-sm text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer"
                   >
-                    {rememberMe && (
-                      <CheckCircle className="w-3 h-3 text-white" />
-                    )}
+                    <Phone className="w-4 h-4" />
+                    <span className="font-medium">手机号验证码快捷登录</span>
+                    <span className="text-xs text-slate-500 ml-1">（无需记忆密码）</span>
                   </button>
-                  <label
-                    onClick={() => setRememberMe(!rememberMe)}
-                    className="text-xs text-slate-600 cursor-pointer select-none"
-                  >
-                    记住我
-                  </label>
                 </div>
-                <Link
-                  href="/auth/forgot-password"
-                  className="text-xs text-[#3182ce] hover:underline"
-                >
-                  忘记密码？
-                </Link>
               </div>
-            </div>
-
-            {/* 登录按钮 */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>登录中...</span>
-                </>
-              ) : (
-                <>
-                  <span>登录</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* 手机号验证码快捷登录入口 */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200"></div>
-              </div>
-              <div className="relative flex justify-center">
-                <span className="px-4 bg-white text-slate-500 text-sm">
-                  其他登录方式
-                </span>
-              </div>
-            </div>
-
-            {/* 手机号验证码登录入口（可展开） */}
-            <div className="mt-4">
-              {!showSmsLogin ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSmsLogin(true);
-                    setLoginMethod("sms");
-                    setErrors({});
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-[#3182ce]/30 rounded-lg text-sm text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span className="font-medium">手机号验证码快捷登录</span>
-                  <span className="text-xs text-slate-500 ml-1">（无需记忆密码）</span>
-                </button>
-              ) : (
-                <div className="bg-[#f8fafc] rounded-lg p-4 border border-[#e2e8f0]">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-medium text-slate-700">手机号验证码登录</h3>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowSmsLogin(false);
-                        setLoginMethod("password");
-                        setErrors({});
+            </>
+          ) : (
+            <>
+              {/* 手机号验证码登录表单 */}
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    手机号 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormData({ ...formData, phone: value });
+                        if (errors.phone) {
+                          setErrors({ ...errors, phone: undefined });
+                        }
+                        // 实时验证手机号格式
+                        if (value && !validatePhone(value).valid) {
+                          setErrors({
+                            ...errors,
+                            phone: validatePhone(value).message,
+                          });
+                        }
                       }}
-                      className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
-                    >
-                      返回账号密码登录
-                    </button>
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                        errors.phone ? "border-red-500" : "border-[#e2e8f0]"
+                      }`}
+                      placeholder="请输入 11 位手机号"
+                    />
                   </div>
+                  {errors.phone && (
+                    <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
+                  )}
+                </div>
 
-                  {/* 手机号输入框 */}
-                  <div className="mb-3">
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                      手机号 <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    验证码 <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <input
-                        type="tel"
-                        value={formData.phone}
+                        type="text"
+                        value={formData.smsCode}
                         onChange={(e) => {
                           const value = e.target.value;
-                          setFormData({ ...formData, phone: value });
-                          if (errors.phone) {
-                            setErrors({ ...errors, phone: undefined });
+                          setFormData({ ...formData, smsCode: value });
+                          if (errors.smsCode) {
+                            setErrors({ ...errors, smsCode: undefined });
                           }
-                          // 实时验证手机号格式
-                          if (value && !validatePhone(value).valid) {
+                          // 实时验证验证码格式（6 位数字）
+                          if (value && !/^\d{0,6}$/.test(value)) {
+                            return;
+                          }
+                          if (value.length > 0 && value.length < 6) {
                             setErrors({
                               ...errors,
-                              phone: validatePhone(value).message,
+                              smsCode: "验证码为 6 位数字",
                             });
                           }
                         }}
                         className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                          errors.phone ? "border-red-500" : "border-[#e2e8f0]"
+                          errors.smsCode ? "border-red-500" : "border-[#e2e8f0]"
                         }`}
-                        placeholder="请输入 11 位手机号"
+                        placeholder="请输入 6 位验证码"
+                        maxLength={6}
                       />
                     </div>
-                    {errors.phone && (
-                      <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
-                    )}
+                    <button
+                      type="button"
+                      onClick={sendSmsCode}
+                      disabled={smsCountdown > 0 || loading}
+                      className="px-3 py-2.5 bg-[#3182ce] text-white rounded-lg text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {smsCountdown > 0
+                        ? `${smsCountdown}秒后重发`
+                        : "获取验证码"}
+                    </button>
                   </div>
+                  {errors.smsCode && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.smsCode}
+                    </p>
+                  )}
+                </div>
 
-                  {/* 验证码输入框 */}
-                  <div className="mb-3">
-                    <label className="block text-xs font-medium text-slate-700 mb-1.5">
-                      验证码 <span className="text-red-500">*</span>
-                    </label>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="text"
-                          value={formData.smsCode}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setFormData({ ...formData, smsCode: value });
-                            if (errors.smsCode) {
-                              setErrors({ ...errors, smsCode: undefined });
-                            }
-                            // 实时验证验证码格式（6 位数字）
-                            if (value && !/^\d{0,6}$/.test(value)) {
-                              return;
-                            }
-                            if (value.length > 0 && value.length < 6) {
-                              setErrors({
-                                ...errors,
-                                smsCode: "验证码为 6 位数字",
-                              });
-                            }
-                          }}
-                          className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                            errors.smsCode ? "border-red-500" : "border-[#e2e8f0]"
-                          }`}
-                          placeholder="请输入 6 位验证码"
-                          maxLength={6}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={sendSmsCode}
-                        disabled={smsCountdown > 0 || loading}
-                        className="px-3 py-2.5 bg-[#3182ce] text-white rounded-lg text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        {smsCountdown > 0
-                          ? `${smsCountdown}秒后重发`
-                          : "获取验证码"}
-                      </button>
-                    </div>
-                    {errors.smsCode && (
-                      <p className="mt-1 text-xs text-red-500">
-                        {errors.smsCode}
-                      </p>
-                    )}
+                {/* 登录按钮 */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>登录中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>登录</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* 返回账号密码登录入口 */}
+              <div className="mt-6">
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
                   </div>
+                  <div className="relative flex justify-center">
+                    <span className="px-4 bg-white text-slate-500 text-sm">
+                      其他登录方式
+                    </span>
+                  </div>
+                </div>
 
-                  {/* 登录按钮（验证码登录） */}
+                <div className="mt-4">
                   <button
                     type="button"
-                    onClick={handleLogin}
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    onClick={() => {
+                      setShowSmsLogin(false);
+                      setLoginMethod("password");
+                      setErrors({});
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
                   >
-                    {loading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>登录中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>登录</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
+                    <Lock className="w-4 h-4" />
+                    <span className="font-medium">账号密码登录</span>
+                    <span className="text-xs text-slate-500 ml-1">（使用账号/邮箱/手机号 + 密码）</span>
                   </button>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            </>
+          )}
 
           {/* 第三方登录 */}
           <div className="mt-6 mb-4">
