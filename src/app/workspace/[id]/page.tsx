@@ -60,12 +60,24 @@ export default function WorkspacePage() {
 
   const handleLogout = async () => {
     try {
+      // 显示加载中提示
+      toast.info("正在退出登录...", 1500);
+      
+      // 等待 1.5 秒，让用户看到提示
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       const res = await fetch("/api/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
 
       if (res.ok) {
+        // 显示成功提示
+        toast.success("已退出登录", 1500);
+        
+        // 等待提示显示完后跳转
+        await new Promise(resolve => setTimeout(resolve, 1600));
+        
         router.push("/");
       } else {
         toast.error("退出登录失败");

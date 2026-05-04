@@ -143,12 +143,36 @@ export default function Header() {
 
   const handleLogout = async () => {
     try {
+      // 显示加载状态
+      const logoutButton = document.querySelector('[data-action="logout"]');
+      if (logoutButton) {
+        logoutButton.setAttribute("disabled", "true");
+      }
+      
+      // 显示加载中提示
+      toast.info("正在退出登录...", 1500);
+      
+      // 等待 1.5 秒，让用户看到提示
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // 调用退出登录 API
       await fetch("/api/auth/logout", { method: "POST" });
+      
+      // 清除状态
       setIsLoggedIn(false);
       setUser(null);
+      
+      // 显示成功提示
+      toast.success("已退出登录", 1500);
+      
+      // 等待提示显示完后跳转
+      await new Promise(resolve => setTimeout(resolve, 1600));
+      
+      // 跳转到首页
       router.push("/");
     } catch (error) {
       console.error("Logout error:", error);
+      toast.error("退出登录失败，请重试");
     }
   };
 
