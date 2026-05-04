@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useToast } from "./Toast";
 
@@ -21,7 +21,42 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
   const isRedirectingRef = useRef(false);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const checkAuth = async () => {
+  // 处理认证错误的统一函数
+  const handleAuthError = useCallback(
+    (errorMessage: string) => {
+      // 防止重复处理
+      if (hasHandledErrorRef.current) {
+        console.log("AuthCheck: 已经处理过错误，跳过");
+        return;
+      }
+      hasHandledErrorRef.current = true;
+      isRedirectingRef.current = true;
+
+      // 清除定时器
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+      }
+
+      // 清除本地存储
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("rememberMe"); // 清除"记住我"标记
+      document.cookie = "auth_token=; path=/; max-age=0";
+      sessionStorage.clear();
+
+      // 显示 toast 提示语（3 秒后消失）
+      toast.error(errorMessage, 3000);
+
+      // 等待 toast 消失后再跳转（3.1 秒，确保 toast 完全消失）
+      setTimeout(() => {
+        window.location.href = "/auth/login";
+      }, 3100);
+    },
+    [toast],
+  );
+
+  // 使用 useCallback 稳定 checkAuth 函数引用
+  const checkAuth = useCallback(async () => {
     // 如果是公开路径，跳过检查（使用精确匹配）
     const isPublicPath = PUBLIC_PATHS.some((path) => {
       // 对于根路径 "/"，需要精确匹配
@@ -115,38 +150,7 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
       console.error("AuthCheck: 检查认证失败:", error);
       // 忽略错误
     }
-  };
-
-  // 处理认证错误的统一函数
-  const handleAuthError = (errorMessage: string) => {
-    // 防止重复处理
-    if (hasHandledErrorRef.current) {
-      console.log("AuthCheck: 已经处理过错误，跳过");
-      return;
-    }
-    hasHandledErrorRef.current = true;
-    isRedirectingRef.current = true;
-
-    // 清除定时器
-    if (checkIntervalRef.current) {
-      clearInterval(checkIntervalRef.current);
-    }
-
-    // 清除本地存储
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("rememberMe"); // 清除"记住我"标记
-    document.cookie = "auth_token=; path=/; max-age=0";
-    sessionStorage.clear();
-
-    // 显示 toast 提示语（3 秒后消失）
-    toast.error(errorMessage, 3000);
-
-    // 等待 toast 消失后再跳转（3.1 秒，确保 toast 完全消失）
-    setTimeout(() => {
-      window.location.href = "/auth/login";
-    }, 3100);
-  };
+  }, [pathname, router, handleAuthError]);
 
   useEffect(() => {
     console.log("AuthCheck: useEffect 初始化，pathname:", pathname);
@@ -177,8 +181,7 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [checkAuth]);
 
   return <>{children}</>;
 }
