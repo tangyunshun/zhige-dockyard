@@ -130,7 +130,27 @@ export async function GET(request: NextRequest) {
           console.log('✅ 为用户创建个人空间:', newWorkspace.id);
         }
 
-        // 生成 Token
+        // 生成会话 token
+        const sessionToken = crypto.randomUUID();
+        const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小时后过期
+
+        // 更新用户登录时间和会话信息
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            lastLoginAt: new Date(),
+            sessionToken,
+            sessionExpiresAt,
+          },
+        });
+
+        console.log(
+          `[QQ Callback] 用户 ${user.id} 登录成功，lastLoginAt 已更新为:`,
+          new Date().toISOString(),
+          `sessionToken: ${sessionToken}`,
+        );
+
+        // 生成 JWT Token
         const token = await new SignJWT({
           userId: user.id,
           email: user.email,
@@ -140,10 +160,23 @@ export async function GET(request: NextRequest) {
           .setExpirationTime('24h')
           .sign(JWT_SECRET);
 
-        console.log('🎫 Token 生成成功');
+        // 重定向到前端 OAuth 回调页面，传递用户信息
+        const userData = {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          avatar: user.avatar,
+          sessionToken,
+        };
 
-        // 设置 Cookie 并跳转
-        const response = NextResponse.redirect(new URL('/', request.nextUrl.origin));
+        const redirectUrl = new URL('/auth/oauth-callback', request.nextUrl.origin);
+        redirectUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(userData)));
+        redirectUrl.searchParams.set('new', isNewUser ? 'true' : 'false');
+
+        // 设置 Cookie
+        const response = NextResponse.redirect(redirectUrl.toString());
         response.cookies.set('auth_token', token, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
@@ -152,7 +185,7 @@ export async function GET(request: NextRequest) {
           path: '/',
         });
 
-        console.log('✅ 登录成功，跳转到首页');
+        console.log('✅ 登录成功，跳转到 OAuth 回调页面');
         return response;
       } catch (dbError) {
         console.error('❌ 数据库操作失败:', dbError);
@@ -287,7 +320,27 @@ export async function GET(request: NextRequest) {
       console.log('✅ 为用户创建个人空间:', newWorkspace.id);
     }
 
-    // 5. 生成 JWT Token
+    // 生成会话 token
+    const sessionToken = crypto.randomUUID();
+    const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小时后过期
+
+    // 更新用户登录时间和会话信息
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: new Date(),
+        sessionToken,
+        sessionExpiresAt,
+      },
+    });
+
+    console.log(
+      `[QQ Callback] 用户 ${user.id} 登录成功，lastLoginAt 已更新为:`,
+      new Date().toISOString(),
+      `sessionToken: ${sessionToken}`,
+    );
+
+    // 生成 JWT Token
     const token = await new SignJWT({
       userId: user.id,
       email: user.email,
@@ -297,9 +350,23 @@ export async function GET(request: NextRequest) {
       .setExpirationTime('24h')
       .sign(JWT_SECRET);
 
-    // 6. 设置 Cookie 并跳转到首页
-    const response = NextResponse.redirect(new URL('/', request.nextUrl.origin));
-    
+    // 重定向到前端 OAuth 回调页面，传递用户信息
+    const userData = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      avatar: user.avatar,
+      sessionToken,
+    };
+
+    const redirectUrl = new URL('/auth/oauth-callback', request.nextUrl.origin);
+    redirectUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(userData)));
+    redirectUrl.searchParams.set('new', isNewUser ? 'true' : 'false');
+
+    // 设置 Cookie
+    const response = NextResponse.redirect(redirectUrl.toString());
     response.cookies.set('auth_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -308,6 +375,7 @@ export async function GET(request: NextRequest) {
       path: '/',
     });
 
+    console.log('✅ 登录成功，跳转到 OAuth 回调页面');
     return response;
   } catch (error) {
     console.error('❌ QQ callback 发生错误:', error);
