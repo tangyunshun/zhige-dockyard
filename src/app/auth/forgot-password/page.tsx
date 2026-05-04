@@ -47,11 +47,23 @@ export default function ForgotPasswordPage() {
   useEffect(() => {
     const accountParam = searchParams.get("account");
     if (accountParam) {
+      const decodedAccount = decodeURIComponent(accountParam);
       setFormData((prev) => ({
         ...prev,
-        account: decodeURIComponent(accountParam),
+        account: decodedAccount,
       }));
-      console.log("忘记密码页面：自动填充账号", decodeURIComponent(accountParam));
+      console.log("忘记密码页面：自动填充账号", decodedAccount);
+      
+      // 自动触发账号验证
+      const validation = validateAccount(decodedAccount);
+      if (validation.valid) {
+        // 判断账号类型
+        const type = getAccountType(decodedAccount);
+        setAccountType(type);
+        
+        // 验证账号状态
+        checkAccount(decodedAccount);
+      }
     }
   }, [searchParams]);
 
