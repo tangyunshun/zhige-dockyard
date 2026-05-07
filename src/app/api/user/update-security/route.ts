@@ -31,11 +31,11 @@ export async function POST(req: NextRequest) {
 
     const updateData: any = {};
 
-    // 验证当前密码（如果需要修改密码）
+    // 更新密码
     if (newPassword) {
       if (!currentPassword) {
         return NextResponse.json(
-          { error: "请输入当前密码" },
+          { error: "请提供当前密码" },
           { status: 400 }
         );
       }
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
       if (newPassword.length < 6) {
         return NextResponse.json(
-          { error: "新密码长度不能少于 6 位" },
+          { error: "密码长度至少 6 位" },
           { status: 400 }
         );
       }
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       updateData.email = email;
     }
 
-    // 更新双因素认证
+    // 更新双重认证
     if (twoFactorEnabled !== undefined) {
       updateData.twoFactorEnabled = twoFactorEnabled;
     }
@@ -102,12 +102,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "安全设置已更新",
+      message: "安全设置更新成功",
     });
   } catch (error) {
-    console.error("更新安全设置失败:", error);
+    console.error("更新安全设置错误:", error);
     return NextResponse.json(
-      { error: "更新失败，请稍后重试" },
+      { error: "更新安全设置失败" },
       { status: 500 }
     );
   }

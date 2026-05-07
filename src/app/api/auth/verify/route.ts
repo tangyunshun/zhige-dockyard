@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
 
 const JWT_SECRET = new TextEncoder().encode(
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as string;
     
-    // 验证用户是否在数据库中存在
+    // 验证用户是否存在且状态正常
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Verify user error:", error);
     return NextResponse.json(
-      { error: "验证失败", details: error instanceof Error ? error.message : error },
+      { error: "验证失败" },
       { status: 500 }
     );
   }

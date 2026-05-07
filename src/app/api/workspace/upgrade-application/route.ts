@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
 const prisma = new PrismaClient();
 
-// 提交企业版升级申请
+// 升级申请接口
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -20,10 +20,10 @@ export async function POST(req: NextRequest) {
       workspaceId,
     } = await req.json();
 
-    // 验证必填项
+    // 验证必填字段
     if (!companyName || !contactName || !contactPhone) {
       return NextResponse.json(
-        { error: "请填写所有必填项" },
+        { error: "请填写所有必填字段" },
         { status: 400 }
       );
     }
@@ -32,20 +32,20 @@ export async function POST(req: NextRequest) {
     const phoneRegex = /^1[3-9]\d{9}$/;
     if (!phoneRegex.test(contactPhone)) {
       return NextResponse.json(
-        { error: "请输入有效的手机号" },
+        { error: "请输入有效的手机号码" },
         { status: 400 }
       );
     }
 
-    // 验证工作空间
+    // 验证工作空间 ID
     if (!workspaceId) {
       return NextResponse.json(
-        { error: "请提供工作空间 ID" },
+        { error: "缺少工作空间 ID" },
         { status: 400 }
       );
     }
 
-    // 验证用户是否有权操作此工作空间
+    // 验证用户是否有权限管理该工作空间
     const membership = await prisma.workspaceMember.findFirst({
       where: {
         userId,
@@ -58,15 +58,14 @@ export async function POST(req: NextRequest) {
 
     if (!membership) {
       return NextResponse.json(
-        { error: "无权操作此工作空间" },
+        { error: "您无权管理该工作空间" },
         { status: 403 }
       );
     }
 
-    // 检查是否已有待处理的申请
+    // 检查是否已有待处理的升级申请
     const existingApplication = await prisma.upgradeApplication.findFirst({
       where: {
-        userId,
         workspaceId,
         status: "PENDING",
       },
@@ -74,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     if (existingApplication) {
       return NextResponse.json(
-        { error: "您已有待处理的升级申请，请耐心等待" },
+        { error: "该工作空间已有待处理的升级申请" },
         { status: 400 }
       );
     }
@@ -82,43 +81,30 @@ export async function POST(req: NextRequest) {
     // 创建升级申请
     const application = await prisma.upgradeApplication.create({
       data: {
-        userId,
         workspaceId,
+        userId,
         companyName,
         contactName,
         contactPhone,
         status: "PENDING",
-        submittedAt: new Date(),
       },
     });
 
-    // TODO: 发送邮件通知管理员
-    // await sendEmailNotification({
-    //   to: "admin@zhige.com",
-    //   subject: "新的企业版升级申请",
-    //   data: {
-    //     companyName,
-    //     contactName,
-    //     contactPhone,
-    //     applicationId: application.id,
-    //   },
-    // });
-
     return NextResponse.json({
       success: true,
-      applicationId: application.id,
-      message: "升级申请已提交，工作人员将尽快联系您",
+      message: "升级申请已提交",
+      data: application,
     });
   } catch (error) {
-    console.error("提交升级申请失败:", error);
+    console.error("Upgrade application error:", error);
     return NextResponse.json(
-      { error: "提交失败，请稍后重试" },
+      { error: "提交升级申请失败" },
       { status: 500 }
     );
   }
 }
 
-// 获取用户的升级申请状态
+// 获取升级申请列表
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -127,26 +113,32 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = token.id as string;
-    const workspaceId = req.nextUrl.searchParams.get("workspaceId");
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status");
 
-    if (!workspaceId) {
-      return NextResponse.json(
-        { error: "请提供工作空间 ID" },
-        { status: 400 }
-      );
+    const where: any = {
+      userId,
+    };
+
+    if (status) {
+      where.status = status;
     }
 
     const applications = await prisma.upgradeApplication.findMany({
-      where: { userId, workspaceId },
-      orderBy: { submittedAt: "desc" },
-      take: 5,
+      where,
+      orderBy: {
+        createdAt: "desc",
+      },
     });
 
-    return NextResponse.json({ applications });
+    return NextResponse.json({
+      success: true,
+      data: applications,
+    });
   } catch (error) {
-    console.error("获取升级申请失败:", error);
+    console.error("Get upgrade applications error:", error);
     return NextResponse.json(
-      { error: "获取失败，请稍后重试" },
+      { error: "获取升级申请列表失败" },
       { status: 500 }
     );
   }

@@ -21,7 +21,7 @@ if (!globalForSms.smsCodeStore) {
   globalForSms.smsCodeStore = smsCodeStore;
 }
 
-// 验证码有效期（5 分钟）
+// 验证码有效期：5 分钟
 const CODE_EXPIRY_MS = 5 * 60 * 1000;
 
 // 发送间隔（60 秒）
@@ -35,93 +35,73 @@ export function generateSmsCode(): string {
 }
 
 /**
- * 存储验证码
+ * 存储短信验证码
  */
-export function storeSmsCode(
-  phone: string,
-  code: string
-): { success: boolean; message?: string; countdown?: number } {
-  const now = Date.now();
-
-  // 检查是否还在发送间隔内
-  const existingRecord = smsCodeStore.get(phone);
-  if (existingRecord) {
-    const timeSinceLastSend = now - existingRecord.sentAt;
-    if (timeSinceLastSend < SEND_INTERVAL_MS) {
-      const countdown = Math.ceil((SEND_INTERVAL_MS - timeSinceLastSend) / 1000);
-      return {
-        success: false,
-        message: `验证码已发送，请${countdown}秒后再试`,
-        countdown,
-      };
-    }
-  }
-
-  // 存储新验证码
+export function storeSmsCode(phone: string, code: string): void {
   smsCodeStore.set(phone, {
     code,
-    expiresAt: now + CODE_EXPIRY_MS,
-    sentAt: now,
+    expiresAt: Date.now() + CODE_EXPIRY_MS,
+    sentAt: Date.now(),
   });
-
-  return { success: true };
 }
 
 /**
- * 验证验证码
+ * 验证短信验证码
+ * @returns { valid: boolean, error?: string }
  */
-export function verifySmsCode(
-  phone: string,
-  code: string
-): {
-  success: boolean;
-  message?: string;
+export function verifySmsCode(phone: string, code: string): {
+  valid: boolean;
+  error?: string;
 } {
   const record = smsCodeStore.get(phone);
-  const now = Date.now();
 
-  // 检查是否存在验证码记录
   if (!record) {
-    return {
-      success: false,
-      message: "请先获取验证码",
-    };
+    return { valid: false, error: "请先获取验证码" };
   }
 
-  // 检查是否已过期
-  if (now > record.expiresAt) {
+  // 检查是否过期
+  if (Date.now() > record.expiresAt) {
     smsCodeStore.delete(phone);
-    return {
-      success: false,
-      message: "验证码已过期，请重新获取",
-    };
+    return { valid: false, error: "验证码已过期" };
   }
 
   // 验证验证码
-  if (code !== record.code) {
-    return {
-      success: false,
-      message: "验证码错误，请重新输入！",
-    };
+  if (record.code !== code) {
+    return { valid: false, error: "验证码错误" };
   }
 
-  // 验证成功，删除验证码
+  // 验证成功，删除验证码（一次性使用）
   smsCodeStore.delete(phone);
 
-  return {
-    success: true,
-  };
+  return { valid: true };
 }
 
 /**
- * 删除验证码（验证成功后调用）
+ * 检查是否可以重新发送验证码
+ * @returns { canResend: boolean, waitSeconds?: number }
  */
-export function deleteSmsCode(phone: string): void {
-  smsCodeStore.delete(phone);
+export function canResendSmsCode(phone: string): {
+  canResend: boolean;
+  waitSeconds?: number;
+} {
+  const record = smsCodeStore.get(phone);
+
+  if (!record) {
+    return { canResend: true };
+  }
+
+  const timeSinceSent = Date.now() - record.sentAt;
+  
+  if (timeSinceSent < SEND_INTERVAL_MS) {
+    const waitSeconds = Math.ceil((SEND_INTERVAL_MS - timeSinceSent) / 1000);
+    return { canResend: false, waitSeconds };
+  }
+
+  return { canResend: true };
 }
 
 /**
- * 清理过期的验证码（定期调用）
+ * 清除过期的验证码（定期清理）
  */
 export function cleanupExpiredCodes(): void {
   const now = Date.now();
@@ -132,7 +112,12 @@ export function cleanupExpiredCodes(): void {
   }
 }
 
-// 每分钟清理一次过期验证码
-if (typeof global !== "undefined") {
-  setInterval(cleanupExpiredCodes, 60 * 1000);
+/**
+ * 删除短信验证码（验证成功后调用）
+ */
+export function deleteSmsCode(phone: string): void {
+  smsCodeStore.delete(phone);
 }
+
+// 每 5 分钟清理一次过期验证码
+setInterval(cleanupExpiredCodes, 5 * 60 * 1000);

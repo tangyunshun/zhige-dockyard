@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
+    // 楠岃瘉绠＄悊鍛樻潈闄?
     const authHeader = request.headers.get("authorization");
     if (
       !authHeader ||
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "鏉冮檺涓嶈冻" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     console.error("Get login histories error:", error);
     return NextResponse.json(
       {
-        error: "获取登录历史失败",
+        error: "鑾峰彇鐧诲綍鍘嗗彶澶辫触",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

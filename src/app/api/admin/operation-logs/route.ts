@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
+    // 楠岃瘉绠＄悊鍛樻潈闄?
     const authHeader = request.headers.get("authorization");
     if (
       !authHeader ||
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "鏉冮檺涓嶈冻" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [logs, total] = await Promise.all([
-      prisma.operationLog.findMany({
+      prisma.operationlog.findMany({
         where,
         skip,
         take: limit,
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.operationLog.count({ where }),
+      prisma.operationlog.count({ where }),
     ]);
 
     return NextResponse.json({
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     console.error("Get operation logs error:", error);
     return NextResponse.json(
       {
-        error: "获取操作日志失败",
+        error: "鑾峰彇鎿嶄綔鏃ュ織澶辫触",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

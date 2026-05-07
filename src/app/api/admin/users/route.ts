@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const search = searchParams.get("search") || "";
     const role = searchParams.get("role") || "";
-    const accountStatus = searchParams.get("accountStatus") || ""; // 账号状态
-    const loginStatus = searchParams.get("loginStatus") || ""; // 登录状态
+    const accountStatus = searchParams.get("accountStatus") || "";
+    const loginStatus = searchParams.get("loginStatus") || "";
     const membershipLevel = searchParams.get("membershipLevel") || "";
 
     const skip = (page - 1) * limit;
@@ -62,45 +62,44 @@ export async function GET(request: NextRequest) {
       prisma.user.count({ where }),
     ]);
 
-    // 格式化用户数据，添加 isOnline 字段
+    // 为用户添加 isOnline 字段
     let formattedUsers = users.map((user) => {
-      // 判断用户是否在线：
-      // 1. 用户状态必须是 active
+      // 判断用户是否在线的逻辑：
+      // 1. 账号状态必须是 active
       // 2. 有 sessionToken 且未过期
-      // 3. 没有被强制下线（lastForcedLogoutAt 为 null）
-      // 4. 用户最近有活跃行为（lastLoginAt 在 5 分钟内）
-      // 必须同时满足以上 4 个条件才显示在线
+      // 3. lastForcedLogoutAt 为 null
+      // 4. lastLoginAt 在 5 分钟内（300 秒）
       let isOnline = false;
       
       if (user.status === 'active') {
-        // 首先检查是否被强制下线
+        // 检查是否被强制下线
         if (user.lastForcedLogoutAt) {
-          // 被强制下线后，立即显示离线
+          // 如果被强制下线，直接判定为离线
           isOnline = false;
         } else if (user.sessionToken && user.sessionExpiresAt) {
           // 检查会话是否过期
           const sessionExpired = new Date(user.sessionExpiresAt).getTime() < Date.now();
           
           if (!sessionExpired) {
-            // 检查用户是否最近活跃（5 分钟 = 300 秒）
+            // 会话未过期，检查用户是否活跃（5 分钟内）
             const now = Date.now();
             const lastLoginTime = user.lastLoginAt ? new Date(user.lastLoginAt).getTime() : 0;
             const timeSinceLastLogin = (now - lastLoginTime) / 1000; // 秒
-            const isActiveRecently = timeSinceLastLogin < 300; // 5 分钟内
+            const isActiveRecently = timeSinceLastLogin < 300 && timeSinceLastLogin > 0; // 5 分钟内且 lastLoginAt 有效
             
             if (isActiveRecently) {
-              // 有会话令牌、未过期、且最近活跃，才是真的在线
+              // 用户 5 分钟内有活跃记录且会话未过期，判定为在线
               isOnline = true;
             } else {
-              // 会话有效但长时间未活跃，显示离线（用户可能去吃饭了或者关闭了浏览器）
+              // 用户超过 5 分钟未活跃或 lastLoginAt 无效，判定为离线
               isOnline = false;
             }
           } else {
-            // 会话已过期，显示离线
+            // 会话已过期，判定为离线
             isOnline = false;
           }
         } else {
-          // 没有会话令牌，显示离线
+          // 没有会话信息，判定为离线
           isOnline = false;
         }
       }
@@ -111,7 +110,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // 如果指定了登录状态筛选，则过滤结果
+    // 根据 loginStatus 过滤用户
     if (loginStatus) {
       const isOnlineFilter = loginStatus === "online";
       formattedUsers = formattedUsers.filter(user => user.isOnline === isOnlineFilter);

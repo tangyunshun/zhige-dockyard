@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import ConfirmModal from "@/components/ConfirmModal";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Search,
   Plus,
@@ -140,17 +140,17 @@ export default function AdminComponentsPage() {
   });
 
   // 确认对话框状态
-  const [confirmModal, setConfirmModal] = useState<{
+  const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
     message: string;
-    type: "info" | "warning" | "danger";
-    onConfirm: () => void;
+    type: "danger" | "warning" | "info";
+    onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
     title: "",
     message: "",
-    type: "info",
+    type: "warning",
     onConfirm: () => {},
   });
 
@@ -220,110 +220,121 @@ export default function AdminComponentsPage() {
   const handleBatchPublish = async () => {
     if (selectedIds.length === 0) return;
 
-    if (!confirm(`确定要批量上架选中的 ${selectedIds.length} 个组件吗？`))
-      return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "批量上架组件",
+      message: `确定要批量上架选中的 ${selectedIds.length} 个组件吗？`,
+      type: "warning",
+      onConfirm: async () => {
+        try {
+          const userId =
+            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
 
-    try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const res = await fetch("/api/admin/components/batch-publish", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${userId}`,
+            },
+            body: JSON.stringify({ ids: selectedIds }),
+          });
 
-      const res = await fetch("/api/admin/components/batch-publish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
-        },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-
-      if (res.ok) {
-        toast.success("批量上架成功");
-        setSelectedIds([]);
-        setSelectedComponents([]);
-        loadComponents();
-        loadStats();
-      } else {
-        const error = await res.json();
-        toast.error(error.message || "批量上架失败");
-      }
-    } catch (error) {
-      console.error("Batch publish error:", error);
-      toast.error("批量上架失败");
-    }
+          if (res.ok) {
+            toast.success("批量上架成功");
+            setSelectedIds([]);
+            setSelectedComponents([]);
+            loadComponents();
+            loadStats();
+          } else {
+            const error = await res.json();
+            toast.error(error.message || "批量上架失败");
+          }
+        } catch (error) {
+          console.error("Batch publish error:", error);
+          toast.error("批量上架失败");
+        }
+      },
+    });
   };
 
   const handleBatchUnpublish = async () => {
     if (selectedIds.length === 0) return;
 
-    if (!confirm(`确定要批量下架选中的 ${selectedIds.length} 个组件吗？`))
-      return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "批量下架组件",
+      message: `确定要批量下架选中的 ${selectedIds.length} 个组件吗？`,
+      type: "warning",
+      onConfirm: async () => {
+        try {
+          const userId =
+            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
 
-    try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const res = await fetch("/api/admin/components/batch-unpublish", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${userId}`,
+            },
+            body: JSON.stringify({ ids: selectedIds }),
+          });
 
-      const res = await fetch("/api/admin/components/batch-unpublish", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
-        },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-
-      if (res.ok) {
-        toast.success("批量下架成功");
-        setSelectedIds([]);
-        setSelectedComponents([]);
-        loadComponents();
-        loadStats();
-      } else {
-        const error = await res.json();
-        toast.error(error.message || "批量下架失败");
-      }
-    } catch (error) {
-      console.error("Batch unpublish error:", error);
-      toast.error("批量下架失败");
-    }
+          if (res.ok) {
+            toast.success("批量下架成功");
+            setSelectedIds([]);
+            setSelectedComponents([]);
+            loadComponents();
+            loadStats();
+          } else {
+            const error = await res.json();
+            toast.error(error.message || "批量下架失败");
+          }
+        } catch (error) {
+          console.error("Batch unpublish error:", error);
+          toast.error("批量下架失败");
+        }
+      },
+    });
   };
 
   const handleBatchDelete = async () => {
     if (selectedIds.length === 0) return;
 
-    if (
-      !confirm(
-        `确定要批量删除选中的 ${selectedIds.length} 个组件吗？此操作不可恢复！`,
-      )
-    )
-      return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "批量删除组件",
+      message: `确定要批量删除选中的 ${selectedIds.length} 个组件吗？此操作不可恢复！`,
+      type: "danger",
+      onConfirm: async () => {
+        try {
+          const userId =
+            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
 
-    try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const res = await fetch("/api/admin/components/batch-delete", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${userId}`,
+            },
+            body: JSON.stringify({ ids: selectedIds }),
+          });
 
-      const res = await fetch("/api/admin/components/batch-delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
-        },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-
-      if (res.ok) {
-        toast.success("批量删除成功");
-        setSelectedIds([]);
-        setSelectedComponents([]);
-        loadComponents();
-        loadStats();
-      } else {
-        const error = await res.json();
-        toast.error(error.message || "批量删除失败");
-      }
-    } catch (error) {
-      console.error("Batch delete error:", error);
-      toast.error("批量删除失败");
-    }
+          if (res.ok) {
+            toast.success("批量删除成功");
+            setSelectedIds([]);
+            setSelectedComponents([]);
+            loadComponents();
+            loadStats();
+          } else {
+            const error = await res.json();
+            toast.error(error.message || "批量删除失败");
+          }
+        } catch (error) {
+          console.error("Batch delete error:", error);
+          toast.error("批量删除失败");
+        }
+      },
+    });
   };
 
   // 智能批量操作按钮显示逻辑
@@ -966,10 +977,7 @@ export default function AdminComponentsPage() {
                       <td className="py-4 px-6 whitespace-nowrap">
                         <div className="text-sm text-slate-600 font-medium">
                           <div className="font-bold text-slate-800 whitespace-nowrap">
-                            {component.type}
-                          </div>
-                          <div className="text-xs text-slate-400 whitespace-nowrap">
-                            {component.category || "-"}
+                            {component.type || "-"}
                           </div>
                         </div>
                       </td>
@@ -1339,13 +1347,16 @@ export default function AdminComponentsPage() {
       )}
 
       {/* 确认对话框 */}
-      <ConfirmModal
-        isOpen={confirmModal.isOpen}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        type={confirmModal.type}
-        onConfirm={confirmModal.onConfirm}
-        onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={() => {
+          confirmDialog.onConfirm();
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        }}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
       />
     </div>
   );

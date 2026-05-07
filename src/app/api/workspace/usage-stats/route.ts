@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -14,13 +14,13 @@ export async function GET(request: NextRequest) {
 
     const userId = authResult.user!.id;
 
-    // 获取用户的所有工作空间（个人 + 企业）
+    // 获取用户有权限访问的所有工作空间
     const workspaces = await prisma.workspace.findMany({
       where: {
         OR: [
           { ownerId: userId },
           {
-            members: {
+            workspacemember: {
               some: {
                 userId,
               },
@@ -29,13 +29,13 @@ export async function GET(request: NextRequest) {
         ],
       },
       include: {
-        members: true,
+        workspacemember: true,
       },
     });
 
     const workspaceIds = workspaces.map((ws: any) => ws.id);
 
-    // 获取用户相关的所有组件任务（使用 tenantId 关联工作空间）
+    // 获取所有属于这些工作空间的组件任务
     const componentTasks = await prisma.componenttask.findMany({
       where: {
         tenantId: {
@@ -52,66 +52,42 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取工作空间映射（用于关联任务到空间）
-    const workspaceMap = new Map(
-      workspaces.map((ws: any) => [ws.id, { name: ws.name, type: ws.type }])
-    );
+    // 按工作空间分组统计
+    const statsByWorkspace = workspaceIds.map((workspaceId: string) => {
+      const tasks = componentTasks.filter((t: any) => t.tenantId === workspaceId);
+      const completed = tasks.filter((t: any) => t.status === 'COMPLETED').length;
+      const inProgress = tasks.filter((t: any) => t.status === 'IN_PROGRESS').length;
+      const pending = tasks.filter((t: any) => t.status === 'PENDING').length;
+      const failed = tasks.filter((t: any) => t.status === 'FAILED').length;
+      
+      return {
+        workspaceId,
+        total: tasks.length,
+        completed,
+        inProgress,
+        pending,
+        failed,
+      };
+    });
 
-    // 统计数据
-    const totalComponentCalls = componentTasks.filter(
-      task => task.status === "COMPLETED"
-    ).length;
-
-    const activeComponents = componentTasks.filter(
-      task => task.status === "IN_PROGRESS"
-    ).length;
-
-    const totalComponents = componentTasks.length;
-
-    // 计算成功率
-    const successRate = totalComponents > 0
-      ? Math.round((totalComponentCalls / totalComponents) * 1000) / 10
-      : 0;
-
-    // 计算平均响应时间（模拟数据，实际应该从任务性能数据中计算）
-    const avgResponseTime = totalComponentCalls > 0
-      ? Math.round(Math.random() * 100 + 100)
-      : 0;
-
-    // 按空间类型统计
-    const personalSpaceCount = workspaces.filter((ws: any) => ws.type === "PERSONAL").length;
-    const enterpriseSpaceCount = workspaces.filter((ws: any) => ws.type === "ENTERPRISE").length;
-
-    // 总成员数（只计算企业空间）
-    const totalMembers = workspaces
-      .filter((ws: any) => ws.type === "ENTERPRISE")
-      .reduce((sum: number, ws: any) => sum + ws.members.length, 0);
-
-    // 最近 7 天活动
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const recentActivity = componentTasks.filter(
-      (task: any) => new Date(task.createdAt) > sevenDaysAgo
-    ).length;
+    // 总体统计
+    const totalStats = {
+      total: componentTasks.length,
+      completed: componentTasks.filter((t: any) => t.status === 'COMPLETED').length,
+      inProgress: componentTasks.filter((t: any) => t.status === 'IN_PROGRESS').length,
+      pending: componentTasks.filter((t: any) => t.status === 'PENDING').length,
+      failed: componentTasks.filter((t: any) => t.status === 'FAILED').length,
+    };
 
     return NextResponse.json({
-      statistics: {
-        totalComponentCalls,
-        activeComponents,
-        totalComponents,
-        successRate,
-        avgResponseTime,
-        personalSpaceCount,
-        enterpriseSpaceCount,
-        totalMembers,
-        recentActivity,
+      success: true,
+      data: {
+        workspaces: statsByWorkspace,
+        total: totalStats,
       },
     });
   } catch (error) {
     console.error("获取使用统计失败:", error);
-    return NextResponse.json(
-      { error: "获取使用统计失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "获取使用统计失败" }, { status: 500 });
   }
 }

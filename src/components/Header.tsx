@@ -321,6 +321,20 @@ export default function Header() {
                         </button>
                       )}
 
+                      {/* 个人工作台入口 - 所有用户可见 */}
+                      <button
+                        onClick={() => {
+                          router.push("/user/dashboard");
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 transition-colors group mb-1"
+                      >
+                        <User className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] transition-colors" />
+                        <span className="text-sm text-slate-700 font-medium group-hover:text-[#3182ce] transition-colors">
+                          个人工作台
+                        </span>
+                      </button>
+
                       <button
                         onClick={() => {
                           router.push("/settings");

@@ -4,7 +4,7 @@ import { getToken } from "next-auth/jwt";
 
 const prisma = new PrismaClient();
 
-// 获取用户的登录历史
+// 获取用户登录历史
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const userId = token.id as string;
     const limit = parseInt(req.nextUrl.searchParams.get("limit") || "10");
 
-    // 获取最近登录历史
+    // 获取用户登录历史
     const loginHistory = await prisma.loginHistory.findMany({
       where: { userId },
       orderBy: { loginAt: "desc" },
@@ -24,15 +24,15 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ loginHistory });
   } catch (error) {
-    console.error("获取登录历史失败:", error);
+    console.error("获取登录历史错误:", error);
     return NextResponse.json(
-      { error: "获取失败，请稍后重试" },
+      { error: "获取登录历史失败" },
       { status: 500 }
     );
   }
 }
 
-// 记录用户登录
+// 记录登录历史
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -57,12 +57,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "登录历史已记录",
+      message: "登录记录已保存",
     });
   } catch (error) {
-    console.error("记录登录历史失败:", error);
+    console.error("保存登录历史错误:", error);
     return NextResponse.json(
-      { error: "记录失败，请稍后重试" },
+      { error: "保存登录历史失败" },
       { status: 500 }
     );
   }

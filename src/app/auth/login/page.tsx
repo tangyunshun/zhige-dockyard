@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
+import AppealModal from "@/components/AppealModal";
 import {
   Lock,
   Phone,
@@ -33,16 +34,112 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
+
+  // ========== 所有的 useState 必须在最前面 ==========
   const [loginMethod, setLoginMethod] = useState<LoginMethod>("password");
-  const [showSmsLogin, setShowSmsLogin] = useState(false); // 控制是否显示手机号验证码登录
+  const [showSmsLogin, setShowSmsLogin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [hasShownError, setHasShownError] = useState(false);
+  const [showAppealModal, setShowAppealModal] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [redirectPath, setRedirectPath] = useState("/");
+  const [formData, setFormData] = useState({
+    account: "",
+    password: "",
+    phone: "",
+    smsCode: "",
+    captcha: "",
+  });
+  const [smsCountdown, setSmsCountdown] = useState(0);
+  const [smsMessage, setSmsMessage] = useState<string | null>(null);
+  const [showCaptcha, setShowCaptcha] = useState(false);
+  const [errors, setErrors] = useState<{
+    account?: string;
+    password?: string;
+    phone?: string;
+    smsCode?: string;
+  }>({});
+  const [globalError, setGlobalError] = useState<string | null>(null);
+  const [accountType, setAccountType] = useState<
+    "phone" | "email" | "username" | "unknown"
+  >("unknown");
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
+  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
+  const [isSelectingSuggestion, setIsSelectingSuggestion] = useState(false);
+  const [accountCheckStatus, setAccountCheckStatus] = useState<{
+    exists?: boolean;
+    locked?: boolean;
+    disabled?: boolean;
+    minutesRemaining?: number;
+    remainingAttempts?: number;
+  }>({});
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(
+    null,
+  );
 
-  // 获取回调参数
-  const redirectPath = searchParams.get("redirect") || "/";
+  // ========== 所有的 useEffect 在 useState 之后 ==========
+
+  // 获取回调参数（必须在 useEffect 之前定义）
   const errorMessage = searchParams.get("error");
+
+  // 检查用户是否已登录，如果已登录则重定向
+  useEffect(() => {
+    const checkLoggedIn = async () => {
+      // 快速检查：如果 localStorage 没有 userId，直接显示登录页
+      const localStorageUserId = localStorage.getItem("userId");
+      const token = document.cookie.includes("auth_token=");
+
+      if (!localStorageUserId || !token) {
+        console.log("登录页：未检测到登录状态，显示登录页面");
+        setIsCheckingAuth(false);
+        return;
+      }
+
+      // localStorage 和 Cookie 都有，调用 API 验证
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          // 用户已登录，重定向到首页或原页面
+          const savedPath = sessionStorage.getItem("redirectAfterLogin");
+          const redirect = savedPath || searchParams.get("redirect") || "/";
+          console.log("用户已登录，重定向到:", redirect);
+          window.location.href = redirect;
+          return;
+        }
+      } catch (error) {
+        console.log("用户未登录，显示登录页面");
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    // 使用 setTimeout 避免阻塞渲染
+    const timer = setTimeout(() => {
+      checkLoggedIn();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [searchParams]);
+
+  // 检查是否有保存的原页面 URL，以及是否是刚刚被重定向过来的
+  useEffect(() => {
+    const justRedirected = sessionStorage.getItem("just_redirected") === "true";
+    const savedPath = sessionStorage.getItem("redirectAfterLogin");
+
+    if (justRedirected && savedPath) {
+      // 有保存的原页面 URL，使用它
+      setRedirectPath(savedPath);
+      console.log("登录页：使用保存的原页面 URL:", savedPath);
+      // 清除标记
+      sessionStorage.removeItem("just_redirected");
+    } else {
+      // 没有保存的原页面，使用默认值
+      const redirect = searchParams.get("redirect");
+      setRedirectPath(redirect || "/");
+    }
+  }, [searchParams]);
 
   // 显示错误提示（如果有）
   useEffect(() => {
@@ -58,48 +155,6 @@ function LoginForm() {
       }
     }
   }, [errorMessage]);
-
-  const [formData, setFormData] = useState({
-    account: "",
-    password: "",
-    phone: "",
-    smsCode: "",
-    captcha: "",
-  });
-
-  const [smsCountdown, setSmsCountdown] = useState(0);
-  // 验证码发送提示
-  const [smsMessage, setSmsMessage] = useState<string | null>(null);
-  const [showCaptcha, setShowCaptcha] = useState(false);
-  const [errors, setErrors] = useState<{
-    account?: string;
-    password?: string;
-    phone?: string;
-    smsCode?: string;
-  }>({});
-
-  // 账号类型和邮箱补全
-  const [accountType, setAccountType] = useState<
-    "phone" | "email" | "username" | "unknown"
-  >("unknown");
-  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
-  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
-  // 标记是否正在选择邮箱建议，防止失焦处理
-  const [isSelectingSuggestion, setIsSelectingSuggestion] = useState(false);
-
-  // 账号检测相关状态
-  const [accountCheckStatus, setAccountCheckStatus] = useState<{
-    exists?: boolean;
-    locked?: boolean;
-    disabled?: boolean;
-    minutesRemaining?: number;
-    remainingAttempts?: number;
-  }>({});
-
-  // 自动跳转注册倒计时
-  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(
-    null,
-  );
 
   // 使用 useEffect 处理倒计时和跳转，避免在渲染期间调用 router.push
   useEffect(() => {
@@ -126,6 +181,20 @@ function LoginForm() {
 
     return () => clearInterval(timer);
   }, [redirectCountdown, router, formData.account]);
+
+  // ========== 所有条件渲染必须在所有 Hooks 之后 ==========
+
+  // 如果正在检查登录状态，不渲染内容
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">加载中...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 检测账号是否存在
   const checkAccount = async (account: string) => {
@@ -156,10 +225,18 @@ function LoginForm() {
           locked: true,
           minutesRemaining: data.minutesRemaining,
         });
+        // 实时检测到账号被锁定，立即显示错误在用户名输入框下方
+        setErrors({
+          account: `账号已锁定，请${data.minutesRemaining}分钟后再试`,
+        });
       } else if (data.status === "disabled") {
         setAccountCheckStatus({
           exists: true,
           disabled: true,
+        });
+        // 实时检测到账号被禁用，立即显示错误在用户名输入框下方
+        setErrors({
+          account: "账号已被禁用，请联系管理员",
         });
       } else {
         setAccountCheckStatus({ exists: true });
@@ -177,6 +254,11 @@ function LoginForm() {
 
     if (errors.account) {
       setErrors({ ...errors, account: undefined });
+    }
+
+    // 清除全局错误
+    if (globalError) {
+      setGlobalError(null);
     }
 
     // 清空账号检测状态
@@ -327,6 +409,10 @@ function LoginForm() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // 清除之前的错误
+    setErrors({});
+    setGlobalError(null);
+
     const newErrors: typeof errors = {};
 
     if (loginMethod === "password") {
@@ -404,39 +490,28 @@ function LoginForm() {
       console.log("登录响应数据:", data);
 
       if (res.ok) {
-        console.log("登录响应 data.token:", data.token ? "存在" : "不存在");
-        if (data.token) {
-          // "记住我"：cookie 有效期 7 天；否则 1 天
-          const maxAge = rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60;
-
-          // 使用服务器端 API 设置 cookie
-          console.log("调用服务器端 API 设置 cookie...");
-          const cookieRes = await fetch("/api/auth/set-cookie", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              token: data.token,
-              maxAge,
-              rememberMe,
-            }),
-          });
-
-          const cookieData = await cookieRes.json();
-          console.log("服务器端设置 cookie 结果:", cookieData);
-
-          // 检查 cookie 是否设置成功
-          setTimeout(() => {
-            const hasCookie = document.cookie.includes("auth_token=");
-            console.log("Cookie 是否存在:", hasCookie);
-            if (!hasCookie) {
-              console.warn("Cookie 设置失败，使用 localStorage 存储 token");
-              localStorage.setItem("auth_token", data.token);
-            }
-          }, 300);
+        console.log("登录成功，检查返回数据...");
+        // 注意：token 是通过 Cookie 设置的，不需要从 response body 获取
+        // 只需要检查 user 数据是否存在
+        if (!data.user) {
+          console.error("登录成功但未返回用户数据");
+          setGlobalError("登录成功但返回数据异常");
+          setLoading(false);
+          return;
         }
+
         // 存储 userId、userRole 和 sessionToken 到 localStorage
-        if (data.user?.id) {
+        console.log("=== 开始保存登录信息 ===");
+        console.log("data.user.id:", data.user.id);
+        console.log("data.user.role:", data.user.role);
+        console.log(
+          "data.user.sessionToken:",
+          data.user.sessionToken ? "存在" : "不存在",
+        );
+
+        if (data.user.id) {
           localStorage.setItem("userId", data.user.id);
+          localStorage.setItem("auth_token", data.token);
         }
         if (data.user?.role) {
           localStorage.setItem("userRole", data.user.role);
@@ -455,14 +530,73 @@ function LoginForm() {
           localStorage.removeItem("rememberMe");
         }
 
+        // 登录成功后，检查并创建个人空间
+        try {
+          const workspaceRes = await fetch("/api/workspace/create-personal", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${data.user.id}`,
+            },
+          });
+
+          const workspaceData = await workspaceRes.json();
+
+          if (!workspaceRes.ok) {
+            console.warn("创建个人空间失败:", workspaceData.message);
+          }
+        } catch (error) {
+          console.error("创建个人空间异常:", error);
+        }
+
         // 确保 localStorage 已经设置完成，使用 setTimeout 延迟跳转
-        setTimeout(() => {
-          console.log(
-            "登录成功，准备跳转，userId:",
-            localStorage.getItem("userId"),
-          );
-          // 使用 window.location.href 强制页面完全重新加载
-          window.location.href = redirectPath;
+        setTimeout(async () => {
+          // 调用 /api/auth/touch 更新 lastLoginAt，确保会话活跃
+          try {
+            await fetch("/api/auth/touch", {
+              method: "POST",
+              signal: AbortSignal.timeout(3000),
+            });
+          } catch (touchError) {
+            console.warn("/api/auth/touch 调用失败:", touchError);
+          }
+
+          // 智能判断跳转目标
+          const userRole = localStorage.getItem("userRole");
+          const targetPath = redirectPath;
+
+          // 检查是否是管理员页面
+          const isAdminPage = targetPath.startsWith("/admin");
+          const isAdminUser =
+            userRole &&
+            [
+              "admin",
+              "super_admin",
+              "superadmin",
+              "ADMIN",
+              "SUPERADMIN",
+              "SUPER_ADMIN",
+            ].includes(userRole);
+
+          let finalPath = targetPath;
+
+          if (isAdminPage && !isAdminUser) {
+            // 普通用户尝试访问管理员页面，重定向到用户首页
+            console.log("普通用户尝试访问管理员页面，重定向到用户首页");
+            finalPath = "/workspace-hub";
+          } else if (!isAdminPage && isAdminUser) {
+            // 管理员访问普通页面，保持原页面
+            console.log("管理员访问普通页面，保持原页面");
+            finalPath = targetPath;
+          } else {
+            console.log("正常访问，使用原页面 URL");
+          }
+
+          // 清除保存的页面 URL
+          sessionStorage.removeItem("redirectAfterLogin");
+
+          // 跳转
+          window.location.href = finalPath;
         }, 500);
       } else {
         // 处理各种错误情况，全部显示在输入框下方
@@ -479,7 +613,7 @@ function LoginForm() {
             setErrors({ password: data.message });
           }
         } else if (data.minutesRemaining) {
-          // 账号被锁定
+          // 账号被锁定（字段错误，显示在输入框下方）
           setErrors({
             account: `账号已锁定，请${data.minutesRemaining}分钟后再试`,
           });
@@ -487,15 +621,16 @@ function LoginForm() {
           // 密码错误
           setErrors({ password: data.message || "密码错误" });
         } else if (data.field === "account") {
-          // 账号错误
+          // 账号字段错误
           setErrors({ account: data.message || "账号错误" });
         } else {
-          // 其他错误显示在账号字段
-          setErrors({ account: data.message || "登录失败" });
+          // 全局错误（服务器错误、登录失败等）显示在登录按钮上方
+          setGlobalError(data.message || "登录失败");
         }
       }
     } catch (error) {
-      setErrors({ account: "网络错误，请稍后重试" });
+      // 网络错误显示在登录按钮上方
+      setGlobalError("网络错误，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -647,10 +782,17 @@ function LoginForm() {
                     </div>
                   )}
                   {accountCheckStatus.disabled && (
-                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
                       <p className="text-xs text-red-700">
                         ⛔ 账号已被禁用，请联系管理员
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowAppealModal(true)}
+                        className="text-xs text-[#3182ce] hover:underline font-medium whitespace-nowrap ml-2"
+                      >
+                        📝 在线申诉 →
+                      </button>
                     </div>
                   )}
                 </div>
@@ -722,6 +864,11 @@ function LoginForm() {
                     </Link>
                   </div>
                 </div>
+
+                {/* 登录按钮上方的错误提示（服务器错误、网络错误等全局错误） */}
+                {globalError && (
+                  <p className="mt-3 text-xs text-red-500">{globalError}</p>
+                )}
 
                 {/* 登录按钮 */}
                 <button
@@ -1012,6 +1159,14 @@ function LoginForm() {
           </div>
         </div>
       </div>
+
+      {/* 账号申诉模态框 */}
+      {showAppealModal && (
+        <AppealModal
+          account={formData.account}
+          onClose={() => setShowAppealModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -99,16 +99,16 @@ export function ActivityMonitor() {
           errorData.message?.includes("管理员强制下线")
         ) {
           // 被管理员强制下线（宽限期已过）
-          toast.error("您已被管理员强制下线，请重新登录", 3000);
+          toast.error("您已被管理员强制下线，请重新登录", 1500);
         } else {
           // 超时（超过 5 分钟未操作）
-          toast.error("您已长时间未操作，请重新登录", 3000);
+          toast.error("您已长时间未操作，请重新登录", 1500);
         }
 
-        // 等待 toast 消失后再跳转（3.1 秒，确保 toast 完全消失）
+        // 等待 toast 消失后再跳转（1.6 秒，确保 toast 完全消失）
         setTimeout(() => {
           window.location.href = "/auth/login";
-        }, 3100);
+        }, 1600);
         return;
       }
 

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -10,20 +10,20 @@ export async function POST(request: NextRequest) {
 
     if (!account || !newPassword) {
       return NextResponse.json(
-        { message: "账号和新密码不能为空" },
+        { message: "缺少账号或新密码" },
         { status: 400 }
       );
     }
 
-    // 验证密码强度
+    // 验证密码长度
     if (newPassword.length < 6) {
       return NextResponse.json(
-        { message: "密码长度不能少于 6 位" },
+        { message: "密码长度至少 6 位" },
         { status: 400 }
       );
     }
 
-    // 根据账号类型查找用户
+    // 查找用户
     let user;
     const isPhone = /^1[3-9]\d{9}$/.test(account);
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account);
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        { message: "账号不存在" },
+        { message: "用户不存在" },
         { status: 404 }
       );
     }
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Reset password error:", error);
     return NextResponse.json(
-      { message: "服务器错误" },
+      { message: "服务器内部错误" },
       { status: 500 }
     );
   }

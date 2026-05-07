@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/components
- * 获取所有已上架的组件列表（公开接口）
+ * 获取组件列表
  */
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "100");
 
     const where: any = {
-      isPublished: true,  // 只获取已上架的组件
+      isPublished: true,  // 只获取已发布的组件
     };
 
     if (type) {
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取所有类型（阶段）
+    // 获取所有组件类型
     const types = await prisma.componenttask.findMany({
       where: {
         isPublished: true,
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取所有分类
+    // 获取所有组件分类
     const categories = await prisma.componenttask.findMany({
       where: {
         isPublished: true,

@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { SignJWT } from 'jose';
 
 /**
  * QQ 登录回调 API
  * 
- * QQ 授权后会携带 code 参数回调此接口
+ * 处理 QQ 授权后的回调，获取用户信息并完成登录
  */
 
 const QQ_APP_ID = process.env.QQ_APP_ID || '';
@@ -15,7 +15,7 @@ const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-secret-key-change-in-production'
 );
 
-// 测试模式标志：未配置 QQ_APP_ID 或使用测试 ID 或未配置 QQ_APP_KEY
+// 检测是否处于测试模式
 const IS_TEST_MODE = !QQ_APP_ID || QQ_APP_ID === '1234567890' || !QQ_APP_KEY;
 
 export async function GET(request: NextRequest) {
@@ -25,31 +25,31 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get('error');
     const testMode = searchParams.get('test_mode');
 
-    console.log('📍 QQ 回调收到参数:', { code, error, testMode });
+    console.log('QQ 回调参数:', { code, error, testMode });
 
     // 用户取消授权
     if (error === 'user_cancel') {
-      console.log('❌ 用户取消授权');
+      console.log('用户取消了 QQ 授权');
       return NextResponse.redirect(new URL('/auth/login?error=user_cancel', request.nextUrl.origin));
     }
 
     if (!code) {
-      console.log('❌ 缺少 code 参数');
+      console.log('缺少 code 参数');
       return NextResponse.redirect(new URL('/auth/login?error=qq_callback_invalid', request.nextUrl.origin));
     }
 
-    // 测试模式：创建模拟用户
+    // 测试模式
     if (testMode === 'true' || IS_TEST_MODE) {
-      console.log('🔧 测试模式：创建模拟 QQ 用户');
+      console.log('当前处于测试模式，将使用模拟数据完成 QQ 登录');
       
       try {
-        // 生成模拟的 QQ 用户信息
+        // 生成模拟用户数据
         const timestamp = Date.now();
         const mockOpenid = `mock_qq_${timestamp}`;
         const mockNickname = `QQ 用户${Math.floor(Math.random() * 10000)}`;
         const mockAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${timestamp}`;
 
-        console.log('📝 模拟用户信息:', { mockOpenid, mockNickname });
+        console.log('模拟 QQ 用户信息:', { mockOpenid, mockNickname });
 
         // 查找或创建用户
         let user = await prisma.user.findFirst({
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         let isNewUser = false;
         
         if (!user) {
-          console.log('➕ 创建新用户');
+          console.log('创建新用户');
           user = await prisma.user.create({
             data: {
               qqUnionId: mockOpenid,
@@ -67,16 +67,16 @@ export async function GET(request: NextRequest) {
               avatar: mockAvatar,
               role: 'user',
               status: 'active',
-              password: 'oauth_user_no_password_' + mockOpenid, // OAuth 用户不需要密码
+              password: 'oauth_user_no_password_' + mockOpenid,
             },
           });
-          console.log('✅ 用户创建成功:', user.id);
+          console.log('新用户创建成功:', user.id);
           isNewUser = true;
         } else {
-          console.log('📂 找到已存在用户:', user.id);
+          console.log('用户已存在:', user.id);
         }
 
-        // 检查用户是否有个人空间，如果没有则创建
+        // 检查工作空间
         const workspaceMembers = await prisma.workspaceMember.findMany({
           where: { userId: user.id },
           include: {
@@ -93,12 +93,12 @@ export async function GET(request: NextRequest) {
           },
         });
 
-        // 查找是否有个人空间
+        // 检查是否有个人空间
         const personalWorkspace = workspaceMembers.find(
           (member) => member.workspace.type === 'PERSONAL',
         );
 
-        // 如果没有个人空间，自动创建一个
+        // 如果没有个人空间，创建一个
         if (!personalWorkspace) {
           const workspaceName = `个人空间 - ${user.name || user.phone || user.email || '用户'}`;
           const newWorkspace = await prisma.workspace.create({
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
             },
           });
 
-          // 创建 WorkspaceMember 记录
+          // 添加工作空间成员
           await prisma.workspaceMember.create({
             data: {
               userId: user.id,
@@ -127,14 +127,13 @@ export async function GET(request: NextRequest) {
             },
           });
 
-          console.log('✅ 为用户创建个人空间:', newWorkspace.id);
+          console.log('创建个人空间成功:', newWorkspace.id);
         }
 
-        // 生成会话 token
+        // 生成 session
         const sessionToken = crypto.randomUUID();
-        const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小时后过期
-
-        // 更新用户登录时间和会话信息
+        const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小时
+        
         await prisma.user.update({
           where: { id: user.id },
           data: {
@@ -145,7 +144,7 @@ export async function GET(request: NextRequest) {
         });
 
         console.log(
-          `[QQ Callback] 用户 ${user.id} 登录成功，lastLoginAt 已更新为:`,
+          `[QQ Callback] 用户 ${user.id} 登录成功`,
           new Date().toISOString(),
           `sessionToken: ${sessionToken}`,
         );
@@ -160,7 +159,7 @@ export async function GET(request: NextRequest) {
           .setExpirationTime('24h')
           .sign(JWT_SECRET);
 
-        // 重定向到前端 OAuth 回调页面，传递用户信息
+        // 准备用户数据
         const userData = {
           id: user.id,
           name: user.name,
@@ -185,15 +184,15 @@ export async function GET(request: NextRequest) {
           path: '/',
         });
 
-        console.log('✅ 登录成功，跳转到 OAuth 回调页面');
+        console.log('QQ 登录成功，跳转到 OAuth 回调页面');
         return response;
       } catch (dbError) {
-        console.error('❌ 数据库操作失败:', dbError);
+        console.error('数据库操作错误:', dbError);
         throw dbError;
       }
     }
 
-    // 用户取消授权
+    // 正式模式
     if (error) {
       return NextResponse.redirect('/auth/login?error=user_cancel');
     }
@@ -260,13 +259,13 @@ export async function GET(request: NextRequest) {
           avatar: userInfo.figureurl_qq_2 || null,
           role: 'user',
           status: 'active',
-          password: 'oauth_user_no_password_' + openid, // OAuth 用户不需要密码
+          password: 'oauth_user_no_password_' + openid,
         },
       });
       isNewUser = true;
     }
 
-    // 检查用户是否有个人空间，如果没有则创建
+    // 检查工作空间
     const workspaceMembers = await prisma.workspaceMember.findMany({
       where: { userId: user.id },
       include: {
@@ -283,12 +282,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 查找是否有个人空间
+    // 检查是否有个人空间
     const personalWorkspace = workspaceMembers.find(
       (member) => member.workspace.type === 'PERSONAL',
     );
 
-    // 如果没有个人空间，自动创建一个
+    // 如果没有个人空间，创建一个
     if (!personalWorkspace) {
       const workspaceName = `个人空间 - ${user.name || user.phone || user.email || '用户'}`;
       const newWorkspace = await prisma.workspace.create({
@@ -300,7 +299,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      // 创建 WorkspaceMember 记录
+      // 添加工作空间成员
       await prisma.workspaceMember.create({
         data: {
           userId: user.id,
@@ -317,14 +316,13 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      console.log('✅ 为用户创建个人空间:', newWorkspace.id);
+      console.log('创建个人空间成功:', newWorkspace.id);
     }
 
-    // 生成会话 token
+    // 生成 session
     const sessionToken = crypto.randomUUID();
-    const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小时后过期
-
-    // 更新用户登录时间和会话信息
+    const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 小时
+    
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -335,7 +333,7 @@ export async function GET(request: NextRequest) {
     });
 
     console.log(
-      `[QQ Callback] 用户 ${user.id} 登录成功，lastLoginAt 已更新为:`,
+      `[QQ Callback] 用户 ${user.id} 登录成功`,
       new Date().toISOString(),
       `sessionToken: ${sessionToken}`,
     );
@@ -350,7 +348,7 @@ export async function GET(request: NextRequest) {
       .setExpirationTime('24h')
       .sign(JWT_SECRET);
 
-    // 重定向到前端 OAuth 回调页面，传递用户信息
+    // 准备用户数据
     const userData = {
       id: user.id,
       name: user.name,
@@ -371,18 +369,18 @@ export async function GET(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24, // 1 天
+      maxAge: 60 * 60 * 24,
       path: '/',
     });
 
-    console.log('✅ 登录成功，跳转到 OAuth 回调页面');
+    console.log('QQ 登录成功，跳转到 OAuth 回调页面');
     return response;
   } catch (error) {
-    console.error('❌ QQ callback 发生错误:', error);
-    console.error('错误堆栈:', JSON.stringify(error, null, 2));
-    // 返回详细的错误信息以便调试
+    console.error('QQ callback 错误:', error);
+    console.error('错误详情:', JSON.stringify(error, null, 2));
+    // 返回详细错误信息
     return NextResponse.json({
-      error: 'QQ 登录回调失败',
+      error: 'QQ 登录回调处理失败',
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     }, { status: 500 });

@@ -1,18 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
+import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 
 export async function POST(request: NextRequest) {
   try {
     const { phone, username, email, smsCode, password, accountType } =
       await request.json();
 
-    // 根据账号类型验证
+    // 手机号注册
     if (accountType === "phone") {
-      // 手机号注册
+      // 验证手机号
       if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
         return NextResponse.json(
-          { message: "手机号格式不正确" },
+          { message: "请输入正确的手机号" },
           { status: 400 },
         );
       }
@@ -20,12 +21,26 @@ export async function POST(request: NextRequest) {
       // 验证验证码
       if (!smsCode || smsCode.length !== 6) {
         return NextResponse.json(
-          { message: "验证码格式不正确" },
+          { message: "请输入正确的验证码" },
           { status: 400 },
         );
       }
 
-      // 检查手机号是否已注册
+      // 验证验证码
+      const smsVerification = verifySmsCode(phone, smsCode);
+      if (!smsVerification.valid) {
+        return NextResponse.json(
+          { 
+            message: smsVerification.error === "请先获取验证码" 
+              ? "验证码已失效，请重新获取" 
+              : smsVerification.error || "验证码错误",
+            field: "smsCode"
+          },
+          { status: 400 },
+        );
+      }
+
+      // 检查用户是否已存在
       const existingUser = await prisma.user.findUnique({
         where: { phone },
       });
@@ -37,20 +52,20 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // 哈希密码
+      // 加密密码
       const hashedPassword = await hashPassword(password);
 
-      // 插入数据（默认状态为 inactive，需要验证后激活）
+      // 创建用户（验证成功后直接激活）
       const result = await prisma.$executeRaw`
         INSERT INTO user (id, phone, password, name, role, status, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${`用户${phone.slice(-4)}`}, 'user', 'inactive', NOW(), NOW())
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${`用户${phone.slice(-4)}`}, 'user', 'active', NOW(), NOW())
       `;
 
       if (result < 0) {
         throw new Error("Failed to create user");
       }
 
-      // 获取创建的用户
+      // 获取用户信息
       const user = await prisma.user.findUnique({
         where: { phone },
         select: {
@@ -63,8 +78,11 @@ export async function POST(request: NextRequest) {
       });
 
       if (!user) {
-        return NextResponse.json({ message: "注册失败" }, { status: 500 });
+        return NextResponse.json({ message: "获取用户信息失败" }, { status: 500 });
       }
+
+      // 删除验证码
+      deleteSmsCode(phone);
 
       return NextResponse.json({
         success: true,
@@ -82,7 +100,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             message:
-              "用户名格式不正确，支持 3-20 位字母、数字、@、#、-、下划线",
+              "用户名格式不正确，请使用 3-20 位字母、数字或特殊字符",
           },
           { status: 400 },
         );
@@ -90,7 +108,7 @@ export async function POST(request: NextRequest) {
 
       if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
         return NextResponse.json(
-          { message: "绑定手机号格式不正确" },
+          { message: "请输入正确的手机号" },
           { status: 400 },
         );
       }
@@ -98,7 +116,19 @@ export async function POST(request: NextRequest) {
       // 验证验证码
       if (!smsCode || smsCode.length !== 6) {
         return NextResponse.json(
-          { message: "验证码格式不正确" },
+          { message: "请输入正确的验证码" },
+          { status: 400 },
+        );
+      }
+
+      // 验证验证码
+      const smsVerification = verifySmsCode(phone, smsCode);
+      if (!smsVerification.valid) {
+        return NextResponse.json(
+          { 
+            message: smsVerification.error || "验证码错误",
+            field: "smsCode"
+          },
           { status: 400 },
         );
       }
@@ -110,37 +140,37 @@ export async function POST(request: NextRequest) {
 
       if (existingUserByUsername) {
         return NextResponse.json(
-          { message: "该用户名已存在" },
+          { message: "用户名已存在" },
           { status: 400 },
         );
       }
 
-      // 检查手机号是否已注册
+      // 检查手机号是否已存在
       const existingUserByPhone = await prisma.user.findUnique({
         where: { phone },
       });
 
       if (existingUserByPhone) {
         return NextResponse.json(
-          { message: "该手机号已被注册" },
+          { message: "该手机号已注册" },
           { status: 400 },
         );
       }
 
-      // 哈希密码
+      // 加密密码
       const hashedPassword = await hashPassword(password);
 
-      // 插入数据（默认状态为 inactive，需要验证后激活）
+      // 创建用户（验证成功后直接激活）
       const result = await prisma.$executeRaw`
         INSERT INTO user (id, phone, password, name, role, status, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${username}, 'user', 'inactive', NOW(), NOW())
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${username}, 'user', 'active', NOW(), NOW())
       `;
 
       if (result < 0) {
         throw new Error("Failed to create user");
       }
 
-      // 获取创建的用户
+      // 获取用户信息
       const user = await prisma.user.findUnique({
         where: { phone },
         select: {
@@ -153,36 +183,11 @@ export async function POST(request: NextRequest) {
       });
 
       if (!user) {
-        return NextResponse.json({ message: "注册失败" }, { status: 500 });
+        return NextResponse.json({ message: "获取用户信息失败" }, { status: 500 });
       }
 
-      // 自动创建个人空间
-      const workspaceName = `个人空间 - ${user.name || user.phone}`;
-      const workspace = await prisma.workspace.create({
-        data: {
-          name: workspaceName,
-          type: "PERSONAL",
-          ownerId: user.id,
-          description: `${user.name || "用户"}的个人工作空间`,
-        },
-      });
-
-      // 创建 WorkspaceMember 记录
-      await prisma.workspaceMember.create({
-        data: {
-          userId: user.id,
-          workspaceId: workspace.id,
-          role: "OWNER",
-        },
-      });
-
-      // 更新用户的 lastWorkspaceId
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          lastWorkspaceId: workspace.id,
-        },
-      });
+      // 删除验证码
+      deleteSmsCode(phone);
 
       return NextResponse.json({
         success: true,
@@ -192,25 +197,20 @@ export async function POST(request: NextRequest) {
           phone: user.phone,
           name: user.name,
         },
-        workspace: {
-          id: workspace.id,
-          name: workspace.name,
-          type: workspace.type,
-        },
         redirectUrl: "/auth/login",
       });
     } else if (accountType === "email") {
       // 邮箱注册
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return NextResponse.json(
-          { message: "邮箱格式不正确" },
+          { message: "请输入正确的邮箱地址" },
           { status: 400 },
         );
       }
 
       if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
         return NextResponse.json(
-          { message: "绑定手机号格式不正确" },
+          { message: "请输入正确的手机号" },
           { status: 400 },
         );
       }
@@ -218,7 +218,19 @@ export async function POST(request: NextRequest) {
       // 验证验证码
       if (!smsCode || smsCode.length !== 6) {
         return NextResponse.json(
-          { message: "验证码格式不正确" },
+          { message: "请输入正确的验证码" },
+          { status: 400 },
+        );
+      }
+
+      // 验证验证码
+      const smsVerification = verifySmsCode(phone, smsCode);
+      if (!smsVerification.valid) {
+        return NextResponse.json(
+          { 
+            message: smsVerification.error || "验证码错误",
+            field: "smsCode"
+          },
           { status: 400 },
         );
       }
@@ -229,35 +241,35 @@ export async function POST(request: NextRequest) {
       });
 
       if (existingUserByEmail) {
-        return NextResponse.json({ message: "该邮箱已存在" }, { status: 400 });
+        return NextResponse.json({ message: "邮箱已被注册" }, { status: 400 });
       }
 
-      // 检查手机号是否已注册
+      // 检查手机号是否已存在
       const existingUserByPhone = await prisma.user.findUnique({
         where: { phone },
       });
 
       if (existingUserByPhone) {
         return NextResponse.json(
-          { message: "该手机号已被注册" },
+          { message: "该手机号已注册" },
           { status: 400 },
         );
       }
 
-      // 哈希密码
+      // 加密密码
       const hashedPassword = await hashPassword(password);
 
-      // 插入数据（默认状态为 inactive，需要验证后激活）
+      // 创建用户（验证成功后直接激活）
       const result = await prisma.$executeRaw`
         INSERT INTO user (id, phone, password, name, email, role, status, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${email.split("@")[0]}, ${email}, 'user', 'inactive', NOW(), NOW())
+        VALUES (UUID(), ${phone}, ${hashedPassword}, ${email.split("@")[0]}, ${email}, 'user', 'active', NOW(), NOW())
       `;
 
       if (result < 0) {
         throw new Error("Failed to create user");
       }
 
-      // 获取创建的用户
+      // 获取用户信息
       const user = await prisma.user.findUnique({
         where: { phone },
         select: {
@@ -270,36 +282,11 @@ export async function POST(request: NextRequest) {
       });
 
       if (!user) {
-        return NextResponse.json({ message: "注册失败" }, { status: 500 });
+        return NextResponse.json({ message: "获取用户信息失败" }, { status: 500 });
       }
 
-      // 自动创建个人空间
-      const workspaceName = `个人空间 - ${user.name || user.phone}`;
-      const workspace = await prisma.workspace.create({
-        data: {
-          name: workspaceName,
-          type: "PERSONAL",
-          ownerId: user.id,
-          description: `${user.name || "用户"}的个人工作空间`,
-        },
-      });
-
-      // 创建 WorkspaceMember 记录
-      await prisma.workspaceMember.create({
-        data: {
-          userId: user.id,
-          workspaceId: workspace.id,
-          role: "OWNER",
-        },
-      });
-
-      // 更新用户的 lastWorkspaceId
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          lastWorkspaceId: workspace.id,
-        },
-      });
+      // 删除验证码
+      deleteSmsCode(phone);
 
       return NextResponse.json({
         success: true,
@@ -309,11 +296,6 @@ export async function POST(request: NextRequest) {
           phone: user.phone,
           name: user.name,
           email: user.email,
-        },
-        workspace: {
-          id: workspace.id,
-          name: workspace.name,
-          type: workspace.type,
         },
         redirectUrl: "/auth/login",
       });
@@ -325,6 +307,6 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error("Register error:", error);
-    return NextResponse.json({ message: "服务器错误" }, { status: 500 });
+    return NextResponse.json({ message: "服务器内部错误" }, { status: 500 });
   }
 }

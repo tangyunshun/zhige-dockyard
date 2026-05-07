@@ -46,6 +46,9 @@ export function useLogout() {
       if (res.ok) {
         // 设置标记，告诉首页显示退出成功提示
         localStorage.setItem("just_logged_out", "true");
+        
+        // 设置多标签页同步标记，通知其他标签页同步退出
+        localStorage.setItem("logged_out", "true");
 
         // 清除所有本地存储
         localStorage.removeItem("userId");
@@ -69,7 +72,7 @@ export function useLogout() {
         toast.error("退出登录失败");
       }
     } catch (error) {
-      console.error("退出登录失败:", error);
+      console.error("退出登录失败", error);
       toast.error("退出登录失败，请稍后重试");
     }
   };

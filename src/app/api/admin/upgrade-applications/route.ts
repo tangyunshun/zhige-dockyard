@@ -1,149 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
+    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
     const status = searchParams.get("status") || "";
 
-    const skip = (page - 1) * limit;
     const where: any = {};
-
     if (status) {
       where.status = status;
     }
 
-    const [applications, total] = await Promise.all([
-      prisma.upgradeApplication.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { submittedAt: "desc" },
-        include: {
-          workspace: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              ownerId: true,
-            },
-          },
-        },
-      }),
-      prisma.upgradeApplication.count({ where }),
-    ]);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        applications,
-        total,
-        page,
-        totalPages: Math.ceil(total / limit),
+    const applications = await prisma.workspaceUpgradeApplication.findMany({
+      where,
+      include: {
+        workspace: true,
+        applicant: true,
       },
+      orderBy: { createdAt: "desc" },
     });
+
+    return NextResponse.json({ success: true, data: applications });
   } catch (error) {
     console.error("Get upgrade applications error:", error);
-    return NextResponse.json(
-      {
-        error: "获取升级申请失败",
-        details: error instanceof Error ? error.message : error,
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "获取升级申请失败" }, { status: 500 });
   }
 }
 
 export async function PATCH(request: NextRequest) {
   try {
-    // 验证管理员权限
     const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
+    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    const { id, status, reason } = await request.json();
+    const { applicationId, status, reviewComment } = await request.json();
 
-    if (!id || !status) {
-      return NextResponse.json({ error: "缺少必要参数" }, { status: 400 });
+    if (!applicationId || !status) {
+      return NextResponse.json({ error: "缺少参数" }, { status: 400 });
     }
 
-    if (!["PENDING", "APPROVED", "REJECTED"].includes(status)) {
-      return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
-    }
-
-    const application = await prisma.upgradeApplication.findUnique({
-      where: { id },
-      include: {
-        workspace: true,
+    const application = await prisma.workspaceUpgradeApplication.update({
+      where: { id: applicationId },
+      data: {
+        status,
+        reviewComment,
+        reviewedAt: new Date(),
+        reviewerId: userId,
       },
     });
 
-    if (!application) {
-      return NextResponse.json({ error: "申请不存在" }, { status: 404 });
-    }
-
-    // 更新申请状态
-    await prisma.upgradeApplication.update({
-      where: { id },
-      data: { status },
-    });
-
-    // 如果审核通过，升级工作空间为企业空间
-    if (status === "APPROVED") {
-      await prisma.workspace.update({
-        where: { id: application.workspaceId },
-        data: { type: "ENTERPRISE" },
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "审核完成",
-    });
+    return NextResponse.json({ success: true, data: application });
   } catch (error) {
-    console.error("Review upgrade application error:", error);
-    return NextResponse.json(
-      {
-        error: "审核失败",
-        details: error instanceof Error ? error.message : error,
-      },
-      { status: 500 },
-    );
+    console.error("Process upgrade application error:", error);
+    return NextResponse.json({ error: "处理升级申请失败" }, { status: 500 });
   }
 }

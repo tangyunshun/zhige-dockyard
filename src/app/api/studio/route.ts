@@ -3,21 +3,21 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// 获取当前用户 ID（从 session 或 request header）
+// 获取用户 ID（临时实现）
 function getUserId(request: NextRequest): string {
   // TODO: 实现真实的用户认证
-  // 暂时返回一个测试用户 ID
+  // 目前返回测试用户 ID
   return "test-user-001";
 }
 
-// GET - 获取组件相关数据
+// GET - 获取组件相关信息
 export async function GET(request: NextRequest) {
   try {
     const userId = getUserId(request);
     const searchParams = request.nextUrl.searchParams;
     const action = searchParams.get("action");
 
-    // 获取用户的收藏列表
+    // 获取用户收藏的组件
     if (action === "favorites") {
       const favorites = await prisma.componentFavorite.findMany({
         where: { userId },
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 获取用户的最近使用
+    // 获取用户最近使用的组件
     if (action === "recent") {
       const recent = await prisma.componentUsage.findMany({
         where: { userId },
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 获取组件统计
+    // 获取组件统计信息
     if (action === "stats") {
       const componentId = searchParams.get("componentId");
       if (!componentId) {
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       const reviews = await prisma.componentReview.findMany({
         where: { 
           componentId,
-          parentId: null, // 只获取主评论
+          parentId: null,
           status: "active",
         },
         orderBy: { createdAt: "desc" },
@@ -113,26 +113,26 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ 
       success: false, 
-      error: "未知的 action" 
+      error: "缺少 action 参数" 
     }, { status: 400 });
 
   } catch (error) {
     console.error("Studio API GET error:", error);
     return NextResponse.json({ 
       success: false, 
-      error: "服务器错误" 
+      error: "服务器内部错误" 
     }, { status: 500 });
   }
 }
 
-// POST - 创建或更新组件相关数据
+// POST - 执行组件相关操作
 export async function POST(request: NextRequest) {
   try {
     const userId = getUserId(request);
     const body = await request.json();
     const { action, componentId, rating, comment, content, parentId } = body;
 
-    // 添加收藏
+    // 收藏组件
     if (action === "favorite") {
       if (!componentId) {
         return NextResponse.json({ 
@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
           },
         },
       }).catch(() => {
-        // 如果不存在，忽略错误
+        // 如果不存在则忽略
       });
 
       // 更新统计
@@ -197,13 +197,13 @@ export async function POST(request: NextRequest) {
           totalFavorites: { decrement: 1 },
         },
       }).catch(() => {
-        // 如果不存在，忽略错误
+        // 如果不存在则忽略
       });
 
       return NextResponse.json({ success: true });
     }
 
-    // 记录使用
+    // 使用组件
     if (action === "use") {
       if (!componentId) {
         return NextResponse.json({ 
@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // 添加/更新评分
+    // 评分
     if (action === "rate") {
       if (!componentId || !rating || rating < 1 || rating > 5) {
         return NextResponse.json({ 
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // 重新计算平均评分
+      // 计算平均评分
       const allRatings = await prisma.componentRating.findMany({
         where: { componentId },
         select: { rating: true },
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // 添加评论
+    // 评论
     if (action === "review") {
       if (!componentId || !content) {
         return NextResponse.json({ 
@@ -334,7 +334,7 @@ export async function POST(request: NextRequest) {
           },
         });
       } catch {
-        // 如果不存在，则创建
+        // 如果不存在则创建
         await prisma.componentStats.create({
           data: {
             componentId,
@@ -348,14 +348,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: false, 
-      error: "未知的 action" 
+      error: "缺少 action 参数" 
     }, { status: 400 });
 
   } catch (error) {
     console.error("Studio API POST error:", error);
     return NextResponse.json({ 
       success: false, 
-      error: "服务器错误" 
+      error: "服务器内部错误" 
     }, { status: 500 });
   }
 }
@@ -369,7 +369,7 @@ export async function DELETE(request: NextRequest) {
     const componentId = searchParams.get("componentId");
     const reviewId = searchParams.get("reviewId");
 
-    // 删除评论
+    // 隐藏评论
     if (action === "review" && reviewId) {
       await prisma.componentReview.update({
         where: { id: reviewId },
@@ -381,14 +381,14 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ 
       success: false, 
-      error: "未知的 action" 
+      error: "缺少 action 参数" 
     }, { status: 400 });
 
   } catch (error) {
     console.error("Studio API DELETE error:", error);
     return NextResponse.json({ 
       success: false, 
-      error: "服务器错误" 
+      error: "服务器内部错误" 
     }, { status: 500 });
   }
 }

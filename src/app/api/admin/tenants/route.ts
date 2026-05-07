@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -92,33 +92,34 @@ export async function PATCH(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
     const { id, status } = await request.json();
 
     if (!id || !status) {
-      return NextResponse.json({ error: "缺少必要参数" }, { status: 400 });
+      return NextResponse.json({ error: "缺少参数" }, { status: 400 });
     }
 
     if (!["active", "inactive"].includes(status)) {
       return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
     }
 
-    await prisma.tenant.update({
+    const tenant = await prisma.tenant.update({
       where: { id },
       data: { status },
     });
 
     return NextResponse.json({
       success: true,
-      message: "租户状态已更新",
+      data: tenant,
+      message: "更新租户状态成功",
     });
   } catch (error) {
     console.error("Update tenant error:", error);
     return NextResponse.json(
       {
-        error: "更新租户失败",
+        error: "更新租户状态失败",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

@@ -43,7 +43,7 @@ const adminMenuItems = [
     icon: FolderKanban,
     label: "工作空间管理",
     href: "/admin/workspaces",
-    description: "空间审核、资源配额",
+    description: "空间审核、资源配额、成员查看",
   },
   {
     icon: Crown,

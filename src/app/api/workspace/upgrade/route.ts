@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 // 获取企业空间配额
 async function getEnterpriseQuota(userId: string) {
@@ -24,7 +23,7 @@ async function getEnterpriseQuota(userId: string) {
     },
   });
 
-  const isMember = isAdminRole(user.role);
+  const isMember = user.role === "admin" || user.role === "super_admin";
   const maxEnterprise = isMember ? 3 : 1;
 
   return {
@@ -44,7 +43,7 @@ export async function GET(request: NextRequest) {
       authHeader === "Bearer null" ||
       authHeader === "Bearer "
     ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
@@ -105,17 +104,12 @@ export async function POST(request: NextRequest) {
       authHeader === "Bearer null" ||
       authHeader === "Bearer "
     ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
     const userId = authHeader.replace("Bearer ", "");
     const body = await request.json();
     const { workspaceId, option } = body;
-
-    console.log("=== 升级 API 被调用 ===");
-    console.log("userId:", userId);
-    console.log("workspaceId:", workspaceId);
-    console.log("option:", option);
 
     if (!workspaceId || !option) {
       return NextResponse.json({ error: "缺少必要参数" }, { status: 400 });
@@ -234,13 +228,6 @@ export async function POST(request: NextRequest) {
       message = "空间已成功升级为企业空间";
     } else if (option === "retain" || option === "delete") {
       // 选项 A 或 B：创建新的企业空间
-      console.log("开始创建企业空间...");
-      console.log("个人空间信息:", {
-        name: personalWorkspace.name,
-        description: personalWorkspace.description,
-        ownerId: userId,
-      });
-
       const newWorkspace = await prisma.workspace.create({
         data: {
           name: personalWorkspace.name,
@@ -256,23 +243,19 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      console.log("企业空间创建成功:", newWorkspace.id);
       resultWorkspaceId = newWorkspace.id;
 
       // 如果选择删除个人空间
       if (option === "delete") {
-        console.log("选项 B：开始删除个人空间", workspaceId);
         // 删除个人空间的成员关系
         await prisma.workspaceMember.deleteMany({
           where: { workspaceId },
         });
-        console.log("成员关系已删除");
 
         // 删除个人空间
         await prisma.workspace.delete({
           where: { id: workspaceId },
         });
-        console.log("个人空间已删除");
 
         message = "企业空间创建成功，原个人空间已删除";
       } else {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth";
 import { SignJWT } from "jose";
 
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     const { account, password, rememberMe } = await request.json();
 
-    // 查找用户（支持邮箱/手机号/账号）
+    // 查找用户（支持邮箱、手机号、账号名）
     const user = await prisma.user.findFirst({
       where: {
         OR: [{ email: account }, { phone: account }, { name: account }],
@@ -30,28 +30,23 @@ export async function POST(request: NextRequest) {
     }
 
     // 检查账号状态
-    if (user.status !== "active") {
-      let statusMessage = "账号状态异常";
-      let statusCode = 403;
-      
-      if (user.status === "inactive") {
-        statusMessage = "账号未激活，请先验证邮箱或手机号";
-        statusCode = 403;
-      } else if (user.status === "banned") {
-        statusMessage = "账号已被封禁，无法登录";
-        statusCode = 403;
-      } else if (user.status === "deleted") {
-        statusMessage = "账号已被注销";
-        statusCode = 403;
-      }
-      
+    if (user.status === "banned") {
       return NextResponse.json(
         {
-          message: statusMessage,
+          message: "账号已被封禁，无法登录",
           accountExists: true,
           status: user.status,
         },
-        { status: statusCode },
+        { status: 403 },
+      );
+    } else if (user.status === "deleted") {
+      return NextResponse.json(
+        {
+          message: "账号已被注销",
+          accountExists: true,
+          status: user.status,
+        },
+        { status: 403 },
       );
     }
 
@@ -60,9 +55,10 @@ export async function POST(request: NextRequest) {
       const minutes = Math.ceil(
         (user.lockedUntil.getTime() - Date.now()) / 60000,
       );
+      const msg = "账号已锁定，" + minutes + "分钟后再试";
       return NextResponse.json(
         {
-          message: `账号已锁定，请${minutes}分钟后再试`,
+          message: msg,
           accountExists: true,
           lockedUntil: user.lockedUntil.toISOString(),
           minutesRemaining: minutes,
@@ -105,9 +101,10 @@ export async function POST(request: NextRequest) {
         data: { loginAttempts: newAttempts },
       });
 
+      const msg = "账号或密码错误（剩余" + (5 - newAttempts) + "次尝试机会）";
       return NextResponse.json(
         {
-          message: `账号或密码错误（剩余${5 - newAttempts}次尝试机会）`,
+          message: msg,
           accountExists: true,
           remainingAttempts: 5 - newAttempts,
         },
@@ -119,26 +116,29 @@ export async function POST(request: NextRequest) {
     const now = new Date();
 
     // 生成会话令牌（用于强制下线检查）
-    const sessionToken = `sess_${user.id}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    const sessionToken = "sess_" + user.id + "_" + Date.now() + "_" + Math.random().toString(36).substring(2, 15);
     const sessionExpiresAt = rememberMe
       ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // 7 天
-      : new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 小时（但 cookie 是 session 的，关闭浏览器就失效）
-
+      : new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 小时
+    
+    // 关键修复：确保 lastLoginAt 设置为当前时间，避免立即判定为超时
     await prisma.user.update({
       where: { id: user.id },
       data: {
         loginAttempts: 0,
         lockedUntil: null,
-        lastLoginAt: now,
-        lastForcedLogoutAt: null, // 清除强制下线记录，重新计算在线状态
+        lastLoginAt: now,  // 必须设置为当前时间
+        lastForcedLogoutAt: null,
         sessionToken,
         sessionExpiresAt,
       },
     });
 
     // 记录登录历史
-    await prisma.loginHistory.create({
+    const loginHistoryId = "lh_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+    await prisma.loginhistory.create({
       data: {
+        id: loginHistoryId,
         userId: user.id,
         loginAt: now,
         ipAddress:
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 检查用户是否有个人空间，如果没有则创建
-    const workspaceMembers = await prisma.workspaceMember.findMany({
+    let workspaceMembers = await prisma.workspacemember.findMany({
       where: { userId: user.id },
       include: {
         workspace: {
@@ -171,51 +171,43 @@ export async function POST(request: NextRequest) {
       (member) => member.workspace.type === "PERSONAL",
     );
 
-    // 如果没有个人空间，自动创建一个
+    // 如果没有个人空间，调用 create-personal API 创建
     if (!personalWorkspace) {
-      const workspaceName = `个人空间 - ${user.name || user.phone || user.email}`;
-      const newWorkspace = await prisma.workspace.create({
-        data: {
-          name: workspaceName,
-          type: "PERSONAL",
-          ownerId: user.id,
-          description: `${user.name || "用户"}的个人工作空间`,
-        },
-      });
+      try {
+        // 使用 fetch 调用内部的 create-personal API
+        const createWorkspaceUrl = new URL('/api/workspace/create-personal', request.url).toString();
+        const createResponse = await fetch(createWorkspaceUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${user.id}`,
+          },
+        });
 
-      // 创建 WorkspaceMember 记录
-      await prisma.workspaceMember.create({
-        data: {
-          userId: user.id,
-          workspaceId: newWorkspace.id,
-          role: "OWNER",
-        },
-      });
-
-      // 更新用户的 lastWorkspaceId
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          lastWorkspaceId: newWorkspace.id,
-        },
-      });
-
-      // 刷新 workspaceMembers 列表
-      workspaceMembers.push({
-        id: newWorkspace.id,
-        userId: user.id,
-        workspaceId: newWorkspace.id,
-        role: "OWNER",
-        joinedAt: new Date(),
-        workspace: {
-          id: newWorkspace.id,
-          name: workspaceName,
-          type: "PERSONAL",
-          ownerId: user.id,
-          description: `${user.name || "用户"}的个人工作空间`,
-          logo: null,
-        },
-      });
+        if (createResponse.ok) {
+          // 重新查询 workspaceMembers
+          workspaceMembers = await prisma.workspacemember.findMany({
+            where: { userId: user.id },
+            include: {
+              workspace: {
+                select: {
+                  id: true,
+                  name: true,
+                  type: true,
+                  ownerId: true,
+                  description: true,
+                  logo: true,
+                },
+              },
+            },
+          });
+        } else {
+          console.error('创建个人空间失败:', await createResponse.text());
+        }
+      } catch (error) {
+        console.error('创建个人空间异常:', error);
+        // 创建失败不影响登录，继续
+      }
     }
 
     const workspaces = workspaceMembers.map((member) => ({
@@ -226,39 +218,6 @@ export async function POST(request: NextRequest) {
       workspace: member.workspace,
     }));
 
-    // 如果用户没有任何工作空间，自动创建一个个人空间
-    if (workspaceMembers.length === 0) {
-      const personalWorkspace = await prisma.workspace.create({
-        data: {
-          name: `${user.name || user.email || "个人空间"}`,
-          type: "PERSONAL",
-          ownerId: user.id,
-          members: {
-            create: {
-              userId: user.id,
-              role: "OWNER",
-            },
-          },
-        },
-      });
-
-      // 更新用户的 lastWorkspaceId
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          lastWorkspaceId: personalWorkspace.id,
-        },
-      });
-
-      workspaces.push({
-        id: personalWorkspace.id,
-        userId: user.id,
-        workspaceId: personalWorkspace.id,
-        role: "OWNER",
-        workspace: personalWorkspace,
-      });
-    }
-
     // 获取用户的 lastWorkspaceId
     const lastWorkspaceId = user.lastWorkspaceId;
 
@@ -268,9 +227,8 @@ export async function POST(request: NextRequest) {
       lastWorkspaceId &&
       workspaceMembers.some((m) => m.workspaceId === lastWorkspaceId)
     ) {
-      redirectUrl = `/dashboard?wid=${lastWorkspaceId}`;
+      redirectUrl = "/dashboard?wid=" + lastWorkspaceId;
     } else if (workspaceMembers.length > 0) {
-      // 如果有工作空间，直接进入 workspace-hub 或最后一个工作空间
       redirectUrl = "/workspace-hub";
     }
 
@@ -305,6 +263,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 设置 Cookie
+    // 设置 auth_token cookie
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60,
+    };
+
+    // 创建 response
     const response = NextResponse.json({
       success: true,
       token,
@@ -316,34 +284,62 @@ export async function POST(request: NextRequest) {
         phone: user.phone,
         role: user.role,
         avatar: user.avatar,
-        sessionToken, // 返回会话令牌用于前端存储
+        sessionToken,
+        needsVerification: !user.phone && !user.email, // 如果既没有手机号也没有邮箱，需要验证
       },
       workspaces,
       lastWorkspaceId,
       redirectUrl,
     });
 
-    // 设置 auth_token cookie
-    const cookieOptions = {
+    // 使用 response.cookies.set 设置 Cookie（Next.js App Router 正确方式）
+    response.cookies.set("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax" as const,
+      sameSite: "lax",  // 改回 lax，strict 可能导致跳转时 Cookie 丢失
       path: "/",
-      maxAge: rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60, // 记住我：7 天，不记住我：24 小时
-    };
-
-    response.cookies.set("auth_token", token, cookieOptions);
+      maxAge: rememberMe ? 7 * 24 * 60 * 60 : 24 * 60 * 60,
+    });
 
     if (refreshToken) {
       response.cookies.set("refresh_token", refreshToken, {
-        ...cookieOptions,
-        maxAge: 30 * 24 * 60 * 60, // 30 天
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60,
       });
     }
 
+    console.log("✅ Cookie 已设置 (使用 response.cookies.set):", token.substring(0, 20) + "...");
+    
     return response;
   } catch (error) {
     console.error("Login error:", error);
-    return NextResponse.json({ message: "服务器错误" }, { status: 500 });
+    
+    let errorMessage = "服务器错误";
+    let errorDetail = undefined;
+    
+    if (error instanceof Error) {
+      errorDetail = error.message;
+      
+      if (error.message.includes("connect") || error.message.includes("ECONNREFUSED")) {
+        errorMessage = "数据库连接失败，请联系管理员";
+      }
+      else if (error.message.includes("Prisma")) {
+        errorMessage = "数据库操作失败";
+      }
+      else if (error.message.includes("password") || error.message.includes("hash")) {
+        errorMessage = "密码验证失败";
+      }
+    }
+    
+    return NextResponse.json(
+      { 
+        message: errorMessage,
+        detail: process.env.NODE_ENV === "development" ? errorDetail : undefined,
+      }, 
+      { status: 500 }
+    );
   }
 }

@@ -1,69 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { verifySmsCode } from "@/lib/sms-store";
 
 export async function POST(request: NextRequest) {
   try {
-    const { phone, code, type } = await request.json();
+    const { phone, code } = await request.json();
 
     if (!phone || !code) {
       return NextResponse.json(
-        { message: "手机号和验证码不能为空" },
+        { message: "缺少手机号或验证码" },
         { status: 400 }
       );
     }
 
-    // 查找最近的验证码记录（5 分钟内）
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const smsRecord = await prisma.smsCode.findFirst({
-      where: {
-        phone: phone,
-        code: code,
-        type: type || "reset-password",
-        used: false,
-        createdAt: {
-          gte: fiveMinutesAgo,
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const result = verifySmsCode(phone, code);
 
-    if (!smsRecord) {
+    if (!result.valid) {
       return NextResponse.json(
-        { message: "验证码错误或已过期" },
+        { message: result.error || "验证码错误" },
         { status: 400 }
       );
-    }
-
-    // 标记验证码为已使用
-    await prisma.smsCode.update({
-      where: { id: smsRecord.id },
-      data: {
-        used: true,
-        usedAt: new Date(),
-      },
-    });
-
-    // 如果是注册验证，自动激活账号
-    if (type === "register") {
-      await prisma.user.updateMany({
-        where: { phone: phone },
-        data: {
-          status: "active",
-        },
-      });
     }
 
     return NextResponse.json({
       success: true,
+      message: "验证码正确",
     });
   } catch (error) {
     console.error("Verify SMS code error:", error);
     return NextResponse.json(
-      { message: "服务器错误" },
+      { message: "验证失败" },
       { status: 500 }
     );
   }

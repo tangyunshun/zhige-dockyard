@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-// 获取用户的 API Keys
+// 获取用户 API Keys
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -23,9 +23,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ apiKeys });
   } catch (error) {
-    console.error("获取 API Keys 失败:", error);
+    console.error("获取 API Keys 错误:", error);
     return NextResponse.json(
-      { error: "获取失败，请稍后重试" },
+      { error: "获取 API Keys 失败" },
       { status: 500 }
     );
   }
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
     if (!name) {
       return NextResponse.json(
-        { error: "请输入 API Key 名称" },
+        { error: "缺少 API Key 名称" },
         { status: 400 }
       );
     }
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const keyBody = uuidv4().replace(/-/g, "");
     const apiKey = keyPrefix + keyBody;
 
-    // 只存储哈希值
+    // 哈希处理
     const hashedKey = await bcrypt.hash(apiKey, 10);
 
     const newApiKey = await prisma.apiKey.create({
@@ -68,21 +68,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 只在创建时返回完整的 key，之后无法再查看
+    // 只返回一次完整的 key
     return NextResponse.json({
       success: true,
       apiKey: {
         id: newApiKey.id,
         name: newApiKey.name,
-        key: apiKey, // 只显示一次
+        key: apiKey,
         createdAt: newApiKey.createdAt,
       },
-      message: "请妥善保存此 API Key，它只会显示一次！",
+      message: "请妥善保管您的 API Key，这是唯一一次显示",
     });
   } catch (error) {
-    console.error("创建 API Key 失败:", error);
+    console.error("创建 API Key 错误:", error);
     return NextResponse.json(
-      { error: "创建失败，请稍后重试" },
+      { error: "创建 API Key 失败" },
       { status: 500 }
     );
   }
@@ -100,7 +100,7 @@ export async function DELETE(req: NextRequest) {
     const { id } = await req.json();
 
     if (!id) {
-      return NextResponse.json({ error: "请提供 API Key ID" }, { status: 400 });
+      return NextResponse.json({ error: "缺少 API Key ID" }, { status: 400 });
     }
 
     const apiKey = await prisma.apiKey.findFirst({
@@ -117,12 +117,12 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "API Key 已删除",
+      message: "API Key 删除成功",
     });
   } catch (error) {
-    console.error("删除 API Key 失败:", error);
+    console.error("删除 API Key 错误:", error);
     return NextResponse.json(
-      { error: "删除失败，请稍后重试" },
+      { error: "删除 API Key 失败" },
       { status: 500 }
     );
   }

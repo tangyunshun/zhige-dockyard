@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function PATCH(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -44,10 +44,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
     }
 
-    // 只能对企业空间进行禁用/启用操作
+    // 只能对企业空间进行操作
     if (workspace.type !== "ENTERPRISE") {
       return NextResponse.json(
-        { error: "只能对企业空间进行禁用/启用操作" },
+        { error: "只能对企业空间进行状态切换" },
         { status: 400 },
       );
     }
@@ -60,13 +60,13 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `空间已${status === "ACTIVE" ? "启用" : "禁用"}`,
+      message: `工作空间已${status === "ACTIVE" ? "启用" : "禁用"}`,
     });
   } catch (error) {
     console.error("Toggle workspace status error:", error);
     return NextResponse.json(
       {
-        error: "操作失败",
+        error: "切换工作空间状态失败",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

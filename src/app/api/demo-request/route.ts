@@ -1,26 +1,26 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 
 /**
  * POST /api/demo-request
- * 处理私有化演示申请
+ * 处理演示请求
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { name, email, company, phone, requirements } = body;
 
-    // 基础验证
+    // 验证必填字段
     if (!name || !email || !company) {
       return NextResponse.json(
         {
           success: false,
-          error: "姓名、邮箱和公司为必填项",
+          error: "请填写所有必填字段",
         },
         { status: 400 }
       );
     }
 
-    // 邮箱格式验证
+    // 验证邮箱格式
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return NextResponse.json(
@@ -32,11 +32,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // TODO: 将申请保存到数据库
-    // TODO: 发送邮件通知给销售团队
-    // TODO: 发送邮件确认给用户
-
-    console.log("收到演示申请:", {
+    // TODO: 发送邮件通知
+    // TODO: 保存到数据库
+    // TODO: 触发CRM工作流
+    console.log("收到演示请求:", {
       name,
       email,
       company,
@@ -45,10 +44,10 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
 
-    // 模拟保存成功
+    // 返回成功响应
     return NextResponse.json({
       success: true,
-      message: "演示申请已提交",
+      message: "演示请求已提交",
       data: {
         id: "DEMO-" + Date.now(),
         status: "pending",
@@ -56,11 +55,11 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("演示申请处理失败:", error);
+    console.error("处理演示请求时发生错误:", error);
     return NextResponse.json(
       {
         success: false,
-        error: "服务器错误，请稍后重试",
+        error: "服务器内部错误，请稍后重试",
       },
       { status: 500 }
     );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,31 +39,31 @@ export async function GET(request: NextRequest) {
     // 检查邀请码状态
     if (invitation.status === "USED") {
       return NextResponse.json(
-        { error: "该邀请码已被使用" },
+        { error: "邀请码已被使用" },
         { status: 400 },
       );
     }
 
     if (invitation.status === "EXPIRED") {
       return NextResponse.json(
-        { error: "该邀请码已过期" },
+        { error: "邀请码已过期" },
         { status: 400 },
       );
     }
 
-    // 检查是否过期
+    // 检查有效期
     if (invitation.expiresAt && new Date() > invitation.expiresAt) {
       await prisma.workspaceInvitation.update({
         where: { id: invitation.id },
         data: { status: "EXPIRED" },
       });
       return NextResponse.json(
-        { error: "该邀请码已过期" },
+        { error: "邀请码已过期" },
         { status: 400 },
       );
     }
 
-    // 检查是否指定了邮箱
+    // 验证邮箱
     const userId = request.headers.get("authorization")?.replace("Bearer ", "");
     if (invitation.email && userId) {
       const user = await prisma.user.findUnique({
@@ -71,20 +71,20 @@ export async function GET(request: NextRequest) {
       });
       if (user?.email !== invitation.email) {
         return NextResponse.json(
-          { error: "该邀请码不适用于当前用户" },
+          { error: "邀请码指定的邮箱与当前用户不匹配" },
           { status: 403 },
         );
       }
     }
 
-    // 检查用户是否已经是成员
+    // 检查用户是否已是成员
     if (userId) {
       const isMember = invitation.workspace.members.some(
         (m) => m.userId === userId,
       );
       if (isMember) {
         return NextResponse.json(
-          { error: "您已是该空间成员" },
+          { error: "您已经是该工作空间的成员" },
           { status: 400 },
         );
       }
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("验证邀请码失败:", error);
+    console.error("验证邀请码错误:", error);
     return NextResponse.json(
       { error: "验证邀请码失败" },
       { status: 500 },

@@ -1,14 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
 /**
  * GET /api/membership/quota
- * 查询当前用户的会员配额信息
+ * 获取用户会员配额信息
  */
 export async function GET(request: NextRequest) {
   try {
-    // 验证用户登录
+    // 验证用户
     const authHeader = request.headers.get("authorization");
     const authResult = await validateUser(authHeader);
     
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     const userId = authResult.user!.id;
 
-    // 获取用户的会员等级
+    // 获取用户会员等级
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 统计用户的企业空间数量
+    // 获取企业工作空间数量
     const enterpriseWorkspacesCount = await prisma.workspace.count({
       where: {
         ownerId: userId,
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 统计用户的个人空间数量
+    // 获取个人工作空间数量
     const personalWorkspacesCount = await prisma.workspace.count({
       where: {
         ownerId: userId,
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Get membership quota error:", error);
     return NextResponse.json(
-      { message: "获取配额失败" },
+      { message: "获取会员配额失败" },
       { status: 500 }
     );
   }

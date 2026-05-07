@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { hashPassword, validatePasswordStrength } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
     const { name, email, phone, password } = await request.json();
 
-    // 验证系统是否已经初始化
+    // 验证是否已有用户
     const userCount = await prisma.user.count();
     if (userCount > 0) {
       return NextResponse.json(
-        { message: "系统已初始化，无法创建创世管理员" },
+        { message: "系统已初始化，无法创建初始管理员" },
         { status: 400 },
       );
     }
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
       if (existingUser) {
         return NextResponse.json(
-          { message: "该邮箱已被使用" },
+          { message: "邮箱已被使用" },
           { status: 400 },
         );
       }
@@ -49,16 +49,16 @@ export async function POST(request: NextRequest) {
 
       if (existingUser) {
         return NextResponse.json(
-          { message: "该手机号已被使用" },
+          { message: "手机号已被使用" },
           { status: 400 },
         );
       }
     }
 
-    // 哈希密码
+    // 加密密码
     const hashedPassword = await hashPassword(password);
 
-    // 使用 executeRaw 插入数据以绕过类型检查
+    // 使用 executeRaw 创建用户
     const result = await prisma.$executeRaw`
       INSERT INTO user (id, name, email, phone, password, role, created_at, updated_at)
       VALUES (UUID(), ${name}, ${email}, ${phone}, ${hashedPassword}, 'SUPER_ADMIN', NOW(), NOW())
@@ -85,10 +85,10 @@ export async function POST(request: NextRequest) {
       throw new Error("Failed to retrieve created user");
     }
 
-    // 不返回敏感信息
+    // 返回成功响应
     return NextResponse.json({
       success: true,
-      message: "创世管理员创建成功",
+      message: "初始管理员创建成功",
       user: {
         id: user.id,
         name: user.name,
@@ -98,6 +98,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Init admin error:", error);
-    return NextResponse.json({ message: "服务器错误" }, { status: 500 });
+    return NextResponse.json({ message: "初始化管理员失败" }, { status: 500 });
   }
 }

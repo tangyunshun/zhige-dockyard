@@ -4,53 +4,35 @@ import { isAdminRole } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const userId = request.headers.get("authorization");
-    if (!userId) {
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const userId = authHeader.replace("Bearer ", "");
+    const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    const { ids } = await request.json();
+    const { componentIds } = await request.json();
 
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json(
-        { error: "请选择要下架的组件" },
-        { status: 400 },
-      );
+    if (!componentIds || !Array.isArray(componentIds) || componentIds.length === 0) {
+      return NextResponse.json({ error: "缺少组件 ID 列表" }, { status: 400 });
     }
 
-    // 批量下架组件
     await prisma.componenttask.updateMany({
-      where: {
-        id: {
-          in: ids,
-        },
-      },
-      data: {
-        isPublished: false,
-      },
+      where: { id: { in: componentIds } },
+      data: { isPublished: false },
     });
 
     return NextResponse.json({
       success: true,
-      message: "批量下架成功",
+      message: `已批量下架 ${componentIds.length} 个组件`,
     });
   } catch (error) {
-    console.error("Batch unpublish error:", error);
-    return NextResponse.json(
-      {
-        error: "批量下架失败",
-        details: error instanceof Error ? error.message : error,
-      },
-      { status: 500 },
-    );
+    console.error("Batch unpublish components error:", error);
+    return NextResponse.json({ error: "批量下架组件失败" }, { status: 500 });
   }
 }

@@ -1,68 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
-    const { account, accountType } = await request.json();
+    const { account } = await request.json();
 
     if (!account) {
       return NextResponse.json(
-        { message: "账号不能为空" },
+        { message: "缺少账号信息" },
         { status: 400 }
       );
     }
 
-    // 根据账号类型查找用户
+    // 查找用户
     let user;
-    if (accountType === "phone") {
+    const isPhone = /^1[3-9]\d{9}$/.test(account);
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account);
+
+    if (isPhone) {
       user = await prisma.user.findUnique({
         where: { phone: account },
       });
-    } else if (accountType === "email") {
+    } else if (isEmail) {
       user = await prisma.user.findUnique({
         where: { email: account },
       });
-    } else if (accountType === "username") {
+    } else {
+      // 用户名
       user = await prisma.user.findFirst({
         where: { name: account },
-      });
-    } else {
-      // 尝试所有类型
-      user = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { phone: account },
-            { email: account },
-            { name: account },
-          ],
-        },
       });
     }
 
     if (!user) {
       return NextResponse.json(
-        { message: "账号不存在" },
+        { message: "用户不存在" },
         { status: 404 }
       );
     }
 
-    // 返回用户的绑定信息（手机号和邮箱保存完整格式用于发送验证码）
-    const bindInfo = {
-      hasPhone: !!user.phone,
-      hasEmail: !!user.email,
-      phone: user.phone || undefined,
-      email: user.email || undefined,
-    };
-
     return NextResponse.json({
-      bindInfo,
+      success: true,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        email: user.email,
+        name: user.name,
+      },
     });
   } catch (error) {
-    console.error("Check account for reset error:", error);
+    console.error("Check account error:", error);
     return NextResponse.json(
-      { message: "服务器错误" },
+      { message: "查询失败" },
       { status: 500 }
     );
   }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { randomBytes } from "crypto";
 
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
 
-    // 验证用户是否是空间所有者或管理员
+    // 验证工作空间是否存在
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
       include: {
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
     }
 
+    // 验证用户权限
     if (workspace.ownerId !== userId) {
       const member = workspace.members.find(
         (m: any) => m.userId === userId && m.role === "ADMIN",
@@ -55,36 +56,26 @@ export async function POST(request: NextRequest) {
     const invitationCode = generateInvitationCode();
     const expiresAt = expiresInDays
       ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
-      : null;
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 默认 7 天有效期
 
+    // 保存邀请码到数据库
     const invitation = await prisma.workspaceInvitation.create({
       data: {
         workspaceId,
-        code: invitationCode,
-        createdBy: userId,
-        email: email || null,
+        email,
+        invitationCode,
         expiresAt,
+        createdBy: userId,
       },
     });
-
-    // 生成邀请链接
-    const invitationUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/workspace-hub?invitationCode=${invitationCode}`;
 
     return NextResponse.json({
       success: true,
-      invitation: {
-        code: invitation.code,
-        workspaceId: invitation.workspaceId,
-        workspaceName: workspace.name,
-        expiresAt: invitation.expiresAt,
-        invitationUrl,
-      },
+      invitationCode,
+      expiresAt: invitation.expiresAt,
     });
   } catch (error) {
-    console.error("生成邀请码失败:", error);
-    return NextResponse.json(
-      { error: "生成邀请码失败" },
-      { status: 500 },
-    );
+    console.error("Generate invitation error:", error);
+    return NextResponse.json({ error: "生成邀请码失败" }, { status: 500 });
   }
 }

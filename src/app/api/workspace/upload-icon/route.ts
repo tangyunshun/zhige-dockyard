@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    // 验证用户登录
+    // 验证用户身份
     const authHeader = request.headers.get("authorization");
     const authResult = await validateUser(authHeader);
     
@@ -40,12 +40,12 @@ export async function POST(request: NextRequest) {
     const maxSize = 2 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
-        { message: "图片大小不能超过 2MB" },
+        { message: "文件大小不能超过 2MB" },
         { status: 400 }
       );
     }
 
-    // 将图片转换为 Base64
+    // 将文件转换为 Base64
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const base64 = buffer.toString("base64");
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Upload icon error:", error);
     return NextResponse.json(
-      { message: "上传失败，请重试" },
+      { message: "上传图标失败" },
       { status: 500 }
     );
   }

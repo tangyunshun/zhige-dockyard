@@ -80,7 +80,7 @@ export interface CreateWorkspaceRequest {
  * 切换工作空间请求参数
  */
 export interface SwitchWorkspaceRequest {
-  /** 目标空间 ID */
+  /** 工作空间 ID */
   workspaceId: string;
 }
 
@@ -88,7 +88,7 @@ export interface SwitchWorkspaceRequest {
  * 工作空间列表响应
  */
 export interface WorkspaceListResponse {
-  /** 工作空间列表 */
+  /** 工作空间成员列表 */
   workspaces: WorkspaceMember[];
 }
 
@@ -98,6 +98,6 @@ export interface WorkspaceListResponse {
 export interface CreateWorkspaceResponse {
   /** 是否成功 */
   success: boolean;
-  /** 创建的工作空间 */
+  /** 工作空间对象 */
   workspace: Workspace;
 }

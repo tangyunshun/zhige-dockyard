@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { validateUser, isAdminRole } from "@/lib/auth";
 
 /**
@@ -8,7 +8,7 @@ import { validateUser, isAdminRole } from "@/lib/auth";
  */
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
+    // 验证用户身份
     const authHeader = request.headers.get("authorization");
     const authResult = await validateUser(authHeader);
 
@@ -19,12 +19,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 检查是否是管理员
+    // 如果是管理员
     if (!isAdminRole(authResult.user!.role)) {
-      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
+      return NextResponse.json({ message: "权限不足" }, { status: 403 });
     }
 
-    // 解析查询参数
+    // 获取查询参数
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     // 获取订单列表
     const [orders, total] = await Promise.all([
-      prisma.membershipOrder.findMany({
+      prisma.membershiporder.findMany({
         where,
         skip,
         take: limit,
@@ -63,26 +63,43 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               email: true,
-              phone: true,
             },
           },
-          level: {
+          membershiplevel: {
             select: {
+              id: true,
               name: true,
               nameZh: true,
-              icon: true,
-              color: true,
             },
           },
         },
       }),
-      prisma.membershipOrder.count({ where }),
+      prisma.membershiporder.count({ where }),
     ]);
+
+    // 将 BigInt 转换为 Number 以便 JSON 序列化
+    const serializedOrders = orders.map(order => ({
+      ...order,
+      amount: Number(order.amount),
+      membershiplevel: order.membershiplevel ? {
+        ...order.membershiplevel,
+        maxPersonalWorkspaces: Number(order.membershiplevel.maxPersonalWorkspaces),
+        maxEnterpriseWorkspaces: Number(order.membershiplevel.maxEnterpriseWorkspaces),
+        maxComponents: Number(order.membershiplevel.maxComponents),
+        maxTeamSize: Number(order.membershiplevel.maxTeamSize),
+        maxStorage: Number(order.membershiplevel.maxStorage),
+        maxApiCalls: Number(order.membershiplevel.maxApiCalls),
+        priceMonthly: Number(order.membershiplevel.priceMonthly),
+        priceYearly: Number(order.membershiplevel.priceYearly),
+        trialDays: Number(order.membershiplevel.trialDays),
+        sortOrder: Number(order.membershiplevel.sortOrder),
+      } : null,
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
-        orders,
+        orders: serializedOrders,
         pagination: {
           page,
           limit,
@@ -91,136 +108,14 @@ export async function GET(request: NextRequest) {
         },
       },
     });
-  } catch (error) {
-    console.error("Get membership orders error:", error);
-    return NextResponse.json({ message: "获取会员订单失败" }, { status: 500 });
-  }
-}
-
-/**
- * POST /api/admin/membership/orders
- * 创建会员订单（管理员手动开通）
- */
-export async function POST(request: NextRequest) {
-  try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
-
-    if (!authResult.valid) {
-      return NextResponse.json(
-        { message: authResult.error || "UNAUTHORIZED" },
-        { status: 401 },
-      );
-    }
-
-    // 检查是否是管理员
-    if (!isAdminRole(authResult.user!.role)) {
-      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
-    }
-
-    // 解析请求体
-    const body = await request.json();
-    const {
-      userId,
-      levelId,
-      orderType,
-      paymentMethod,
-      amount,
-      startDate,
-      endDate,
-      transactionId,
-      metadata,
-    } = body;
-
-    // 验证必填字段
-    if (!userId || !levelId || !startDate || !endDate) {
-      return NextResponse.json({ message: "缺少必填字段" }, { status: 400 });
-    }
-
-    // 检查用户是否存在
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      return NextResponse.json({ message: "用户不存在" }, { status: 400 });
-    }
-
-    // 检查会员等级是否存在
-    const level = await prisma.membershipLevel.findUnique({
-      where: { name: levelId },
-    });
-
-    if (!level) {
-      return NextResponse.json({ message: "会员等级不存在" }, { status: 400 });
-    }
-
-    // 创建订单
-    const order = await prisma.membershipOrder.create({
-      data: {
-        userId,
-        levelId,
-        orderType: orderType || "NEW",
-        paymentMethod: paymentMethod || "BANK_TRANSFER",
-        amount: amount || 0,
-        currency: "CNY",
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        status: "PAID", // 管理员手动开通，直接设为已支付
-        transactionId: transactionId || null,
-        metadata: metadata || null,
+  } catch (error: any) {
+    console.error("获取会员订单列表失败:", error);
+    return NextResponse.json(
+      {
+        message: "获取会员订单列表失败",
+        error: error.message,
       },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        level: {
-          select: {
-            name: true,
-            nameZh: true,
-            icon: true,
-            color: true,
-          },
-        },
-      },
-    });
-
-    // 更新用户的会员等级
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        membershipLevel: levelId,
-      },
-    });
-
-    // 创建会员变更日志
-    await prisma.membershipChangeLog.create({
-      data: {
-        userId,
-        levelId,
-        operatorId: authResult.user!.id,
-        changeType: "LEVEL_UP",
-        newValue: {
-          levelId,
-          levelName: level.nameZh,
-          orderId: order.id,
-        },
-        reason: "管理员手动开通",
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: order,
-      message: "创建成功",
-    });
-  } catch (error) {
-    console.error("Create membership order error:", error);
-    return NextResponse.json({ message: "创建会员订单失败" }, { status: 500 });
+      { status: 500 },
+    );
   }
 }

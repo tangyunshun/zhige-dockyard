@@ -1,11 +1,11 @@
-/**
+﻿﻿﻿﻿﻿﻿/**
  * 表单验证工具函数
  * 提供手机号、邮箱、用户名等验证规则
  */
 
 // 验证规则常量
 export const VALIDATION_RULES = {
-  // 手机号：11 位，以 1 开头，第二位 3-9
+  // 手机号：11 位，1 开头，第二位 3-9
   phone: /^1[3-9]\d{9}$/,
 
   // 邮箱：标准邮箱格式
@@ -24,12 +24,12 @@ export const VALIDATION_RULES = {
   },
 } as const;
 
-// 验证提示语
+// 验证提示信息
 export const VALIDATION_MESSAGES = {
   phone: {
     required: "请输入手机号",
     invalid: "手机号格式不正确，请输入 11 位以 1 开头的号码",
-    format: "手机号必须为 11 位数字，以 1 开头",
+    format: "手机号必须为 11 位数字，1 开头",
   },
   email: {
     required: "请输入邮箱地址",
@@ -235,7 +235,7 @@ export const validatePasswordStrength = (
   if (password.length >= minLength) {
     score++;
   } else {
-    requirements.push(`至少 ${minLength} 个字符`);
+    requirements.push("至少 " + minLength + " 个字符");
     messages.push(VALIDATION_MESSAGES.password.tooShort);
   }
 
@@ -319,7 +319,7 @@ export const getEmailSuggestions = (partialEmail: string): string[] => {
     domainStart ? domain.startsWith(domainStart) : true,
   ).slice(0, 5);
 
-  return matchedDomains.map((domain) => `${prefix}@${domain}`);
+  return matchedDomains.map((domain) => prefix + "@" + domain);
 };
 
 /**

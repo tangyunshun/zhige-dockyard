@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { WorkspaceType } from '@prisma/client';
 import { validateWorkspaceName } from '@/lib/workspace-validators';
 
@@ -16,16 +16,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 验证空间类型
+    // 验证工作空间类型
     if (!type || !Object.values(WorkspaceType).includes(type)) {
       return NextResponse.json(
-        { message: '无效的空间类型' },
+        { message: '无效的工作空间类型' },
         { status: 400 }
       );
     }
 
-    // 获取当前用户 ID（从 Cookie 或 Token 中获取）
-    // TODO: 实现用户认证中间件，这里暂时从请求头获取
+    // 获取用户 ID（从 header 或 Cookie Token）
+    // TODO: 使用正确的身份验证方法
     const userId = request.headers.get('x-user-id');
     if (!userId) {
       return NextResponse.json(
@@ -50,35 +50,27 @@ export async function POST(request: NextRequest) {
       },
       include: {
         members: {
-          where: { userId },
-          select: { role: true },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
         },
       },
     });
 
-    // 更新用户的 lastWorkspaceId
-    await prisma.user.update({
-      where: { id: userId },
-      data: { lastWorkspaceId: workspace.id },
-    });
-
     return NextResponse.json({
       success: true,
-      workspace: {
-        id: workspace.id,
-        name: workspace.name,
-        type: workspace.type,
-        ownerId: workspace.ownerId,
-        description: workspace.description,
-        logo: workspace.logo,
-        createdAt: workspace.createdAt,
-        updatedAt: workspace.updatedAt,
-      },
+      workspace,
     });
   } catch (error) {
     console.error('Create workspace error:', error);
     return NextResponse.json(
-      { message: '创建失败，请稍后重试' },
+      { message: '创建工作空间失败' },
       { status: 500 }
     );
   }

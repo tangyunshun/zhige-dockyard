@@ -1,4 +1,4 @@
-import prisma from "@/lib/prisma";
+﻿﻿﻿﻿﻿﻿import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
 export interface AuthenticatedUser {
@@ -26,7 +26,7 @@ export function validatePasswordStrength(password: string): {
   error?: string;
 } {
   if (password.length < 8) {
-    return { valid: false, error: "密码长度至少为 8 位" };
+    return { valid: false, error: "密码长度至少 8 个字符" };
   }
 
   if (!/[A-Z]/.test(password)) {
@@ -56,7 +56,7 @@ export async function validateUser(authHeader: string | null): Promise<{
 
   const userId = authHeader.replace("Bearer ", "");
 
-  // 验证用户是否在数据库中存在
+  // 验证用户是否在数据库中存储
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {

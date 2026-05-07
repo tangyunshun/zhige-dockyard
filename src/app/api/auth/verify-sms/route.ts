@@ -1,44 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { verifySmsCode } from '@/lib/sms-store';
+import { NextRequest, NextResponse } from "next/server";
+import { verifySmsCode } from "@/lib/sms-store";
 
 export async function POST(request: NextRequest) {
   try {
-    const { phone, smsCode } = await request.json();
+    const { phone, code } = await request.json();
 
-    // 验证手机号格式
-    if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+    if (!phone || !code) {
       return NextResponse.json(
-        { message: '手机号格式不正确' },
+        { message: "缺少手机号或验证码" },
         { status: 400 }
       );
     }
 
-    // 验证验证码格式
-    if (!smsCode || smsCode.length !== 6 || !/^\d{6}$/.test(smsCode)) {
-      return NextResponse.json(
-        { message: '验证码格式不正确' },
-        { status: 400 }
-      );
-    }
-
-    // 验证验证码
-    const result = verifySmsCode(phone, smsCode);
-
-    if (!result.success) {
-      return NextResponse.json(
-        { message: result.message },
-        { status: 400 }
-      );
-    }
+    const result = verifySmsCode(phone, code);
 
     return NextResponse.json({
-      success: true,
-      message: '验证成功',
+      valid: result.valid,
+      message: result.error,
     });
   } catch (error) {
-    console.error('Verify SMS error:', error);
+    console.error("Verify SMS error:", error);
     return NextResponse.json(
-      { message: '验证失败，请稍后重试' },
+      { message: "验证失败" },
       { status: 500 }
     );
   }

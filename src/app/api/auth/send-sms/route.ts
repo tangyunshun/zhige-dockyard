@@ -1,79 +1,35 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { NextRequest, NextResponse } from "next/server";
+import { generateSmsCode, storeSmsCode } from "@/lib/sms-store";
 
 export async function POST(request: NextRequest) {
   try {
-    const { phone, captcha, type } = await request.json();
+    const { phone } = await request.json();
 
-    // 验证手机号格式
     if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
       return NextResponse.json(
-        { message: '手机号格式不正确' },
+        { message: "请输入正确的手机号" },
         { status: 400 }
       );
     }
 
-    // TODO: 验证图形验证码（如果提供了 captcha 参数）
-    // 生产环境需要验证图形验证码
-    
-    // 检查是否还在发送间隔内（60 秒）
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    const recentSms = await prisma.smsCode.findFirst({
-      where: {
-        phone: phone,
-        type: type || 'reset-password',
-        used: false,
-        createdAt: {
-          gte: oneMinuteAgo,
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    // 生成验证码
+    const code = generateSmsCode();
 
-    if (recentSms) {
-      const timeSinceLastSend = Date.now() - recentSms.createdAt.getTime();
-      const countdown = Math.ceil((60000 - timeSinceLastSend) / 1000);
-      return NextResponse.json(
-        { 
-          message: `验证码已发送，请${countdown}秒后再试`,
-          countdown
-        },
-        { status: 400 }
-      );
-    }
-    
-    // 生成 6 位随机验证码
-    const smsCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // 存储验证码到数据库
-    await prisma.smsCode.create({
-      data: {
-        phone: phone,
-        code: smsCode,
-        type: type || 'reset-password',
-        used: false,
-      },
-    });
-    
-    // TODO: 调用阿里云/腾讯云短信 API 发送短信
-    // 这里只在控制台输出，生产环境需要调用短信服务商 API
-    
-    console.log(`发送短信验证码到 ${phone}: ${smsCode} (类型：${type})`);
+    // 存储验证码
+    storeSmsCode(phone, code);
+
+    // TODO: 发送短信
+    console.log(`发送短信验证码到 ${phone}: ${code}`);
 
     return NextResponse.json({
       success: true,
-      message: '验证码已发送',
-      // 开发环境返回验证码方便测试，生产环境请移除
-      debugCode: smsCode,
+      message: "验证码已发送",
+      debugCode: process.env.NODE_ENV === "development" ? code : undefined,
     });
   } catch (error) {
-    console.error('Send SMS error:', error);
+    console.error("Send SMS error:", error);
     return NextResponse.json(
-      { message: '发送失败，请稍后重试' },
+      { message: "发送失败" },
       { status: 500 }
     );
   }

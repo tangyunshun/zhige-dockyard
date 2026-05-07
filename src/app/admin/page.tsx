@@ -14,6 +14,7 @@ import {
   FileText,
   UserPlus,
   Building2,
+  Shield,
 } from "lucide-react";
 
 interface DashboardData {
@@ -81,6 +82,16 @@ export default function AdminDashboard() {
       setError(null);
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userRole =
+        typeof window !== "undefined" ? localStorage.getItem("userRole") : "";
+      const hasCookie =
+        typeof window !== "undefined" ? document.cookie.includes("auth_token=") : false;
+
+      console.log("=== 调试信息 ===");
+      console.log("localStorage userId:", userId);
+      console.log("localStorage userRole:", userRole);
+      console.log("Cookie auth_token:", hasCookie ? "存在" : "不存在");
+      console.log("================");
 
       const res = await fetch("/api/admin/dashboard", {
         headers: {
@@ -88,7 +99,11 @@ export default function AdminDashboard() {
         },
       });
 
+      console.log("API 响应状态:", res.status);
+
       if (!res.ok) {
+        const errorData = await res.json();
+        console.error("API 错误详情:", errorData);
         // 不显示错误，ActivityMonitor 会处理超时跳转
         console.error("Load dashboard failed:", res.status);
         return;
@@ -97,6 +112,7 @@ export default function AdminDashboard() {
       const result = await res.json();
       setData(result.data);
     } catch (err) {
+      console.error("加载数据失败:", err);
       setError(err instanceof Error ? err.message : "未知错误");
     } finally {
       setLoading(false);
@@ -377,6 +393,42 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-xs text-slate-500 font-medium">
                   组件审核、文档管理
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => router.push("/admin/posts")}
+              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#10b981]/5 hover:to-[#059669]/5 border border-slate-200 hover:border-[#10b981]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#10b981]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <Users className="w-6 h-6 text-[#10b981]" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800 group-hover:text-[#10b981] transition-colors">
+                  岗位管理
+                </div>
+                <div className="text-xs text-slate-500 font-medium">
+                  创建岗位、分配成员
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                router.push("/admin/matrix/select");
+              }}
+              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#8b5cf6]/5 hover:to-[#7c3aed]/5 border border-slate-200 hover:border-[#8b5cf6]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <Shield className="w-6 h-6 text-[#8b5cf6]" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-800 group-hover:text-[#8b5cf6] transition-colors">
+                  企业权限配置
+                </div>
+                <div className="text-xs text-slate-500 font-medium">
+                  配置岗位组件权限矩阵
                 </div>
               </div>
             </button>

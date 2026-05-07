@@ -674,18 +674,14 @@ export default function WorkspaceHub() {
 
   const loadUserInfo = async () => {
     try {
-      console.log("开始加载用户信息...");
-
       const res = await fetch("/api/auth/me");
 
       if (!res.ok) {
-        // 401 错误由 AuthCheck 组件处理，这里只需静默失败
         return;
       }
 
       const data = await res.json();
       setUser(data.user);
-      console.log("用户信息:", data.user);
 
       const workspacesRes = await fetch("/api/workspace/list", {
         headers: {
@@ -693,11 +689,8 @@ export default function WorkspaceHub() {
         },
       });
 
-      console.log("工作空间列表响应状态:", workspacesRes.status);
-
       if (workspacesRes.ok) {
         const workspacesData = await workspacesRes.json();
-        console.log("工作空间列表数据:", workspacesData);
 
         const personal = workspacesData.workspaces.find(
           (w: Workspace) => w.type === "PERSONAL",
@@ -711,23 +704,12 @@ export default function WorkspaceHub() {
 
         // 如果没有个人空间，自动创建一个
         if (!personal && user?.id) {
-          console.log("未找到个人空间，正在自动创建...");
-          console.log(
-            "当前状态：personalWorkspaceDeleted=",
-            personalWorkspaceDeleted,
-            "personalWorkspaceUpgraded=",
-            personalWorkspaceUpgraded,
-          );
-
           // 检查是否是因为删除了个人空间
           if (personalWorkspaceDeleted) {
-            console.log("个人空间已被用户删除，显示已删除状态，不自动创建");
             setPersonalWorkspace(null);
           } else if (personalWorkspaceUpgraded) {
-            console.log("个人空间已升级为企业空间，显示已升级状态，不自动创建");
             setPersonalWorkspace(null);
           } else {
-            console.log("自动创建个人空间");
             const createRes = await fetch("/api/workspace/create-personal", {
               method: "POST",
               headers: {
@@ -736,54 +718,27 @@ export default function WorkspaceHub() {
               },
             });
 
-            console.log("创建个人空间响应状态:", createRes.status);
-
             if (createRes.ok) {
               const createData = await createRes.json();
               setPersonalWorkspace(createData.workspace);
-              console.log("个人空间已自动创建:", createData.workspace);
             } else {
               const errorText = await createRes.text();
-              console.error("自动创建个人空间失败:", errorText);
               setPersonalWorkspace(null);
             }
           }
         } else {
           setPersonalWorkspace(personal || null);
-          console.log("设置个人空间:", personal || null);
         }
 
         setEnterpriseWorkspace(enterprise || null);
 
-        // 根据实际工作空间情况修正状态
-        console.log(
-          "修正状态检查：enterprise=",
-          enterprise,
-          "personal=",
-          personal,
-        );
-        console.log(
-          "当前状态：personalWorkspaceDeleted=",
-          personalWorkspaceDeleted,
-          "personalWorkspaceUpgraded=",
-          personalWorkspaceUpgraded,
-        );
-
         if (enterprise && !personal) {
-          // 有企业空间但没有个人空间
-          console.log("进入 enterprise && !personal 分支");
           if (personalWorkspaceDeleted) {
             // 选项 B：删除个人空间，创建企业空间
-            console.log("选项 B：个人空间已删除，保持已删除状态");
-            // 保持 personalWorkspaceDeleted = true，不修改
           } else if (personalWorkspaceUpgraded) {
             // 选项 C：个人空间已升级为企业空间
-            console.log("选项 C：个人空间已升级为企业空间，保持已升级状态");
-            // 保持 personalWorkspaceUpgraded = true，不修改
           } else {
             // 没有设置任何状态，可能是新用户的第一个企业空间
-            console.log("新用户或数据异常，不自动设置状态");
-            // 不自动设置为选项 C，避免误判
           }
         }
       } else {
@@ -807,12 +762,19 @@ export default function WorkspaceHub() {
         },
       });
 
-      console.log("配额信息响应状态:", quotaRes.status);
-
       if (quotaRes.ok) {
         const quotaData = await quotaRes.json();
-        console.log("配额信息数据:", quotaData);
-        setQuota(quotaData); // 直接使用 quotaData，因为 API 返回的就是配额对象
+        // API 返回格式：{ success: true, data: { quotas: {...} } }
+        if (quotaData.success && quotaData.data) {
+          const quotas = quotaData.data.quotas;
+          // 转换为页面需要的格式
+          setQuota({
+            hasEnterprise: quotas.enterpriseSlots.used > 0,
+            enterpriseCount: quotas.enterpriseSlots.used,
+            maxEnterprise: quotas.enterpriseSlots.total,
+            isMember: quotas.enterpriseSlots.total > 1, // 如果最大企业空间数>1，说明是会员
+          });
+        }
       } else {
         const errorText = await quotaRes.text();
         console.error("加载配额信息失败:", errorText);
@@ -835,12 +797,10 @@ export default function WorkspaceHub() {
       });
       if (enterpriseRes.ok) {
         const data = await enterpriseRes.json();
-        console.log("企业空间数据:", data);
         setEnterpriseData(data);
       } else {
         const errorText = await enterpriseRes.text();
         console.error("加载企业空间列表失败:", errorText);
-        // 如果是认证错误，不重复跳转，由配额检查统一处理
       }
 
       // 加载使用统计
@@ -1510,9 +1470,7 @@ export default function WorkspaceHub() {
                 {/* 升级提示 */}
                 {personalWorkspace &&
                   quota &&
-                  quota.enterpriseCount < quota.maxEnterprise &&
-                  !enterpriseWorkspace &&
-                  !personalWorkspaceUpgraded && (
+                  quota.enterpriseCount < quota.maxEnterprise && (
                     <div className="mb-2 p-2 bg-gradient-to-r from-[#10b981]/10 to-[#059669]/10 border border-[#10b981]/30 rounded-lg">
                       <div className="flex items-start gap-2">
                         <div className="flex-1">

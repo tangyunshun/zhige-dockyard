@@ -4,7 +4,7 @@ import { getToken } from "next-auth/jwt";
 
 const prisma = new PrismaClient();
 
-// 获取用户的通知设置
+// 获取用户通知设置
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -27,22 +27,22 @@ export async function GET(req: NextRequest) {
           systemMessages: true,
           projectUpdates: true,
           commentMentions: true,
-          frequency: "REALTIME", // REALTIME | DAILY | WEEKLY
+          frequency: "REALTIME",
         },
       });
     }
 
     return NextResponse.json({ notifications });
   } catch (error) {
-    console.error("获取通知设置失败:", error);
+    console.error("获取通知设置错误:", error);
     return NextResponse.json(
-      { error: "获取失败，请稍后重试" },
+      { error: "获取通知设置失败" },
       { status: 500 }
     );
   }
 }
 
-// 保存用户的通知设置
+// 更新用户通知设置
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -59,16 +59,16 @@ export async function POST(req: NextRequest) {
       frequency,
     } = await req.json();
 
-    // 验证 frequency 选项
+    // 验证频率设置
     const validFrequencies = ["REALTIME", "DAILY", "WEEKLY"];
     if (frequency && !validFrequencies.includes(frequency)) {
       return NextResponse.json(
-        { error: "无效的通知频率选项" },
+        { error: "无效的通知频率" },
         { status: 400 }
       );
     }
 
-    // 更新或创建通知设置
+    // 检查是否已存在通知设置
     const existingNotification = await prisma.userNotification.findFirst({
       where: { userId },
     });
@@ -101,12 +101,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       notifications,
-      message: "通知设置已保存",
+      message: "通知设置保存成功",
     });
   } catch (error) {
-    console.error("保存通知设置失败:", error);
+    console.error("保存通知设置错误:", error);
     return NextResponse.json(
-      { error: "保存失败，请稍后重试" },
+      { error: "保存通知设置失败" },
       { status: 500 }
     );
   }

@@ -56,6 +56,8 @@ function RegisterContent() {
   const [smsCountdown, setSmsCountdown] = useState(0);
   // 验证码发送提示
   const [smsMessage, setSmsMessage] = useState<string | null>(null);
+  // 验证码是否已发送
+  const [smsCodeSent, setSmsCodeSent] = useState(false);
   const [errors, setErrors] = useState<{
     account?: string;
     phone?: string;
@@ -254,6 +256,11 @@ function RegisterContent() {
   };
 
   const sendSmsCode = async () => {
+    // 防止重复点击（如果正在发送或倒计时中）
+    if (smsCountdown > 0 || loading) {
+      return;
+    }
+
     // 根据账号类型确定发送验证码的手机号
     let targetPhone = "";
 
@@ -283,9 +290,9 @@ function RegisterContent() {
         : { phone: undefined }),
     });
     setSmsMessage(null); // 清除旧的消息
+    setLoading(true); // 设置加载状态
 
     try {
-      setLoading(true);
       const res = await fetch("/api/auth/send-sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -297,8 +304,11 @@ function RegisterContent() {
 
       const data = await res.json();
 
+      console.log("注册 API 响应:", res.status, data);
+
       if (res.ok) {
         setSmsCountdown(60);
+        setSmsCodeSent(true); // 标记验证码已发送
         const timer = setInterval(() => {
           setSmsCountdown((prev) => {
             if (prev <= 1) {
@@ -348,6 +358,9 @@ function RegisterContent() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    console.log("注册表单提交，smsCodeSent:", smsCodeSent);
+    console.log("表单数据:", formData);
+
     const newErrors: typeof errors = {};
 
     // 验证账号
@@ -384,10 +397,19 @@ function RegisterContent() {
       }
     }
 
-    // 验证验证码
-    const smsCodeValidation = validateSmsCode(formData.smsCode);
-    if (!smsCodeValidation.valid) {
-      newErrors.smsCode = smsCodeValidation.message;
+    // 验证验证码 - 先检查是否已发送，再检查格式
+    // 检查验证码是否已发送（优先检查）
+    console.log("检查 smsCodeSent:", smsCodeSent);
+    if (!smsCodeSent) {
+      console.log("smsCodeSent 为 false，显示'请先获取验证码'");
+      newErrors.smsCode = "请先获取验证码";
+    } else {
+      console.log("smsCodeSent 为 true，继续验证格式");
+      // 如果已发送，再验证格式
+      const smsCodeValidation = validateSmsCode(formData.smsCode);
+      if (!smsCodeValidation.valid) {
+        newErrors.smsCode = smsCodeValidation.message;
+      }
     }
 
     // 验证密码
@@ -418,42 +440,6 @@ function RegisterContent() {
     setErrors({});
     setLoading(true);
 
-    // 先验证验证码
-    const phoneToVerify =
-      accountType === "phone" ? formData.account : formData.phone;
-    try {
-      const verifyRes = await fetch("/api/auth/verify-sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: phoneToVerify,
-          smsCode: formData.smsCode,
-        }),
-      });
-
-      const verifyData = await verifyRes.json();
-
-      if (!verifyRes.ok) {
-        if (verifyData.isLocked) {
-          setErrors({
-            smsCode: `验证失败次数过多，请${verifyData.minutesRemaining}分钟后再试`,
-          });
-        } else if (verifyData.remainingAttempts !== undefined) {
-          setErrors({
-            smsCode: `${verifyData.message}，剩余${verifyData.remainingAttempts}次尝试机会`,
-          });
-        } else {
-          setErrors({ smsCode: verifyData.message || "验证失败" });
-        }
-        setLoading(false);
-        return;
-      }
-    } catch (error) {
-      setErrors({ smsCode: "网络错误，请稍后重试" });
-      setLoading(false);
-      return;
-    }
-
     try {
       // 根据账号类型构建请求数据
       const requestData: any = {
@@ -482,16 +468,27 @@ function RegisterContent() {
 
       const data = await res.json();
 
+      console.log("注册 API 响应:", res.status, data);
+
       if (res.ok) {
+        // 显示完整成功提示，智能计算显示时间后跳转
+        const message = data.message || "注册成功，请登录";
+        // 智能计算显示时间：保证用户能看完完整提示，又不会太长
+        // 基础时间 600ms + 每字符 100ms，最长不超过 1.5 秒
+        const duration = Math.min(600 + message.length * 100, 1500);
+        toast.success(message, duration);
         setTimeout(() => {
           router.push(data.redirectUrl || "/auth/login");
-        }, 1500);
+        }, duration);
       } else {
+        console.log("注册失败，错误数据:", data);
         // 根据错误字段显示
         if (data.field === "phone") {
           setErrors({ phone: data.message || "注册失败" });
         } else if (data.field === "account") {
           setErrors({ account: data.message || "注册失败" });
+        } else if (data.field === "smsCode") {
+          setErrors({ smsCode: data.message || "注册失败" });
         } else {
           setErrors({ account: data.message || "注册失败" });
         }
@@ -600,10 +597,10 @@ function RegisterContent() {
                     accountType === "phone"
                       ? "请输入手机号"
                       : accountType === "email"
-                      ? "请输入邮箱地址"
-                      : accountType === "username"
-                      ? "请输入用户名（3-20 位字母、数字、@、#、-、下划线）"
-                      : "请输入手机号/邮箱/用户名"
+                        ? "请输入邮箱地址"
+                        : accountType === "username"
+                          ? "请输入用户名（3-20 位字母、数字、@、#、-、下划线）"
+                          : "请输入手机号/邮箱/用户名"
                   }
                 />
                 {accountCheckStatus.checking && (
@@ -724,6 +721,10 @@ function RegisterContent() {
                       if (value.length > 0 && value.length < 6) {
                         setErrors({ ...errors, smsCode: "验证码为 6 位数字" });
                       }
+                      // 如果验证码已发送，清除"请先获取验证码"的错误
+                      if (smsCodeSent && errors.smsCode === "请先获取验证码") {
+                        setErrors({ ...errors, smsCode: undefined });
+                      }
                     }}
                     className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
                       errors.smsCode ? "border-red-500" : "border-[#e2e8f0]"
@@ -735,7 +736,7 @@ function RegisterContent() {
                 <button
                   type="button"
                   onClick={sendSmsCode}
-                  disabled={smsCountdown > 0 || loading}
+                  disabled={smsCountdown > 0}
                   className="px-3 py-2.5 bg-[#3182ce] text-white rounded-lg text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
                   {smsCountdown > 0 ? `${smsCountdown}秒后重发` : "获取验证码"}

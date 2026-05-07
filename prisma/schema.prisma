@@ -21,7 +21,6 @@ model componenttask {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
-  category    String?
   icon        String?
   isPublished Boolean   @default(false)
   sortOrder   Int       @default(0)
@@ -33,7 +32,6 @@ model componenttask {
   @@index([status], map: "ComponentTask_status_idx")
   @@index([isPublished], map: "ComponentTask_isPublished_idx")
   @@index([type], map: "ComponentTask_type_idx")
-  @@index([category], map: "ComponentTask_category_idx")
   @@index([sortOrder], map: "ComponentTask_sortOrder_idx")
   @@index([tenantId], map: "ComponentTask_tenantId_idx")
   @@index([userId], map: "ComponentTask_userId_idx")
@@ -87,6 +85,7 @@ model user {
   membershipchangelog_membershipchangelog_userIdTouser     membershipchangelog[] @relation("membershipchangelog_userIdTouser")
   membershiporder                                          membershiporder[]
   operationlog                                             operationlog[]
+  postmember                                               postmember[]
   systemdocument                                           systemdocument[]
   upgradeapplication                                       upgradeapplication[]
   tenant                                                   tenant?               @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
@@ -316,6 +315,7 @@ model membershiplevel {
   isRecommended           Boolean               @default(false)
   membershipchangelog     membershipchangelog[]
   membershiporder         membershiporder[]
+  workspacequota          workspacequota[]
 
   @@index([isActive], map: "MembershipLevel_isActive_idx")
   @@index([name], map: "MembershipLevel_name_idx")
@@ -483,15 +483,19 @@ model workspace {
   status              String                @default("ACTIVE")
   visibility          String                @default("PRIVATE")
   lastActiveAt        DateTime?
+  workspacequotaId    String?
   upgradeapplication  upgradeapplication[]
+  workspacequota      workspacequota?       @relation(fields: [workspacequotaId], references: [id])
   workspaceinvitation workspaceinvitation[]
   workspacemember     workspacemember[]
+  workspacepost       workspacepost[]
 
   @@index([lastActiveAt], map: "Workspace_lastActiveAt_idx")
   @@index([ownerId], map: "Workspace_ownerId_idx")
   @@index([plan], map: "Workspace_plan_idx")
   @@index([status], map: "Workspace_status_idx")
   @@index([type], map: "Workspace_type_idx")
+  @@index([workspacequotaId], map: "workspace_workspacequotaId_fkey")
 }
 
 model workspaceinvitation {
@@ -527,6 +531,105 @@ model workspacemember {
   @@unique([userId, workspaceId], map: "WorkspaceMember_userId_workspaceId_key")
   @@index([userId], map: "WorkspaceMember_userId_idx")
   @@index([workspaceId], map: "WorkspaceMember_workspaceId_idx")
+}
+
+model workspacequota {
+  id                String          @id
+  workspaceId       String          @unique
+  membershipLevelId String
+  enterpriseSlots   BigInt          @default(1)
+  usedSlots         BigInt          @default(0)
+  tokenBalance      BigInt          @default(0)
+  storageUsed       BigInt          @default(0)
+  storageLimit      BigInt          @default(1073741824)
+  apiCallsUsed      BigInt          @default(0)
+  apiCallsLimit     BigInt          @default(1000)
+  resetAt           DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime
+  workspace         workspace[]
+  membershiplevel   membershiplevel @relation(fields: [membershipLevelId], references: [id], map: "WorkspaceQuota_membershipLevelId_fkey")
+
+  @@index([workspaceId], map: "WorkspaceQuota_workspaceId_idx")
+  @@index([membershipLevelId], map: "WorkspaceQuota_membershipLevelId_idx")
+}
+
+model workspacepost {
+  id                  String                @id
+  workspaceId         String
+  name                String
+  description         String?
+  color               String                @default("#64748b")
+  isDefault           Boolean               @default(false)
+  isSystem            Boolean               @default(false)
+  createdBy           String
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  componentpermission componentpermission[]
+  postmember          postmember[]
+  workspace           workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspacePost_workspaceId_fkey")
+
+  @@unique([workspaceId, name], map: "WorkspacePost_workspaceId_name_key")
+  @@index([workspaceId], map: "WorkspacePost_workspaceId_idx")
+}
+
+model postmember {
+  id          String        @id
+  userId      String
+  postId      String
+  workspaceId String
+  assignedAt  DateTime      @default(now())
+  post        workspacepost @relation(fields: [postId], references: [id], onDelete: Cascade, map: "PostMember_postId_fkey")
+  user        user          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "PostMember_userId_fkey")
+
+  @@unique([userId, postId], map: "PostMember_userId_postId_key")
+  @@index([postId], map: "PostMember_postId_idx")
+  @@index([workspaceId], map: "PostMember_workspaceId_idx")
+}
+
+model componentpermission {
+  id          String        @id
+  postId      String
+  componentId String
+  canView     Boolean       @default(true)
+  canEdit     Boolean       @default(false)
+  canDelete   Boolean       @default(false)
+  canExecute  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime
+  post        workspacepost @relation(fields: [postId], references: [id], onDelete: Cascade, map: "ComponentPermission_postId_fkey")
+
+  @@unique([postId, componentId], map: "ComponentPermission_postId_componentId_key")
+  @@index([postId], map: "ComponentPermission_postId_idx")
+  @@index([componentId], map: "ComponentPermission_componentId_idx")
+}
+
+model projectrole {
+  id          String   @id
+  projectId   String
+  userId      String
+  role        String
+  permissions Json?
+  assignedAt  DateTime @default(now())
+  updatedAt   DateTime
+
+  @@unique([projectId, userId], map: "ProjectRole_projectId_userId_key")
+  @@index([projectId], map: "ProjectRole_projectId_idx")
+  @@index([userId], map: "ProjectRole_userId_idx")
+}
+
+model apiUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String
+  method    String   @default("GET")
+  timestamp DateTime @default(now())
+  responseCode Int?
+  latencyMs Int?
+  
+  @@index([userId], map: "ApiUsage_userId_idx")
+  @@index([timestamp], map: "ApiUsage_timestamp_idx")
+  @@index([endpoint], map: "ApiUsage_endpoint_idx")
 }
 
 enum UserStatus {

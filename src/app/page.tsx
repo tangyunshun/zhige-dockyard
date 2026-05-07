@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
+import UserQuickAccess from "@/components/UserQuickAccess";
 import CoreFeatures from "@/components/CoreFeatures";
 import RoleCapabilities from "@/components/RoleCapabilities";
 import EnterpriseSecurity from "@/components/EnterpriseSecurity";
@@ -48,6 +49,7 @@ export default function Home() {
     <main className="min-h-screen bg-[#f8fafc] w-full overflow-x-hidden">
       <Header />
       <HeroSection />
+      <UserQuickAccess />
       <CoreFeatures />
       <RoleCapabilities />
       <EnterpriseSecurity />

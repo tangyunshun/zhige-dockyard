@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     // 先获取所有工作空间（用于统计，不受筛选影响）
     const allWorkspaces = await prisma.workspace.findMany({
       include: {
-        members: {
+        workspacemember: {
           include: {
             user: {
               select: { name: true, email: true },
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
           },
         },
         _count: {
-          select: { members: true },
+          select: { workspacemember: true },
         },
       },
     });
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     // 统计所有工作空间的组件数量
     const allWorkspacesWithComponentCount = await Promise.all(
       allWorkspaces.map(async (workspace) => {
-        const members = await prisma.workspaceMember.findMany({
+        const members = await prisma.workspacemember.findMany({
           where: { workspaceId: workspace.id },
           select: { userId: true },
         });
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
         return {
           ...workspace,
           componentCount: componentCountValue,
-          members: workspace.members,
+          members: workspace.workspacemember,
         };
       }),
     );
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
         take: limit,
         orderBy: { createdAt: "desc" },
         include: {
-          members: {
+          workspacemember: {
             include: {
               user: {
                 select: { name: true, email: true },
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
             },
           },
           _count: {
-            select: { members: true },
+            select: { workspacemember: true },
           },
         },
       }),
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
     // 统计筛选后的工作空间的组件数量
     const workspacesWithComponentCount = await Promise.all(
       workspaces.map(async (workspace) => {
-        const members = await prisma.workspaceMember.findMany({
+        const members = await prisma.workspacemember.findMany({
           where: { workspaceId: workspace.id },
           select: { userId: true },
         });

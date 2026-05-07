@@ -4,77 +4,34 @@ import { isAdminRole } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const userId = request.headers.get("authorization");
-    if (!userId) {
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const userId = authHeader.replace("Bearer ", "");
+    const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    const { ids } = await request.json();
+    const { componentIds } = await request.json();
 
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json(
-        { error: "请选择要删除的组件" },
-        { status: 400 },
-      );
+    if (!componentIds || !Array.isArray(componentIds) || componentIds.length === 0) {
+      return NextResponse.json({ error: "缺少组件 ID 列表" }, { status: 400 });
     }
 
-    // 检查组件状态
-    const components = await prisma.componenttask.findMany({
-      where: {
-        id: {
-          in: ids,
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        usageCount: true,
-        isPublished: true,
-      },
-    });
-
-    // 过滤出可以删除的组件（未上架且未被使用）
-    const deletableComponents = components.filter(
-      (c) => !c.isPublished && c.usageCount === 0,
-    );
-
-    if (deletableComponents.length === 0) {
-      return NextResponse.json(
-        { error: "选中的组件中没有可以删除的组件" },
-        { status: 400 },
-      );
-    }
-
-    // 只删除可以删除的组件
     await prisma.componenttask.deleteMany({
-      where: {
-        id: {
-          in: deletableComponents.map((c) => c.id),
-        },
-      },
+      where: { id: { in: componentIds } },
     });
 
     return NextResponse.json({
       success: true,
-      message: `成功删除 ${deletableComponents.length} 个组件`,
+      message: `已批量删除 ${componentIds.length} 个组件`,
     });
   } catch (error) {
-    console.error("Batch delete error:", error);
-    return NextResponse.json(
-      {
-        error: "批量删除失败",
-        details: error instanceof Error ? error.message : error,
-      },
-      { status: 500 },
-    );
+    console.error("Batch delete components error:", error);
+    return NextResponse.json({ error: "批量删除组件失败" }, { status: 500 });
   }
 }

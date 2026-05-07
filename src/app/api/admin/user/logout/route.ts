@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
@@ -14,67 +14,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const adminId = authHeader.replace("Bearer ", "");
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
     });
 
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    if (!admin || !isAdminRole(admin.role)) {
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    const { userId: targetUserId } = await request.json();
+    const { userId } = await request.json();
 
-    if (!targetUserId) {
-      return NextResponse.json({ error: "缺少目标用户 ID" }, { status: 400 });
+    if (!userId) {
+      return NextResponse.json({ error: "缺少用户 ID" }, { status: 400 });
     }
 
-    // 不能强制管理员下线
-    const targetUser = await prisma.user.findUnique({
-      where: { id: targetUserId },
-    });
-
-    if (!targetUser) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
-    }
-
-    if (isAdminRole(targetUser.role)) {
-      return NextResponse.json(
-        { error: "不能强制管理员下线" },
-        { status: 400 },
-      );
-    }
-
-    // 更新用户的 lastForcedLogoutAt 字段，记录强制下线时间
-    // 宽限期（2 分钟）内用户仍然可以正常操作
-    // 宽限期过后，API 会返回 401
-    const now = new Date();
+    // 强制用户登出
     await prisma.user.update({
-      where: { id: targetUserId },
+      where: { id: userId },
       data: {
-        lastForcedLogoutAt: now,
-        // 宽限期内保持 sessionToken 不变，让用户能继续操作
-        // sessionToken 和 sessionExpiresAt 保持不变
-        updatedAt: now,
+        sessionToken: null,
+        sessionExpiresAt: null,
       },
     });
 
-    console.log(
-      `[强制下线 API] 用户 ${targetUserId} 已被强制下线，时间：${now.toISOString()}`,
-    );
-
     return NextResponse.json({
       success: true,
-      message: "用户已被强制下线",
+      message: "已强制用户登出",
     });
   } catch (error) {
     console.error("Force logout error:", error);
     return NextResponse.json(
-      {
-        error: "强制下线失败",
-        details: error instanceof Error ? error.message : error,
-      },
-      { status: 500 },
+      { error: "强制登出失败" },
+      { status: 500 }
     );
   }
 }

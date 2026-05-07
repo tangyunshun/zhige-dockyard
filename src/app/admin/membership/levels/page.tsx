@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Plus,
   Edit,
@@ -97,6 +98,19 @@ export default function AdminMembershipLevelsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "danger" | "warning" | "info";
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "warning",
+    onConfirm: () => {},
+  });
 
   // 筛选状态
   const [searchQuery, setSearchQuery] = useState("");
@@ -160,30 +174,36 @@ export default function AdminMembershipLevelsPage() {
   };
 
   const handleDelete = async (name: string) => {
-    if (!confirm("确定要删除这个会员等级吗？")) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "删除会员等级",
+      message: "确定要删除这个会员等级吗？",
+      type: "warning",
+      onConfirm: async () => {
+        try {
+          const userId =
+            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const res = await fetch(`/api/admin/membership/levels/${name}`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${userId}`,
+            },
+          });
 
-    try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      const res = await fetch(`/api/admin/membership/levels/${name}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${userId}`,
-        },
-      });
-
-      if (res.ok) {
-        toast.success("删除成功");
-        setCurrentPage(1);
-        loadLevels();
-      } else {
-        const error = await res.json();
-        toast.error(error.message || "删除失败");
-      }
-    } catch (error) {
-      console.error("Delete level error:", error);
-      toast.error("删除失败");
-    }
+          if (res.ok) {
+            toast.success("删除成功");
+            setCurrentPage(1);
+            loadLevels();
+          } else {
+            const error = await res.json();
+            toast.error(error.message || "删除失败");
+          }
+        } catch (error) {
+          console.error("Delete level error:", error);
+          toast.error("删除失败");
+        }
+      },
+    });
   };
 
   const handleToggleActive = async (name: string, isActive: boolean) => {
@@ -385,11 +405,26 @@ export default function AdminMembershipLevelsPage() {
     const method = editingLevel ? "PUT" : "POST";
 
     const requestBody = {
-      ...formData,
-      maxStorage: formData.maxStorage * 1073741824, // 转换为字节
+      nameZh: formData.nameZh,
+      icon: formData.icon,
+      color: formData.color,
+      description: formData.description,
+      maxPersonalWorkspaces: Number(formData.maxPersonalWorkspaces),
+      maxEnterpriseWorkspaces: Number(formData.maxEnterpriseWorkspaces),
+      maxComponents: Number(formData.maxComponents),
+      maxTeamSize: Number(formData.maxTeamSize),
+      maxStorage: Number(formData.maxStorage * 1073741824),
+      maxApiCalls: Number(formData.maxApiCalls),
       features: formData.features
         ? formData.features.split("\n").filter((f) => f.trim())
         : [],
+      priceMonthly: Number(formData.priceMonthly),
+      priceYearly: Number(formData.priceYearly),
+      trialDays: Number(formData.trialDays),
+      sortOrder: Number(formData.sortOrder),
+      isActive: formData.isActive,
+      isRecommended: formData.isRecommended,
+      isPopular: formData.isPopular,
     };
 
     console.log("发送请求:", url, method);
@@ -405,27 +440,43 @@ export default function AdminMembershipLevelsPage() {
         body: JSON.stringify(requestBody),
       });
 
-      const data = await res.json();
       console.log("=== API 响应 ===");
       console.log("状态码:", res.status);
-      console.log("响应数据:", data);
-
-      if (res.ok) {
-        console.log("✓ 更新成功");
-        toast.success(editingLevel ? "更新成功" : "创建成功");
-        setShowCreateModal(false);
-        loadLevels();
-      } else {
-        console.error("✗ 更新失败");
-        console.error("错误详情:", data);
-        if (data.debug) {
-          console.error("调试信息:", data.debug);
+      console.log("响应 OK:", res.ok);
+      
+      // 先检查响应状态
+      if (!res.ok) {
+        // 尝试读取错误响应
+        let errorData;
+        try {
+          errorData = await res.json();
+          console.error("错误详情:", errorData);
+          if (errorData.debug) {
+            console.error("调试信息:", errorData.debug);
+          }
+        } catch (parseError) {
+          // 如果解析失败，读取文本
+          const errorText = await res.text();
+          console.error("错误文本:", errorText);
+          errorData = { message: errorText || "操作失败" };
         }
-        toast.error(data.message || "操作失败");
+        toast.error(errorData.message || "操作失败");
+        setSubmitting(false);
+        return;
       }
+      
+      // 成功响应
+      const data = await res.json();
+      console.log("响应数据:", data);
+      console.log("✓ 更新成功");
+      toast.success(editingLevel ? "更新成功" : "创建成功");
+      setShowCreateModal(false);
+      loadLevels();
     } catch (error) {
       console.error("=== 捕获异常 ===");
       console.error("错误:", error);
+      console.error("错误消息:", error instanceof Error ? error.message : error);
+      console.error("错误堆栈:", error instanceof Error ? error.stack : "N/A");
       toast.error("操作失败");
     } finally {
       setSubmitting(false);
@@ -1213,6 +1264,19 @@ export default function AdminMembershipLevelsPage() {
           </div>
         </div>
       )}
+
+      {/* 确认对话框 */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={() => {
+          confirmDialog.onConfirm();
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        }}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+      />
     </div>
   );
 }

@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
     const { account } = await request.json();
 
     if (!account) {
-      return NextResponse.json(
-        { message: "账号不能为空" },
-        { status: 400 }
-      );
+      return NextResponse.json({ message: "账号不能为空" }, { status: 400 });
     }
 
-    // 查找用户（支持邮箱/手机号/账号名）
+    // 查找用户（支持邮箱、手机号、账号名）
     const user = await prisma.user.findFirst({
       where: {
         OR: [{ email: account }, { phone: account }, { name: account }],
@@ -35,26 +32,26 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 检查账号状态
-    if (user.status !== "active") {
+    // 检查账号状态（允许 inactive 状态的用户登录，登录时会自动激活）
+    if (user.status === "banned" || user.status === "deleted") {
       return NextResponse.json({
         exists: true,
         status: "disabled",
-        message: "该账号已被禁用",
+        message: "该账号已被封禁",
       });
     }
 
     // 检查是否被锁定
     if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
       const minutes = Math.ceil(
-        (user.lockedUntil.getTime() - Date.now()) / 60000
+        (user.lockedUntil.getTime() - Date.now()) / 60000,
       );
       return NextResponse.json({
         exists: true,
         status: "locked",
-        lockedUntil: user.lockedUntil,
+        lockedUntil: user.lockedUntil.toISOString(),
         minutesRemaining: minutes,
-        message: `账号已锁定，请${minutes}分钟后再试`,
+        message: "账号已锁定，" + minutes + "分钟后再试",
       });
     }
 
@@ -65,9 +62,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Check account error:", error);
-    return NextResponse.json(
-      { message: "服务器错误" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "服务器错误" }, { status: 500 });
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { validateUser, isAdminRole } from "@/lib/auth";
 
 /**
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     console.log("=== 获取会员用户列表 ===");
 
-    // 验证管理员权限
+    // 验证用户身份
     const authHeader = request.headers.get("authorization");
     console.log(
       "Auth Header:",
@@ -21,20 +21,20 @@ export async function GET(request: NextRequest) {
     console.log("Auth Result:", authResult);
 
     if (!authResult.valid) {
-      console.log("认证失败:", authResult.error);
+      console.log("验证失败:", authResult.error);
       return NextResponse.json(
         { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
       );
     }
 
-    // 检查是否是管理员
+    // 如果是管理员
     if (!isAdminRole(authResult.user!.role)) {
-      console.log("用户不是管理员:", authResult.user);
-      return NextResponse.json({ message: "需要管理员权限" }, { status: 403 });
+      console.log("权限不足:", authResult.user);
+      return NextResponse.json({ message: "权限不足" }, { status: 403 });
     }
 
-    // 解析查询参数
+    // 获取查询参数
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit;
 
-    // 获取所有会员等级配置
-    const levels = await prisma.membershipLevel.findMany({
+    // 获取所有会员等级
+    const levels = await prisma.membershiplevel.findMany({
       select: {
         name: true,
         nameZh: true,
@@ -55,16 +55,16 @@ export async function GET(request: NextRequest) {
     });
 
     const levelNames = levels.map((level) => level.name);
-    console.log("可用的会员等级:", levelNames);
+    console.log("数据库中存在的会员等级:", levelNames);
 
-    // 只显示真正的会员等级（排除 FREE 免费版）
+    // 获取付费会员等级 (FREE 等级不需要显示在管理页面)
     const memberLevels = ["BRONZE", "SILVER", "GOLD", "DIAMOND", "CROWN"];
     const validLevels = levelNames.length > 0 
       ? levelNames.filter(level => memberLevels.includes(level))
       : memberLevels;
 
     const where: any = {
-      // 只显示会员用户（排除免费版、空字符串和 null）
+      // 只查询有会员等级的用户 (排除 null)
       membershipLevel: {
         in: validLevels,
       },
@@ -123,18 +123,18 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("=== 获取会员用户失败 ===");
+    console.error("=== 获取会员用户列表失败 ===");
     console.error("错误类型:", error.constructor.name);
-    console.error("错误消息:", error.message);
+    console.error("错误信息:", error.message);
     console.error("错误代码:", error.code);
     console.error("错误堆栈:", error.stack);
     if (error.meta) {
-      console.error("错误详情:", error.meta);
+      console.error("错误元数据:", error.meta);
     }
 
     return NextResponse.json(
       {
-        message: "获取会员用户失败",
+        message: "获取会员用户列表失败",
         error: error.message,
         code: error.code,
       },

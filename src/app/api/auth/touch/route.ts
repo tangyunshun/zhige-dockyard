@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
@@ -12,8 +12,8 @@ const JWT_SECRET = new TextEncoder().encode(
  * 用于判断用户在线状态
  *
  * 返回错误码说明：
- * - 401: 未登录 或 会话超时（超过 5 分钟未操作）
- * - 403: 被强制下线 或 账号状态异常
+ * - 401: 未登录或会话超时（超过 5 分钟未操作）
+ * - 403: 被强制下线或账号状态异常
  * - 404: 用户不存在
  */
 export async function POST(request: NextRequest) {
@@ -56,15 +56,23 @@ export async function POST(request: NextRequest) {
       const forcedLogoutTime = new Date(user.lastForcedLogoutAt).getTime();
       const timeSinceForcedLogout = (now - forcedLogoutTime) / 1000 / 60; // 分钟
 
-      // 2 分钟宽限期：被强制下线后 2 分钟内仍然允许访问
+      // 2 分钟宽限期：被强制下线后 2 分钟内仍然允许更新
       if (timeSinceForcedLogout < 2) {
         console.log(
-          `[API /auth/touch] ⏳ 用户 ${userId} 被强制下线 ${timeSinceForcedLogout.toFixed(1)} 分钟，仍在宽限期内，允许更新活跃时间`,
+          "[API /auth/touch] 用户 " +
+            userId +
+            " 被强制下线" +
+            timeSinceForcedLogout.toFixed(1) +
+            " 分钟，仍在宽限期内，允许更新活跃时间",
         );
       } else {
         // 超过 2 分钟宽限期，拒绝访问
         console.log(
-          `[API /auth/touch] ❌ 用户 ${userId} 被强制下线 ${timeSinceForcedLogout.toFixed(1)} 分钟，已超过宽限期，拒绝更新`,
+          "[API /auth/touch] 用户 " +
+            userId +
+            " 被强制下线" +
+            timeSinceForcedLogout.toFixed(1) +
+            " 分钟，已超过宽限期，拒绝更新",
         );
         return NextResponse.json(
           {
@@ -79,7 +87,11 @@ export async function POST(request: NextRequest) {
     // 检查用户状态
     if (user.status !== "active") {
       console.log(
-        `[API /auth/touch] ❌ 用户 ${userId} 状态异常 (${user.status})，拒绝更新`,
+        "[API /auth/touch] 用户 " +
+          userId +
+          " 状态异常 (" +
+          user.status +
+          ")，拒绝更新",
       );
       return NextResponse.json(
         {
@@ -96,11 +108,14 @@ export async function POST(request: NextRequest) {
       ? new Date(user.lastLoginAt).getTime()
       : 0;
     const timeSinceLastLogin = (now - lastLoginTime) / 1000; // 秒
-
     if (timeSinceLastLogin > 300) {
       // 超过 5 分钟未操作，会话已失效，需要重新登录
       console.log(
-        `[API /auth/touch] ⏰ 用户 ${userId} 超过 ${Math.round(timeSinceLastLogin / 60)} 分钟未操作，会话已失效`,
+        "[API /auth/touch] 用户 " +
+          userId +
+          " 超过 " +
+          Math.round(timeSinceLastLogin / 60) +
+          " 分钟未操作，会话已失效",
       );
       return NextResponse.json(
         { error: "SESSION_TIMEOUT", message: "您已长时间未操作，请重新登录" },
@@ -117,7 +132,11 @@ export async function POST(request: NextRequest) {
     });
 
     console.log(
-      `[API /auth/touch] ✅ 用户 ${userId} 活跃时间已更新（上次活跃：${Math.round(timeSinceLastLogin)}秒前）`,
+      "[API /auth/touch] 用户 " +
+        userId +
+        " 活跃时间已更新（上次活跃 " +
+        Math.round(timeSinceLastLogin) +
+        "秒前）",
     );
 
     return NextResponse.json({

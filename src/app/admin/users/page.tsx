@@ -19,6 +19,7 @@ import {
   Key,
   AlertCircle,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import DataTableFilter, {
   FilterConfig,
 } from "@/components/common/DataTableFilter";
@@ -95,6 +96,21 @@ export default function AdminUsersPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [confirmMessage, setConfirmMessage] = useState("");
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "danger" | "warning" | "info";
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "warning",
+    onConfirm: () => {},
+  });
+  const [banningUser, setBanningUser] = useState<User | null>(null);
+  const [banDuration, setBanDuration] = useState<string>("permanent");
   const isProcessingRef = React.useRef(false);
   const forceLogoutUserIdRef = React.useRef<string | null>(null);
 
@@ -266,35 +282,35 @@ export default function AdminUsersPage() {
   };
 
   const handleBatchDelete = async () => {
-    if (
-      !confirm(
-        `确定要删除选中的 ${selectedUsers.size} 个用户吗？此操作不可恢复！`,
-      )
-    )
-      return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "批量删除用户",
+      message: `确定要删除选中的 ${selectedUsers.size} 个用户吗？此操作不可恢复！`,
+      type: "danger",
+      onConfirm: async () => {
+        try {
+          const res = await fetch("/api/admin/users/batch", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userIds: Array.from(selectedUsers) }),
+          });
 
-    try {
-      const res = await fetch("/api/admin/users/batch", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userIds: Array.from(selectedUsers) }),
-      });
+          if (await handleUnauthorized(res)) {
+            return;
+          }
 
-      // 处理 401 错误（未授权/被强制下线）
-      if (await handleUnauthorized(res)) {
-        return;
-      }
+          if (!res.ok) throw new Error("批量删除失败");
 
-      if (!res.ok) throw new Error("批量删除失败");
-
-      showToast(`已删除 ${selectedUsers.size} 个用户`, "success");
-      setSelectedUsers(new Set());
-      setShowBatchActions(false);
-      loadUsers(currentPage);
-    } catch (error) {
-      console.error("Batch delete error:", error);
-      showToast("批量删除失败", "error");
-    }
+          showToast(`已删除 ${selectedUsers.size} 个用户`, "success");
+          setSelectedUsers(new Set());
+          setShowBatchActions(false);
+          loadUsers(currentPage);
+        } catch (error) {
+          console.error("Batch delete error:", error);
+          showToast("批量删除失败", "error");
+        }
+      },
+    });
   };
 
   const handleBatchActivate = async () => {
@@ -362,7 +378,7 @@ export default function AdminUsersPage() {
     setShowEditModal(true);
   };
 
-  const handleChangeStatus = async (userId: string, newStatus: string) => {
+  const handleChangeStatus = async (userId: string, newStatus: string, bannedUntil?: string | null) => {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/users/${userId}/status`, {
@@ -371,7 +387,10 @@ export default function AdminUsersPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ 
+          status: newStatus,
+          bannedUntil: bannedUntil || null,
+        }),
       });
 
       if (await handleUnauthorized(res)) {
@@ -423,27 +442,32 @@ export default function AdminUsersPage() {
   };
 
   const handleDelete = async (userId: string) => {
-    if (!confirm("确定要删除该用户吗？此操作不可恢复！")) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: "删除用户",
+      message: "确定要删除该用户吗？此操作不可恢复！",
+      type: "danger",
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/admin/user?userId=${userId}`, {
+            method: "DELETE",
+          });
 
-    try {
-      const res = await fetch(`/api/admin/user?userId=${userId}`, {
-        method: "DELETE",
-      });
+          if (await handleUnauthorized(res)) {
+            return;
+          }
 
-      // 处理 401 错误（未授权/被强制下线）
-      if (await handleUnauthorized(res)) {
-        return;
-      }
+          if (!res.ok) throw new Error("删除用户失败");
 
-      if (!res.ok) throw new Error("删除用户失败");
-
-      showToast("用户已删除", "success");
-      setCurrentPage(1);
-      loadUsers(currentPage);
-    } catch (error) {
-      console.error("Delete user error:", error);
-      showToast("删除用户失败", "error");
-    }
+          showToast("用户已删除", "success");
+          setCurrentPage(1);
+          loadUsers(currentPage);
+        } catch (error) {
+          console.error("Delete user error:", error);
+          showToast("删除用户失败", "error");
+        }
+      },
+    });
   };
 
   const handleToggleStatus = async (user: User) => {
@@ -1018,140 +1042,37 @@ export default function AdminUsersPage() {
                                         </button>
                                       )}
 
-                                    {/* 修改角色 - 只对非活跃用户显示，不能操作超级管理员 */}
-                                    {user.status !== "active" &&
-                                      user.role !== "super_admin" && (
-                                        <button
-                                          onClick={() => {
-                                            handleEdit(user);
-                                            setShowActionMenu(null);
-                                          }}
-                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#3182ce]/5 transition-colors border-b border-slate-50"
-                                        >
-                                          <Edit2 className="w-4 h-4 text-[#3182ce]" />
-                                          修改角色
-                                        </button>
-                                      )}
-
-                                    {/* 修改状态 - 所有用户都可以修改（除了超级管理员和自己） */}
+                                    {/* 封禁/解封用户 - 不能操作超级管理员和自己 */}
                                     {user.role !== "super_admin" &&
                                       user.id !== currentUserId && (
-                                        <div className="relative group">
-                                          <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#3182ce]/5 transition-colors border-b border-slate-50 cursor-pointer">
-                                            <UserCheck className="w-4 h-4 text-[#3182ce]" />
-                                            修改状态
-                                            <svg
-                                              className="w-4 h-4 ml-auto text-slate-400"
-                                              fill="none"
-                                              viewBox="0 0 24 24"
-                                              stroke="currentColor"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M9 5l7 7-7 7"
-                                              />
-                                            </svg>
-                                          </button>
-                                          {/* 状态选择子菜单 */}
-                                          <div className="absolute left-full top-0 ml-2 w-40 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                                            <button
-                                              onClick={async (e) => {
-                                                e.stopPropagation();
-                                                await handleChangeStatus(
-                                                  user.id,
-                                                  "active",
-                                                );
-                                                setShowActionMenu(null);
-                                              }}
-                                              className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
-                                                user.status === "active"
-                                                  ? "bg-green-50 text-green-700 font-bold"
-                                                  : "text-slate-700 hover:bg-green-50"
-                                              }`}
-                                            >
-                                              <span
-                                                className={`w-2 h-2 rounded-full ${
-                                                  user.status === "active"
-                                                    ? "bg-green-500"
-                                                    : "bg-slate-300"
-                                                }`}
-                                              ></span>
-                                              活跃
-                                            </button>
-                                            <button
-                                              onClick={async (e) => {
-                                                e.stopPropagation();
-                                                await handleChangeStatus(
-                                                  user.id,
-                                                  "inactive",
-                                                );
-                                                setShowActionMenu(null);
-                                              }}
-                                              className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
-                                                user.status === "inactive"
-                                                  ? "bg-orange-50 text-orange-700 font-bold"
-                                                  : "text-slate-700 hover:bg-orange-50"
-                                              }`}
-                                            >
-                                              <span
-                                                className={`w-2 h-2 rounded-full ${
-                                                  user.status === "inactive"
-                                                    ? "bg-orange-500"
-                                                    : "bg-slate-300"
-                                                }`}
-                                              ></span>
-                                              未激活
-                                            </button>
-                                            <button
-                                              onClick={async (e) => {
-                                                e.stopPropagation();
-                                                await handleChangeStatus(
-                                                  user.id,
-                                                  "banned",
-                                                );
-                                                setShowActionMenu(null);
-                                              }}
-                                              className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
-                                                user.status === "banned"
-                                                  ? "bg-red-50 text-red-700 font-bold"
-                                                  : "text-slate-700 hover:bg-red-50"
-                                              }`}
-                                            >
-                                              <span
-                                                className={`w-2 h-2 rounded-full ${
-                                                  user.status === "banned"
-                                                    ? "bg-red-500"
-                                                    : "bg-slate-300"
-                                                }`}
-                                              ></span>
-                                              已封禁
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )}
-
-                                    {/* 停用/激活用户 - 只对非活跃用户显示（激活），不能操作超级管理员和自己 */}
-                                    {user.status !== "active" &&
-                                      user.role !== "super_admin" &&
-                                      user.id !== currentUserId && (
                                         <button
                                           onClick={() => {
-                                            handleToggleStatus(user);
-                                            setShowActionMenu(null);
+                                            if (user.status === "banned") {
+                                              // 解封
+                                              handleChangeStatus(user.id, "active");
+                                              setShowActionMenu(null);
+                                            } else {
+                                              // 封禁，需要选择封禁时长
+                                              setBanningUser(user);
+                                              setBanDuration("permanent"); // 默认永久
+                                              setShowActionMenu(null);
+                                            }
                                           }}
-                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-[#10b981]/5 transition-colors border-b border-slate-50"
+                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors border-b border-slate-50"
+                                          style={{
+                                            color: user.status === "banned" ? "#10b981" : "#ef4444",
+                                            backgroundColor: user.status === "banned" ? "#10b981/5" : "#ef4444/5",
+                                          }}
                                         >
-                                          {user.status === "inactive" ? (
+                                          {user.status === "banned" ? (
                                             <>
-                                              <UserCheck className="w-4 h-4 text-green-600" />
-                                              激活用户
+                                              <UserCheck className="w-4 h-4" />
+                                              解封用户
                                             </>
                                           ) : (
                                             <>
-                                              <UserX className="w-4 h-4 text-orange-600" />
-                                              停用用户
+                                              <UserX className="w-4 h-4" />
+                                              封禁用户
                                             </>
                                           )}
                                         </button>
@@ -1592,6 +1513,96 @@ export default function AdminUsersPage() {
                   className="flex-1 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 font-semibold text-sm"
                 >
                   确认
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 确认对话框 */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={() => {
+          confirmDialog.onConfirm();
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        }}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+      />
+
+      {/* 封禁用户弹窗 */}
+      {banningUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setBanningUser(null)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-white/90">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                  <UserX className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">封禁用户</h3>
+                  <p className="text-sm text-slate-500">
+                    {banningUser.name || banningUser.email || banningUser.phone}
+                  </p>
+                </div>
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  封禁时长
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { value: "1day", label: "1 天" },
+                    { value: "3days", label: "3 天" },
+                    { value: "7days", label: "7 天" },
+                    { value: "30days", label: "30 天" },
+                    { value: "permanent", label: "永久封禁" },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setBanDuration(option.value)}
+                      className={`px-4 py-3 rounded-xl border-2 font-semibold transition-all ${
+                        banDuration === option.value
+                          ? "border-red-500 bg-red-50 text-red-700"
+                          : "border-slate-200 text-slate-700 hover:border-slate-300"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBanningUser(null)}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors font-semibold text-sm"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    // 根据封禁时长计算解封时间
+                    let bannedUntil = null;
+                    if (banDuration !== "permanent") {
+                      const days = parseInt(banDuration);
+                      bannedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+                    }
+                    // 调用封禁 API
+                    await handleChangeStatus(banningUser.id, "banned", bannedUntil);
+                    setBanningUser(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 font-semibold text-sm"
+                >
+                  确认封禁
                 </button>
               </div>
             </div>

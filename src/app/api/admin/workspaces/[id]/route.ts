@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
@@ -23,77 +20,53 @@ export async function GET(
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    const workspaceId = params.id;
+    const { searchParams } = new URL(request.url);
+    const workspaceId = searchParams.get("workspaceId");
+    const status = searchParams.get("status");
 
-    // 获取工作空间详情
+    if (!workspaceId || !status) {
+      return NextResponse.json({ error: "缺少参数" }, { status: 400 });
+    }
+
+    if (!["ACTIVE", "DISABLED"].includes(status)) {
+      return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
+    }
+
+    // 检查工作空间是否存在
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: { name: true, email: true },
-            },
-          },
-        },
-        _count: {
-          select: { members: true },
-        },
-      },
     });
 
     if (!workspace) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
     }
 
-    // 获取工作空间的所有成员 ID
-    const memberIds = workspace.members.map((m) => m.userId);
+    // 只能对企业空间进行操作
+    if (workspace.type !== "ENTERPRISE") {
+      return NextResponse.json(
+        { error: "只能对企业空间进行状态切换" },
+        { status: 400 },
+      );
+    }
 
-    // 获取这些成员创建的所有组件（componenttask）
-    const components = await prisma.componenttask.findMany({
-      where: {
-        userId: { in: memberIds },
-      },
-      orderBy: { createdAt: "desc" },
+    // 更新状态
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { status: status as "ACTIVE" | "DISABLED" },
     });
-
-    // 统计每个组件在该工作空间的使用次数
-    const componentsWithUsage = await Promise.all(
-      components.map(async (component) => {
-        // 查询 ComponentUsage 表中该组件被该工作空间使用的次数
-        const usageCount = await prisma.componentUsage.count({
-          where: {
-            componentId: component.id,
-            workspaceId: workspaceId,
-          },
-        });
-
-        return {
-          id: component.id,
-          name: component.name,
-          icon: component.icon,
-          usageCount,
-        };
-      }),
-    );
 
     return NextResponse.json({
       success: true,
-      data: {
-        workspace: {
-          ...workspace,
-          components: componentsWithUsage,
-        },
-      },
+      message: `工作空间已${status === "ACTIVE" ? "启用" : "禁用"}`,
     });
   } catch (error) {
-    console.error("Get workspace detail error:", error);
+    console.error("Toggle workspace status error:", error);
     return NextResponse.json(
       {
-        error: "获取工作空间详情失败",
+        error: "切换工作空间状态失败",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

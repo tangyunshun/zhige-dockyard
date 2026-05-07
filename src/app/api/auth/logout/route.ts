@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
 
 const JWT_SECRET = new TextEncoder().encode(
@@ -8,7 +8,7 @@ const JWT_SECRET = new TextEncoder().encode(
 
 export async function POST(request: NextRequest) {
   try {
-    // 获取当前用户 ID
+    // 获取用户 ID
     const token = request.cookies.get("auth_token")?.value;
     let userId: string | null = null;
 
@@ -21,23 +21,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 如果用户已登录，清除数据库中的会话信息
+    // 清除用户会话信息
     if (userId) {
       await prisma.user.update({
         where: { id: userId },
         data: {
           sessionToken: null,
           sessionExpiresAt: null,
-          lastLoginAt: null, // 清除活跃时间
+          lastLoginAt: null, // 清除会话
         },
       });
-      console.log(`[退出登录] 用户 ${userId} 已清除会话信息`);
+      console.log(`[用户下线] 用户 ${userId} 会话已清除`);
     }
 
     // 清除 auth_token cookie
     const response = NextResponse.json({
       success: true,
-      message: "已退出登录",
+      message: "已安全下线",
     });
 
     response.cookies.set("auth_token", "", {
@@ -51,6 +51,6 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("Logout error:", error);
-    return NextResponse.json({ message: "退出登录失败" }, { status: 500 });
+    return NextResponse.json({ message: "下线失败" }, { status: 500 });
   }
 }

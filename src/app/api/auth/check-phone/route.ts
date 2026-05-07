@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
       return NextResponse.json(
         { message: "手机号格式不正确" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -25,19 +25,16 @@ export async function POST(request: NextRequest) {
     if (user) {
       return NextResponse.json({
         registered: true,
-        message: "该手机号已被注册",
+        message: "手机号已注册，可直接登录",
       });
     }
 
     return NextResponse.json({
       registered: false,
-      message: "该手机号可以注册",
+      message: "手机号未注册",
     });
   } catch (error) {
     console.error("Check phone error:", error);
-    return NextResponse.json(
-      { message: "服务器错误" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "检查手机号失败" }, { status: 500 });
   }
 }

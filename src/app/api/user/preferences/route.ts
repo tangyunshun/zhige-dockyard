@@ -4,7 +4,7 @@ import { getToken } from "next-auth/jwt";
 
 const prisma = new PrismaClient();
 
-// 获取用户的研发偏好
+// 获取用户偏好设置
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const userId = token.id as string;
 
-    // 从用户配置表中获取研发偏好
+    // 获取用户偏好设置
     const preferences = await prisma.userPreference.findFirst({
       where: { userId },
     });
@@ -29,15 +29,15 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("获取研发偏好失败:", error);
+    console.error("获取偏好设置错误:", error);
     return NextResponse.json(
-      { error: "获取失败，请稍后重试" },
+      { error: "获取偏好设置失败" },
       { status: 500 }
     );
   }
 }
 
-// 保存用户的研发偏好
+// 更新用户偏好设置
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req });
@@ -54,16 +54,16 @@ export async function POST(req: NextRequest) {
       maxTokens,
     } = await req.json();
 
-    // 验证 AI 引擎选项
+    // 验证 AI 引擎
     const validEngines = ["zhige", "deepseek", "custom"];
     if (aiEngine && !validEngines.includes(aiEngine)) {
       return NextResponse.json(
-        { error: "无效的 AI 引擎选项" },
+        { error: "无效的 AI 引擎" },
         { status: 400 }
       );
     }
 
-    // 验证 temperature 范围
+    // 验证 temperature
     if (temperature !== undefined && (temperature < 0 || temperature > 1)) {
       return NextResponse.json(
         { error: "temperature 必须在 0-1 之间" },
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 更新或创建偏好配置
+    // 检查是否已存在偏好设置
     const existingPreference = await prisma.userPreference.findFirst({
       where: { userId },
     });
@@ -112,12 +112,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       preferences,
-      message: "研发偏好已保存",
+      message: "偏好设置保存成功",
     });
   } catch (error) {
-    console.error("保存研发偏好失败:", error);
+    console.error("保存偏好设置错误:", error);
     return NextResponse.json(
-      { error: "保存失败，请稍后重试" },
+      { error: "保存偏好设置失败" },
       { status: 500 }
     );
   }

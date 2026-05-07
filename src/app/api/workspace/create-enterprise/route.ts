@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { getMembershipConfig, isTeamSizeExceeded, formatTeamSize } from "@/lib/membership";
 
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     const userId = authResult.user!.id;
 
-    // 解析请求体
+    // 获取请求体
     const body = await request.json();
     const { 
       name, 
@@ -25,23 +25,23 @@ export async function POST(request: NextRequest) {
       contactEmail,
       contactPhone,
       logo,
-      plan = "STANDARD", // STANDARD | PRO | ENTERPRISE | CUSTOM
-      visibility = "PRIVATE", // PRIVATE | PUBLIC
+      plan = "STANDARD",
+      visibility = "PRIVATE",
     } = body;
 
     if (!name || !name.trim()) {
-      return NextResponse.json({ error: "空间名称不能为空" }, { status: 400 });
+      return NextResponse.json({ error: "请输入工作空间名称" }, { status: 400 });
     }
 
     if (!contactEmail || !contactEmail.trim()) {
-      return NextResponse.json({ error: "联系邮箱不能为空" }, { status: 400 });
+      return NextResponse.json({ error: "请输入联系邮箱" }, { status: 400 });
     }
 
-    // 检查会员状态和配额
+    // 检查用户的会员等级
     const userMembershipLevel = (authResult.user!.membershipLevel || 'FREE') as keyof typeof getMembershipConfig;
     const membershipConfig = getMembershipConfig(userMembershipLevel);
     
-    // 检查企业空间数量
+    // 检查企业空间数量限制
     const enterpriseWorkspaces = await prisma.workspace.findMany({
       where: {
         ownerId: userId,
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     if (enterpriseWorkspaces.length >= membershipConfig.maxEnterpriseWorkspaces && membershipConfig.maxEnterpriseWorkspaces !== -1) {
       return NextResponse.json(
         { 
-          error: `${membershipConfig.nameZh}最多只能创建 ${membershipConfig.maxEnterpriseWorkspaces} 个企业空间，如需更多请升级会员` 
+          error: `${membershipConfig.nameZh}最多可创建${membershipConfig.maxEnterpriseWorkspaces}个企业空间，已达到上限`,
         },
         { status: 403 }
       );
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json(
         {
-          error: `您的${membershipConfig.nameZh}最多支持 ${membershipConfig.maxTeamSize} 人的团队规模，请选择以下规模：${availableTeamSizes.join('、')}，或升级会员`,
+          error: `${membershipConfig.nameZh}最大团队规模为${membershipConfig.maxTeamSize}人，请选择较小的团队规模（可用选项：${availableTeamSizes.join(',')})`,
           currentLevel: membershipConfig.nameZh,
           maxTeamSize: membershipConfig.maxTeamSize,
         },
@@ -74,10 +74,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 根据套餐类型设置配额
+    // 获取计划配置
     const quotaConfig = getQuotaConfig(plan);
 
-    // 创建企业空间
+    // 创建工作空间
     const workspace = await prisma.workspace.create({
       data: {
         name: name.trim(),
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(
       { 
-        error: "创建失败", 
+        error: "创建工作空间失败", 
         details: errorMessage,
         type: typeof error,
       },
@@ -146,27 +146,27 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 获取套餐配额配置
+// 获取计划配置
 function getQuotaConfig(plan: string) {
   const configs = {
     STANDARD: {
-      maxComponents: 100,      // 最多组件数
-      maxMembers: 10,          // 最多成员数
-      maxStorage: 1024,        // 最多存储（MB）
-      maxApiCalls: 1000,       // 每月最多 API 调用
+      maxComponents: 100,
+      maxMembers: 10,
+      maxStorage: 1024,
+      maxApiCalls: 1000,
       features: ["basic_components", "standard_support"],
     },
     PRO: {
       maxComponents: 500,
       maxMembers: 50,
-      maxStorage: 10240,       // 10GB
+      maxStorage: 10240,
       maxApiCalls: 10000,
       features: ["all_components", "priority_support", "analytics", "custom_theme"],
     },
     ENTERPRISE: {
-      maxComponents: -1,       // 无限
-      maxMembers: -1,          // 无限
-      maxStorage: 102400,      // 100GB
+      maxComponents: -1,
+      maxMembers: -1,
+      maxStorage: 102400,
       maxApiCalls: 100000,
       features: ["all_components", "dedicated_support", "advanced_analytics", "full_customization", "sla"],
     },

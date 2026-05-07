@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
         type: "ENTERPRISE",
       },
       include: {
-        members: {
+        workspacemember: {
           include: {
             user: {
               select: {
@@ -39,28 +39,25 @@ export async function GET(request: NextRequest) {
     console.log("Found enterprise workspaces:", enterpriseWorkspaces.length);
     console.log("Workspaces:", JSON.stringify(enterpriseWorkspaces, null, 2));
     
-    // 统计数据
+    // 统计信息
     let totalComponents = 0;
-    let totalActiveComponents = 0; // 进行中的任务
+    let totalActiveComponents = 0;
     let totalCompletedComponents = 0;
-    let totalComponentCalls = 0; // 组件调用次数（通过 completed 任务计算）
-
-    // 注意：Workspace 没有直接关联 componentTasks，需要通过其他方式获取
-    // 这里暂时将组件数设为 0，实际应该从其他途径统计
+    let totalComponentCalls = 0;
 
     const totalMembers = enterpriseWorkspaces.reduce((sum: number, ws: any) => {
-      return sum + (ws.members?.length || 0);
+      return sum + (ws.workspacemember?.length || 0);
     }, 0);
 
-    // 计算平均响应时间（模拟数据，实际应该从任务中计算）
+    // 平均响应时间（暂时设为 0）
     const avgResponseTime = 0;
-    // 计算成功率（模拟数据，实际应该从任务结果计算）
+    // 成功率（暂时设为 0）
     const successRate = 0;
     // 最近活动（暂时设为 0）
     const recentActivity = 0;
-    // 活跃成员数（简单判断，实际应该检查 lastLoginAt）
+    // 活跃成员数
     const activeMembers = enterpriseWorkspaces.reduce((sum: number, ws: any) => {
-      return sum + (ws.members?.filter((m: any) => 
+      return sum + (ws.workspacemember?.filter((m: any) => 
         m.user.email || m.user.avatar
       ).length || 0);
     }, 0);
@@ -71,8 +68,8 @@ export async function GET(request: NextRequest) {
         name: ws.name,
         description: ws.description,
         createdAt: ws.createdAt,
-        memberCount: ws.members?.length || 0,
-        componentCount: 0, // 暂时设为 0
+        memberCount: ws.workspacemember?.length || 0,
+        componentCount: 0,
         activeTasks: 0,
         completedTasks: 0,
       })),

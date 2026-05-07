@@ -26,20 +26,62 @@ const ToastContext = React.createContext<ToastContextType | undefined>(
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  /**
+   * 根据提示语长度智能计算显示时间
+   * 原则：
+   * 1. 最短 1500ms（保证用户能看清）
+   * 2. 最长 5000ms（避免等待过长）
+   * 3. 基于字符数计算：基础时间 + 每字符额外时间
+   * 
+   * 计算公式：
+   * - 基础时间：1500ms
+   * - 中文字符：每个字符 +200ms
+   * - 英文字符/数字：每个字符 +100ms
+   * - 标点符号：每个字符 +50ms
+   */
+  const calculateDuration = (message: string): number => {
+    let charCount = 0;
+    
+    for (const char of message) {
+      // 中文字符（包括中文标点）
+      if (/[\u4e00-\u9fa5]/.test(char)) {
+        charCount += 2;
+      }
+      // 英文字母和数字
+      else if (/[a-zA-Z0-9]/.test(char)) {
+        charCount += 1;
+      }
+      // 标点符号和其他字符
+      else {
+        charCount += 0.5;
+      }
+    }
+    
+    // 基础时间 1500ms + 每字符 200ms
+    const duration = 1500 + Math.round(charCount * 200);
+    
+    // 限制在 1500ms - 5000ms 范围内
+    return Math.min(Math.max(duration, 1500), 5000);
+  };
+
   const addToast = (
     type: ToastType,
     message: string,
-    duration: number = 3000,
+    duration?: number,
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const toast: ToastMessage = { id, type, message, duration };
+    
+    // 如果没有指定 duration，根据消息长度智能计算
+    const calculatedDuration = duration !== undefined ? duration : calculateDuration(message);
+    
+    const toast: ToastMessage = { id, type, message, duration: calculatedDuration };
 
     setToasts((prev) => [...prev, toast]);
 
-    if (duration > 0) {
+    if (calculatedDuration > 0) {
       setTimeout(() => {
         removeToast(id);
-      }, duration);
+      }, calculatedDuration);
     }
   };
 

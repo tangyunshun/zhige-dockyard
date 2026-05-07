@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+      return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
     const { workspaceIds, status } = await request.json();
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     await prisma.workspace.updateMany({
       where: {
         id: { in: workspaceIds },
-        type: "ENTERPRISE", // 只能批量更新企业空间
+        type: "ENTERPRISE", // 只处理企业空间
       },
       data: {
         status: status as "ACTIVE" | "DISABLED",
@@ -53,13 +53,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `已成功${status === "ACTIVE" ? "启用" : "禁用"} ${workspaceIds.length} 个工作空间`,
+      message: `已批量${status === "ACTIVE" ? "启用" : "禁用"} ${workspaceIds.length} 个工作空间`,
     });
   } catch (error) {
     console.error("Batch toggle workspaces error:", error);
     return NextResponse.json(
       {
-        error: "批量操作失败",
+        error: "批量切换工作空间状态失败",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },
