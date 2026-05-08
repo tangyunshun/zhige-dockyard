@@ -509,6 +509,11 @@ function LoginForm() {
           data.user.sessionToken ? "存在" : "不存在",
         );
 
+        // 关键修复：登录时清除之前的工作空间状态，避免状态污染
+        localStorage.removeItem("personalWorkspaceDeleted");
+        localStorage.removeItem("personalWorkspaceUpgraded");
+        localStorage.removeItem("upgradeMode");
+
         if (data.user.id) {
           localStorage.setItem("userId", data.user.id);
           localStorage.setItem("auth_token", data.token);

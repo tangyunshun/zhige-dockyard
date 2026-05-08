@@ -109,7 +109,17 @@ function CreateEnterpriseWorkspaceForm() {
 
       if (res.ok) {
         const data = await res.json();
-        setQuota(data.quota);
+        // API 返回格式：{ success: true, data: { quotas: {...} } }
+        if (data.success && data.data) {
+          const quotas = data.data.quotas;
+          // 转换为页面需要的格式
+          setQuota({
+            hasEnterprise: quotas.enterpriseSlots.used > 0,
+            enterpriseCount: quotas.enterpriseSlots.used,
+            maxEnterprise: quotas.enterpriseSlots.total,
+            isMember: quotas.enterpriseSlots.total > 1, // 如果最大企业空间数>1，说明是会员
+          });
+        }
       } else {
         const errorText = await res.text();
         console.error("Load quota error:", errorText);

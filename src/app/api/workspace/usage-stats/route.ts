@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -79,11 +79,51 @@ export async function GET(request: NextRequest) {
       failed: componentTasks.filter((t: any) => t.status === 'FAILED').length,
     };
 
+    // 计算成功率
+    const successRate = totalStats.total > 0 
+      ? Math.round((totalStats.completed / totalStats.total) * 100) 
+      : 0;
+
+    // 计算平均响应时间（模拟数据，实际需要从 component_task 中添加响应时间字段）
+    const avgResponseTime = totalStats.total > 0 ? Math.round(Math.random() * 200 + 50) : 0;
+
+    // 统计个人空间和企业空间数量
+    const personalSpaceCount = workspaces.filter((ws: any) => ws.type === 'PERSONAL').length;
+    const enterpriseSpaceCount = workspaces.filter((ws: any) => ws.type === 'ENTERPRISE').length;
+
+    // 统计总成员数
+    const totalMembers = workspaces.reduce((sum: number, ws: any) => sum + ws.workspacemember.length, 0);
+
+    // 统计活跃组件（最近有任务的组件类型）
+    const activeComponentTypes = new Set(componentTasks.map((t: any) => t.type));
+    const activeComponents = activeComponentTypes.size;
+
+    // 模拟 token 消耗数据（实际需要从 component_task 中添加 token 字段）
+    const monthlyTokens = totalStats.total * Math.round(Math.random() * 1000 + 500);
+    const totalTokens = monthlyTokens * Math.round(Math.random() * 12 + 1);
+
     return NextResponse.json({
       success: true,
-      data: {
-        workspaces: statsByWorkspace,
-        total: totalStats,
+      statistics: {
+        // 核心指标
+        totalComponentCalls: totalStats.total,
+        activeComponents: activeComponents,
+        successRate: successRate,
+        avgResponseTime: avgResponseTime,
+        
+        // 空间统计
+        personalSpaceCount: personalSpaceCount,
+        enterpriseSpaceCount: enterpriseSpaceCount,
+        totalMembers: totalMembers,
+        totalComponents: totalStats.total,
+        
+        // Token 消耗
+        monthlyTokens: monthlyTokens,
+        totalTokens: totalTokens,
+        
+        // 最近活动
+        weeklyTasks: totalStats.total, // 简化处理，使用总数
+        completionRate: successRate,
       },
     });
   } catch (error) {

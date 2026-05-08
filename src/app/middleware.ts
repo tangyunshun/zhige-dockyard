@@ -59,6 +59,30 @@ export async function middleware(request: NextRequest) {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as string;
 
+    // 验证用户是否在数据库中存储（关键修复：检查用户是否存在）
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    });
+
+    if (!user) {
+      console.log(`[Middleware] User ${userId} not found in database, clearing auth`);
+      // 用户不存在，清除认证信息并重定向到登录页
+      const response = NextResponse.redirect(new URL("/auth/login", request.url));
+      response.cookies.set("auth_token", "", { maxAge: 0 });
+      response.cookies.set("token", "", { maxAge: 0 });
+      return response;
+    }
+
+    // 检查用户状态
+    if (user.status !== "active") {
+      console.log(`[Middleware] User ${userId} is not active, status: ${user.status}`);
+      const response = NextResponse.redirect(new URL("/auth/login", request.url));
+      response.cookies.set("auth_token", "", { maxAge: 0 });
+      response.cookies.set("token", "", { maxAge: 0 });
+      return response;
+    }
+
     // 验证成功，将用户信息添加到请求头
     const response = NextResponse.next();
     response.headers.set("x-user-id", userId);
@@ -122,6 +146,27 @@ async function handleApiRequest(request: NextRequest, startTime: number): Promis
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as string;
+
+    // 验证用户是否在数据库中存储（关键修复：检查用户是否存在）
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    });
+
+    if (!user) {
+      console.log(`[Middleware] API User ${userId} not found in database`);
+      const response = NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 401 });
+      await recordApiUsage(request, response, startTime, null);
+      return response;
+    }
+
+    // 检查用户状态
+    if (user.status !== "active") {
+      console.log(`[Middleware] API User ${userId} is not active`);
+      const response = NextResponse.json({ error: "ACCOUNT_DISABLED" }, { status: 401 });
+      await recordApiUsage(request, response, startTime, null);
+      return response;
+    }
 
     // 验证成功，记录 API 使用
     const response = NextResponse.next();

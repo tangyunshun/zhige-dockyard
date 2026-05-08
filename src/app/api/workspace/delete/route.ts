@@ -28,7 +28,7 @@ export async function DELETE(request: NextRequest) {
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
       include: {
-        members: true,
+        workspacemember: true,
       },
     });
 
@@ -42,7 +42,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 检查是否有其他成员
-    const otherMembers = workspace.members.filter((m: any) => m.userId !== userId);
+    const otherMembers = workspace.workspacemember.filter((m: any) => m.userId !== userId);
     if (otherMembers.length > 0) {
       return NextResponse.json(
         { error: "工作空间还有其他成员，请先移除所有成员后再删除" },

@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
     // 如果选择删除个人空间，先进行检测
     if (option === "delete") {
       // 1. 检查是否有其他成员（除了所有者）
-      const members = await prisma.workspaceMember.findMany({
+      const members = await prisma.workspacemember.findMany({
         where: { workspaceId },
         include: { user: true },
       });
@@ -228,18 +228,29 @@ export async function POST(request: NextRequest) {
       message = "空间已成功升级为企业空间";
     } else if (option === "retain" || option === "delete") {
       // 选项 A 或 B：创建新的企业空间
+      const newWorkspaceId = `ws-enterprise-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const now = new Date();
+      
+      // 先创建工作空间
       const newWorkspace = await prisma.workspace.create({
         data: {
+          id: newWorkspaceId,
           name: personalWorkspace.name,
           description: personalWorkspace.description,
           type: "ENTERPRISE",
           ownerId: userId,
-          members: {
-            create: {
-              userId,
-              role: "OWNER",
-            },
-          },
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+
+      // 然后创建成员关系
+      await prisma.workspacemember.create({
+        data: {
+          id: `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+          userId,
+          workspaceId: newWorkspaceId,
+          role: "OWNER",
         },
       });
 
@@ -248,7 +259,7 @@ export async function POST(request: NextRequest) {
       // 如果选择删除个人空间
       if (option === "delete") {
         // 删除个人空间的成员关系
-        await prisma.workspaceMember.deleteMany({
+        await prisma.workspacemember.deleteMany({
           where: { workspaceId },
         });
 
@@ -264,8 +275,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 记录操作日志
-    await prisma.operationLog.create({
+    await prisma.operationlog.create({
       data: {
+        id: `oplog-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         userId,
         workspaceId: resultWorkspaceId,
         action: "UPGRADE_WORKSPACE",

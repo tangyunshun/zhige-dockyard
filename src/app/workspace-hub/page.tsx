@@ -69,6 +69,7 @@ import {
   RefreshCw,
   Share2,
   Lightbulb,
+  CheckCircle,
 } from "lucide-react";
 
 interface UserInfo {
@@ -602,6 +603,9 @@ export default function WorkspaceHub() {
     useState(false);
   const [personalWorkspaceUpgraded, setPersonalWorkspaceUpgraded] =
     useState(false);
+  const [upgradeMode, setUpgradeMode] = useState<
+    "parallel" | "replace" | "migrate" | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true); // 添加加载状态
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(
     null,
@@ -653,6 +657,11 @@ export default function WorkspaceHub() {
       setShowJoinModal(true);
       verifyInvitation(codeFromUrl);
     }
+    // 从 localStorage 读取升级方式
+    const mode = localStorage.getItem("upgradeMode");
+    if (mode && ["parallel", "replace", "migrate"].includes(mode)) {
+      setUpgradeMode(mode as "parallel" | "replace" | "migrate");
+    }
     // 从 localStorage 读取个人空间删除状态
     const deleted = localStorage.getItem("personalWorkspaceDeleted");
     if (deleted === "true") {
@@ -677,6 +686,24 @@ export default function WorkspaceHub() {
       const res = await fetch("/api/auth/me");
 
       if (!res.ok) {
+        // 检查是否是用户不存在或会话过期
+        if (res.status === 404 || res.status === 401) {
+          const errorData = await res.json();
+          console.log("[loadUserInfo] 用户认证失效:", errorData);
+
+          // 清除本地存储
+          localStorage.removeItem("userId");
+          localStorage.removeItem("userRole");
+          localStorage.removeItem("personalWorkspaceDeleted");
+          localStorage.removeItem("personalWorkspaceUpgraded");
+          localStorage.removeItem("upgradeMode");
+
+          // 显示友好提示并跳转
+          toast.error("会话已过期，请重新登录");
+          setTimeout(() => {
+            router.push("/auth/login");
+          }, 1000);
+        }
         return;
       }
 
@@ -702,12 +729,27 @@ export default function WorkspaceHub() {
         console.log("个人空间:", personal);
         console.log("企业空间:", enterprise);
 
-        // 如果没有个人空间，自动创建一个
-        if (!personal && user?.id) {
+        // 如果个人空间实际存在，重置 personalWorkspaceDeleted 状态
+        if (personal) {
+          setPersonalWorkspace(personal);
+          // 关键修复：如果个人空间实际存在，强制清除 localStorage 中的删除状态
+          // 无论之前是什么状态，都重置为 false
+          setPersonalWorkspaceDeleted(false);
+          localStorage.setItem("personalWorkspaceDeleted", "false");
+          console.log("个人空间存在，已重置 personalWorkspaceDeleted 为 false");
+        } else if (!personal && user?.id) {
           // 检查是否是因为删除了个人空间
           if (personalWorkspaceDeleted) {
             setPersonalWorkspace(null);
-          } else if (personalWorkspaceUpgraded) {
+          } else if (
+            personalWorkspaceUpgraded &&
+            (upgradeMode === "replace" || upgradeMode === "migrate")
+          ) {
+            // 替换升级或平移升级：个人空间已不存在
+            setPersonalWorkspace(null);
+          } else if (personalWorkspaceUpgraded && upgradeMode === "parallel") {
+            // 并行创建：个人空间应该存在，但从数据库没查到，说明数据不一致
+            // 这种情况下，保持 personalWorkspaceUpgraded 状态，但不创建新空间
             setPersonalWorkspace(null);
           } else {
             const createRes = await fetch("/api/workspace/create-personal", {
@@ -849,10 +891,45 @@ export default function WorkspaceHub() {
     );
   };
 
+  /**
+   * 统一的用户认证失效处理
+   * 当 API 返回用户不存在或 404 错误时，显示友好提示并跳转到登录页
+   */
+  const handleAuthError = (errorMessage: string, statusCode?: number) => {
+    // 检查是否是用户不存在的错误
+    if (errorMessage.includes("用户不存在") || statusCode === 404) {
+      toast.error("会话已过期，请重新登录");
+      // 清除本地存储
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userRole");
+      // 延迟跳转到登录页
+      setTimeout(() => {
+        router.push("/auth/login");
+      }, 1500);
+      return true;
+    }
+    return false;
+  };
+
+  /**
+   * 检查用户 ID 是否有效，无效则显示提示并跳转登录
+   */
+  const checkUserId = () => {
+    const userId =
+      typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+    if (!userId) {
+      toast.error("会话已过期，请重新登录");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userRole");
+      router.push("/auth/login");
+      return null;
+    }
+    return userId;
+  };
+
   const handleDeleteWorkspace = async (workspaceId: string) => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId = checkUserId();
       if (!userId) {
         return;
       }
@@ -873,9 +950,16 @@ export default function WorkspaceHub() {
 
       if (!res.ok) {
         const errorData = await res.json();
+        const errorMsg = errorData.error || errorData.message || "检查失败";
+
+        // 检查是否是认证错误
+        if (handleAuthError(errorMsg, res.status)) {
+          return;
+        }
+
         setCheckingDelete(false);
         setWorkspaceToDelete(null);
-        throw new Error(errorData.error || "检查失败");
+        throw new Error(errorMsg);
       }
 
       const checkData = await res.json();
@@ -909,8 +993,7 @@ export default function WorkspaceHub() {
 
   const handleCreatePersonal = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId = checkUserId();
       if (!userId) {
         return;
       }
@@ -932,8 +1015,15 @@ export default function WorkspaceHub() {
           router.push(`/workspace/${createData.workspace.id}`);
         }, 500);
       } else {
-        const errorText = await createRes.text();
-        throw new Error(errorText || "创建失败");
+        const errorData = await createRes.json();
+        const errorMsg = errorData.error || errorData.message || "创建失败";
+
+        // 检查是否是认证错误
+        if (handleAuthError(errorMsg, createRes.status)) {
+          return;
+        }
+
+        throw new Error(errorMsg);
       }
     } catch (error) {
       console.error("Create personal workspace error:", error);
@@ -964,10 +1054,7 @@ export default function WorkspaceHub() {
 
     try {
       setDeleting(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      console.log("userId:", userId);
-
+      const userId = checkUserId();
       if (!userId) {
         return;
       }
@@ -992,13 +1079,27 @@ export default function WorkspaceHub() {
 
       if (deleteRes.ok) {
         setPersonalWorkspace(null);
+        // 关键修复：注销已升级的个人空间时，保持 personalWorkspaceUpgraded 为 true
+        // 因为用户之前已经升级过，只是现在注销了个人空间而已
+        setPersonalWorkspaceDeleted(true);
+        localStorage.setItem("personalWorkspaceDeleted", "true");
+        // personalWorkspaceUpgraded 保持为 true，不要设置为 false
+        // localStorage.setItem("personalWorkspaceUpgraded", "false"); // 删除这行
+        // localStorage.removeItem("upgradeMode"); // 删除这行，保持 upgradeMode
         setShowDeleteConfirmModal(false);
         setDeleteConfirmText("");
         toast.success("个人空间已注销");
       } else {
-        const errorText = await deleteRes.text();
-        console.error("删除失败:", errorText);
-        throw new Error(errorText || "注销失败");
+        const errorData = await deleteRes.json();
+        const errorMsg = errorData.error || errorData.message || "注销失败";
+
+        // 检查是否是认证错误
+        if (handleAuthError(errorMsg, deleteRes.status)) {
+          return;
+        }
+
+        console.error("删除失败:", errorMsg);
+        throw new Error(errorMsg);
       }
     } catch (error) {
       console.error("Delete upgraded personal workspace error:", error);
@@ -1013,6 +1114,10 @@ export default function WorkspaceHub() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       if (!userId) {
+        toast.error("请先登录");
+        setTimeout(() => {
+          router.push("/auth/login");
+        }, 1500);
         return;
       }
 
@@ -1030,15 +1135,29 @@ export default function WorkspaceHub() {
         setPersonalWorkspace(createData.workspace);
         setPersonalWorkspaceDeleted(false);
         setPersonalWorkspaceUpgraded(false);
+        setUpgradeMode(null);
         localStorage.setItem("personalWorkspaceDeleted", "false");
         localStorage.setItem("personalWorkspaceUpgraded", "false");
+        localStorage.removeItem("upgradeMode");
         console.log(
-          "状态已更新：personalWorkspaceDeleted=false, personalWorkspaceUpgraded=false",
+          "状态已更新：personalWorkspaceDeleted=false, personalWorkspaceUpgraded=false, upgradeMode=null",
         );
         toast.success("个人空间创建成功");
       } else {
-        const errorText = await createRes.text();
-        throw new Error(errorText || "创建失败");
+        const errorData = await createRes.json();
+        const errorMessage = errorData.error || errorData.message || "创建失败";
+
+        // 如果是用户不存在，显示友好提示并跳转到登录页
+        if (errorMessage.includes("用户不存在") || createRes.status === 404) {
+          toast.error("会话已过期，请重新登录");
+          localStorage.removeItem("userId");
+          localStorage.removeItem("userRole");
+          setTimeout(() => {
+            router.push("/auth/login");
+          }, 1500);
+        } else {
+          throw new Error(errorMessage);
+        }
       }
     } catch (error) {
       console.error("Recreate personal workspace error:", error);
@@ -1050,8 +1169,7 @@ export default function WorkspaceHub() {
     if (!workspaceToDelete) return;
 
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId = checkUserId();
       if (!userId) {
         return;
       }
@@ -1072,7 +1190,14 @@ export default function WorkspaceHub() {
 
       if (!deleteRes.ok) {
         const errorData = await deleteRes.json();
-        throw new Error(errorData.error || "注销失败");
+        const errorMsg = errorData.error || errorData.message || "注销失败";
+
+        // 检查是否是认证错误
+        if (handleAuthError(errorMsg, deleteRes.status)) {
+          return;
+        }
+
+        throw new Error(errorMsg);
       }
 
       toast.success("空间已注销");
@@ -1141,8 +1266,7 @@ export default function WorkspaceHub() {
   const verifyInvitation = async (code: string) => {
     try {
       setVerifyingCode(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId = checkUserId();
       if (!userId) {
         return;
       }
@@ -1157,8 +1281,15 @@ export default function WorkspaceHub() {
       if (res.ok) {
         setInvitationInfo(data.invitation);
       } else {
+        const errorMsg = data.error || data.message || "邀请码无效";
+
+        // 检查是否是认证错误
+        if (handleAuthError(errorMsg, res.status)) {
+          return;
+        }
+
         setInvitationInfo(null);
-        toast.error(data.error || "邀请码无效");
+        toast.error(errorMsg);
       }
     } catch (error) {
       console.error("验证邀请码失败:", error);
@@ -1182,8 +1313,7 @@ export default function WorkspaceHub() {
 
     try {
       setJoiningCode(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const userId = checkUserId();
       if (!userId) {
         return;
       }
@@ -1210,7 +1340,14 @@ export default function WorkspaceHub() {
         // 跳转到新加入的空间
         router.push(`/workspace/${data.workspace.id}`);
       } else {
-        toast.error(data.error || "加入空间失败");
+        const errorMsg = data.error || data.message || "加入空间失败";
+
+        // 检查是否是认证错误
+        if (handleAuthError(errorMsg, res.status)) {
+          return;
+        }
+
+        toast.error(errorMsg);
       }
     } catch (error) {
       console.error("加入空间失败:", error);
@@ -1422,17 +1559,19 @@ export default function WorkspaceHub() {
                   <h3 className="text-base font-black text-slate-800">
                     个人空间
                   </h3>
-                  {personalWorkspaceDeleted ? (
+                  {personalWorkspaceDeleted && upgradeMode === "replace" ? (
                     <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-bold rounded-full">
-                      已删除
+                      已替换
                     </span>
-                  ) : personalWorkspaceUpgraded && personalWorkspace ? (
+                  ) : personalWorkspaceDeleted ? (
+                    <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-bold rounded-full">
+                      已注销
+                    </span>
+                  ) : upgradeMode === "migrate" && !personalWorkspace ? (
                     <span className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] text-xs font-bold rounded-full">
                       已升级
                     </span>
-                  ) : personalWorkspace &&
-                    enterpriseWorkspace &&
-                    personalWorkspaceUpgraded ? (
+                  ) : personalWorkspaceUpgraded && personalWorkspace ? (
                     <span className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] text-xs font-bold rounded-full">
                       已升级
                     </span>
@@ -1447,18 +1586,55 @@ export default function WorkspaceHub() {
                   )}
                 </div>
                 <p className="text-xs text-slate-600 mb-2 leading-relaxed">
-                  {personalWorkspaceDeleted
-                    ? "个人空间已被删除。点击重新创建按钮可创建新的个人空间，之前的数据将无法恢复"
-                    : personalWorkspaceUpgraded && !personalWorkspace
-                      ? "个人空间已升级为企业空间。如需使用个人空间，可以点击重新创建按钮创建新的个人空间"
-                      : personalWorkspace &&
-                          enterpriseWorkspace &&
-                          personalWorkspaceUpgraded
-                        ? "个人空间已升级为企业空间，原个人空间已保留。您可以继续使用该个人空间或选择注销"
-                        : personalWorkspaceUpgraded && personalWorkspace
-                          ? "个人空间已升级。您可以继续使用该个人空间，或选择注销"
-                          : "适合独立开发者、自由职业者或个人项目使用，提供基础的组件调用和项目管理功能"}
+                  {personalWorkspaceDeleted && upgradeMode === "replace"
+                    ? "原个人空间已注销，已创建全新企业空间。点击重新创建按钮可创建新的个人空间"
+                    : personalWorkspaceDeleted
+                      ? "个人空间已被注销。点击重新创建按钮可创建新的个人空间"
+                      : upgradeMode === "migrate" && !personalWorkspace
+                        ? "您的个人空间已成功平移升级为企业空间，所有数据、组件和项目已完整迁移至企业空间。个人空间已完成历史使命，不再支持任何操作。请直接前往企业空间继续您的工作。"
+                        : upgradeMode === "migrate" &&
+                            !personalWorkspace &&
+                            enterpriseWorkspace &&
+                            enterpriseWorkspace[0]
+                          ? `个人空间已升级为企业空间，所有数据已保留。点击"进入企业空间"按钮可继续工作`
+                          : upgradeMode === "migrate" && !personalWorkspace
+                            ? "个人空间已升级为企业空间。如需使用个人空间，可以点击重新创建按钮创建新的个人空间"
+                            : personalWorkspaceUpgraded && !personalWorkspace
+                              ? "个人空间已升级为企业空间。如需使用个人空间，可以点击重新创建按钮创建新的个人空间"
+                              : personalWorkspaceUpgraded &&
+                                  personalWorkspace &&
+                                  upgradeMode === "parallel"
+                                ? "个人空间已升级为企业空间，原个人空间已保留。您可以继续使用该个人空间，企业空间的注销不影响个人空间状态"
+                                : personalWorkspaceUpgraded && personalWorkspace
+                                  ? "个人空间已升级。您可以继续使用该个人空间，或选择注销"
+                                  : "适合独立开发者、自由职业者或个人项目使用，提供基础的组件调用和项目管理功能"}
                 </p>
+                {/* 平移升级特别提示 */}
+                {upgradeMode === "migrate" && !personalWorkspace && (
+                  <div className="mt-3 p-3 bg-gradient-to-r from-[#f59e0b]/5 to-[#10b981]/5 border-l-4 border-[#f59e0b] rounded-r-lg">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <CheckCircle className="w-3.5 h-3.5 text-[#10b981]" />
+                          <span className="text-xs font-bold text-slate-700">
+                            升级完成
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-600 leading-relaxed space-y-1">
+                          <p>✓ 所有个人数据已完整迁移至企业空间</p>
+                          <p>✓ 原有组件和项目已自动同步</p>
+                          <p>✓ 企业空间已继承所有权限配置</p>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-200">
+                          <p className="text-[11px] text-slate-500">
+                            💡
+                            提示：您可以从右侧企业空间卡片进入企业空间继续工作
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {personalWorkspace && (
                   <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
                     <Box className="w-3 h-3" />
@@ -1470,7 +1646,8 @@ export default function WorkspaceHub() {
                 {/* 升级提示 */}
                 {personalWorkspace &&
                   quota &&
-                  quota.enterpriseCount < quota.maxEnterprise && (
+                  quota.enterpriseCount < quota.maxEnterprise &&
+                  !personalWorkspaceUpgraded && (
                     <div className="mb-2 p-2 bg-gradient-to-r from-[#10b981]/10 to-[#059669]/10 border border-[#10b981]/30 rounded-lg">
                       <div className="flex items-start gap-2">
                         <div className="flex-1">
@@ -1504,8 +1681,8 @@ export default function WorkspaceHub() {
                   )}
                 {/* 已升级提示（选项 A：保留个人空间） */}
                 {personalWorkspace &&
-                  enterpriseWorkspace &&
-                  personalWorkspaceUpgraded && (
+                  personalWorkspaceUpgraded &&
+                  upgradeMode === "parallel" && (
                     <div className="mb-2 p-2 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/30 rounded-lg">
                       <div className="flex items-start gap-2">
                         <div className="flex-1">
@@ -1513,17 +1690,34 @@ export default function WorkspaceHub() {
                             已升级为企业空间
                           </div>
                           <div className="text-[10px] text-slate-600 leading-relaxed">
-                            您的个人空间已成功升级为企业空间，原个人空间已保留。
-                            您可以选择注销这个个人空间，或者继续使用。
+                            {enterpriseWorkspace
+                              ? "您的个人空间已成功升级为企业空间，原个人空间已保留。您可以选择注销这个个人空间，或者继续使用。"
+                              : "您的个人空间之前已升级为企业空间（并行创建模式），原个人空间已保留。企业空间已被删除，但个人空间状态不受影响。您可以继续使用这个个人空间，或者选择注销。"}
                           </div>
                         </div>
                       </div>
                     </div>
                   )}
                 {/* 操作按钮 */}
-                {personalWorkspace &&
-                enterpriseWorkspace &&
-                personalWorkspaceUpgraded ? (
+                {upgradeMode === "migrate" &&
+                !personalWorkspace ? null : !personalWorkspace && // 平移升级后个人空间已不存在：不显示任何按钮，只显示友好提示
+                  personalWorkspaceUpgraded &&
+                  upgradeMode === "parallel" &&
+                  personalWorkspaceDeleted ? (
+                  // 并行创建后已注销：显示"重新创建"按钮
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRecreatePersonal();
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-sm font-bold rounded-lg hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>重新创建</span>
+                  </button>
+                ) : !personalWorkspace &&
+                  enterpriseWorkspace &&
+                  personalWorkspaceUpgraded ? (
                   // 选项 A：个人空间和企业空间都存在，且个人空间已升级，显示"进入空间"和"注销"按钮
                   <div className="flex items-center gap-2">
                     <button
@@ -1547,8 +1741,35 @@ export default function WorkspaceHub() {
                       <span>注销</span>
                     </button>
                   </div>
-                ) : personalWorkspaceUpgraded && personalWorkspace ? (
+                ) : personalWorkspaceUpgraded &&
+                  personalWorkspace &&
+                  upgradeMode !== "migrate" ? (
                   // 个人空间已升级（企业空间可能被删除了），仍然显示"进入空间"和"注销"按钮
+                  // 但平移升级除外（upgradeMode === "migrate"），平移升级后不显示任何按钮
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEnterWorkspace(personalWorkspace);
+                      }}
+                      className="flex items-center gap-1 text-sm font-bold text-[#3182ce] hover:text-[#2563eb] transition-colors cursor-pointer"
+                    >
+                      <span>进入空间</span>
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteUpgradedPersonal();
+                      }}
+                      className="px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>注销</span>
+                    </button>
+                  </div>
+                ) : personalWorkspace && enterpriseWorkspace ? (
+                  // 个人空间和企业空间都存在：显示"进入空间"和"注销"按钮
                   <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => {
@@ -1582,7 +1803,24 @@ export default function WorkspaceHub() {
                     <span>进入空间</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
-                ) : personalWorkspaceDeleted || personalWorkspaceUpgraded ? (
+                ) : upgradeMode === "migrate" &&
+                  enterpriseWorkspace &&
+                  enterpriseWorkspace[0] ? (
+                  // 平移升级且企业空间存在：显示"进入企业空间"按钮
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEnterWorkspace(enterpriseWorkspace[0]);
+                    }}
+                    className="flex items-center gap-1 text-sm font-bold text-[#10b981] hover:text-[#059669] transition-colors cursor-pointer"
+                  >
+                    <span>进入企业空间</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                ) : upgradeMode === "migrate" &&
+                  !personalWorkspace ? null : personalWorkspaceDeleted || // 平移升级后个人空间已不存在：不显示任何按钮，只显示友好提示
+                  personalWorkspaceUpgraded ? (
+                  // 个人空间已删除/已升级/平移升级但企业空间不存在：显示"重新创建"按钮
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

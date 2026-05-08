@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿import { prisma } from "@/lib/prisma";
+﻿﻿﻿﻿﻿﻿﻿﻿﻿import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
 export interface AuthenticatedUser {
@@ -111,4 +111,29 @@ export function isAdminRole(role: string): boolean {
     "SUPER_ADMIN",
   ];
   return adminRoles.includes(role);
+}
+
+/**
+ * 全局认证检查：检查用户是否在数据库中存在
+ * 用于前端页面在加载时进行认证验证
+ */
+export async function checkUserExists(userId: string): Promise<{
+  exists: boolean;
+  isActive: boolean;
+}> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true },
+    });
+
+    if (!user) {
+      return { exists: false, isActive: false };
+    }
+
+    return { exists: true, isActive: user.status === "active" };
+  } catch (error) {
+    console.error("检查用户存在性失败:", error);
+    return { exists: false, isActive: false };
+  }
 }

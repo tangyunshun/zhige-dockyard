@@ -85,19 +85,39 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
       });
 
       if (!workspacesRes.ok) {
-        throw new Error(workspacesRes.statusText || "加载失败");
+        const errorText = await workspacesRes.text();
+        throw new Error(errorText || "加载失败");
       }
 
       const data = await workspacesRes.json();
-      setWorkspaces(data.workspaces);
-      setInvitations(data.invitations);
+      // API 返回格式：{ success: true, data: workspaces }
+      const workspacesData = data.success ? data.data : [];
+      
+      // 转换为前端需要的格式
+      const formattedWorkspaces = workspacesData.map((ws: any) => ({
+        id: ws.id,
+        name: ws.name,
+        type: ws.type,
+        memberCount: ws._count?.members || 0,
+        members: ws.members?.map((m: any) => ({
+          id: m.user.id,
+          name: m.user.name,
+          email: m.user.email,
+          avatar: m.user.avatar,
+          role: m.role,
+        })) || [],
+        isOwner: ws.ownerId === userId,
+      }));
+      
+      setWorkspaces(formattedWorkspaces);
+      setInvitations([]); // 暂时不支持邀请码功能
 
-      if (data.workspaces.length > 0) {
-        setSelectedWorkspace(data.workspaces[0].id);
+      if (formattedWorkspaces.length > 0) {
+        setSelectedWorkspace(formattedWorkspaces[0].id);
       }
     } catch (error) {
       console.error("加载可分享空间失败:", error);
-      toast.error("加载失败");
+      toast.error(error instanceof Error ? error.message : "加载失败");
     }
   };
 

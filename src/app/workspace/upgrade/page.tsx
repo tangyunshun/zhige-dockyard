@@ -70,6 +70,20 @@ function UpgradeWorkspaceForm() {
         return;
       }
 
+      // 先验证用户会话是否有效
+      const authRes = await fetch("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${userId}`,
+        },
+      });
+
+      if (!authRes.ok) {
+        toast.error("会话已过期，请重新登录");
+        localStorage.removeItem("userId");
+        router.push("/auth/login");
+        return;
+      }
+
       const res = await fetch(
         `/api/workspace/upgrade?workspaceId=${workspaceId}`,
         {
@@ -146,6 +160,20 @@ function UpgradeWorkspaceForm() {
           return;
         }
 
+        // 验证用户会话是否有效
+        const authRes = await fetch("/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${userId}`,
+          },
+        });
+
+        if (!authRes.ok) {
+          toast.error("会话已过期，请重新登录");
+          localStorage.removeItem("userId");
+          router.push("/auth/login");
+          return;
+        }
+
         const checkRes = await fetch(
           `/api/workspace/check-delete?workspaceId=${personalWorkspace.id}`,
           {
@@ -206,6 +234,20 @@ function UpgradeWorkspaceForm() {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
 
+      // 验证用户会话是否有效
+      const authRes = await fetch("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${userId}`,
+        },
+      });
+
+      if (!authRes.ok) {
+        toast.error("会话已过期，请重新登录");
+        localStorage.removeItem("userId");
+        router.push("/auth/login");
+        return;
+      }
+
       const res = await fetch("/api/workspace/upgrade", {
         method: "POST",
         headers: {
@@ -220,31 +262,42 @@ function UpgradeWorkspaceForm() {
 
       const result = await res.json();
 
+      console.log("[Upgrade] API Response:", { status: res.status, result });
+
       if (!res.ok) {
+        console.error("[Upgrade] API returned error:", result);
         throw new Error(result.error || "升级失败");
       }
 
+      console.log("[Upgrade] Success, showing toast and setting localStorage");
       toast.success(result.message || "升级成功！");
 
       // 根据选项决定跳转逻辑
       if (selectedOption === "upgrade") {
-        // 选项 C：直接升级，设置升级状态
+        // 选项 C：平移升级（个人空间数据迁移到企业空间）
         localStorage.setItem("personalWorkspaceUpgraded", "true");
-        // 跳转到企业空间页面
+        localStorage.setItem("personalWorkspaceDeleted", "true");
+        localStorage.setItem("upgradeMode", "migrate"); // 平移升级
+        console.log("[Upgrade] Redirecting to workspace-hub (migrated)");
+        // 跳转到 workspace-hub 页面，让用户查看升级后的状态
         setTimeout(() => {
-          router.push(`/workspace/${result.workspaceId}`);
+          router.push("/workspace-hub");
         }, 1000);
       } else if (selectedOption === "delete") {
-        // 选项 B：删除个人空间，设置删除状态
+        // 选项 B：替换升级（删除个人空间）
         localStorage.setItem("personalWorkspaceDeleted", "true");
         localStorage.setItem("personalWorkspaceUpgraded", "false");
+        localStorage.setItem("upgradeMode", "replace"); // 替换升级
+        console.log("[Upgrade] Redirecting to workspace-hub (deleted)");
         setTimeout(() => {
           router.push("/workspace-hub");
         }, 1000);
       } else {
-        // 选项 A：保留个人空间，设置升级状态
+        // 选项 A：并行创建（保留个人空间）
         localStorage.setItem("personalWorkspaceUpgraded", "true");
         localStorage.setItem("personalWorkspaceDeleted", "false");
+        localStorage.setItem("upgradeMode", "parallel"); // 并行创建
+        console.log("[Upgrade] Redirecting to workspace-hub (retained)");
         setTimeout(() => {
           router.push("/workspace-hub");
         }, 1000);
@@ -256,6 +309,7 @@ function UpgradeWorkspaceForm() {
       // 升级失败时，清除所有状态
       localStorage.setItem("personalWorkspaceDeleted", "false");
       localStorage.setItem("personalWorkspaceUpgraded", "false");
+      localStorage.removeItem("upgradeMode");
     } finally {
       setLoading(false);
     }

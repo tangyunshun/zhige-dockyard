@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from 'next/server';
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { prisma } from '@/lib/prisma';
 
@@ -106,17 +106,21 @@ export async function POST(request: NextRequest) {
 
     // 创建工作空间名称
     const workspaceName = `个人空间 - ${user.name || user.phone || user.email}`;
+    const workspaceId = `ws-personal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const now = new Date();
     
     console.log('创建个人空间 userId:', userId);
     
     // 创建 workspace
     const workspace = await prisma.workspace.create({
       data: {
+        id: workspaceId,
         name: workspaceName,
         type: 'PERSONAL',
         ownerId: userId,
         description: `${user.name || '用户'}的个人工作空间`,
-        updatedAt: new Date(),
+        createdAt: now,
+        updatedAt: now,
       },
     });
     
@@ -124,8 +128,10 @@ export async function POST(request: NextRequest) {
     
     // 创建 WorkspaceMember 记录
     try {
+      const memberId = `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const member = await prisma.workspacemember.create({
         data: {
+          id: memberId,
           userId,
           workspaceId: workspace.id,
           role: 'OWNER',
