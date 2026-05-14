@@ -151,7 +151,7 @@ export default function UserWorkspacesPage() {
         setMessage({ type: "error", text: error.message || "更新失败" });
       }
     } catch (error) {
-      console.error("Update workspace error:", error);
+      console.warn("Update workspace error:", error);
       setMessage({ type: "error", text: "更新失败" });
     }
   };

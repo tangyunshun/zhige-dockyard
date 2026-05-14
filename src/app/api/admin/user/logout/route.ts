@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       data: {
         sessionToken: null,
         sessionExpiresAt: null,
+        lastForcedLogoutAt: new Date(),
       },
     });
 

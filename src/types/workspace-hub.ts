@@ -3,7 +3,7 @@
  */
 
 import { ComponentDefinition } from '@/constants/components';
-import { WorkspaceType, WorkspaceRole } from '@/constants/roles';
+import { WorkspaceType, EnterpriseRole } from '@/constants/roles';
 
 /**
  * 工作空间配额统计
@@ -183,7 +183,7 @@ export interface UpdatePostPermissionsRequest {
 export interface InviteMemberRequest {
   workspaceId: string;
   email: string;
-  role: WorkspaceRole;
+  role: EnterpriseRole;
   postId?: string;
 }
 

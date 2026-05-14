@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       expiresAt: invitation.expiresAt,
     });
   } catch (error) {
-    console.error("Generate invitation error:", error);
+    console.warn("Generate invitation error:", error);
     return NextResponse.json({ error: "生成邀请码失败" }, { status: 500 });
   }
 }

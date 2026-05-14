@@ -513,11 +513,25 @@ function LoginForm() {
         localStorage.removeItem("personalWorkspaceDeleted");
         localStorage.removeItem("personalWorkspaceUpgraded");
         localStorage.removeItem("upgradeMode");
+        // 清除退出登录标志，避免首页显示"已退出登录"
+        localStorage.removeItem("just_logged_out");
 
         if (data.user.id) {
           localStorage.setItem("userId", data.user.id);
-          localStorage.setItem("auth_token", data.token);
+          console.log(
+            "存储auth_token, data.token:",
+            data.token ? "存在" : "不存在",
+          );
+          if (data.token) {
+            localStorage.setItem("auth_token", data.token);
+          } else if (data.user.auth_token) {
+            localStorage.setItem("auth_token", data.user.auth_token);
+          }
         }
+        console.log(
+          "存储的auth_token:",
+          localStorage.getItem("auth_token") ? "成功" : "失败",
+        );
         if (data.user?.role) {
           localStorage.setItem("userRole", data.user.role);
         }
@@ -551,7 +565,7 @@ function LoginForm() {
             console.warn("创建个人空间失败:", workspaceData.message);
           }
         } catch (error) {
-          console.error("创建个人空间异常:", error);
+          console.warn("创建个人空间异常:", error);
         }
 
         // 确保 localStorage 已经设置完成，使用 setTimeout 延迟跳转

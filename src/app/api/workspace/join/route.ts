@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("加入工作空间错误:", error);
+    console.warn("加入工作空间错误:", error);
     return NextResponse.json({ error: "加入工作空间失败" }, { status: 500 });
   }
 }

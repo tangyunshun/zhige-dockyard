@@ -71,7 +71,7 @@ export default function UserSettingsPage() {
         toast.success("设置已保存");
       }
     } catch (error) {
-      console.error("Save settings error:", error);
+      console.warn("Save settings error:", error);
       toast.error("保存失败，请重试");
     } finally {
       setLoading(false);

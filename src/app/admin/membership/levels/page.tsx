@@ -192,7 +192,6 @@ export default function AdminMembershipLevelsPage() {
 
           if (res.ok) {
             toast.success("删除成功");
-            setCurrentPage(1);
             loadLevels();
           } else {
             const error = await res.json();

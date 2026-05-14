@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
@@ -55,19 +55,15 @@ export async function POST(request: NextRequest) {
       // 加密密码
       const hashedPassword = await hashPassword(password);
 
-      // 创建用户（验证成功后直接激活）
-      const result = await prisma.$executeRaw`
-        INSERT INTO user (id, phone, password, name, role, status, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${`用户${phone.slice(-4)}`}, 'user', 'active', NOW(), NOW())
-      `;
-
-      if (result < 0) {
-        throw new Error("Failed to create user");
-      }
-
-      // 获取用户信息
-      const user = await prisma.user.findUnique({
-        where: { phone },
+      // 使用 Prisma 创建用户
+      const user = await prisma.user.create({
+        data: {
+          phone,
+          password: hashedPassword,
+          name: `用户${phone.slice(-4)}`, // 用户名为手机号后 4 位
+          role: "user",
+          status: "active",
+        },
         select: {
           id: true,
           phone: true,
@@ -76,10 +72,6 @@ export async function POST(request: NextRequest) {
           role: true,
         },
       });
-
-      if (!user) {
-        return NextResponse.json({ message: "获取用户信息失败" }, { status: 500 });
-      }
 
       // 删除验证码
       deleteSmsCode(phone);
@@ -160,19 +152,15 @@ export async function POST(request: NextRequest) {
       // 加密密码
       const hashedPassword = await hashPassword(password);
 
-      // 创建用户（验证成功后直接激活）
-      const result = await prisma.$executeRaw`
-        INSERT INTO user (id, phone, password, name, role, status, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${username}, 'user', 'active', NOW(), NOW())
-      `;
-
-      if (result < 0) {
-        throw new Error("Failed to create user");
-      }
-
-      // 获取用户信息
-      const user = await prisma.user.findUnique({
-        where: { phone },
+      // 使用 Prisma 创建用户
+      const user = await prisma.user.create({
+        data: {
+          phone,
+          password: hashedPassword,
+          name: username,
+          role: "user",
+          status: "active",
+        },
         select: {
           id: true,
           phone: true,
@@ -181,10 +169,6 @@ export async function POST(request: NextRequest) {
           role: true,
         },
       });
-
-      if (!user) {
-        return NextResponse.json({ message: "获取用户信息失败" }, { status: 500 });
-      }
 
       // 删除验证码
       deleteSmsCode(phone);
@@ -259,19 +243,16 @@ export async function POST(request: NextRequest) {
       // 加密密码
       const hashedPassword = await hashPassword(password);
 
-      // 创建用户（验证成功后直接激活）
-      const result = await prisma.$executeRaw`
-        INSERT INTO user (id, phone, password, name, email, role, status, createdAt, updatedAt)
-        VALUES (UUID(), ${phone}, ${hashedPassword}, ${email.split("@")[0]}, ${email}, 'user', 'active', NOW(), NOW())
-      `;
-
-      if (result < 0) {
-        throw new Error("Failed to create user");
-      }
-
-      // 获取用户信息
-      const user = await prisma.user.findUnique({
-        where: { phone },
+      // 使用 Prisma 创建用户
+      const user = await prisma.user.create({
+        data: {
+          phone,
+          password: hashedPassword,
+          name: email.split("@")[0], // 用户名为邮箱前缀
+          email,
+          role: "user",
+          status: "active",
+        },
         select: {
           id: true,
           phone: true,
@@ -280,10 +261,6 @@ export async function POST(request: NextRequest) {
           role: true,
         },
       });
-
-      if (!user) {
-        return NextResponse.json({ message: "获取用户信息失败" }, { status: 500 });
-      }
 
       // 删除验证码
       deleteSmsCode(phone);

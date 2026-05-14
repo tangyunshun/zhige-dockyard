@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       message: "头像上传成功",
     });
   } catch (error) {
-    console.error("Upload avatar error:", error);
+    console.warn("Upload avatar error:", error);
     return NextResponse.json(
       { error: "上传失败" },
       { status: 500 }

@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       iconUrl,
     });
   } catch (error) {
-    console.error("Upload icon error:", error);
+    console.warn("Upload icon error:", error);
     return NextResponse.json(
       { message: "上传图标失败" },
       { status: 500 }

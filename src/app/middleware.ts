@@ -17,8 +17,12 @@ const PUBLIC_PATHS = [
   "/auth/login",
   "/auth/register",
   "/auth/forgot-password",
+  "/auth/callback",
   "/",
+  "/workspace-hub",
   "/init",
+  "/terms-of-service",
+  "/privacy-policy",
 ];
 
 export async function middleware(request: NextRequest) {
@@ -62,22 +66,59 @@ export async function middleware(request: NextRequest) {
     // 验证用户是否在数据库中存储（关键修复：检查用户是否存在）
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, deletionRequestedAt: true },
     });
 
     if (!user) {
-      console.log(`[Middleware] User ${userId} not found in database, clearing auth`);
+      console.log(
+        `[Middleware] User ${userId} not found in database, clearing auth`,
+      );
       // 用户不存在，清除认证信息并重定向到登录页
-      const response = NextResponse.redirect(new URL("/auth/login", request.url));
+      const response = NextResponse.redirect(
+        new URL("/auth/login", request.url),
+      );
       response.cookies.set("auth_token", "", { maxAge: 0 });
       response.cookies.set("token", "", { maxAge: 0 });
       return response;
     }
 
+    // 检查用户是否在冷静期内（使用 any 类型避免 Prisma 类型问题）
+    const userAny = user as any;
+    if (userAny.deletionRequestedAt) {
+      const deletionDate = new Date(userAny.deletionRequestedAt);
+      const now = new Date();
+      const daysUntilDeletion = 7;
+      const deletionDeadline = new Date(
+        deletionDate.getTime() + daysUntilDeletion * 24 * 60 * 60 * 1000,
+      );
+
+      if (now < deletionDeadline) {
+        // 冷静期内，允许访问首页，但禁止访问其他页面
+        if (pathname === "/" || pathname === "/workspace-hub") {
+          console.log(
+            `[Middleware] User ${userId} in deletion cooldown, allowing access to ${pathname}`,
+          );
+          const response = NextResponse.next();
+          response.headers.set("x-user-id", userId);
+          return response;
+        } else {
+          // 冷静期内访问其他页面，重定向到首页
+          console.log(
+            `[Middleware] User ${userId} in deletion cooldown, redirecting to homepage`,
+          );
+          return NextResponse.redirect(new URL("/", request.url));
+        }
+      }
+    }
+
     // 检查用户状态
     if (user.status !== "active") {
-      console.log(`[Middleware] User ${userId} is not active, status: ${user.status}`);
-      const response = NextResponse.redirect(new URL("/auth/login", request.url));
+      console.log(
+        `[Middleware] User ${userId} is not active, status: ${user.status}`,
+      );
+      const response = NextResponse.redirect(
+        new URL("/auth/login", request.url),
+      );
       response.cookies.set("auth_token", "", { maxAge: 0 });
       response.cookies.set("token", "", { maxAge: 0 });
       return response;
@@ -96,10 +137,7 @@ export async function middleware(request: NextRequest) {
 
     // Token 无效
     if (pathname.startsWith("/api")) {
-      return NextResponse.json(
-        { error: "INVALID_TOKEN" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "INVALID_TOKEN" }, { status: 401 });
     }
 
     // 清除无效的 cookie
@@ -110,9 +148,12 @@ export async function middleware(request: NextRequest) {
   }
 }
 
-async function handleApiRequest(request: NextRequest, startTime: number): Promise<NextResponse> {
+async function handleApiRequest(
+  request: NextRequest,
+  startTime: number,
+): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
-  
+
   // 公开 API 路径，不需要认证
   const PUBLIC_API_PATHS = [
     "/api/auth/login",
@@ -124,9 +165,10 @@ async function handleApiRequest(request: NextRequest, startTime: number): Promis
     "/api/auth/verify-email-code",
     "/api/auth/check-account",
     "/api/auth/check-phone",
+    "/api/system-documents",
   ];
 
-  if (PUBLIC_API_PATHS.some(path => pathname.startsWith(path))) {
+  if (PUBLIC_API_PATHS.some((path) => pathname.startsWith(path))) {
     console.log(`[Middleware] Public API path, allowing: ${pathname}`);
     const response = NextResponse.next();
     await recordApiUsage(request, response, startTime, null);
@@ -135,10 +177,15 @@ async function handleApiRequest(request: NextRequest, startTime: number): Promis
 
   // 获取 Token
   const authHeader = request.headers.get("authorization");
-  const token = authHeader?.replace("Bearer ", "") || request.cookies.get("auth_token")?.value;
+  const token =
+    authHeader?.replace("Bearer ", "") ||
+    request.cookies.get("auth_token")?.value;
 
   if (!token) {
-    const response = NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const response = NextResponse.json(
+      { error: "UNAUTHORIZED" },
+      { status: 401 },
+    );
     await recordApiUsage(request, response, startTime, null);
     return response;
   }
@@ -155,7 +202,10 @@ async function handleApiRequest(request: NextRequest, startTime: number): Promis
 
     if (!user) {
       console.log(`[Middleware] API User ${userId} not found in database`);
-      const response = NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 401 });
+      const response = NextResponse.json(
+        { error: "USER_NOT_FOUND" },
+        { status: 401 },
+      );
       await recordApiUsage(request, response, startTime, null);
       return response;
     }
@@ -163,7 +213,10 @@ async function handleApiRequest(request: NextRequest, startTime: number): Promis
     // 检查用户状态
     if (user.status !== "active") {
       console.log(`[Middleware] API User ${userId} is not active`);
-      const response = NextResponse.json({ error: "ACCOUNT_DISABLED" }, { status: 401 });
+      const response = NextResponse.json(
+        { error: "ACCOUNT_DISABLED" },
+        { status: 401 },
+      );
       await recordApiUsage(request, response, startTime, null);
       return response;
     }
@@ -175,12 +228,15 @@ async function handleApiRequest(request: NextRequest, startTime: number): Promis
     response.headers.set("x-user-role", payload.role as string);
 
     await recordApiUsage(request, response, startTime, userId);
-    
+
     console.log(`[Middleware] API User ${userId} authenticated successfully`);
     return response;
   } catch (error) {
-    console.error("[Middleware] API Token validation failed:", error);
-    const response = NextResponse.json({ error: "INVALID_TOKEN" }, { status: 401 });
+    console.warn("[Middleware] API Token validation failed:", error);
+    const response = NextResponse.json(
+      { error: "INVALID_TOKEN" },
+      { status: 401 },
+    );
     await recordApiUsage(request, response, startTime, null);
     return response;
   }
@@ -190,14 +246,14 @@ async function recordApiUsage(
   request: NextRequest,
   response: NextResponse,
   startTime: number,
-  userId: string | null
+  userId: string | null,
 ) {
   // 不需要记录的路径
   const EXCLUDED_PATHS = [
     "/api/auth/me",
     "/api/auth/verify",
     "/api/auth/touch",
-    "/api/workspace/quota",
+    "/api/user/workspace-hub/quota",
   ];
 
   const pathname = request.nextUrl.pathname;
@@ -208,6 +264,15 @@ async function recordApiUsage(
   try {
     if (userId) {
       const latencyMs = Date.now() - startTime;
+
+      // API响应时间监控告警
+      if (latencyMs > 3000) {
+        console.warn(`[API监控] ⚠️ 慢API告警: ${pathname} 耗时 ${latencyMs}ms (阈值: 3000ms)`);
+      } else if (latencyMs > 1000) {
+        console.log(`[API监控] 📊 ${pathname} 耗时 ${latencyMs}ms`);
+      }
+
+      // 记录到数据库
       await prisma.apiUsage.create({
         data: {
           userId,
@@ -217,9 +282,14 @@ async function recordApiUsage(
           latencyMs,
         },
       });
+
+      // 如果响应时间超过5秒，记录为性能问题
+      if (latencyMs > 5000) {
+        console.error(`[API监控] 🔴 严重性能问题: ${pathname} 耗时 ${latencyMs}ms，超过5秒阈值！`);
+      }
     }
   } catch (error) {
-    console.error("记录 API 使用失败:", error);
+    console.warn("记录 API 使用失败:", error);
     // 记录失败不影响主流程
   }
 }

@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       data: workspaces,
     });
   } catch (error) {
-    console.error("Get user workspaces error:", error);
+    console.warn("Get user workspaces error:", error);
     return NextResponse.json(
       { error: "获取用户工作空间列表失败" },
       { status: 500 }

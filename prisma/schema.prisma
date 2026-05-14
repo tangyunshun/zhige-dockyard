@@ -76,6 +76,14 @@ model user {
   lastLoginAt                                              DateTime?             @map("last_login_at")
   sessionExpiresAt                                         DateTime?             @map("session_expires_at")
   sessionToken                                             String?               @map("session_token")
+  deletionRequestedAt                                      DateTime?             @map("deletion_requested_at")
+  bannedUntil                                              DateTime?             @map("banned_until")
+  passwordChangedAt                                        DateTime?             @default(now()) @map("password_changed_at")
+  deviceLimit                                              Int                   @default(3) @map("device_limit")
+  lastLoginIp                                              String?               @map("last_login_ip")
+  lastLoginDevice                                          String?               @map("last_login_device")
+  ssoProvider                                              String?               @map("sso_provider")
+  ssoOpenid                                                String?               @map("sso_openid")
   apikey                                                   apikey[]
   componentrating                                          componentrating[]
   componentreview                                          componentreview[]
@@ -88,6 +96,8 @@ model user {
   postmember                                               postmember[]
   systemdocument                                           systemdocument[]
   upgradeapplication                                       upgradeapplication[]
+  userdevice                                               userdevice[]
+  workspacekickhistory                                     workspacekickhistory[]
   tenant                                                   tenant?               @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
   usernotification                                         usernotification?
   userpreference                                           userpreference?
@@ -99,6 +109,7 @@ model user {
   @@index([status], map: "User_status_idx")
   @@index([role], map: "User_role_idx")
   @@index([lastWorkspaceId], map: "User_lastWorkspaceId_idx")
+  @@index([deletionRequestedAt], map: "User_deletionRequestedAt_idx")
 }
 
 model apikey {
@@ -618,24 +629,26 @@ model projectrole {
   @@index([userId], map: "ProjectRole_userId_idx")
 }
 
-model apiUsage {
-  id        String   @id @default(cuid())
-  userId    String
-  endpoint  String
-  method    String   @default("GET")
-  timestamp DateTime @default(now())
+model apiusage {
+  id           String   @id
+  userId       String
+  endpoint     String
+  method       String   @default("GET")
+  timestamp    DateTime @default(now())
   responseCode Int?
-  latencyMs Int?
-  
-  @@index([userId], map: "ApiUsage_userId_idx")
-  @@index([timestamp], map: "ApiUsage_timestamp_idx")
+  latencyMs    Int?
+
   @@index([endpoint], map: "ApiUsage_endpoint_idx")
+  @@index([timestamp], map: "ApiUsage_timestamp_idx")
+  @@index([userId], map: "ApiUsage_userId_idx")
 }
 
 enum UserStatus {
   active
   inactive
   banned
+  deleted
+  deleting
 }
 
 enum workspace_type {
@@ -653,4 +666,37 @@ enum workspaceinvitation_role {
   OWNER
   ADMIN
   MEMBER
+}
+
+model userdevice {
+  id            String    @id @default(cuid())
+  userId        String
+  deviceName    String
+  deviceType    String    @default("web")
+  browser       String?
+  os            String?
+  ipAddress     String?
+  lastActiveAt  DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  isCurrent     Boolean   @default(false)
+  user          user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserDevice_userId_fkey")
+
+  @@index([userId], map: "UserDevice_userId_idx")
+  @@index([lastActiveAt], map: "UserDevice_lastActiveAt_idx")
+}
+
+model workspacekickhistory {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  workspaceName  String
+  userId         String
+  kickedBy       String
+  kickedByName   String?
+  reason         String?
+  createdAt      DateTime @default(now())
+  user           user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceKickHistory_userId_fkey")
+
+  @@index([workspaceId], map: "WorkspaceKickHistory_workspaceId_idx")
+  @@index([userId], map: "WorkspaceKickHistory_userId_idx")
+  @@index([createdAt], map: "WorkspaceKickHistory_createdAt_idx")
 }

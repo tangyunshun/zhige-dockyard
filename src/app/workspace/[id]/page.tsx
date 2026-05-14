@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useLogout } from "@/hooks/useLogout";
+import { useToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
 import {
   LogOut,
@@ -17,6 +18,7 @@ import {
 export default function WorkspacePage() {
   const router = useRouter();
   const params = useParams();
+  const toast = useToast();
   const handleLogout = useLogout();
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [workspaceName, setWorkspaceName] = useState<string>("");
@@ -44,7 +46,7 @@ export default function WorkspacePage() {
         }
       }
     } catch (error) {
-      console.error("加载工作空间失败:", error);
+      console.warn("加载工作空间失败:", error);
     } finally {
       setLoading(false);
     }

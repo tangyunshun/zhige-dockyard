@@ -65,7 +65,10 @@ export default function AdminMembershipUsersPage() {
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
         ...(filters.membershipLevel && {
-          membershipLevel: filters.membershipLevel,
+          membership_level: filters.membershipLevel,
+        }),
+        ...(filters.search && {
+          search: filters.search,
         }),
       });
 

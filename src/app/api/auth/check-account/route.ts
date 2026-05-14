@@ -10,20 +10,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 查找用户（支持邮箱、手机号、账号名）
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [{ email: account }, { phone: account }, { name: account }],
-      },
-      select: {
-        id: true,
-        email: true,
-        phone: true,
-        name: true,
-        status: true,
-        loginAttempts: true,
-        lockedUntil: true,
-      },
-    });
+    // 使用 Prisma 的 raw 查询来实现真正的大小写敏感匹配
+    const users = await prisma.$queryRaw`SELECT id, email, phone, name, status, loginAttempts, lockedUntil FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}`;
+    const user = users.length > 0 ? users[0] : null;
 
     if (!user) {
       return NextResponse.json({
@@ -32,12 +21,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 检查账号状态（允许 inactive 状态的用户登录，登录时会自动激活）
-    if (user.status === "banned" || user.status === "deleted") {
+    // 检查账号状态：先处理deleted，因为已注销账号不应该显示为"存在"
+    if (user.status === "deleted") {
+      return NextResponse.json({
+        exists: false, // 已注销账号，视为不存在
+        message: "该账号未注册",
+      });
+    }
+
+    // 检查是否被永久封禁
+    if (user.status === "banned") {
+      return NextResponse.json({
+        exists: true,
+        status: "banned",
+        message: "该账号已被永久封禁",
+      });
+    }
+
+    // 检查是否被禁用
+    if (user.status === "inactive") {
       return NextResponse.json({
         exists: true,
         status: "disabled",
-        message: "该账号已被封禁",
+        message: "账号已被禁用，请联系管理员",
+      });
+    }
+
+    // 检查是否正在注销中
+    if (user.status === "deleting") {
+      return NextResponse.json({
+        exists: true,
+        status: "deleting",
+        message: "账号正在注销中",
       });
     }
 

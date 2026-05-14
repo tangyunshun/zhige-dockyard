@@ -334,7 +334,7 @@ export default function UserMembershipPage() {
                 升级会员
               </button>
               <button 
-                onClick={() => router.push("/admin/membership")}
+                onClick={() => router.push("/admin/membership/levels")}
                 className="px-8 py-3 bg-white border-2 border-[#f59e0b] text-[#f59e0b] rounded-xl font-semibold hover:bg-[#f59e0b]/5 transition-all duration-300"
               >
                 查看会员套餐
@@ -356,7 +356,7 @@ export default function UserMembershipPage() {
               享受所有会员权益，如有任何问题请联系客服
             </p>
             <button 
-              onClick={() => router.push("/admin/membership")}
+              onClick={() => router.push("/admin/membership/levels")}
               className="px-8 py-3 bg-white border-2 border-[#10b981] text-[#10b981] rounded-xl font-semibold hover:bg-green-50 transition-all duration-300"
             >
               查看会员套餐

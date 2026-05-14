@@ -109,7 +109,7 @@ export default function WorkspacePostsPage() {
         setPosts(data.posts || []);
       }
     } catch (error) {
-      console.error("Load error:", error);
+      console.warn("Load error:", error);
     } finally {
       setLoading(false);
     }
@@ -162,7 +162,7 @@ export default function WorkspacePostsPage() {
         await loadWorkspace();
       }
     } catch (error) {
-      console.error("Delete post error:", error);
+      console.warn("Delete post error:", error);
     }
   };
 

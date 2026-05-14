@@ -62,7 +62,7 @@ export default function UserSecurityPage() {
         setLoginHistory(data.loginHistory || []);
       }
     } catch (error) {
-      console.error("Load login history error:", error);
+      console.warn("Load login history error:", error);
     } finally {
       setHistoryLoading(false);
     }

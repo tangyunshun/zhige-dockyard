@@ -48,6 +48,22 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
 
+    response.cookies.set("session_token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+    });
+
+    response.cookies.set("refresh_token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+    });
+
     return response;
   } catch (error) {
     console.error("Logout error:", error);

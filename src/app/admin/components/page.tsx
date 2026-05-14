@@ -111,7 +111,7 @@ export default function AdminComponentsPage() {
     endDate: "",
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedComponents, setSelectedComponents] = useState<ComponentTask[]>(
+  const [selectedComponents, setSelectedComponents] = useState<Component[]>(
     [],
   );
   const [currentPage, setCurrentPage] = useState(1);

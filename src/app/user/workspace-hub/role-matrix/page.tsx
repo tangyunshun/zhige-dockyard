@@ -92,7 +92,7 @@ export default function RoleMatrixPage() {
         throw new Error(data.error);
       }
     } catch (err) {
-      console.error("加载权限矩阵失败:", err);
+      console.warn("加载权限矩阵失败:", err);
     } finally {
       setLoading(false);
     }

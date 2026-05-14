@@ -1412,7 +1412,7 @@ export default function AdminUsersPage() {
                     <div className="text-xs text-slate-500 font-medium">
                       状态
                     </div>
-                    <div>{getStatusBadge(viewingUser)}</div>
+                    <div>{getAccountStatusBadge(viewingUser.status)}</div>
                   </div>
                   <div className="space-y-1">
                     <div className="text-xs text-slate-500 font-medium">

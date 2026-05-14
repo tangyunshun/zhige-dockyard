@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       // 1. 账号状态必须是 active
       // 2. 有 sessionToken 且未过期
       // 3. lastForcedLogoutAt 为 null
-      // 4. lastLoginAt 在 5 分钟内（300 秒）
+      // 注意：不再严格要求 lastLoginAt 在 5 分钟内，只要 sessionToken 有效就算在线
       let isOnline = false;
       
       if (user.status === 'active') {
@@ -81,19 +81,8 @@ export async function GET(request: NextRequest) {
           const sessionExpired = new Date(user.sessionExpiresAt).getTime() < Date.now();
           
           if (!sessionExpired) {
-            // 会话未过期，检查用户是否活跃（5 分钟内）
-            const now = Date.now();
-            const lastLoginTime = user.lastLoginAt ? new Date(user.lastLoginAt).getTime() : 0;
-            const timeSinceLastLogin = (now - lastLoginTime) / 1000; // 秒
-            const isActiveRecently = timeSinceLastLogin < 300 && timeSinceLastLogin > 0; // 5 分钟内且 lastLoginAt 有效
-            
-            if (isActiveRecently) {
-              // 用户 5 分钟内有活跃记录且会话未过期，判定为在线
-              isOnline = true;
-            } else {
-              // 用户超过 5 分钟未活跃或 lastLoginAt 无效，判定为离线
-              isOnline = false;
-            }
+            // 会话未过期，判定为在线（不再严格要求 5 分钟内有操作）
+            isOnline = true;
           } else {
             // 会话已过期，判定为离线
             isOnline = false;

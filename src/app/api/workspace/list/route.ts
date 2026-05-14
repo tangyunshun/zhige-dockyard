@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       workspaces: workspacesWithComponents,
     });
   } catch (error) {
-    console.error("Get workspace list error:", error);
+    console.warn("Get workspace list error:", error);
     return NextResponse.json(
       { error: "获取工作空间列表失败" },
       { status: 500 },

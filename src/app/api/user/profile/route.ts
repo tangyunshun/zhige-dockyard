@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
         role: true,
         status: true,
         membershipLevel: true,
-        bio: true,
         createdAt: true,
+        deletionRequestedAt: true,
       },
     });
 
@@ -30,16 +30,39 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
     }
 
+    let isPendingDeletion = false;
+    let deletionDeadline: string | null = null;
+    let daysRemaining: number | null = null;
+
+    if (user.deletionRequestedAt) {
+      const deletionDate = new Date(user.deletionRequestedAt);
+      const now = new Date();
+      const deletionDeadlineDate = new Date(
+        deletionDate.getTime() + 7 * 24 * 60 * 60 * 1000,
+      );
+
+      if (now < deletionDeadlineDate) {
+        isPendingDeletion = true;
+        deletionDeadline = deletionDeadlineDate.toISOString();
+        daysRemaining = Math.ceil(
+          (deletionDeadlineDate.getTime() - now.getTime()) /
+            (24 * 60 * 60 * 1000),
+        );
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: user,
+      user: {
+        isPendingDeletion,
+        deletionDeadline,
+        daysRemaining,
+      },
     });
   } catch (error) {
     console.error("Get profile error:", error);
-    return NextResponse.json(
-      { error: "获取用户信息失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "获取用户信息失败" }, { status: 500 });
   }
 }
 
@@ -58,7 +81,7 @@ export async function PUT(request: NextRequest) {
     if (!name || !email || !phone) {
       return NextResponse.json(
         { error: "昵称、邮箱和手机号不能为空" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -71,10 +94,7 @@ export async function PUT(request: NextRequest) {
     });
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: "该邮箱已被使用" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "该邮箱已被使用" }, { status: 400 });
     }
 
     // 更新用户信息
@@ -84,7 +104,6 @@ export async function PUT(request: NextRequest) {
         name,
         email,
         phone,
-        bio: bio || null,
       },
       select: {
         id: true,
@@ -92,7 +111,6 @@ export async function PUT(request: NextRequest) {
         email: true,
         phone: true,
         avatar: true,
-        bio: true,
       },
     });
 
@@ -103,9 +121,6 @@ export async function PUT(request: NextRequest) {
     });
   } catch (error) {
     console.error("Update profile error:", error);
-    return NextResponse.json(
-      { error: "更新用户信息失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "更新用户信息失败" }, { status: 500 });
   }
 }

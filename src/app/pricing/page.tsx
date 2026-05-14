@@ -54,13 +54,17 @@ import {
   FileSpreadsheet,
   ArrowUpRight,
   ChevronRight,
+  Trophy,
+  Gem,
+  Diamond,
 } from "lucide-react";
 
 interface MembershipPlan {
   name: string;
   nameZh: string;
   description: string;
-  icon: string;
+  icon?: string;
+  iconComponent?: React.ElementType;
   color: string;
   priceMonthly: number;
   priceYearly: number;
@@ -73,6 +77,8 @@ interface MembershipPlan {
   maxApiCalls: number;
   recommended?: boolean;
   popular?: boolean;
+  level?: string;
+  gradient?: string;
 }
 
 interface SpaceType {
@@ -112,8 +118,21 @@ export default function PricingPage() {
         // 暂时使用默认值
       }
     } catch (error) {
-      console.error("Load user info error:", error);
+      console.warn("Load user info error:", error);
     }
+  };
+
+  const getMembershipIcon = (planName: string): React.ElementType => {
+    const iconMap: Record<string, React.ElementType> = {
+      FREE: Star,
+      BRONZE: Award,
+      SILVER: Trophy,
+      GOLD: Crown,
+      PLATINUM: Gem,
+      DIAMOND: Diamond,
+      CROWN: Crown,
+    };
+    return iconMap[planName] || Star;
   };
 
   const loadMembershipPlans = async () => {
@@ -135,7 +154,7 @@ export default function PricingPage() {
         toast.error("加载会员等级失败");
       }
     } catch (error) {
-      console.error("Load membership plans error:", error);
+      console.warn("Load membership plans error:", error);
       toast.error("加载会员等级失败");
     } finally {
       setLoadingPlans(false);
@@ -472,8 +491,8 @@ export default function PricingPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {membershipPlans.map((plan) => {
-                const Icon = plan.icon;
-                const isCurrentPlan = currentMembership === plan.level;
+                const Icon = getMembershipIcon(plan.name);
+                const isCurrentPlan = currentMembership === plan.name;
                 const price =
                   billingPeriod === "monthly"
                     ? plan.priceMonthly
@@ -481,7 +500,7 @@ export default function PricingPage() {
 
                 return (
                   <div
-                    key={plan.level}
+                    key={plan.name}
                     className={`relative rounded-2xl p-6 transition-all duration-300 hover:-translate-y-2 ${
                       plan.recommended || plan.popular
                         ? "bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 border-2 border-[#3182ce] shadow-xl shadow-[#3182ce]/20"
@@ -551,7 +570,7 @@ export default function PricingPage() {
 
                     {/* 操作按钮 */}
                     <button
-                      onClick={() => handleUpgradeMembership(plan.level)}
+                      onClick={() => handleUpgradeMembership(plan.name)}
                       disabled={loading || isCurrentPlan}
                       className={`w-full py-3 rounded-xl font-bold transition-all ${
                         isCurrentPlan
@@ -604,7 +623,7 @@ export default function PricingPage() {
                   </th>
                   {membershipPlans.map((plan) => (
                     <th
-                      key={plan.level}
+                      key={plan.name}
                       className="text-center py-4 px-4 font-bold"
                       style={{ color: plan.color }}
                     >
@@ -620,12 +639,12 @@ export default function PricingPage() {
                     团队规模
                   </td>
                   {membershipPlans.map((plan) => (
-                    <td key={plan.level} className="text-center py-4 px-4">
-                      {plan.level === "CROWN" ? (
+                    <td key={plan.name} className="text-center py-4 px-4">
+                      {plan.name === "CROWN" ? (
                         <span className="font-bold text-[#10b981]">无限</span>
                       ) : (
                         <span className="text-slate-700">
-                          {getMembershipConfig(plan.level).maxTeamSize}人
+                          {getMembershipConfig(plan.name).maxTeamSize}人
                         </span>
                       )}
                     </td>
@@ -637,8 +656,8 @@ export default function PricingPage() {
                     空间配额
                   </td>
                   {membershipPlans.map((plan) => (
-                    <td key={plan.level} className="text-center py-4 px-4">
-                      {plan.level === "CROWN" ? (
+                    <td key={plan.name} className="text-center py-4 px-4">
+                      {plan.name === "CROWN" ? (
                         <span className="font-bold text-[#10b981]">
                           1 个个人空间
                           <br />+ 无限企业空间
@@ -648,7 +667,7 @@ export default function PricingPage() {
                           1 个个人空间
                           <br />+{" "}
                           {
-                            getMembershipConfig(plan.level)
+                            getMembershipConfig(plan.name)
                               .maxEnterpriseWorkspaces
                           }
                           个企业空间
@@ -663,12 +682,12 @@ export default function PricingPage() {
                     组件数量
                   </td>
                   {membershipPlans.map((plan) => (
-                    <td key={plan.level} className="text-center py-4 px-4">
-                      {plan.level === "CROWN" ? (
+                    <td key={plan.name} className="text-center py-4 px-4">
+                      {plan.name === "CROWN" ? (
                         <span className="font-bold text-[#10b981]">无限</span>
                       ) : (
                         <span className="text-slate-700">
-                          {getMembershipConfig(plan.level).maxComponents}个
+                          {getMembershipConfig(plan.name).maxComponents}个
                         </span>
                       )}
                     </td>
@@ -680,13 +699,13 @@ export default function PricingPage() {
                     存储空间
                   </td>
                   {membershipPlans.map((plan) => (
-                    <td key={plan.level} className="text-center py-4 px-4">
-                      {plan.level === "CROWN" ? (
+                    <td key={plan.name} className="text-center py-4 px-4">
+                      {plan.name === "CROWN" ? (
                         <span className="font-bold text-[#10b981]">无限</span>
                       ) : (
                         <span className="text-slate-700">
                           {(
-                            getMembershipConfig(plan.level).maxStorage / 1024
+                            getMembershipConfig(plan.name).maxStorage / 1024
                           ).toFixed(0)}
                           GB
                         </span>
@@ -700,10 +719,10 @@ export default function PricingPage() {
                     组件库权限
                   </td>
                   {membershipPlans.map((plan) => (
-                    <td key={plan.level} className="text-center py-4 px-4">
-                      {plan.level === "FREE" || plan.level === "BRONZE" ? (
+                    <td key={plan.name} className="text-center py-4 px-4">
+                      {plan.name === "FREE" || plan.name === "BRONZE" ? (
                         <span className="text-slate-600">基础</span>
-                      ) : plan.level === "DIAMOND" || plan.level === "CROWN" ? (
+                      ) : plan.name === "DIAMOND" || plan.name === "CROWN" ? (
                         <span className="font-bold text-[#f59e0b]">
                           全量 + 专属
                         </span>
@@ -720,12 +739,12 @@ export default function PricingPage() {
                   </td>
                   {membershipPlans.map((plan) => (
                     <td
-                      key={plan.level}
+                      key={plan.name}
                       className="text-center py-4 px-4 text-sm"
                     >
-                      {plan.level === "FREE" ? (
+                      {plan.name === "FREE" ? (
                         <span className="text-slate-600">标准</span>
-                      ) : plan.level === "CROWN" ? (
+                      ) : plan.name === "CROWN" ? (
                         <span className="font-bold text-[#f59e0b]">
                           7×24 专属
                         </span>
@@ -741,10 +760,10 @@ export default function PricingPage() {
                     数据分析
                   </td>
                   {membershipPlans.map((plan) => (
-                    <td key={plan.level} className="text-center py-4 px-4">
-                      {plan.level === "FREE" ? (
+                    <td key={plan.name} className="text-center py-4 px-4">
+                      {plan.name === "FREE" ? (
                         <X className="w-4 h-4 text-slate-300 mx-auto" />
-                      ) : plan.level === "CROWN" ? (
+                      ) : plan.name === "CROWN" ? (
                         <span className="font-bold text-[#f59e0b]">
                           高级 + 导出
                         </span>
@@ -760,12 +779,12 @@ export default function PricingPage() {
                     主题自定义
                   </td>
                   {membershipPlans.map((plan) => (
-                    <td key={plan.level} className="text-center py-4 px-4">
-                      {plan.level === "FREE" || plan.level === "BRONZE" ? (
+                    <td key={plan.name} className="text-center py-4 px-4">
+                      {plan.name === "FREE" || plan.name === "BRONZE" ? (
                         <X className="w-4 h-4 text-slate-300 mx-auto" />
-                      ) : plan.level === "GOLD" ||
-                        plan.level === "DIAMOND" ||
-                        plan.level === "CROWN" ? (
+                      ) : plan.name === "GOLD" ||
+                        plan.name === "DIAMOND" ||
+                        plan.name === "CROWN" ? (
                         <span className="font-bold text-[#f59e0b]">
                           完全自定义
                         </span>

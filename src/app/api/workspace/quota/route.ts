@@ -116,9 +116,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Get quota error:", error);
-    console.error("Get quota error - message:", error instanceof Error ? error.message : "unknown");
-    console.error("Get quota error - stack:", error instanceof Error ? error.stack : "no stack");
+    console.warn("Get quota error:", error);
+    console.warn("Get quota error - message:", error instanceof Error ? error.message : "unknown");
+    console.warn("Get quota error - stack:", error instanceof Error ? error.stack : "no stack");
     return NextResponse.json({ error: "获取配额信息失败" }, { status: 500 });
   }
 }

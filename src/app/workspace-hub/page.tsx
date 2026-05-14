@@ -798,7 +798,7 @@ export default function WorkspaceHub() {
         return;
       }
 
-      const quotaRes = await fetch("/api/workspace/quota", {
+      const quotaRes = await fetch("/api/user/workspace-hub/quota", {
         headers: {
           Authorization: `Bearer ${userId}`,
         },
@@ -819,7 +819,7 @@ export default function WorkspaceHub() {
         }
       } else {
         const errorText = await quotaRes.text();
-        console.error("加载配额信息失败:", errorText);
+        console.warn("加载配额信息失败:", errorText);
 
         // 如果是 401 或 404 错误，说明用户未授权或不存在，需要重新登录
         if (quotaRes.status === 401 || quotaRes.status === 404) {
@@ -969,14 +969,10 @@ export default function WorkspaceHub() {
       if (checkData.issues && checkData.issues.length > 0) {
         setCheckingDelete(false);
         setWorkspaceToDelete(null);
-        toast.error(
-          <div className="space-y-1">
-            <div className="font-bold">❌ 无法注销，存在以下问题：</div>
-            {checkData.issues.map((issue: string, index: number) => (
-              <div key={index}>• {issue}</div>
-            ))}
-          </div>,
-        );
+        const errorMessage = checkData.issues.length > 0
+          ? `❌ 无法注销：${checkData.issues.join('；')}`
+          : "❌ 无法注销，存在未知问题";
+        toast.error(errorMessage);
         return;
       }
 
@@ -984,7 +980,7 @@ export default function WorkspaceHub() {
       setCheckingDelete(false);
       setShowDeleteModal(true);
     } catch (error) {
-      console.error("Check delete workspace error:", error);
+      console.warn("Check delete workspace error:", error);
       setCheckingDelete(false);
       setWorkspaceToDelete(null);
       toast.error(error instanceof Error ? error.message : "检查失败");
@@ -1026,7 +1022,7 @@ export default function WorkspaceHub() {
         throw new Error(errorMsg);
       }
     } catch (error) {
-      console.error("Create personal workspace error:", error);
+      console.warn("Create personal workspace error:", error);
       toast.error(error instanceof Error ? error.message : "创建失败");
     }
   };
@@ -1160,7 +1156,7 @@ export default function WorkspaceHub() {
         }
       }
     } catch (error) {
-      console.error("Recreate personal workspace error:", error);
+      console.warn("Recreate personal workspace error:", error);
       toast.error(error instanceof Error ? error.message : "创建失败");
     }
   };
@@ -1438,7 +1434,7 @@ export default function WorkspaceHub() {
       toast.success("邀请码生成成功");
       await loadShareableWorkspaces();
     } catch (error) {
-      console.error("生成邀请码失败:", error);
+      console.warn("生成邀请码失败:", error);
       toast.error(error instanceof Error ? error.message : "生成失败");
     } finally {
       setGenerating(false);

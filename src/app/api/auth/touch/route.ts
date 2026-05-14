@@ -36,13 +36,17 @@ export async function POST(request: NextRequest) {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as string;
 
-    // 先检查用户当前的活跃时间
+    // 检查用户当前的活跃时间和会话过期时间
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         lastLoginAt: true,
         status: true,
         lastForcedLogoutAt: true,
+        sessionToken: true,
+        sessionExpiresAt: true,
+        role: true,
+        passwordChangedAt: true,
       },
     });
 
@@ -50,29 +54,95 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
     }
 
-    // 检查用户是否被强制下线
+    // ========== 最优先检查：账号状态 ==========
+    if (user.status === "deleted") {
+      return NextResponse.json(
+        { error: "ACCOUNT_DELETED", message: "您的账号已被注销" },
+        { status: 401 },
+      );
+    }
+
+    if (user.status === "banned") {
+      return NextResponse.json(
+        { error: "ACCOUNT_DISABLED", message: "您的账号已被永久封禁" },
+        { status: 403 },
+      );
+    }
+
+    if (user.status === "inactive") {
+      return NextResponse.json(
+        { error: "ACCOUNT_DISABLED", message: "您的账号已被禁用，请联系管理员" },
+        { status: 403 },
+      );
+    }
+
+    // 保存当前sessionToken用于后续挤线检测
+    const currentSessionToken = user.sessionToken;
+
+    // 检查用户是否真的登录过（有有效的会话）
+    // 如果sessionToken为空，说明用户从未登录或会话已失效
+    if (!currentSessionToken || !user.sessionExpiresAt) {
+      console.log(
+        "[API /auth/touch] 用户 " +
+          userId +
+          " 没有有效的会话（sessionToken为空）",
+      );
+      return NextResponse.json(
+        { error: "SESSION_TIMEOUT", message: "您已长时间未操作，请重新登录" },
+        { status: 401 },
+      );
+    }
+
+    // 验证当前请求中的sessionToken是否与数据库中的一致（挤线检测）
+    const requestSessionToken = request.cookies.get("session_token")?.value;
+
+    if (currentSessionToken && requestSessionToken && requestSessionToken !== currentSessionToken) {
+      // sessionToken不匹配，说明被其他设备挤下线
+      console.log(
+        "[API /auth/touch] 用户 " +
+          userId +
+          " sessionToken 不匹配，被其他设备挤下线",
+      );
+      return NextResponse.json(
+        { error: "MULTI_LOGIN_CONFLICT", message: "您的账号在另一处登录，您已被下线" },
+        { status: 401 },
+      );
+    }
+
+    if (!currentSessionToken && requestSessionToken) {
+      // 数据库sessionToken被清空但请求中仍有session_token cookie，说明被管理员强制下线
+      console.log(
+        "[API /auth/touch] 用户 " +
+          userId +
+          " sessionToken已被清空，被管理员强制下线",
+      );
+      return NextResponse.json(
+        { error: "FORCED_LOGOUT", message: "您已被管理员强制下线，请重新登录" },
+        { status: 401 },
+      );
+    }
+
+    // 检查用户是否被强制下线（2分钟宽限期）
     if (user.lastForcedLogoutAt) {
       const now = new Date().getTime();
       const forcedLogoutTime = new Date(user.lastForcedLogoutAt).getTime();
-      const timeSinceForcedLogout = (now - forcedLogoutTime) / 1000 / 60; // 分钟
+      const timeSinceForcedLogout = (now - forcedLogoutTime) / 1000 / 60;
 
-      // 2 分钟宽限期：被强制下线后 2 分钟内仍然允许更新
       if (timeSinceForcedLogout < 2) {
         console.log(
           "[API /auth/touch] 用户 " +
             userId +
             " 被强制下线" +
             timeSinceForcedLogout.toFixed(1) +
-            " 分钟，仍在宽限期内，允许更新活跃时间",
+            " 分钟，仍在宽限期内",
         );
       } else {
-        // 超过 2 分钟宽限期，拒绝访问
         console.log(
           "[API /auth/touch] 用户 " +
             userId +
             " 被强制下线" +
             timeSinceForcedLogout.toFixed(1) +
-            " 分钟，已超过宽限期，拒绝更新",
+            " 分钟，已超过宽限期",
         );
         return NextResponse.json(
           {
@@ -84,21 +154,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 检查用户状态
-    if (user.status !== "active") {
+    // 检查角色是否变更（场景22：角色权限变更强制重登）
+    // 如果角色发生变化，说明权限被修改，需要重新登录刷新权限
+    // 注意：这个检测需要前端配合，前端应该存储role并在每次请求时验证
+    // 这里我们只检测，如果需要可以扩展为完整的权限验证
+    const tokenRole = payload.role as string;
+    if (user.role !== tokenRole) {
       console.log(
         "[API /auth/touch] 用户 " +
           userId +
-          " 状态异常 (" +
-          user.status +
-          ")，拒绝更新",
+          " 角色已变更 (" +
+          tokenRole +
+          " -> " +
+          user.role +
+          ")，要求重新登录",
       );
       return NextResponse.json(
-        {
-          error: "ACCOUNT_DISABLED",
-          message: "您的账号状态异常，请联系管理员",
-        },
-        { status: 403 },
+        { error: "ROLE_CHANGED", message: "您的账号权限已变更，请重新登录" },
+        { status: 401 },
+      );
+    }
+
+    // 检查会话是否已过期（固定时效过期）
+    if (user.sessionExpiresAt && new Date(user.sessionExpiresAt) < new Date()) {
+      console.log(
+        "[API /auth/touch] 用户 " +
+          userId +
+          " 会话已过期（固定时效）",
+      );
+      return NextResponse.json(
+        { error: "SESSION_EXPIRED", message: "会话已过期，请重新登录" },
+        { status: 401 },
       );
     }
 
@@ -108,6 +194,7 @@ export async function POST(request: NextRequest) {
       ? new Date(user.lastLoginAt).getTime()
       : 0;
     const timeSinceLastLogin = (now - lastLoginTime) / 1000; // 秒
+
     if (timeSinceLastLogin > 300) {
       // 超过 5 分钟未操作，会话已失效，需要重新登录
       console.log(

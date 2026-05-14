@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Verify user error:", error);
+    console.warn("Verify user error:", error);
     return NextResponse.json(
       { error: "验证失败" },
       { status: 500 }

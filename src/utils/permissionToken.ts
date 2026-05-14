@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿/**
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿/**
  * PermissionToken 工具函数
  * 用于生成和解析组件权限相关的 Token
  */
@@ -87,7 +87,7 @@ export function hasPermissionToken(
 export function mapPermissionTypeToAction(
   permissionType: keyof ComponentPermission
 ): "view" | "edit" | "delete" | "execute" | null {
-  const mapping: Record<keyof ComponentPermission, string> = {
+  const mapping: Record<string, string> = {
     canView: "view",
     canEdit: "edit",
     canDelete: "delete",

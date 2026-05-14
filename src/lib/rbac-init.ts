@@ -3,7 +3,7 @@
  * 用于在创建工作空间时初始化默认的岗位和权限数据
  */
 
-import prisma from "./prisma";
+import { prisma } from "./prisma";
 import { COMPONENTS } from "@/constants/components";
 import { POST_PERMISSION_TEMPLATES } from "@/constants/roles";
 

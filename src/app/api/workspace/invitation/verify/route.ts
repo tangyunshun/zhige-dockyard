@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("验证邀请码错误:", error);
+    console.warn("验证邀请码错误:", error);
     return NextResponse.json(
       { error: "验证邀请码失败" },
       { status: 500 },

@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from 'next/server';
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { SignJWT } from 'jose';
 
@@ -239,7 +239,7 @@ export async function GET(request: NextRequest) {
     const userInfo = await userInfoResponse.json();
 
     if (userInfo.ret !== 0) {
-      console.error('QQ 用户信息获取失败:', userInfo);
+      console.warn('QQ 用户信息获取失败:', userInfo);
       return NextResponse.redirect('/auth/login?error=qq_userinfo_failed');
     }
 

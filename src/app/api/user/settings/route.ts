@@ -59,7 +59,7 @@ export async function PUT(req: NextRequest) {
       data: user.preferences || {},
     });
   } catch (error) {
-    console.error("Update user settings error:", error);
+    console.warn("Update user settings error:", error);
     return NextResponse.json(
       { error: "更新用户设置失败" },
       { status: 500 }

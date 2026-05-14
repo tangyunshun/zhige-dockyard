@@ -101,7 +101,7 @@ function CreateEnterpriseWorkspaceForm() {
         return;
       }
 
-      const res = await fetch("/api/workspace/quota", {
+      const res = await fetch("/api/user/workspace-hub/quota", {
         headers: {
           Authorization: `Bearer ${userId}`,
         },
@@ -134,7 +134,7 @@ function CreateEnterpriseWorkspaceForm() {
         }
       }
     } catch (error) {
-      console.error("Load quota error:", error);
+      console.warn("Load quota error:", error);
     }
   };
 
@@ -382,7 +382,7 @@ function CreateEnterpriseWorkspaceForm() {
         router.push(`/workspace-hub`);
       }
     } catch (error) {
-      console.error("Workspace operation error:", error);
+      console.warn("Workspace operation error:", error);
       const errorMessage =
         error instanceof Error ? error.message : "操作失败，请稍后重试";
       toast.error(errorMessage);

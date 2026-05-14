@@ -1,27 +1,97 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useToast } from "./Toast";
+import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 
 /**
- * 全局活跃时间监控组件
+ * 全局会话超时遮罩层组件
  *
  * 功能：
- * - 监听用户操作（点击、滚动、按键等）
- * - 在用户操作时立即检查是否超过 5 分钟未操作
- * - 如果超时，显示提示语，然后立即跳转登录页
- * - 全局拦截 401 错误，统一处理
+ * - 在用户超过5分钟无操作时显示遮罩层
+ * - 弹出提示弹窗，内容为"会话已过期，请重新登录"
+ * - 弹窗底部包含"确定"按钮
+ * - 用户点击"确定"按钮后，系统立即自动重定向至登录页面
  */
 
+interface SessionTimeoutOverlayProps {
+  show: boolean;
+  onConfirm: () => void;
+}
+
+function SessionTimeoutOverlay({ show, onConfirm }: SessionTimeoutOverlayProps) {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[99999]">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-6 relative">
+        <div className="text-center">
+          <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-7 h-7 text-orange-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-bold text-slate-800 mb-2">
+            会话已过期
+          </h3>
+          <p className="text-sm text-slate-600 mb-6">
+            您已超过5分钟未进行任何操作，请重新登录
+          </p>
+          <button
+            onClick={onConfirm}
+            className="w-full px-4 py-2.5 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors"
+          >
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ActivityMonitor() {
+  const lastActivityRef = useRef<number>(Date.now());
   const lastCheckRef = useRef<number>(0);
   const checkingRef = useRef<boolean>(false);
-  const toast = useToast();
+  const [showTimeoutOverlay, setShowTimeoutOverlay] = useState(false);
+
+  const TIMEOUT_DURATION = 5 * 60 * 1000; // 5分钟
+  const CHECK_INTERVAL = 10000; // 每10秒检查一次
+
+  const handleSessionTimeout = () => {
+    console.log("[ActivityMonitor] 检测到会话超时，显示遮罩层");
+
+    // 清除所有存储
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userName");
+    sessionStorage.clear();
+    document.cookie = "auth_token=; path=/; max-age=0";
+
+    // 显示遮罩层
+    setShowTimeoutOverlay(true);
+  };
+
+  const handleConfirmTimeout = () => {
+    console.log("[ActivityMonitor] 用户确认超时，跳转到登录页");
+    window.location.href = "/auth/login";
+  };
 
   // 检查是否超时
   const checkTimeout = async () => {
-    // 如果正在检查，跳过
-    if (checkingRef.current) {
+    // 如果正在检查或已显示遮罩层，跳过
+    if (checkingRef.current || showTimeoutOverlay) {
       return;
     }
 
@@ -40,27 +110,17 @@ export function ActivityMonitor() {
         ? sessionStorage.getItem("just_showed_logout") === "true"
         : false;
 
-    // 关键检查：用户必须已登录（有 userId 且有 auth_token）且不在退出登录过程中
+    // 关键检查：用户必须已登录且不在退出登录过程中
     if (isLoggingOut || justShowedLogout) {
-      console.log("[ActivityMonitor] 用户正在退出登录或刚显示退出提示，跳过检查", {
-        isLoggingOut,
-        justShowedLogout,
-      });
-      checkingRef.current = false;
       return;
     }
 
     if (!userId || !hasCookie) {
-      console.log("[ActivityMonitor] 用户未登录，跳过检查", {
-        userId,
-        hasCookie,
-      });
-      checkingRef.current = false;
       return;
     }
 
     const now = Date.now();
-    // 距离上次检查至少 5 秒才再次检查，避免过于频繁
+    // 距离上次检查至少 5 秒才再次检查
     if (now - lastCheckRef.current < 5000) {
       return;
     }
@@ -77,21 +137,9 @@ export function ActivityMonitor() {
         },
       });
 
-      console.log("[ActivityMonitor] /api/auth/touch 响应状态:", res.status);
-
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const errorCode = errorData.error || "SESSION_TIMEOUT";
-        console.log("[ActivityMonitor] 检测到超时或错误:", errorCode);
-
-        // 清除所有存储
-        localStorage.removeItem("userId");
-        localStorage.removeItem("userRole");
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("userEmail");
-        localStorage.removeItem("userName");
-        sessionStorage.clear();
-        document.cookie = "auth_token=; path=/; max-age=0";
 
         // 判断错误类型
         if (
@@ -99,20 +147,16 @@ export function ActivityMonitor() {
           errorData.message?.includes("管理员强制下线")
         ) {
           // 被管理员强制下线（宽限期已过）
-          toast.error("您已被管理员强制下线，请重新登录", 1500);
+          handleSessionTimeout();
         } else {
           // 超时（超过 5 分钟未操作）
-          toast.error("您已长时间未操作，请重新登录", 1500);
+          handleSessionTimeout();
         }
-
-        // 等待 toast 消失后再跳转（1.6 秒，确保 toast 完全消失）
-        setTimeout(() => {
-          window.location.href = "/auth/login";
-        }, 1600);
         return;
       }
 
-      console.log("[ActivityMonitor] 用户活跃，未超时");
+      // 用户活跃，重置活动时间
+      lastActivityRef.current = now;
     } catch (error) {
       console.error("[ActivityMonitor] 检查超时失败:", error);
     } finally {
@@ -126,13 +170,35 @@ export function ActivityMonitor() {
     // 监听用户交互事件
     const events = ["mousedown", "keydown", "scroll", "touchstart", "click"];
 
-    const handleEvent = () => {
+    const handleActivity = () => {
+      // 用户活动时更新活动时间
+      lastActivityRef.current = Date.now();
+      // 立即检查是否超时
       checkTimeout();
     };
 
     events.forEach((event) => {
-      document.addEventListener(event, handleEvent, { passive: true });
+      document.addEventListener(event, handleActivity, { passive: true });
     });
+
+    // 定期检查超时（每10秒）
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const timeSinceActivity = now - lastActivityRef.current;
+
+      if (timeSinceActivity >= TIMEOUT_DURATION) {
+        // 检查用户是否已登录
+        const userId = localStorage.getItem("userId");
+        const hasCookie = document.cookie.includes("auth_token=");
+
+        if (userId && hasCookie && !showTimeoutOverlay) {
+          handleSessionTimeout();
+        }
+      } else {
+        // 未超时，检查服务器端超时
+        checkTimeout();
+      }
+    }, CHECK_INTERVAL);
 
     // 监听页面获得焦点（用户从其他标签页切换回来）
     const handleVisibilityChange = () => {
@@ -148,12 +214,17 @@ export function ActivityMonitor() {
     return () => {
       console.log("[ActivityMonitor] 停止监听");
       events.forEach((event) => {
-        document.removeEventListener(event, handleEvent);
+        document.removeEventListener(event, handleActivity);
       });
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearInterval(intervalId);
     };
-  }, []);
+  }, [showTimeoutOverlay]);
 
-  // 不渲染任何内容
-  return null;
+  return (
+    <SessionTimeoutOverlay
+      show={showTimeoutOverlay}
+      onConfirm={handleConfirmTimeout}
+    />
+  );
 }

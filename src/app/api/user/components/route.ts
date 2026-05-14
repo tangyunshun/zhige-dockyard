@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       data: components,
     });
   } catch (error) {
-    console.error("Get user components error:", error);
+    console.warn("Get user components error:", error);
     return NextResponse.json(
       { error: "获取用户组件失败" },
       { status: 500 }

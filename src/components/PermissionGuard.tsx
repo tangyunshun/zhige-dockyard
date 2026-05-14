@@ -25,7 +25,7 @@ export default function PermissionGuard({
   postId,
   fallback = null,
 }: PermissionGuardProps) {
-  const { hasPermission, loading } = useComponentPermissions(workspaceId, postId);
+  const { hasPermission, loading } = useComponentPermissions(workspaceId || null, postId || null);
 
   if (loading) {
     return (
@@ -52,10 +52,10 @@ export function usePermissionGuard(
   workspaceId?: string | null,
   postId?: string | null
 ) {
-  const { hasPermission, loading } = useComponentPermissions(workspaceId, postId);
+  const { hasPermission, loading } = useComponentPermissions(workspaceId ?? null, postId ?? null);
 
   return {
-    hasAccess: hasPermission(componentId, requiredAction),
+    hasAccess: hasPermission(componentId, requiredAction ?? "canView"),
     loading,
   };
 }
