@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { generateSmsCode, storeSmsCode } from "@/lib/sms-store";
 
 export async function POST(request: NextRequest) {

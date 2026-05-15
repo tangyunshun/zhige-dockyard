@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 // TODO: 实现邮箱验证码验证逻辑
 export async function POST(request: NextRequest) {

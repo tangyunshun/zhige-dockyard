@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { BarChart3, TrendingUp, Users, Activity } from "lucide-react";
 

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { WorkspaceType } from '@prisma/client';
 import { validateWorkspaceName } from '@/lib/workspace-validators';
