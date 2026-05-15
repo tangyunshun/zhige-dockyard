@@ -39,3 +39,6 @@ coverage
 
 # Misc
 .vercel
+backup/
+public/uploads/
+
