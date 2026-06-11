@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Settings, Search, Server, Sliders } from "lucide-react";
@@ -115,7 +115,7 @@ export default function AdminPreferencesPage() {
             用户偏好管理
           </h1>
           <p className="text-sm text-slate-600 font-medium">
-            AI 引擎配置与模型偏好设置
+            引擎配置与模型偏好设置
           </p>
         </div>
       </div>
@@ -186,7 +186,7 @@ export default function AdminPreferencesPage() {
             </div>
             <p className="text-slate-600 font-bold text-lg">暂无用户偏好数据</p>
             <p className="text-slate-500 text-sm mt-2">
-              AI 引擎配置与模型偏好设置将显示在这里
+              引擎配置与模型偏好设置将显示在这里
             </p>
           </div>
         ) : (

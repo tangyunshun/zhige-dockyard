@@ -1,11 +1,10 @@
-﻿"use client";
+"use client";
 
 import { Briefcase, PenTool, Blocks, TerminalSquare } from "lucide-react";
 
 export default function RoleCapabilities() {
   return (
     <>
-      {/* Section 5: Role-Based Solutions */}
       <section className="py-20 bg-white overflow-hidden">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
@@ -23,7 +22,6 @@ export default function RoleCapabilities() {
           </div>
 
           <div className="flex flex-col md:flex-row gap-12">
-            {/* Left: Tabs */}
             <div className="w-full md:w-1/3 flex flex-col gap-2">
               <div className="zg-card p-4 cursor-pointer transition-all bg-gradient-to-br from-blue-50/80 to-white border border-blue-200/50">
                 <div className="font-bold text-sm mb-1 flex items-center gap-2 text-[#3182ce]">
@@ -59,20 +57,17 @@ export default function RoleCapabilities() {
               </div>
             </div>
 
-            {/* Right: Content */}
             <div className="w-full md:w-2/3 bg-gradient-to-br from-slate-50/80 to-white rounded-xl p-8 border border-slate-200/60 shadow-lg shadow-slate-200/50 flex flex-col justify-between">
               <div>
                 <h3 className="text-2xl font-bold mb-2 text-slate-900">
                   从标书解析到沙盘，商机转化快人一步
                 </h3>
                 <p className="text-slate-500 text-sm mb-10 leading-relaxed">
-                  针对大客户复杂的 B 端采购需求，AI 能够在 5 分钟内完成以往 3
+                  针对大客户复杂的 B 端采购需求，能够在 5 分钟内完成以往 3
                   天的分析与筹备工作。
                 </p>
 
-                {/* Steps */}
                 <div className="relative flex flex-col md:flex-row gap-6 justify-between mb-8">
-                  {/* Step 1 */}
                   <div className="flex-1 space-y-3">
                     <div className="w-8 h-8 rounded-full bg-white border-2 border-[#3182ce] text-[#3182ce] flex items-center justify-center font-bold text-sm shadow-md">
                       1
@@ -81,10 +76,9 @@ export default function RoleCapabilities() {
                       上传标书
                     </div>
                     <p className="text-xs text-slate-500">
-                      支持 PDF, Word。AI 自动结构化。
+                      支持 PDF, Word。自动结构化。
                     </p>
                   </div>
-                  {/* Step 2 */}
                   <div className="flex-1 space-y-3">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2563eb] text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-[#3182ce]/30 animate-pulse">
                       2
@@ -96,7 +90,6 @@ export default function RoleCapabilities() {
                       正在匹配公司核心能力...
                     </p>
                   </div>
-                  {/* Step 3 */}
                   <div className="flex-1 space-y-3">
                     <div className="w-8 h-8 rounded-full bg-white border-2 border-slate-200 text-slate-400 flex items-center justify-center font-bold text-sm shadow-sm">
                       3
@@ -108,7 +101,6 @@ export default function RoleCapabilities() {
                       根据历史驻场测算毛利。
                     </p>
                   </div>
-                  {/* Step 4 */}
                   <div className="flex-1 space-y-3">
                     <div className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-300 flex items-center justify-center font-bold text-sm shadow-sm">
                       4
@@ -121,7 +113,6 @@ export default function RoleCapabilities() {
                 </div>
               </div>
 
-              {/* Data Benefit */}
               <div className="pt-6 border-t border-slate-200/60 grid grid-cols-3 gap-4">
                 <div>
                   <div className="text-2xl font-bold text-slate-800">x 12</div>

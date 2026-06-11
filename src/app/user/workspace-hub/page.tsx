@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -366,7 +366,7 @@ export default function WorkspaceHubPage() {
             </div>
             <h3 className="font-bold text-slate-800 mb-2">空间配置</h3>
             <p className="text-sm text-slate-500 mb-4">
-              针对当前空间的 AI 引擎、System Prompt 及数据清理进行深度调优
+              针对当前空间的引擎、System Prompt 及数据清理进行深度调优
             </p>
             <button
               onClick={() => router.push("/user/preference")}

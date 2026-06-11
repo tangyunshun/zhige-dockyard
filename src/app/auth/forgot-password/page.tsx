@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -987,7 +987,7 @@ export default function ForgotPasswordPage() {
             </div>
             <h1 className="text-2xl font-bold mb-2">知阁·舟坊</h1>
             <p className="text-blue-100 mb-6 text-sm">
-              全链路 AI 软件研发效能操作系统
+              全链路软件研发效能操作系统
             </p>
 
             <div className="space-y-3 text-left">
@@ -997,7 +997,7 @@ export default function ForgotPasswordPage() {
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
                 <CheckCircle className="w-4 h-4 text-green-300" />
-                <span className="text-xs">AI 智能驱动</span>
+                <span className="text-xs">智能驱动</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
                 <CheckCircle className="w-4 h-4 text-green-300" />

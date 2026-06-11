@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import { X, ArrowRight, Shield, Layers, Trash2 } from "lucide-react";
@@ -37,7 +37,7 @@ export default function UpgradeModal({
       features: [
         "✓ 所有组件数据完整保留",
         "✓ 项目文档自动迁移",
-        "✓ AI 引擎配置继承",
+        "✓ 引擎配置继承",
         "✓ 个人空间将被移除",
       ],
       color: "#3182ce",
@@ -78,15 +78,12 @@ export default function UpgradeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* 遮罩层 */}
       <div
         className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* 弹窗主体 */}
       <div className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* 头部 */}
         <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
           <div>
             <h2 className="text-xl font-bold text-slate-800">
@@ -104,7 +101,6 @@ export default function UpgradeModal({
           </button>
         </div>
 
-        {/* 内容区域 */}
         <div className="p-8">
           <div className="grid grid-cols-3 gap-6">
             {upgradeModes.map((mode) => {
@@ -132,7 +128,6 @@ export default function UpgradeModal({
                       : undefined,
                   }}
                 >
-                  {/* 选中角标 */}
                   {isSelected && (
                     <div
                       className="absolute top-0 right-0 w-8 h-8 rounded-bl-xl rounded-tr-xl flex items-center justify-center"
@@ -152,7 +147,6 @@ export default function UpgradeModal({
                     </div>
                   )}
 
-                  {/* 图标 */}
                   <div
                     className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
                     style={{
@@ -162,17 +156,14 @@ export default function UpgradeModal({
                     <Icon className="w-6 h-6" style={{ color: mode.color }} />
                   </div>
 
-                  {/* 标题 */}
                   <h3 className="text-base font-bold text-slate-800 mb-2">
                     {mode.title}
                   </h3>
 
-                  {/* 描述 */}
                   <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                     {mode.description}
                   </p>
 
-                  {/* 特性列表 */}
                   <ul className="space-y-2">
                     {mode.features.map((feature, index) => (
                       <li
@@ -194,7 +185,6 @@ export default function UpgradeModal({
             })}
           </div>
 
-          {/* 警告提示 */}
           {selectedMode === "replace" && (
             <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -210,7 +200,6 @@ export default function UpgradeModal({
           )}
         </div>
 
-        {/* 底部操作栏 */}
         <div className="flex items-center justify-end gap-3 px-8 py-5 border-t border-slate-100 bg-slate-50">
           <button
             onClick={onClose}
@@ -232,7 +221,6 @@ export default function UpgradeModal({
   );
 }
 
-// 警告图标组件
 function AlertTriangle({
   className,
   style,

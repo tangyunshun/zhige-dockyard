@@ -1,25 +1,35 @@
-﻿import React from "react";
+import React from "react";
 import { useRouter } from "next/navigation";
 
 interface LogoProps {
   className?: string;
   showText?: boolean;
   variant?: "light" | "dark";
+  onClick?: () => void;
 }
 
 export const Logo: React.FC<LogoProps> = ({
   className = "",
   showText = true,
   variant = "light",
+  onClick,
 }) => {
   const router = useRouter();
   const textColor = variant === "dark" ? "text-white" : "text-slate-800";
   const textSubColor = variant === "dark" ? "text-slate-300" : "text-slate-500";
 
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else {
+      router.push("/");
+    }
+  };
+
   return (
     <div
       className={`flex items-center cursor-pointer select-none ${className}`}
-      onClick={() => router.push("/")}
+      onClick={handleClick}
     >
       <svg
         className="w-8 h-8 mr-2.5 flex-shrink-0 transition-transform duration-300 hover:scale-110"

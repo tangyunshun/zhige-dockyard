@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -84,13 +84,24 @@ export default function AdminDashboard() {
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       const userRole =
         typeof window !== "undefined" ? localStorage.getItem("userRole") : "";
-      const hasCookie =
-        typeof window !== "undefined" ? document.cookie.includes("auth_token=") : false;
+      
+      // 检查有效的 cookie token（排除空值情况）
+      let hasValidToken = false;
+      if (typeof window !== "undefined") {
+        const cookies = document.cookie.split(";");
+        for (const cookie of cookies) {
+          const [name, value] = cookie.trim().split("=");
+          if (name === "auth_token" && value && value.length > 0) {
+            hasValidToken = true;
+            break;
+          }
+        }
+      }
 
       console.log("=== 调试信息 ===");
       console.log("localStorage userId:", userId);
       console.log("localStorage userRole:", userRole);
-      console.log("Cookie auth_token:", hasCookie ? "存在" : "不存在");
+      console.log("Cookie auth_token:", hasValidToken ? "存在" : "不存在");
       console.log("================");
 
       const res = await fetch("/api/admin/dashboard", {

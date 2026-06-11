@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿﻿﻿﻿"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -89,9 +89,21 @@ function LoginForm() {
     const checkLoggedIn = async () => {
       // 快速检查：如果 localStorage 没有 userId，直接显示登录页
       const localStorageUserId = localStorage.getItem("userId");
-      const token = document.cookie.includes("auth_token=");
+      const authToken = localStorage.getItem("auth_token");
+      
+      // 检查有效的 cookie token（排除空值情况）
+      const cookies = document.cookie.split(";");
+      let hasValidToken = false;
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split("=");
+        if (name === "auth_token" && value && value.length > 0) {
+          hasValidToken = true;
+          break;
+        }
+      }
 
-      if (!localStorageUserId || !token) {
+      // 必须同时具备：userId、auth_token（localStorage 或 cookie）
+      if (!localStorageUserId || !((authToken && authToken.length > 0) || hasValidToken)) {
         console.log("登录页：未检测到登录状态，显示登录页面");
         setIsCheckingAuth(false);
         return;
@@ -541,6 +553,8 @@ function LoginForm() {
         }
         // 设置 sessionStorage 标记，表示当前浏览器会话是活跃的
         sessionStorage.setItem("hasActiveSession", "true");
+        // 清除退出登录标志
+        sessionStorage.removeItem("is_logging_out");
 
         // 如果是"记住我"登录，额外标记
         if (rememberMe) {
@@ -677,7 +691,7 @@ function LoginForm() {
             </div>
             <h1 className="text-2xl font-bold mb-2">知阁·舟坊</h1>
             <p className="text-blue-100 mb-6 text-sm">
-              全链路 AI 软件研发效能操作系统
+              全链路软件研发效能操作系统
             </p>
 
             <div className="space-y-3 text-left">
@@ -687,7 +701,7 @@ function LoginForm() {
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
                 <CheckCircle className="w-4 h-4 text-green-300" />
-                <span className="text-xs">AI 智能驱动</span>
+                <span className="text-xs">智能驱动</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
                 <CheckCircle className="w-4 h-4 text-green-300" />

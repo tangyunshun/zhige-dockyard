@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
@@ -50,28 +50,37 @@ export function useLogout() {
         // 设置多标签页同步标记，通知其他标签页同步退出
         localStorage.setItem("logged_out", "true");
 
-        // 清除所有本地存储
+        // 立即清除所有本地存储（关键：必须在跳转前完成）
         localStorage.removeItem("userId");
         localStorage.removeItem("userRole");
         localStorage.removeItem("auth_token");
         localStorage.removeItem("userEmail");
         localStorage.removeItem("userName");
         localStorage.removeItem("rememberMe");
+        localStorage.removeItem("userMembership");
+        localStorage.removeItem("tokenBalance");
+        localStorage.removeItem("enterpriseSpaceLimit");
+        localStorage.removeItem("userWorkspaces");
         
-        // 重要：先清除 is_logging_out，让首页可以显示提示
-        sessionStorage.removeItem("is_logging_out");
+        // 只清除特定 sessionStorage 项，保留 is_logging_out 标志
+        // 让 AppContext 能感知正在退出登录，避免刷新后自动登录
+        sessionStorage.removeItem("hasActiveSession");
+        sessionStorage.removeItem("redirectAfterLogin");
+        sessionStorage.removeItem("just_showed_logout");
         
-        // 然后清除其他 sessionStorage
-        sessionStorage.clear();
-        
-        document.cookie = "auth_token=; path=/; max-age=0";
+        // 清除所有相关 cookies
+        document.cookie = "auth_token=; path=/; max-age=0; secure; sameSite=lax";
+        document.cookie = "session_token=; path=/; max-age=0; secure; sameSite=lax";
+        document.cookie = "refresh_token=; path=/; max-age=0; secure; sameSite=lax";
 
-        // 使用 window.location.href 直接跳转到首页
-        window.location.href = "/";
+        // 使用 window.location.replace 防止用户返回登录前页面
+        window.location.replace("/");
       } else {
+        sessionStorage.removeItem("is_logging_out");
         toast.error("退出登录失败");
       }
     } catch (error) {
+      sessionStorage.removeItem("is_logging_out");
       console.error("退出登录失败", error);
       toast.error("退出登录失败，请稍后重试");
     }

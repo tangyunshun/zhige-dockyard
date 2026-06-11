@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -76,7 +76,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     
     const toast: ToastMessage = { id, type, message, duration: calculatedDuration };
 
-    setToasts((prev) => [...prev, toast]);
+    setToasts((prev) => {
+      // 检查是否有相同消息的 toast 正在显示（防重复）
+      const hasDuplicate = prev.some(
+        (t) => t.message === message && t.type === type
+      );
+      if (hasDuplicate) {
+        return prev;
+      }
+      return [...prev, toast];
+    });
 
     if (calculatedDuration > 0) {
       setTimeout(() => {

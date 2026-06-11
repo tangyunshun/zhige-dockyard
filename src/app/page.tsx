@@ -1,8 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useRef } from "react";
 import { useToast } from "@/components/Toast";
-import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import UserQuickAccess from "@/components/UserQuickAccess";
 import CoreFeatures from "@/components/CoreFeatures";
@@ -153,8 +152,8 @@ export default function Home() {
         localStorage.clear();
         sessionStorage.clear();
         document.cookie = "auth_token=; path=/; max-age=0";
-        // 跳转到登录页
-        window.location.href = "/auth/login";
+        // 跳转到首页（未登录状态）
+        window.location.href = "/";
       } else {
         // 失败，重置状态
         cancellingRef.current = false;
@@ -169,18 +168,39 @@ export default function Home() {
 
   // 退出登录
   const handleLogout = () => {
+    // 设置多标签页同步标记，通知其他标签页同步退出
+    localStorage.setItem("logged_out", "true");
+    
+    // 清除所有本地存储
     localStorage.removeItem("userId");
     localStorage.removeItem("userRole");
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("rememberMe");
+    localStorage.removeItem("userMembership");
+    localStorage.removeItem("tokenBalance");
+    localStorage.removeItem("enterpriseSpaceLimit");
+    localStorage.removeItem("userWorkspaces");
+    
+    // 设置标记，告诉首页显示退出成功提示
     localStorage.setItem("just_logged_out", "true");
-    document.cookie = "auth_token=; path=/; max-age=0";
-    window.location.href = "/auth/login";
+    
+    // 清除所有 sessionStorage
+    sessionStorage.clear();
+    
+    // 清除所有相关 cookies
+    document.cookie = "auth_token=; path=/; max-age=0; secure; sameSite=lax";
+    document.cookie = "session_token=; path=/; max-age=0; secure; sameSite=lax";
+    document.cookie = "refresh_token=; path=/; max-age=0; secure; sameSite=lax";
+    
+    // 跳转到首页（未登录状态）
+    window.location.href = "/";
   };
 
   return (
     <main className="min-h-screen bg-[#f8fafc] w-full overflow-x-hidden relative">
-      <Header />
       <HeroSection />
-      <UserQuickAccess />
       <CoreFeatures />
       <RoleCapabilities />
       <EnterpriseSecurity />

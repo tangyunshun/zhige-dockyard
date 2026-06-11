@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import { useEffect, useCallback } from "react";
 
@@ -43,8 +43,8 @@ export function useSessionBroadcast() {
           document.cookie = "auth_token=; path=/; max-age=0";
           document.cookie = "session_token=; path=/; max-age=0";
           document.cookie = "refresh_token=; path=/; max-age=0";
-          // 跳转到登录页
-          window.location.href = "/auth/login?reason=BROADCAST_LOGOUT";
+          // 跳转到首页（未登录状态）
+          window.location.href = "/";
           break;
 
         case "LOGIN":
@@ -70,7 +70,7 @@ export function useSessionBroadcast() {
           document.cookie = "auth_token=; path=/; max-age=0";
           document.cookie = "session_token=; path=/; max-age=0";
           document.cookie = "refresh_token=; path=/; max-age=0";
-          window.location.href = "/auth/login?reason=SESSION_EXPIRED";
+          window.location.href = "/";
           break;
 
         case "REFRESH_TOKEN":

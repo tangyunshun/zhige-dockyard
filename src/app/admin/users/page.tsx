@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
@@ -127,7 +127,7 @@ export default function AdminUsersPage() {
         // 显示提示并重定向
         showToast(errorData.error || "您已被强制下线，请重新登录", "error");
         setTimeout(() => {
-          window.location.href = "/auth/login";
+          window.location.href = "/";
         }, 1500);
         return true;
       } catch (e) {

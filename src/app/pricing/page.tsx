@@ -1,870 +1,528 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
+import { Check, X, Sparkles, Building2, Server, ArrowRight } from "lucide-react";
+import Footer from "@/components/Footer";
+import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
-import { useToast } from "@/components/Toast";
-import {
-  Check,
-  X,
-  Star,
-  Users,
-  Zap,
-  Shield,
-  Crown,
-  ArrowLeft,
-  TrendingUp,
-  Database,
-  LifeBuoy,
-  Palette,
-  Lock,
-  Box,
-  Building2,
-  Server,
-  Code,
-  Clock,
-  Headphones,
-  FileText,
-  GitMerge,
-  BarChart3,
-  Globe,
-  MessageSquare,
-  Bug,
-  TestTube2,
-  LayoutTemplate,
-  Layers,
-  Plug,
-  FolderLock,
-  Activity,
-  Award,
-  Target,
-  Rocket,
-  Heart,
-  Smile,
-  Phone,
-  Signature,
-  Network,
-  Scale,
-  Package,
-  Shirt,
-  Image,
-  Accessibility,
-  Cloud,
-  Terminal,
-  Scissors,
-  FileSpreadsheet,
-  ArrowUpRight,
-  ChevronRight,
-  Trophy,
-  Gem,
-  Diamond,
-} from "lucide-react";
 
-interface MembershipPlan {
-  name: string;
-  nameZh: string;
-  description: string;
-  icon?: string;
-  iconComponent?: React.ElementType;
-  color: string;
-  priceMonthly: number;
-  priceYearly: number;
-  features: string[];
-  maxPersonalWorkspaces: number;
-  maxEnterpriseWorkspaces: number;
-  maxComponents: number;
-  maxTeamSize: number;
-  maxStorage: number;
-  maxApiCalls: number;
-  recommended?: boolean;
-  popular?: boolean;
-  level?: string;
-  gradient?: string;
+interface PlanFeature {
+  text: string;
+  included: boolean;
 }
 
-interface SpaceType {
+interface PricingPlan {
   id: string;
   name: string;
+  displayName: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
   description: string;
-  icon: React.ElementType;
-  color: string;
-  features: string[];
-  suitableFor: string;
+  features: PlanFeature[];
+  popular?: boolean;
+  levelBadge: string;
+  levelColor: string;
+  icon: React.ReactNode;
 }
 
+const DEFAULT_PLANS: PricingPlan[] = [
+  {
+    id: "free",
+    name: "FREE",
+    displayName: "社区尝鲜版",
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    description: "个人沙盒、基础组件、有限算力",
+    levelBadge: "L1",
+    levelColor: "bg-gray-500",
+    icon: <Sparkles className="w-5 h-5 text-yellow-600" />,
+    features: [
+      { text: "1 个个人空间", included: true },
+      { text: "基础组件访问", included: true },
+      { text: "每月 1000 Token 配额", included: true },
+      { text: "社区技术支持", included: true },
+      { text: "企业空间创建", included: false },
+      { text: "团队协作功能", included: false },
+      { text: "高级组件解锁", included: false },
+      { text: "私有化部署", included: false },
+    ],
+  },
+  {
+    id: "silver",
+    name: "SILVER",
+    displayName: "岗位专业版",
+    monthlyPrice: 299,
+    yearlyPrice: 239,
+    description: "3个企业空间、解锁高阶组件、团队协同",
+    popular: true,
+    levelBadge: "L2",
+    levelColor: "bg-blue-500",
+    icon: <Building2 className="w-5 h-5 text-[#2b6cb0]" />,
+    features: [
+      { text: "3 个企业空间", included: true },
+      { text: "全部 53 个组件", included: true },
+      { text: "每月 100000 Token 配额", included: true },
+      { text: "优先技术支持", included: true },
+      { text: "团队协作功能", included: true },
+      { text: "岗位权限配置", included: true },
+      { text: "私有化部署", included: false },
+      { text: "专属模型微调", included: false },
+    ],
+  },
+  {
+    id: "crown",
+    name: "CROWN",
+    displayName: "私有化尊享版",
+    monthlyPrice: 12500,
+    yearlyPrice: 12500,
+    description: "物理隔离部署、源码级二开支持、专属服务",
+    levelBadge: "L3",
+    levelColor: "bg-purple-600",
+    icon: <Server className="w-5 h-5 text-purple-600" />,
+    features: [
+      { text: "无限企业空间", included: true },
+      { text: "全部 53 个组件", included: true },
+      { text: "无限 Token 配额", included: true },
+      { text: "7x24 专属支持", included: true },
+      { text: "私有化部署", included: true },
+      { text: "源码级二开支持", included: true },
+      { text: "专属模型微调", included: true },
+      { text: "定制化开发", included: true },
+    ],
+  },
+];
+
+const featureMatrix = [
+  {
+    feature: "组件使用权",
+    FREE: "基础 (6个)",
+    SILVER: "全部 (53个)",
+    CROWN: "全部 (53个)",
+  },
+  {
+    feature: "Token 配额",
+    FREE: "1,000/月",
+    SILVER: "100,000/月",
+    CROWN: "无限",
+  },
+  { feature: "部署方式", FREE: "SaaS", SILVER: "SaaS", CROWN: "私有化" },
+  { feature: "团队协作", FREE: "-", SILVER: "✓", CROWN: "✓" },
+  { feature: "权限管理", FREE: "-", SILVER: "✓", CROWN: "✓" },
+  { feature: "专属支持", FREE: "社区", SILVER: "优先", CROWN: "7x24" },
+];
+
+const levelBenefits = [
+  {
+    title: "等级越高，权益越多",
+    description: "从基础社区版到尊享私有化版，每个等级都解锁更多强大功能",
+  },
+  {
+    title: "安全与合规",
+    description: "所有等级均享有企业级安全保障，高级别更有专属安全服务",
+  },
+  {
+    title: "专属服务",
+    description: "VIP 会员享受专属客户经理和优先技术支持通道",
+  },
+];
+
 export default function PricingPage() {
+  const [isYearly, setIsYearly] = useState(false);
+  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { userState } = useAppContext();
   const router = useRouter();
-  const toast = useToast();
-  const [loading, setLoading] = useState(false);
-  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
-    "monthly",
-  );
-  const [currentMembership, setCurrentMembership] = useState<string>("FREE");
-  const [currentSpaceType, setCurrentSpaceType] = useState<string>("STANDARD");
-  const [activeTab, setActiveTab] = useState<"space" | "membership">("space");
-  const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
-  const [loadingPlans, setLoadingPlans] = useState(true);
 
   useEffect(() => {
-    loadUserInfo();
-    loadMembershipPlans();
+    fetchMembershipLevels();
   }, []);
 
-  const loadUserInfo = async () => {
+  const fetchMembershipLevels = async () => {
     try {
-      const res = await fetch("/api/auth/me");
-      if (res.ok) {
-        const data = await res.json();
-        // 这里应该从用户信息中获取实际的会员等级和空间类型
-        // 暂时使用默认值
-      }
-    } catch (error) {
-      console.warn("Load user info error:", error);
-    }
-  };
-
-  const getMembershipIcon = (planName: string): React.ElementType => {
-    const iconMap: Record<string, React.ElementType> = {
-      FREE: Star,
-      BRONZE: Award,
-      SILVER: Trophy,
-      GOLD: Crown,
-      PLATINUM: Gem,
-      DIAMOND: Diamond,
-      CROWN: Crown,
-    };
-    return iconMap[planName] || Star;
-  };
-
-  const loadMembershipPlans = async () => {
-    try {
-      setLoadingPlans(true);
-      const res = await fetch("/api/membership/levels");
-      if (res.ok) {
-        const data = await res.json();
-        setMembershipPlans(
-          data.data.map((plan: any) => ({
-            ...plan,
-            icon: plan.icon || "�",
-            gradient: `linear-gradient(to bottom right, ${plan.color}20, ${plan.color}40)`,
-            recommended: plan.name === "SILVER",
-            popular: plan.name === "GOLD",
-          })),
-        );
+      const response = await fetch("/api/membership/levels");
+      const result = await response.json();
+      if (result.success && result.data && result.data.length > 0) {
+        const DISPLAY_PLANS = ["FREE", "SILVER", "CROWN"];
+        const levelConfig: Record<string, { badge: string; color: string; icon: React.ReactNode }> = {
+          FREE: { badge: "L1", color: "bg-gray-500", icon: <Sparkles className="w-5 h-5 text-yellow-600" /> },
+          SILVER: { badge: "L2", color: "bg-blue-500", icon: <Building2 className="w-5 h-5 text-[#2b6cb0]" /> },
+          CROWN: { badge: "L3", color: "bg-purple-600", icon: <Server className="w-5 h-5 text-purple-600" /> },
+        };
+        const filteredPlans = result.data
+          .filter((level: any) => DISPLAY_PLANS.includes(level.name))
+          .map((level: any) => ({
+            id: level.id,
+            name: level.name,
+            displayName: level.displayName,
+            monthlyPrice: level.priceMonthly,
+            yearlyPrice: level.priceYearly,
+            description: level.description,
+            features: DEFAULT_PLANS.find((p) => p.name === level.name)?.features || DEFAULT_PLANS[0].features,
+            popular: level.name === "SILVER",
+            levelBadge: levelConfig[level.name]?.badge || "L1",
+            levelColor: levelConfig[level.name]?.color || "bg-gray-500",
+            icon: levelConfig[level.name]?.icon || DEFAULT_PLANS[0].icon,
+          }));
+        setPlans(filteredPlans.length > 0 ? filteredPlans : DEFAULT_PLANS);
       } else {
-        toast.error("加载会员等级失败");
+        setPlans(DEFAULT_PLANS);
       }
     } catch (error) {
-      console.warn("Load membership plans error:", error);
-      toast.error("加载会员等级失败");
+      console.error("Failed to fetch membership levels:", error);
+      setPlans(DEFAULT_PLANS);
     } finally {
-      setLoadingPlans(false);
+      setLoading(false);
     }
   };
 
-  // 辅助函数：获取会员配置（用于对比表）
-  const getMembershipConfig = (level: string) => {
-    const plan = membershipPlans.find((p) => p.name === level);
-    if (!plan) {
+  const currentMembership = userState.user?.membershipLevel;
+  const isVip = currentMembership && currentMembership !== "FREE";
+
+  const getButtonConfig = (planName: string) => {
+    if (planName === "FREE") {
+      if (!userState.isLoggedIn) {
+        return {
+          text: "免费注册",
+          onClick: () => router.push("/auth/login"),
+          className: "w-full py-3 rounded-[4px] font-bold border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer",
+          showCheck: false,
+        };
+      } else if (!isVip) {
+        return {
+          text: "当前所在计划",
+          onClick: () => {},
+          className: "w-full py-3 rounded-[4px] font-bold bg-slate-100 text-slate-400 cursor-not-allowed",
+          showCheck: false,
+        };
+      } else {
+        return {
+          text: "基础能力",
+          onClick: () => {},
+          className: "w-full py-3 rounded-[4px] font-bold border border-slate-200 text-slate-400 cursor-not-allowed",
+          showCheck: false,
+        };
+      }
+    } else if (planName === "SILVER") {
+      if (!userState.isLoggedIn) {
+        return {
+          text: "立即升级",
+          onClick: () => router.push("/auth/login"),
+          className: "w-full py-3 rounded-[4px] font-bold bg-[#2b6cb0] text-white hover:bg-[#2c5282] transition-colors cursor-pointer",
+          showCheck: false,
+        };
+      } else if (!isVip) {
+        return {
+          text: "立即支付升级",
+          onClick: () => {},
+          className: "w-full py-3 rounded-[4px] font-bold bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] text-white hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer",
+          showCheck: false,
+        };
+      } else {
+        return {
+          text: "您当前的计划",
+          onClick: () => {},
+          className: "w-full py-3 rounded-[4px] font-bold bg-[#38a169]/10 text-[#38a169] cursor-not-allowed flex items-center justify-center gap-2",
+          showCheck: true,
+        };
+      }
+    } else {
       return {
-        maxTeamSize: 5,
-        maxEnterpriseWorkspaces: 1,
-        maxComponents: 100,
-        maxStorage: 1024,
+        text: "联系专属架构师",
+        onClick: () => {},
+        className: "w-full py-3 rounded-[4px] font-bold border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer",
+        showCheck: false,
       };
     }
-    return {
-      maxTeamSize: plan.maxTeamSize,
-      maxEnterpriseWorkspaces: plan.maxEnterpriseWorkspaces,
-      maxComponents: plan.maxComponents,
-      maxStorage: plan.maxStorage,
-    };
   };
 
-  const spaceTypes: SpaceType[] = [
-    {
-      id: "STANDARD",
-      name: "标准空间",
-      description: "基础协作空间，适合小型团队",
-      icon: Box,
-      color: "#64748b",
-      features: [
-        "最多 3 个组件",
-        "最多 5 名成员",
-        "1GB 存储空间",
-        "基础组件库权限",
-        "标准技术支持",
-      ],
-      suitableFor: "个人和小型团队",
-    },
-    {
-      id: "PRO",
-      name: "专业空间",
-      description: "专业协作空间，适合成长型团队",
-      icon: Rocket,
-      color: "#3182ce",
-      features: [
-        "最多 25 个组件",
-        "最多 20 名成员",
-        "10GB 存储空间",
-        "全量组件库权限",
-        "优先技术支持",
-        "数据分析报表",
-        "自定义主题",
-      ],
-      suitableFor: "成长型团队和创业公司",
-    },
-    {
-      id: "ENTERPRISE",
-      name: "企业空间",
-      description: "企业级协作空间，适合大型团队",
-      icon: Building2,
-      color: "#f59e0b",
-      features: [
-        "无限组件数量",
-        "无限团队成员",
-        "无限存储空间",
-        "全量 + 专属组件库",
-        "7×24 专属技术支持",
-        "高级数据分析",
-        "完全自定义主题",
-        "完整 API 权限",
-        "高级权限管理",
-        "专属客户经理",
-      ],
-      suitableFor: "大型企业和组织",
-    },
-  ];
-
-  const handleUpgradeMembership = async (level: string) => {
-    if (currentMembership === level) {
-      toast.info("当前已是该会员等级");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // TODO: 实现真实的升级逻辑
-      toast.success("升级功能开发中，请联系客服办理");
-    } catch (error) {
-      toast.error("升级失败，请重试");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpgradeSpace = async (spaceType: string) => {
-    if (currentSpaceType === spaceType) {
-      toast.info("当前已是该空间类型");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // TODO: 实现真实的空间升级逻辑
-      toast.success("空间升级功能开发中");
-    } catch (error) {
-      toast.error("升级失败，请重试");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
-      {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              <span className="font-medium">返回</span>
-            </button>
-            <h1 className="text-xl font-bold text-slate-800">会员与空间定价</h1>
-            <div className="w-20" />
-          </div>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#f0f8ff] to-white pt-17 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#2b6cb0] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">加载中...</p>
         </div>
       </div>
+    );
+  }
 
-      {/* 主内容区 */}
-      <main className="max-w-[1600px] mx-auto px-6 py-12">
-        {/* 页面标题 */}
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-black text-slate-800 mb-4">
-            灵活定价，满足不同需求
-          </h2>
-          <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-            会员等级控制团队规模、组件数量和使用配额
-            <br />
-            空间类型决定协作能力和功能权限
-            <br />
-            <span className="text-sm text-slate-500">
-              所有付费套餐均提供 14 天免费试用期
-            </span>
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-[#f0f8ff] to-white">
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-6 text-center">
+          <h1 className="text-4xl md:text-5xl font-black text-slate-800 mb-6">
+            灵活的阶梯算力，陪伴团队从冷启动到行业寡头
+          </h1>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-10">
+            选择适合您团队规模的方案，按需付费，无隐藏费用
           </p>
 
-          {/* 付费周期切换 */}
-          <div className="mt-6 flex items-center justify-center gap-3">
-            <span
-              className={`text-sm font-medium ${
-                billingPeriod === "monthly"
-                  ? "text-slate-800"
-                  : "text-slate-500"
+          <div className="inline-flex items-center gap-4 bg-slate-100 rounded-full px-2 py-1">
+            <button
+              onClick={() => setIsYearly(false)}
+              className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${
+                !isYearly
+                  ? "bg-white text-[#2b6cb0] shadow-sm"
+                  : "text-slate-600 hover:text-slate-800"
               }`}
             >
               月付
-            </span>
-            <button
-              onClick={() =>
-                setBillingPeriod(
-                  billingPeriod === "monthly" ? "yearly" : "monthly",
-                )
-              }
-              className={`relative w-14 h-7 rounded-full transition-colors ${
-                billingPeriod === "yearly" ? "bg-[#3182ce]" : "bg-slate-300"
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-transform ${
-                  billingPeriod === "yearly" ? "translate-x-8" : "translate-x-1"
-                }`}
-              />
             </button>
-            <span
-              className={`text-sm font-medium ${
-                billingPeriod === "yearly" ? "text-slate-800" : "text-slate-500"
+            <button
+              onClick={() => setIsYearly(true)}
+              className={`px-6 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+                isYearly
+                  ? "bg-white text-[#2b6cb0] shadow-sm"
+                  : "text-slate-600 hover:text-slate-800"
               }`}
             >
               年付
-              <span className="ml-1 text-[#10b981] text-xs font-bold">
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
                 省 20%
               </span>
-            </span>
-          </div>
-
-          {/* Tab 切换 */}
-          <div className="mt-8">
-            <div className="flex border-b border-gray-200">
-              <button
-                onClick={() => setActiveTab("space")}
-                className={`flex-1 py-3 text-center font-medium transition-colors relative ${
-                  activeTab === "space"
-                    ? "text-blue-600"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                空间类型
-                {activeTab === "space" && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab("membership")}
-                className={`flex-1 py-3 text-center font-medium transition-colors relative ${
-                  activeTab === "membership"
-                    ? "text-blue-600"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                会员等级
-                {activeTab === "membership" && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
-                )}
-              </button>
-            </div>
+            </button>
           </div>
         </div>
+      </section>
 
-        {/* 空间类型 Tab */}
-        {activeTab === "space" && (
-          <div className="mb-16 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="text-center mb-8">
-              <h3 className="text-2xl font-black text-slate-800 mb-2">
-                空间类型
-              </h3>
-              <p className="text-slate-600">
-                决定团队协作能力、组件库权限和功能特性
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {spaceTypes.map((space) => {
-                const Icon = space.icon;
-                const isCurrentSpace = currentSpaceType === space.id;
-
-                return (
-                  <div
-                    key={space.id}
-                    className={`relative rounded-2xl p-6 transition-all duration-300 hover:-translate-y-2 ${
-                      space.id === "PRO"
-                        ? "bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 border-2 border-[#3182ce] shadow-xl shadow-[#3182ce]/20"
-                        : "bg-white/80 backdrop-blur-xl border-2 border-slate-200 hover:border-[#3182ce]/40 hover:shadow-xl"
-                    }`}
-                  >
-                    {/* 图标和名称 */}
-                    <div className="text-center mb-5">
-                      <div
-                        className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center shadow-lg`}
-                        style={{
-                          background: `linear-gradient(to bottom right, ${space.color}20, ${space.color}40)`,
-                        }}
-                      >
-                        <Icon
-                          className="w-8 h-8"
-                          style={{ color: space.color }}
-                        />
-                      </div>
-                      <h3 className="text-xl font-black text-slate-800 mb-1">
-                        {space.name}
-                      </h3>
-                      <p className="text-xs text-slate-600 mb-3">
-                        {space.description}
-                      </p>
-                      <div className="inline-block px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full">
-                        适合：{space.suitableFor}
-                      </div>
-                    </div>
-
-                    {/* 功能列表 */}
-                    <div className="space-y-2.5 mb-6">
-                      {space.features.map((feature, index) => (
-                        <div
-                          key={index}
-                          className="flex items-start gap-2 text-sm"
-                        >
-                          <Check className="w-4 h-4 text-[#10b981] flex-shrink-0 mt-0.5" />
-                          <span className="text-slate-700">{feature}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 操作按钮 */}
-                    <button
-                      onClick={() => handleUpgradeSpace(space.id)}
-                      disabled={loading || isCurrentSpace}
-                      className={`w-full py-3 rounded-xl font-bold transition-all ${
-                        isCurrentSpace
-                          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                          : "bg-gradient-to-r from-slate-800 to-slate-700 text-white hover:shadow-lg hover:-translate-y-0.5"
-                      }`}
-                    >
-                      {isCurrentSpace ? "当前空间" : "升级到此空间"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 权益对比表链接 */}
-            <div className="mt-8 text-center">
-              <button
-                onClick={() => {
-                  const tableSection =
-                    document.getElementById("comparison-table");
-                  tableSection?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  });
-                }}
-                className="px-6 py-3 bg-white border-2 border-[#3182ce] text-[#3182ce] rounded-xl font-bold hover:bg-[#3182ce]/10 transition-all inline-flex items-center gap-2"
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span>查看详细权益对比</span>
-              </button>
-            </div>
+      <section className="py-16 bg-gradient-to-r from-[#2b6cb0] to-[#3182ce]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {levelBenefits.map((benefit, index) => (
+              <div key={index} className="flex items-center gap-4 text-white">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                  <span className="text-2xl font-bold">{index + 1}</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">{benefit.title}</h3>
+                  <p className="text-white/80 text-sm">{benefit.description}</p>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      </section>
 
-        {/* 会员等级 Tab */}
-        {activeTab === "membership" && (
-          <div className="mb-16 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="text-center mb-8">
-              <h3 className="text-2xl font-black text-slate-800 mb-2">
-                会员等级
-              </h3>
-              <p className="text-slate-600">
-                控制团队规模、组件数量、存储空间和使用配额
-              </p>
-            </div>
+      <section className="py-16">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-black text-slate-800 mb-4">
+              会员等级方案
+            </h2>
+            <p className="text-slate-600">选择适合您的会员等级，开启效能之旅</p>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {membershipPlans.map((plan) => {
-                const Icon = getMembershipIcon(plan.name);
-                const isCurrentPlan = currentMembership === plan.name;
-                const price =
-                  billingPeriod === "monthly"
-                    ? plan.priceMonthly
-                    : plan.priceYearly;
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {plans.map((plan, index) => {
+              const buttonConfig = getButtonConfig(plan.name);
+              const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
+              const isCurrentPlan = currentMembership === plan.name;
+              
+              return (
+                <div
+                  key={plan.id}
+                  className={`relative bg-white rounded-[12px] border transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 ${
+                    plan.popular
+                      ? "border-2 border-[#2b6cb0] shadow-xl shadow-[#2b6cb0]/20"
+                      : isCurrentPlan
+                      ? "border-2 border-green-500 shadow-lg shadow-green-500/10"
+                      : "border-slate-100"
+                  }`}
+                >
+                  {plan.popular && (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#2b6cb0] text-white text-sm font-bold px-4 py-1 rounded-full shadow-lg">
+                      最受企业欢迎
+                    </div>
+                  )}
 
-                return (
-                  <div
-                    key={plan.name}
-                    className={`relative rounded-2xl p-6 transition-all duration-300 hover:-translate-y-2 ${
-                      plan.recommended || plan.popular
-                        ? "bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 border-2 border-[#3182ce] shadow-xl shadow-[#3182ce]/20"
-                        : "bg-white/80 backdrop-blur-xl border-2 border-slate-200 hover:border-[#3182ce]/40 hover:shadow-xl"
-                    }`}
-                  >
-                    {/* 标签 */}
-                    {(plan.recommended || plan.popular) && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <span
-                          className={`text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 ${
-                            plan.popular
-                              ? "bg-gradient-to-r from-[#f59e0b] to-[#d97706]"
-                              : "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0]"
-                          }`}
-                        >
-                          {plan.popular ? (
-                            <>
-                              <Star className="w-3 h-3" />
-                              最受欢迎
-                            </>
+                  {isCurrentPlan && !plan.popular && (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-green-500 text-white text-sm font-bold px-4 py-1 rounded-full shadow-lg">
+                      当前方案
+                    </div>
+                  )}
+
+                  <div className="p-8">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-12 ${plan.name === "FREE" ? "bg-yellow-100" : plan.name === "SILVER" ? "bg-blue-100" : "bg-purple-100"} rounded-xl flex items-center justify-center`}>
+                          {plan.icon}
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-slate-800">
+                            {plan.displayName}
+                          </h3>
+                          <p className="text-xs text-slate-500">{plan.description}</p>
+                        </div>
+                      </div>
+                      <div className={`${plan.levelColor} text-white text-xs font-bold px-3 py-1.5 rounded-full`}>
+                        {plan.levelBadge} 等级
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-5xl font-black text-slate-800">
+                          {price === 0 ? "免费" : `¥${price}`}
+                        </span>
+                        {price > 0 && (
+                          <span className="text-slate-500">
+                            /{isYearly ? "年" : "月"}
+                            {isYearly && plan.monthlyPrice !== plan.yearlyPrice && (
+                              <span className="ml-2 text-slate-400 line-through text-sm">
+                                ¥{plan.monthlyPrice}/月
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <ul className="space-y-3 mb-8">
+                      {plan.features.map((feature) => (
+                        <li key={feature.text} className="flex items-center gap-3">
+                          {feature.included ? (
+                            <Check className="w-5 h-5 text-green-600 shrink-0" />
                           ) : (
-                            <>
-                              <TrendingUp className="w-3 h-3" />
-                              推荐
-                            </>
+                            <X className="w-5 h-5 text-slate-300 shrink-0" />
                           )}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* 图标和名称 */}
-                    <div className="text-center mb-5">
-                      <div
-                        className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br ${plan.gradient} flex items-center justify-center shadow-lg`}
-                      >
-                        <Icon className="w-8 h-8 text-white" />
-                      </div>
-                      <h3 className="text-xl font-black text-slate-800 mb-1">
-                        {plan.nameZh}
-                      </h3>
-                      <p className="text-xs text-slate-600 mb-3">
-                        {plan.description}
-                      </p>
-                      <div className="flex items-baseline justify-center gap-1">
-                        <span className="text-4xl font-black text-slate-800">
-                          ¥{price}
-                        </span>
-                        <span className="text-slate-500 font-medium">
-                          {billingPeriod === "monthly" ? "/月" : "/年"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 功能列表 */}
-                    <div className="space-y-2.5 mb-6">
-                      {plan.features.map((feature, index) => (
-                        <div
-                          key={index}
-                          className="flex items-start gap-2 text-sm"
-                        >
-                          <Check className="w-4 h-4 text-[#10b981] flex-shrink-0 mt-0.5" />
-                          <span className="text-slate-700">{feature}</span>
-                        </div>
+                          <span
+                            className={
+                              feature.included ? "text-slate-700 text-sm" : "text-slate-400 text-sm"
+                            }
+                          >
+                            {feature.text}
+                          </span>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
 
-                    {/* 操作按钮 */}
                     <button
-                      onClick={() => handleUpgradeMembership(plan.name)}
-                      disabled={loading || isCurrentPlan}
-                      className={`w-full py-3 rounded-xl font-bold transition-all ${
-                        isCurrentPlan
-                          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                          : `bg-gradient-to-r ${plan.gradient} text-white hover:shadow-lg hover:shadow-[${plan.color}]/30 hover:-translate-y-0.5`
-                      }`}
+                      onClick={buttonConfig.onClick}
+                      className={buttonConfig.className}
                     >
-                      {isCurrentPlan ? "当前套餐" : "立即升级"}
+                      {buttonConfig.showCheck && <Check className="w-4 h-4" />}
+                      {buttonConfig.text}
                     </button>
                   </div>
-                );
-              })}
-            </div>
-
-            {/* 权益对比表链接 */}
-            <div className="mt-8 text-center">
-              <button
-                onClick={() => {
-                  const tableSection =
-                    document.getElementById("comparison-table");
-                  tableSection?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  });
-                }}
-                className="px-6 py-3 bg-white border-2 border-[#f59e0b] text-[#f59e0b] rounded-xl font-bold hover:bg-[#f59e0b]/10 transition-all inline-flex items-center gap-2"
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span>查看详细权益对比</span>
-              </button>
-            </div>
+                </div>
+              );
+            })}
           </div>
-        )}
+        </div>
+      </section>
 
-        {/* 详细权益对比表 */}
-        <div
-          id="comparison-table"
-          className="bg-white/80 backdrop-blur-xl rounded-2xl border-2 border-slate-200 p-8 mb-12"
-        >
-          <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">
-            会员等级权益对比
-          </h3>
+      <section className="py-16 bg-white">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-black text-slate-800 mb-4">
+              等级权益对比
+            </h2>
+            <p className="text-slate-600">不同会员等级的核心能力差异</p>
+          </div>
 
-          <div className="overflow-x-auto">
+          <div className="bg-slate-50 rounded-[12px] overflow-hidden shadow-sm">
             <table className="w-full">
               <thead>
-                <tr className="border-b-2 border-slate-200">
-                  <th className="text-left py-4 px-4 font-bold text-slate-700">
-                    权益项
+                <tr className="bg-white border-b-2 border-slate-200">
+                  <th className="px-6 py-4 text-left font-bold text-slate-700 bg-white">
+                    功能权益
                   </th>
-                  {membershipPlans.map((plan) => (
-                    <th
-                      key={plan.name}
-                      className="text-center py-4 px-4 font-bold"
-                      style={{ color: plan.color }}
-                    >
-                      {plan.nameZh}
-                    </th>
-                  ))}
+                  <th className="px-6 py-4 text-center font-bold text-slate-700 bg-white">
+                    <div className="flex flex-col items-center">
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mb-1">L1</span>
+                      社区尝鲜版
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-center font-bold text-white bg-[#2b6cb0]">
+                    <div className="flex flex-col items-center">
+                      <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full mb-1">L2</span>
+                      岗位专业版
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-center font-bold text-purple-600 bg-white">
+                    <div className="flex flex-col items-center">
+                      <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full mb-1">L3</span>
+                      私有化尊享版
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-slate-400" />
-                    团队规模
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td key={plan.name} className="text-center py-4 px-4">
-                      {plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#10b981]">无限</span>
+                {featureMatrix.map((row, rowIndex) => (
+                  <tr
+                    key={row.feature}
+                    className={`border-b border-slate-100 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/50"} hover:bg-blue-50/30 transition-colors`}
+                  >
+                    <td className="px-6 py-4 text-slate-700 font-medium">
+                      {row.feature}
+                    </td>
+                    <td className="px-6 py-4 text-center text-slate-600">
+                      {row.FREE === "✓" ? (
+                        <Check className="w-5 h-5 text-green-600 mx-auto" />
+                      ) : row.FREE === "-" ? (
+                        <X className="w-5 h-5 text-slate-300 mx-auto" />
                       ) : (
-                        <span className="text-slate-700">
-                          {getMembershipConfig(plan.name).maxTeamSize}人
+                        row.FREE
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center font-medium bg-blue-50/30">
+                      {row.SILVER === "✓" ? (
+                        <Check className="w-5 h-5 text-[#2b6cb0] mx-auto" />
+                      ) : row.SILVER === "-" ? (
+                        <X className="w-5 h-5 text-slate-300 mx-auto" />
+                      ) : (
+                        <span className="text-[#2b6cb0] font-bold">
+                          {row.SILVER}
                         </span>
                       )}
                     </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-slate-400" />
-                    空间配额
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td key={plan.name} className="text-center py-4 px-4">
-                      {plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#10b981]">
-                          1 个个人空间
-                          <br />+ 无限企业空间
-                        </span>
+                    <td className="px-6 py-4 text-center text-slate-700">
+                      {row.CROWN === "✓" ? (
+                        <Check className="w-5 h-5 text-purple-600 mx-auto" />
+                      ) : row.CROWN === "-" ? (
+                        <X className="w-5 h-5 text-slate-300 mx-auto" />
                       ) : (
-                        <span className="text-slate-700">
-                          1 个个人空间
-                          <br />+{" "}
-                          {
-                            getMembershipConfig(plan.name)
-                              .maxEnterpriseWorkspaces
-                          }
-                          个企业空间
-                        </span>
+                        row.CROWN
                       )}
                     </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <Box className="w-4 h-4 text-slate-400" />
-                    组件数量
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td key={plan.name} className="text-center py-4 px-4">
-                      {plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#10b981]">无限</span>
-                      ) : (
-                        <span className="text-slate-700">
-                          {getMembershipConfig(plan.name).maxComponents}个
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <Database className="w-4 h-4 text-slate-400" />
-                    存储空间
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td key={plan.name} className="text-center py-4 px-4">
-                      {plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#10b981]">无限</span>
-                      ) : (
-                        <span className="text-slate-700">
-                          {(
-                            getMembershipConfig(plan.name).maxStorage / 1024
-                          ).toFixed(0)}
-                          GB
-                        </span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <Code className="w-4 h-4 text-slate-400" />
-                    组件库权限
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td key={plan.name} className="text-center py-4 px-4">
-                      {plan.name === "FREE" || plan.name === "BRONZE" ? (
-                        <span className="text-slate-600">基础</span>
-                      ) : plan.name === "DIAMOND" || plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#f59e0b]">
-                          全量 + 专属
-                        </span>
-                      ) : (
-                        <span className="font-bold text-[#3182ce]">全量</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <Headphones className="w-4 h-4 text-slate-400" />
-                    技术支持
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td
-                      key={plan.name}
-                      className="text-center py-4 px-4 text-sm"
-                    >
-                      {plan.name === "FREE" ? (
-                        <span className="text-slate-600">标准</span>
-                      ) : plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#f59e0b]">
-                          7×24 专属
-                        </span>
-                      ) : (
-                        <span className="font-bold text-[#3182ce]">优先</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-slate-100">
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-slate-400" />
-                    数据分析
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td key={plan.name} className="text-center py-4 px-4">
-                      {plan.name === "FREE" ? (
-                        <X className="w-4 h-4 text-slate-300 mx-auto" />
-                      ) : plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#f59e0b]">
-                          高级 + 导出
-                        </span>
-                      ) : (
-                        <Check className="w-4 h-4 text-[#10b981] mx-auto" />
-                      )}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <td className="py-4 px-4 text-slate-700 flex items-center gap-2">
-                    <Palette className="w-4 h-4 text-slate-400" />
-                    主题自定义
-                  </td>
-                  {membershipPlans.map((plan) => (
-                    <td key={plan.name} className="text-center py-4 px-4">
-                      {plan.name === "FREE" || plan.name === "BRONZE" ? (
-                        <X className="w-4 h-4 text-slate-300 mx-auto" />
-                      ) : plan.name === "GOLD" ||
-                        plan.name === "DIAMOND" ||
-                        plan.name === "CROWN" ? (
-                        <span className="font-bold text-[#f59e0b]">
-                          完全自定义
-                        </span>
-                      ) : (
-                        <Check className="w-4 h-4 text-[#10b981] mx-auto" />
-                      )}
-                    </td>
-                  ))}
-                </tr>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
+      </section>
 
-        {/* 常见问题 */}
-        <div className="mt-12 bg-white/80 backdrop-blur-xl rounded-2xl border-2 border-slate-200 p-8">
-          <h3 className="text-2xl font-bold text-slate-800 mb-6 text-center">
-            常见问题
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            <div>
-              <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#3182ce] text-white flex items-center justify-center text-xs font-black">
-                  Q
-                </span>
-                会员等级和空间类型有什么区别？
-              </h4>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                会员等级控制您的团队规模、组件数量、存储空间等配额限制；空间类型决定您使用的协作环境和功能权限。两者配合使用，满足不同场景需求。
-              </p>
-            </div>
-            <div>
-              <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#3182ce] text-white flex items-center justify-center text-xs font-black">
-                  Q
-                </span>
-                如何升级会员或空间？
-              </h4>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                点击对应套餐卡片下方的"立即升级"按钮，根据提示完成支付即可。支持按月或按年付费，按年付费可享受
-                8 折优惠。
-              </p>
-            </div>
-            <div>
-              <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#3182ce] text-white flex items-center justify-center text-xs font-black">
-                  Q
-                </span>
-                可以降级或取消会员吗？
-              </h4>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                可以。您可以随时降级到免费版或取消会员，当前会员权益将持续到本期结束。
-              </p>
-            </div>
-            <div>
-              <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#3182ce] text-white flex items-center justify-center text-xs font-black">
-                  Q
-                </span>
-                企业版支持私有化部署吗？
-              </h4>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                是的，皇冠会员支持私有化部署和定制开发服务。请联系客服获取详细方案和报价。
-              </p>
-            </div>
+      <section className="py-20 bg-gradient-to-br from-slate-900 to-slate-800">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <h2 className="text-4xl font-black text-white mb-6">
+            准备好升级您的会员等级？
+          </h2>
+          <p className="text-xl text-slate-300 mb-10 max-w-2xl mx-auto">
+            从 L1 到 L3，每一步升级都解锁更多强大功能，助力您的团队更高效地工作
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <button
+              onClick={() => router.push(userState.isLoggedIn ? "/workspace-hub" : "/auth/login")}
+              className="inline-flex items-center gap-3 px-8 py-4 bg-white text-[#2b6cb0] text-lg font-bold rounded-[4px] hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+            >
+              <span>{userState.isLoggedIn ? "进入工作台查看等级" : "免费注册升级"}</span>
+              <ArrowRight className="w-5 h-5" />
+            </button>
+            <p className="text-slate-400 text-sm">
+              需要定制化方案？
+              <a
+                href="/solutions"
+                className="text-white font-bold hover:underline ml-1"
+              >
+                联系我们
+              </a>
+            </p>
           </div>
         </div>
+      </section>
 
-        {/* 联系客服 CTA */}
-        <div className="mt-8 text-center">
-          <p className="text-slate-600 mb-4">需要定制化方案或有其他疑问？</p>
-          <button
-            onClick={() => toast.info("客服功能开发中")}
-            className="px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-bold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all inline-flex items-center gap-2"
-          >
-            <MessageSquare className="w-4 h-4" />
-            联系客服
-          </button>
-        </div>
-      </main>
+      <Footer />
     </div>
   );
 }

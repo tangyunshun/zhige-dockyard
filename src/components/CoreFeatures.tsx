@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -21,7 +21,6 @@ export default function CoreFeatures() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 检查登录状态
     checkLoginStatus();
   }, []);
 
@@ -44,17 +43,14 @@ export default function CoreFeatures() {
     if (loading) return;
     
     if (isLoggedIn) {
-      // 已登录：跳转到 Studio 组件库页面
       router.push("/studio");
     } else {
-      // 未登录：跳转到登录页面并携带回调参数
       router.push(`/auth/login?redirect=${encodeURIComponent("/studio")}`);
     }
   };
 
   return (
     <>
-      {/* Section 4: Core Component Matrix (Bento Grid) */}
       <section className="py-24 bg-slate-50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16 relative">
@@ -68,7 +64,7 @@ export default function CoreFeatures() {
               </span>
             </h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-              从商机挖掘到代码落盘，每一环都有 AI 能力作为"齿轮"驱动，开箱即用。
+              从商机挖掘到代码落盘，每一环都有组件作为"齿轮"驱动，开箱即用。
             </p>
 
             <div className="mt-8 flex justify-center md:absolute md:right-0 md:bottom-1">
@@ -95,7 +91,6 @@ export default function CoreFeatures() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Main Card: Bidding - 左侧大卡片 */}
             <div className="md:col-span-2 bento-card rounded-12 p-6 flex flex-col gap-4">
               <div>
                 <div className="w-10 h-10 bg-blue-50 rounded-8 flex items-center justify-center text-[#2b6cb0] mb-4">
@@ -121,16 +116,14 @@ export default function CoreFeatures() {
               </div>
             </div>
 
-            {/* Right Column - 右侧三张小卡片 */}
             <div className="flex flex-col gap-6">
-              {/* Small Card 1: Code Diff */}
               <div className="rounded-12 p-5 flex flex-col bg-black text-white border border-slate-200/10 flex-1">
                 <div className="mb-3 text-emerald-400">
                   <Code className="w-5 h-5" />
                 </div>
                 <h3 className="font-bold mb-1 text-sm">代码高亮对比</h3>
                 <p className="text-slate-400 text-xs mb-3">
-                  AI 自动评审代码变更，预警逻辑漏洞。
+                  自动评审代码变更，预警逻辑漏洞。
                 </p>
                 <div className="mt-auto font-mono text-[9px] space-y-1 bg-slate-900/50 rounded-4 p-2">
                   <div className="text-red-400">- return count * price;</div>
@@ -140,7 +133,6 @@ export default function CoreFeatures() {
                 </div>
               </div>
 
-              {/* Small Card 2: ER Diagram */}
               <div className="bento-card rounded-12 p-5 flex flex-col flex-1">
                 <div className="mb-3 text-amber-500">
                   <Database className="w-5 h-5" />
@@ -159,9 +151,7 @@ export default function CoreFeatures() {
               </div>
             </div>
 
-            {/* Bottom Row - 下方两个卡片 */}
             <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* High Card: PRD */}
               <div className="bento-card rounded-12 p-6 flex flex-col justify-between bg-gradient-to-br from-white to-blue-50/30">
                 <div>
                   <div className="w-10 h-10 bg-indigo-50 rounded-8 flex items-center justify-center text-indigo-500 mb-4">
@@ -169,8 +159,7 @@ export default function CoreFeatures() {
                   </div>
                   <h3 className="text-lg font-bold mb-2">混沌需求转 PRD</h3>
                   <p className="text-slate-500 text-sm leading-relaxed">
-                    捕捉对话中的碎片想法，通过思维链 (CoT)
-                    自动补齐业务边界，生成标准的 PRD 与原型草图。
+                    捕捉对话中的碎片想法，自动补齐业务边界，生成标准的 PRD 与原型草图。
                   </p>
                 </div>
                 <div className="space-y-2 mt-4">
@@ -183,7 +172,6 @@ export default function CoreFeatures() {
                 </div>
               </div>
 
-              {/* Small Card 3: API Contract */}
               <div className="bento-card rounded-12 p-6 flex flex-col">
                 <div className="mb-4 text-rose-500">
                   <Layers className="w-6 h-6" />

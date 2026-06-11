@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿﻿﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -84,8 +84,8 @@ export function ActivityMonitor() {
   };
 
   const handleConfirmTimeout = () => {
-    console.log("[ActivityMonitor] 用户确认超时，跳转到登录页");
-    window.location.href = "/auth/login";
+    console.log("[ActivityMonitor] 用户确认超时，跳转到首页");
+    window.location.href = "/";
   };
 
   // 检查是否超时
@@ -97,10 +97,20 @@ export function ActivityMonitor() {
 
     const userId =
       typeof window !== "undefined" ? localStorage.getItem("userId") : null;
-    const hasCookie =
-      typeof window !== "undefined"
-        ? document.cookie.includes("auth_token=")
-        : false;
+    
+    // 检查有效的 cookie token（排除空值情况）
+    let hasValidToken = false;
+    if (typeof window !== "undefined") {
+      const cookies = document.cookie.split(";");
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split("=");
+        if (name === "auth_token" && value && value.length > 0) {
+          hasValidToken = true;
+          break;
+        }
+      }
+    }
+    
     const isLoggingOut =
       typeof window !== "undefined"
         ? sessionStorage.getItem("is_logging_out") === "true"
@@ -115,7 +125,7 @@ export function ActivityMonitor() {
       return;
     }
 
-    if (!userId || !hasCookie) {
+    if (!userId || !hasValidToken) {
       return;
     }
 
@@ -189,9 +199,19 @@ export function ActivityMonitor() {
       if (timeSinceActivity >= TIMEOUT_DURATION) {
         // 检查用户是否已登录
         const userId = localStorage.getItem("userId");
-        const hasCookie = document.cookie.includes("auth_token=");
+        
+        // 检查有效的 cookie token（排除空值情况）
+        let hasValidToken = false;
+        const cookies = document.cookie.split(";");
+        for (const cookie of cookies) {
+          const [name, value] = cookie.trim().split("=");
+          if (name === "auth_token" && value && value.length > 0) {
+            hasValidToken = true;
+            break;
+          }
+        }
 
-        if (userId && hasCookie && !showTimeoutOverlay) {
+        if (userId && hasValidToken && !showTimeoutOverlay) {
           handleSessionTimeout();
         }
       } else {

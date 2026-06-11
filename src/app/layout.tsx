@@ -1,11 +1,9 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
-import { ToastProvider } from "@/components/Toast";
-import AuthCheck from "@/components/AuthCheck";
-import { ActivityMonitor } from "@/components/ActivityMonitor";
+import AppLayout from "@/components/AppLayout";
 
 export const metadata: Metadata = {
-  title: "知阁·舟坊 (ZhiGe Dockyard) - 全链路 AI 软件研发效能操作系统",
+  title: "知阁·舟坊 (ZhiGe Dockyard) - 全链路软件研发效能操作系统",
   description:
     "打破工具孤岛，从 RFP 标书解析到系统架构、PRD 生成、项目验收，提效 300%。",
   icons: {
@@ -28,10 +26,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased min-h-screen w-full flex flex-col overflow-y-auto">
-        <ToastProvider>
-          <AuthCheck>{children}</AuthCheck>
-          <ActivityMonitor />
-        </ToastProvider>
+        <AppLayout>{children}</AppLayout>
       </body>
     </html>
   );

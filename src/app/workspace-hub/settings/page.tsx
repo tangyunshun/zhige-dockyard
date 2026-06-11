@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -579,10 +579,10 @@ export default function PersonalWorkspaceSettings() {
                     </h2>
 
                     <div className="space-y-5">
-                      {/* 默认 AI 引擎 */}
+                      {/* 默认引擎 */}
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-3">
-                          默认 AI 引擎
+                          默认引擎
                         </label>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           {[
@@ -657,12 +657,12 @@ export default function PersonalWorkspaceSettings() {
                               systemPrompt: e.target.value,
                             })
                           }
-                          placeholder="设定该沙盒空间的默认 AI 角色，例如：'你是一位资深的全栈架构师，擅长...'"
+                          placeholder="设定该沙盒空间的默认角色，例如：'你是一位资深的全栈架构师，擅长...'"
                           rows={5}
                           className="w-full px-[14px] py-[12px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white/60 backdrop-blur-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none resize-none"
                         />
                         <p className="text-xs text-slate-500 mt-1">
-                          此 Prompt 将作为所有 AI 对话的默认系统指令
+                          此 Prompt 将作为所有对话的默认系统指令
                         </p>
                       </div>
                     </div>

@@ -161,7 +161,7 @@ async function main() {
   console.log("开始初始化会员等级数据...");
 
   for (const level of membershipLevels) {
-    await prisma.membershipLevel.upsert({
+    await prisma.membershiplevel.upsert({
       where: { name: level.name },
       update: level,
       create: level,

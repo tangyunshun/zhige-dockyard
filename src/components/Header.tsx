@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -38,21 +38,16 @@ export default function Header() {
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 首先检查 localStorage 中的登录状态，快速显示
     const userId = localStorage.getItem("userId");
 
     if (userId) {
-      // 如果 localStorage 中有 userId，先显示登录状态（但不显示具体用户信息）
       setIsLoggedIn(true);
       setLoading(false);
-      // 然后再从服务器验证并获取详细信息
       checkLoginStatus();
     } else {
-      // 没有本地信息，直接从服务器检查
       checkLoginStatus();
     }
 
-    // 点击外部关闭下拉菜单
     const handleClickOutside = (event: MouseEvent) => {
       if (
         userMenuRef.current &&
@@ -68,25 +63,13 @@ export default function Header() {
 
   const checkLoginStatus = async () => {
     try {
-      // 从 localStorage 获取 token
-      const token = localStorage.getItem("auth_token");
-      
-      const headers: HeadersInit = {};
-      // 如果有 token，添加到 header
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-      
       const res = await fetch("/api/auth/me", {
-        // 添加超时处理
         signal: AbortSignal.timeout(5000),
-        headers,
+        credentials: "include",
       });
 
-      // 检查响应类型
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        // 可能是开发环境中的编译中状态，忽略此错误
         console.log("API 尚未准备好，跳过本次检查");
         return;
       }
@@ -95,8 +78,6 @@ export default function Header() {
         const data = await res.json();
         setIsLoggedIn(true);
         setUser(data.user);
-
-        // 获取用户的工作空间列表
         await fetchWorkspaces();
       } else {
         setIsLoggedIn(false);
@@ -104,7 +85,6 @@ export default function Header() {
         setWorkspaces([]);
       }
     } catch (error) {
-      // 忽略超时等错误
       console.log("Check login status error (ignored):", error);
       setIsLoggedIn(false);
       setUser(null);
@@ -116,7 +96,9 @@ export default function Header() {
 
   const fetchWorkspaces = async () => {
     try {
-      const res = await fetch("/api/workspace/list");
+      const res = await fetch("/api/workspace/list", {
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setWorkspaces(data.workspaces);
@@ -147,10 +129,8 @@ export default function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/65 backdrop-blur-2xl border-b border-white/80">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        {/* Left: Logo */}
         <Logo className="flex items-center" variant="light" />
 
-        {/* Center: Navigation */}
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
           <div className="group relative flex items-center gap-1 cursor-pointer hover:text-[#3182ce] transition-colors">
             产品能力{" "}
@@ -192,16 +172,13 @@ export default function Header() {
           </a>
         </nav>
 
-        {/* Right: Actions */}
         <div className="flex items-center gap-3">
           {loading ? (
-            // 加载中显示骨架屏
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-full bg-slate-200 animate-pulse" />
               <div className="w-20 h-7 bg-slate-200 rounded animate-pulse hidden lg:block" />
             </div>
           ) : isLoggedIn && user ? (
-            // 已登录：显示用户信息和操作按钮
             <>
               <button
                 onClick={() => router.push("/workspace-hub")}
@@ -247,10 +224,8 @@ export default function Header() {
                   </svg>
                 </button>
 
-                {/* 下拉菜单 - 简化版：只保留个人设置和退出登录 */}
                 {showUserMenu && (
                   <div className="absolute right-0 mt-2 w-56 bg-white/95 backdrop-blur-xl rounded-xl shadow-[0_8px_24px_-6px_rgba(15,23,42,0.15),0_2px_6px_-2px_rgba(15,23,42,0.06)] border border-[#e2e8f0]/90 py-0 z-50 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
-                    {/* 1. 用户信息区 */}
                     <div className="px-5 py-4 border-b border-[#e2e8f0]/80 bg-gradient-to-br from-white to-slate-50/60">
                       <div className="flex items-center gap-3">
                         {user.avatar ? (
@@ -271,7 +246,6 @@ export default function Header() {
                           <p className="text-xs text-slate-500 truncate mt-0.5">
                             {user.email || "未绑定邮箱"}
                           </p>
-                          {/* 会员等级 - 仅非 FREE 等级显示 */}
                           {user.membershipLevel && user.membershipLevel !== "FREE" && (
                             <div className="mt-1">
                               <span className="px-1.5 py-0.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 text-[#d97706] text-[10px] font-bold rounded border border-[#f59e0b]/20">
@@ -287,11 +261,11 @@ export default function Header() {
                       </div>
                     </div>
 
-                    {/* 2. 设置导航区 - 简化 */}
                     <div className="px-5 py-2.5 border-b border-[#e2e8f0]/80">
-                      {/* 管理员后台入口 - 仅管理员可见 */}
-                      {(user?.role?.toUpperCase() === "ADMIN" ||
-                        user?.role?.toUpperCase() === "SUPER_ADMIN") && (
+                      {(() => {
+                        const role = user?.role?.toUpperCase().replace(/_/g, '');
+                        return role === "ADMIN" || role === "SUPERADMIN";
+                      })() && (
                         <button
                           onClick={() => {
                             router.push("/admin");
@@ -321,7 +295,6 @@ export default function Header() {
                         </button>
                       )}
 
-                      {/* 个人工作台入口 - 所有用户可见 */}
                       <button
                         onClick={() => {
                           router.push("/user/dashboard");
@@ -373,7 +346,6 @@ export default function Header() {
                       </button>
                     </div>
 
-                    {/* 3. 操作区 */}
                     <div className="px-5 py-2.5">
                       <button
                         onClick={() => {
@@ -393,7 +365,6 @@ export default function Header() {
               </div>
             </>
           ) : (
-            // 未登录：显示进入操作工坊按钮和登录/注册合并按钮
             <>
               <button
                 onClick={() => router.push("/auth/login")}

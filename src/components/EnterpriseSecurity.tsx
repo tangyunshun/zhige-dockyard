@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { ShieldCheck, Server, Lock } from "lucide-react";
 
@@ -25,7 +25,7 @@ export default function EnterpriseSecurity() {
               </span>
             </h2>
             <p className="text-slate-300 max-w-2xl mx-auto leading-relaxed">
-              不仅仅是 AI，更是符合信创标准、金融级合规的软件工程底座。
+              不仅仅是智能能力，更是符合信创标准、金融级合规的软件工程底座。
             </p>
           </div>
 

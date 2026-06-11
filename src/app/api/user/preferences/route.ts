@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
@@ -54,11 +54,11 @@ export async function POST(req: NextRequest) {
       maxTokens,
     } = await req.json();
 
-    // 验证 AI 引擎
+    // 验证引擎
     const validEngines = ["zhige", "deepseek", "custom"];
     if (aiEngine && !validEngines.includes(aiEngine)) {
       return NextResponse.json(
-        { error: "无效的 AI 引擎" },
+        { error: "无效的引擎" },
         { status: 400 }
       );
     }

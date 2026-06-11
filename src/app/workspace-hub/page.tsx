@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -90,6 +90,27 @@ interface EnterpriseQuota {
   enterpriseCount: number;
   maxEnterprise: number;
   isMember: boolean;
+}
+
+interface UserQuota {
+  isVip: boolean;
+  ownedEnterpriseCount: number;
+  maxEnterpriseLimit: number;
+}
+
+interface ComponentItem {
+  id: string;
+  name: string;
+  stage: string;
+  isPremium: boolean;
+  icon: string;
+}
+
+interface StageComponentData {
+  name: string;
+  color: string;
+  bgColor: string;
+  components: ComponentItem[];
 }
 
 interface EnterpriseWorkspace {
@@ -562,6 +583,32 @@ const componentStagesData = [
   },
 ];
 
+// 组件市场数据（用于新UI）
+const componentMarketData: StageComponentData[] = [
+  {
+    name: "商机与售前",
+    color: "#3182ce",
+    bgColor: "from-[#3182ce] to-[#2b6cb0]",
+    components: [
+      { id: "C01", name: "标书智能解析", stage: "商机与售前", isPremium: false, icon: "📄" },
+      { id: "C02", name: "方案合规审查", stage: "商机与售前", isPremium: true, icon: "✓" },
+      { id: "C03", name: "竞品对比分析", stage: "商机与售前", isPremium: true, icon: "📊" },
+      { id: "C04", name: "汇报话术转换", stage: "商机与售前", isPremium: true, icon: "💬" },
+    ],
+  },
+  {
+    name: "需求定义",
+    color: "#10b981",
+    bgColor: "from-[#10b981] to-[#059669]",
+    components: [
+      { id: "C07", name: "需求转 PRD", stage: "需求定义", isPremium: false, icon: "📝" },
+      { id: "C08", name: "用户故事生成", stage: "需求定义", isPremium: true, icon: "👤" },
+      { id: "C09", name: "原型设计建议", stage: "需求定义", isPremium: true, icon: "🎨" },
+      { id: "C10", name: "验收标准细化", stage: "需求定义", isPremium: true, icon: "✅" },
+    ],
+  },
+];
+
 // 转换为组件阶段数据
 const componentStages: ComponentStage[] = componentStagesData.map(
   (stage: ComponentStageData) => ({
@@ -636,6 +683,11 @@ export default function WorkspaceHub() {
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+  
+  // 新添加的状态
+  const [userQuota, setUserQuota] = useState<UserQuota | null>(null);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
 
   useEffect(() => {
     // 首先检查用户是否已登录
@@ -709,6 +761,13 @@ export default function WorkspaceHub() {
 
       const data = await res.json();
       setUser(data.user);
+
+      // 初始化用户配额（模拟数据，实际应该从API获取）
+      setUserQuota({
+        isVip: false, // 默认为免费用户
+        ownedEnterpriseCount: 0,
+        maxEnterpriseLimit: 3,
+      });
 
       const workspacesRes = await fetch("/api/workspace/list", {
         headers: {
@@ -1025,6 +1084,32 @@ export default function WorkspaceHub() {
       console.warn("Create personal workspace error:", error);
       toast.error(error instanceof Error ? error.message : "创建失败");
     }
+  };
+
+  // 新添加的业务逻辑函数
+  const handleCreateEnterprise = () => {
+    if (!userQuota) return;
+    
+    if (!userQuota.isVip) {
+      toast.error("您当前为免费社区版，无法创建企业协作空间。请开通 VIP 获取企业空间额度。");
+      return;
+    }
+    
+    if (userQuota.ownedEnterpriseCount >= userQuota.maxEnterpriseLimit) {
+      toast.error(`您的企业空间额度已达上限 (${userQuota.maxEnterpriseLimit}个)，请升级至更高版本。`);
+      return;
+    }
+    
+    // 符合条件，跳转到创建企业空间页面
+    router.push("/workspace-hub/create");
+  };
+
+  const handleComponentClick = (component: ComponentItem) => {
+    if (component.isPremium) {
+      setShowPremiumModal(true);
+      return;
+    }
+    toast.info("请先进入工作空间后使用组件");
   };
 
   const handleDeleteUpgradedPersonal = () => {
@@ -1503,40 +1588,19 @@ export default function WorkspaceHub() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#10b981]/[0.06] rounded-full blur-[120px]" />
       </div>
 
-      {/* 顶栏 */}
-      <header className="relative z-10 flex items-center justify-between px-8 py-6">
-        <Logo variant="light" />
-        <div className="flex items-center gap-4">
-          {user?.avatar && (
-            <img
-              src={user.avatar}
-              alt={user.name || "用户头像"}
-              className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm"
-            />
-          )}
-          <button
-            onClick={handleLogout}
-            className="group flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
-          >
-            <span>退出登录</span>
-          </button>
-        </div>
-      </header>
-
       {/* 核心区 */}
       <main className="relative z-10 px-6 py-8">
         {/* 欢迎区 */}
         <div className="mb-10">
           <h1 className="text-3xl font-black text-slate-800 mb-3">
-            欢迎回来，{user?.name || "用户"}
+            工作空间管理
           </h1>
           <p className="text-slate-600 text-base leading-relaxed">
-            知阁·舟坊组件化开发平台 -
-            选择工作空间开始协作，浏览全量组件库，或管理个人空间设置
+            管理您的个人空间和企业空间
           </p>
         </div>
 
-        {/* 第一行：工作空间选择（个人空间 + 企业空间） */}
+        {/* 工作空间选择（个人空间 + 企业空间） */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           {/* 个人空间 - 占 1/3 */}
           <div
@@ -3388,6 +3452,53 @@ export default function WorkspaceHub() {
                     <span>确认注销</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新增：高级组件拦截弹窗 */}
+      {showPremiumModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-[8px] shadow-lg shadow-slate-200/50 max-w-md w-full p-6 relative">
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => setShowPremiumModal(false)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-all"
+            >
+              <span className="text-slate-500 text-xl">×</span>
+            </button>
+
+            {/* 图标 */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-[8px] bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">🔒</span>
+              </div>
+              <h2 className="text-xl font-black text-slate-800 mb-2">
+                高级组件
+              </h2>
+              <p className="text-sm text-slate-600">
+                请升级至岗位专业版或联系管理员解锁
+              </p>
+            </div>
+
+            {/* 操作按钮 */}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setShowPremiumModal(false);
+                  // 可以在这里添加跳转到升级页面的逻辑
+                }}
+                className="w-full px-4 py-3 bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] text-white text-sm font-bold rounded-[4px] hover:shadow-lg transition-all"
+              >
+                立即升级
+              </button>
+              <button
+                onClick={() => setShowPremiumModal(false)}
+                className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-[4px] hover:bg-slate-50 transition-all"
+              >
+                稍后再说
               </button>
             </div>
           </div>

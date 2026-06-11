@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import { useEffect, useCallback, useRef } from "react";
 
@@ -39,11 +39,21 @@ export function useTokenRefresh() {
 
     const hasUserId =
       typeof window !== "undefined" && localStorage.getItem("userId");
-    const hasCookie =
-      typeof window !== "undefined" &&
-      document.cookie.includes("auth_token=");
+    
+    // 检查有效的 cookie token（排除空值情况）
+    let hasValidToken = false;
+    if (typeof window !== "undefined") {
+      const cookies = document.cookie.split(";");
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split("=");
+        if (name === "auth_token" && value && value.length > 0) {
+          hasValidToken = true;
+          break;
+        }
+      }
+    }
 
-    if (!hasUserId || !hasCookie) {
+    if (!hasUserId || !hasValidToken) {
       console.log("[TokenRefresh] 用户未登录，跳过刷新");
       return false;
     }

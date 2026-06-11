@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿﻿﻿﻿﻿﻿﻿"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -643,7 +643,7 @@ function UpgradeWorkspaceForm() {
                     </div>
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                       <CheckCircle className="w-4 h-4 text-[#10b981]" />
-                      <span>AI 引擎配置继承</span>
+                      <span>引擎配置继承</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                       <CheckCircle className="w-4 h-4 text-[#10b981]" />

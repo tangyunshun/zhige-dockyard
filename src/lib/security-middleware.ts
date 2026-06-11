@@ -1,4 +1,4 @@
-﻿import { NextRequest } from "next/server";
+﻿﻿import { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { getClientIP } from "./ip-risk";
 

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -176,7 +176,7 @@ const guideSections: GuideSection[] = [
       },
       {
         title: "研发偏好设置",
-        description: "自定义 AI 引擎、系统提示词等偏好设置",
+        description: "自定义引擎、系统提示词等偏好设置",
         link: "/workspace-hub/settings",
       },
     ],

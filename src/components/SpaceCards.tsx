@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿﻿﻿﻿﻿"use client";
 
 import React from "react";
 import { 
@@ -46,7 +46,6 @@ export default function SpaceCards({
 }: SpaceCardsProps) {
   const router = useRouter();
 
-  // 卡片 A: 进入个人空间
   const PersonalSpaceCard = () => (
     <div className="group relative overflow-hidden bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#3182ce]/30 hover:border-[#3182ce]/50 hover:shadow-2xl hover:shadow-[#3182ce]/20 transition-all duration-300 hover:-translate-y-1">
       <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-[10px] font-black rounded-full shadow-lg">
@@ -64,7 +63,6 @@ export default function SpaceCards({
             进入私密研发沙盒，数据绝对隔离，不支持团队协作，适合个人独立开发
           </p>
           
-          {/* 特性列表 */}
           <div className="grid grid-cols-2 gap-2 mb-3">
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-3 h-3 text-[#3182ce]" />
@@ -96,7 +94,6 @@ export default function SpaceCards({
     </div>
   );
 
-  // 卡片 B: 创建/升级企业空间
   const CreateUpgradeCard = () => (
     <div className="group relative overflow-hidden bg-gradient-to-br from-[#f59e0b]/5 to-[#d97706]/5 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#f59e0b]/30 hover:border-[#f59e0b]/50 hover:shadow-2xl hover:shadow-[#f59e0b]/20 transition-all duration-300 hover:-translate-y-1">
       <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-[10px] font-black rounded-full shadow-lg">
@@ -118,7 +115,6 @@ export default function SpaceCards({
                 : "升级会员，解锁更多企业空间槽位"}
           </p>
 
-          {/* 配额信息 */}
           <div className="mb-3 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] text-slate-600">企业空间配额</span>
@@ -152,7 +148,6 @@ export default function SpaceCards({
     </div>
   );
 
-  // 卡片 C: 个人空间配置
   const PersonalSettingsCard = () => (
     <div className="group relative overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 backdrop-blur-xl rounded-2xl p-5 border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
       <div className="flex items-start gap-3">
@@ -164,16 +159,15 @@ export default function SpaceCards({
             个人空间配置
           </h3>
           <p className="text-xs text-slate-600 mb-3 leading-relaxed">
-            配置 AI 引擎、System Prompt、数据清理策略，打造个性化研发环境
+            配置引擎、System Prompt、数据清理策略，打造个性化研发环境
           </p>
 
-          {/* 功能列表 */}
           <div className="grid grid-cols-2 gap-2 mb-3">
             <div className="p-2 bg-white rounded-lg border border-slate-200">
               <div className="flex items-center gap-1.5 mb-1">
                 <Zap className="w-2.5 h-2.5 text-[#3182ce]" />
                 <span className="text-[10px] font-bold text-slate-700">
-                  AI 引擎
+                  引擎配置
                 </span>
               </div>
               <p className="text-[9px] text-slate-500">模型选择</p>
@@ -201,7 +195,6 @@ export default function SpaceCards({
     </div>
   );
 
-  // 卡片 D: 加入已有空间
   const JoinSpaceCard = () => (
     <div className="group relative overflow-hidden bg-gradient-to-br from-[#10b981]/5 to-[#059669]/5 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#10b981]/30 hover:border-[#10b981]/50 hover:shadow-2xl hover:shadow-[#10b981]/20 transition-all duration-300 hover:-translate-y-1">
       <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-[10px] font-black rounded-full shadow-lg">
@@ -219,7 +212,6 @@ export default function SpaceCards({
             通过邀请码或分享链接加入企业空间，开启团队协作
           </p>
 
-          {/* 使用场景 */}
           <div className="mb-3 p-2.5 bg-[#10b981]/5 rounded-lg border border-[#10b981]/20">
             <ul className="space-y-1">
               <li className="flex items-start gap-1.5">
@@ -251,11 +243,9 @@ export default function SpaceCards({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-      {/* 第一行：进入个人空间 + 创建/升级企业空间 */}
       {hasPersonalSpace && <PersonalSpaceCard />}
       <CreateUpgradeCard />
       
-      {/* 第二行：个人空间配置 + 加入已有空间 */}
       {hasPersonalSpace && <PersonalSettingsCard />}
       <JoinSpaceCard />
     </div>

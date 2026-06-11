@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -154,7 +154,7 @@ export default function InitWizard() {
             知阁·舟坊
           </h1>
           <p className="text-blue-100 text-center mb-8">
-            全链路 AI 软件研发效能操作系统
+            全链路软件研发效能操作系统
           </p>
           <div className="space-y-3 w-full">
             <div className="flex items-center gap-3 bg-white/10 rounded-[var(--radius-btn)] px-4 py-3 backdrop-blur-sm">
@@ -167,7 +167,7 @@ export default function InitWizard() {
             </div>
             <div className="flex items-center gap-3 bg-white/10 rounded-[var(--radius-btn)] px-4 py-3 backdrop-blur-sm">
               <CheckCircle className="w-5 h-5 text-green-300" />
-              <span className="text-sm">AI 智能驱动</span>
+              <span className="text-sm">智能驱动</span>
             </div>
           </div>
         </div>
