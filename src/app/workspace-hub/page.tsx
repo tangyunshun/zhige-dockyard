@@ -1636,8 +1636,48 @@ export default function WorkspaceHub() {
               </div>
             </div>
 
+            {/* 极客安全中心与快速导航 */}
+            <div className="my-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-b border-slate-200/50 py-4 relative z-10">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">极客安全中心</span>
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-100 text-emerald-700">安全级别：高</span>
+                </div>
+                <div className="flex items-center gap-4 text-slate-500">
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                    <span className="text-[10px] font-bold text-slate-600">三方账号已绑定</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] bg-slate-100 px-1 py-0.5 rounded border border-slate-200 text-slate-500 font-bold">微信</span>
+                    <span className="text-[10px] bg-slate-100 px-1 py-0.5 rounded border border-slate-200 text-slate-500 font-bold">QQ</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 sm:border-l sm:border-slate-200/50 sm:pl-4">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">控制台快捷直达</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => router.push("/studio")}
+                    className="text-[10px] font-bold text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span>组件 Studio 工坊</span>
+                    <ArrowRight className="w-2.5 h-2.5" />
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    onClick={() => router.push("/pricing")}
+                    className="text-[10px] font-bold text-violet-500 hover:text-violet-600 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span>订阅与升级计划</span>
+                    <ArrowUpRight className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* 当前活跃研发环境 */}
-            <div className="mt-4 relative bg-slate-50/70 border border-slate-200/50 rounded-2xl p-4">
+            <div className="mt-2 relative bg-slate-50/70 border border-slate-200/50 rounded-2xl p-4">
               <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
                 当前活跃研发环境
               </div>
@@ -2183,7 +2223,7 @@ export default function WorkspaceHub() {
           </div>
 
           {/* Card 6: 科技感使用统计卡片 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
+          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 pb-0 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
             <div>
               {/* 标题 */}
               <div className="flex items-center justify-between mb-4">
@@ -2261,12 +2301,31 @@ export default function WorkspaceHub() {
                       </div>
                     ))
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-6 px-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mb-1.5 border border-slate-200/40">
-                        <Code className="w-4 h-4 text-slate-400" />
+                    <div className="flex flex-col gap-2 p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 select-none">
+                      <div className="flex items-center justify-between opacity-50">
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white bg-slate-300">1</span>
+                          <span className="text-[11px] font-bold text-slate-400">智能助理解析组件</span>
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-300">示例</span>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-500">暂无高频组件调用</span>
-                      <span className="text-[8px] text-slate-400 mt-0.5">进入工坊调用组件后自动计算排行</span>
+                      <div className="flex items-center justify-between opacity-35">
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white bg-slate-300">2</span>
+                          <span className="text-[11px] font-bold text-slate-400">方案合规审查组件</span>
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-300">示例</span>
+                      </div>
+                      <div className="flex items-center justify-between opacity-20">
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white bg-slate-300">3</span>
+                          <span className="text-[11px] font-bold text-slate-400">数据报表生成组件</span>
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-300">示例</span>
+                      </div>
+                      <div className="text-center text-[9px] text-slate-400 font-bold border-t border-slate-200/50 pt-2 mt-1">
+                        🚀 进入工坊调用组件即可激活排行榜
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2274,7 +2333,7 @@ export default function WorkspaceHub() {
             </div>
 
             {/* 底部 SVG 微光科技趋势线 */}
-            <div className="relative h-20 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/5 to-indigo-500/5 border border-violet-500/10 mt-auto">
+            <div className="relative h-24 w-[calc(100%+3rem)] -mx-6 overflow-hidden rounded-b-3xl bg-gradient-to-t from-violet-500/10 via-indigo-500/5 to-transparent border-t border-violet-500/10 mt-auto pointer-events-none z-0">
               <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
                 <defs>
                   <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
@@ -2305,6 +2364,18 @@ export default function WorkspaceHub() {
             </div>
           </div>
         </div>
+
+        {/* 全站极客科技感页脚 */}
+        <footer className="mt-16 py-8 border-t border-slate-200/50 text-center relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-xs text-slate-400 font-medium">
+          <div>知阁·舟坊 © 2026 | 全球领先的极客协同研发平台</div>
+          <div className="flex items-center justify-center gap-4">
+            <a href="/terms-of-service" className="hover:text-blue-500 transition-colors">服务协议</a>
+            <span>·</span>
+            <a href="/privacy-policy" className="hover:text-blue-500 transition-colors">隐私政策</a>
+            <span>·</span>
+            <a href="/security" className="hover:text-blue-500 transition-colors">安全合规</a>
+          </div>
+        </footer>
       </main>
 
       {/* 加入空间模态框 */}
