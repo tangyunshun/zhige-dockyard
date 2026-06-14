@@ -78,6 +78,7 @@ interface UserInfo {
   avatar?: string;
   role?: string;
   membershipLevel?: string;
+  email?: string;
 }
 
 interface Workspace {
@@ -127,6 +128,7 @@ interface EnterpriseWorkspace {
   memberCount: number;
   componentCount: number;
   createdAt: string;
+  role?: string;
 }
 
 interface EnterpriseData {
@@ -1613,10 +1615,24 @@ export default function WorkspaceHub() {
                 <h3 className="text-lg font-black text-slate-800 tracking-tight leading-none mb-2">
                   {user?.name || "极客研发者"}
                 </h3>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide ${levelBg}`}>
-                  <span>{levelIcon}</span>
-                  <span>{levelText}</span>
-                </span>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide ${levelBg}`}>
+                      <span>{levelIcon}</span>
+                      <span>{levelText}</span>
+                    </span>
+                    {user?.role && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                        {user.role.toUpperCase() === "SUPERADMIN" || user.role.toUpperCase() === "ADMIN" ? "系统管理员" : "极客用户"}
+                      </span>
+                    )}
+                  </div>
+                  {user?.email && (
+                    <span className="text-[10px] text-slate-400 font-semibold tracking-tight">
+                      联络账号: {user.email}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1767,7 +1783,7 @@ export default function WorkspaceHub() {
                         : "text-slate-500 hover:text-slate-800"
                     }`}
                   >
-                    协作空间
+                    企业空间
                   </button>
                 </div>
               </div>
@@ -1800,7 +1816,7 @@ export default function WorkspaceHub() {
                     className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black rounded-lg hover:shadow-md transition-all flex items-center gap-0.5 cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
-                    <span>新建协作空间</span>
+                    <span>新建企业空间</span>
                   </button>
                 )}
               </div>
@@ -1810,36 +1826,81 @@ export default function WorkspaceHub() {
             {activeWorkspaceTab === "personal" ? (
               // 个人空间内容
               personalWorkspace ? (
-                <div className="p-4 bg-white/60 border border-slate-200/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[10px] font-black text-white">P</span>
+                <div className="space-y-3">
+                  <div className="p-4 bg-white/60 border border-slate-200/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[10px] font-black text-white">P</span>
+                        </div>
+                        <h4 className="text-sm font-black text-slate-800 truncate">{personalWorkspace.name}</h4>
+                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
+                          已激活
+                        </span>
                       </div>
-                      <h4 className="text-sm font-black text-slate-800 truncate">{personalWorkspace.name}</h4>
-                      <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
-                        已激活
-                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        独立研发环境 · 已绑定 {personalWorkspace.componentCount || 0} 个组件
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      独立研发环境 · 已绑定 {personalWorkspace.componentCount || 0} 个组件
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleEnterWorkspace(personalWorkspace)}
+                        className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <span>进入空间</span>
+                        <ArrowRight className="w-2.5 h-2.5" />
+                      </button>
+                      <button
+                        onClick={handleDeleteUpgradedPersonal}
+                        className="px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                      >
+                        注销
+                      </button>
+                    </div>
+                  </div>
+
+                  {quota && quota.enterpriseCount < quota.maxEnterprise && !personalWorkspaceUpgraded && (
+                    <div className="p-3 bg-gradient-to-r from-emerald-500/5 to-blue-500/5 border border-emerald-500/15 rounded-xl flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                        ✨ 当前个人研发环境支持平滑升级至企业级空间，保留所有组件及资产
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpgradeWorkspace();
+                        }}
+                        className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <span>立即升级</span>
+                        <ArrowUpRight className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : upgradeMode === "migrate" && !personalWorkspace ? (
+                <div className="p-6 bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/10 rounded-2xl text-left">
+                  <p className="text-xs text-slate-600 leading-relaxed mb-2">
+                    您的个人资产已完全平移升级为企业空间，所有组件和项目已迁移。请直接前往企业空间继续工作。
+                  </p>
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    空间已全量迁移至企业
+                  </div>
+                </div>
+              ) : (personalWorkspaceDeleted || personalWorkspaceUpgraded) ? (
+                <div className="p-6 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 border border-blue-500/10 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0 text-left">
+                    <h4 className="text-xs font-black text-slate-700 mb-1">个人空间已被注销</h4>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      所有本地资产已清空。您可以随时重新创建干净的个人独立研发环境。
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleEnterWorkspace(personalWorkspace)}
-                      className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
-                    >
-                      <span>进入空间</span>
-                      <ArrowRight className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      onClick={handleDeleteUpgradedPersonal}
-                      className="px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
-                    >
-                      注销
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleRecreatePersonal}
+                    className="px-3.5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer flex-shrink-0"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>重新创建个人空间</span>
+                  </button>
                 </div>
               ) : (
                 <div className="p-6 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 border border-blue-500/10 rounded-2xl text-center">
@@ -1850,62 +1911,84 @@ export default function WorkspaceHub() {
               // 企业协作空间内容
               enterpriseData && enterpriseData.workspaces.length > 0 ? (
                 <div className="space-y-3 max-h-[190px] overflow-y-auto pr-1">
-                  {enterpriseData.workspaces.map((ws, index) => (
-                    <div
-                      key={ws.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white hover:bg-slate-50/50 rounded-2xl border border-slate-200/80 hover:border-emerald-500/30 transition-all duration-300 gap-4"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="w-6 h-6 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[10px] font-black text-white">{index + 1}</span>
+                  {enterpriseData.workspaces.map((ws, index) => {
+                    const isEnterpriseAdminOrOwner = ws.role === "OWNER" || ws.role === "ADMIN" || !ws.role;
+                    const isEnterpriseOwner = ws.role === "OWNER" || !ws.role;
+
+                    return (
+                      <div
+                        key={ws.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white hover:bg-slate-50/50 rounded-2xl border border-slate-200/80 hover:border-emerald-500/30 transition-all duration-300 gap-4"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <div className="w-6 h-6 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
+                              <span className="text-[10px] font-black text-white">{index + 1}</span>
+                            </div>
+                            <h4 className="text-sm font-black text-slate-800 truncate">{ws.name}</h4>
+                            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
+                              已激活
+                            </span>
+                            {ws.role === "OWNER" && (
+                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-orange-700 border border-orange-200/50 text-[9px] font-bold rounded-full">
+                                所有者
+                              </span>
+                            )}
+                            {ws.role === "ADMIN" && (
+                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-700 border border-emerald-200/50 text-[9px] font-bold rounded-full">
+                                管理员
+                              </span>
+                            )}
+                            {ws.role === "MEMBER" && (
+                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 text-blue-700 border border-blue-200/50 text-[9px] font-bold rounded-full">
+                                协同成员
+                              </span>
+                            )}
                           </div>
-                          <h4 className="text-sm font-black text-slate-800 truncate">{ws.name}</h4>
-                          <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
-                            已激活
-                          </span>
+                          <div className="text-[10px] text-slate-400 font-medium">
+                            {ws.memberCount || 1} 名协同成员 · {ws.componentCount || 0} 个绑定组件
+                          </div>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-medium">
-                          {ws.memberCount || 1} 名协同成员 · {ws.componentCount || 0} 个绑定组件
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => handleEnterWorkspace({ ...ws, type: "ENTERPRISE" })}
+                            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <span>进入空间</span>
+                            <ArrowRight className="w-2.5 h-2.5" />
+                          </button>
+                          <button
+                            onClick={() => handleExpandEnterprise(ws.id)}
+                            disabled={!isEnterpriseAdminOrOwner}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-[10px] font-bold rounded-lg transition-all flex items-center gap-0.5 cursor-pointer"
+                            title={isEnterpriseAdminOrOwner ? "扩容额度" : "仅空间所有者或管理员可扩容此空间"}
+                          >
+                            <TrendingUp className="w-2.5 h-2.5 text-slate-500" />
+                            <span>扩容</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteWorkspace(ws.id)}
+                            disabled={deletingWorkspaceId === ws.id || checkingDelete || !isEnterpriseOwner}
+                            className="px-2.5 py-1.5 border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                            title={isEnterpriseOwner ? "注销空间" : "仅空间所有者可注销此空间"}
+                          >
+                            {checkingDelete && workspaceToDelete === ws.id ? "检测中" : "注销"}
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button
-                          onClick={() => handleEnterWorkspace({ ...ws, type: "ENTERPRISE" })}
-                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
-                        >
-                          <span>进入空间</span>
-                          <ArrowRight className="w-2.5 h-2.5" />
-                        </button>
-                        <button
-                          onClick={() => handleExpandEnterprise(ws.id)}
-                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all flex items-center gap-0.5 cursor-pointer"
-                          title="扩容额度"
-                        >
-                          <TrendingUp className="w-2.5 h-2.5 text-slate-500" />
-                          <span>扩容</span>
-                        </button>
-                        <button
-                          onClick={() => handleDeleteWorkspace(ws.id)}
-                          disabled={deletingWorkspaceId === ws.id || checkingDelete}
-                          className="px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
-                        >
-                          {checkingDelete && workspaceToDelete === ws.id ? "检测中" : "注销"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="p-6 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 border border-emerald-500/10 rounded-2xl text-left">
                   <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                    企业协作空间是面向工作室或研发团队的协作环境。支持多角色协同开发、共享算力配额与岗位细粒度拦截。
+                    企业空间是面向工作室或研发团队的协作环境。支持多角色协同开发、共享算力配额与安全岗位过滤。
                   </p>
                   <button
                     onClick={handleGoToCreateEnterprise}
                     className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-lg transition-all flex items-center gap-1 cursor-pointer"
                   >
-                    <span>开通企业协作空间</span>
+                    <span>开通企业空间</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -2178,8 +2261,12 @@ export default function WorkspaceHub() {
                       </div>
                     ))
                   ) : (
-                    <div className="text-[10px] text-slate-400 italic py-2 text-center">
-                      暂无组件调用统计
+                    <div className="flex flex-col items-center justify-center py-6 px-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mb-1.5 border border-slate-200/40">
+                        <Code className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500">暂无高频组件调用</span>
+                      <span className="text-[8px] text-slate-400 mt-0.5">进入工坊调用组件后自动计算排行</span>
                     </div>
                   )}
                 </div>
@@ -2187,7 +2274,7 @@ export default function WorkspaceHub() {
             </div>
 
             {/* 底部 SVG 微光科技趋势线 */}
-            <div className="relative h-16 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/5 to-indigo-500/5 border border-violet-500/10">
+            <div className="relative h-20 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/5 to-indigo-500/5 border border-violet-500/10 mt-auto">
               <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
                 <defs>
                   <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
