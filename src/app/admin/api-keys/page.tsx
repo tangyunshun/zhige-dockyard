@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
@@ -310,9 +310,9 @@ export default function AdminApiKeysPage() {
                           </div>
                           <div
                             className="text-xs text-slate-500 font-medium truncate"
-                            title={apiKey.user.email}
+                            title={apiKey.user.email ?? undefined}
                           >
-                            {apiKey.user.email}
+                            {apiKey.user.email || "无邮箱"}
                           </div>
                         </div>
                       </div>

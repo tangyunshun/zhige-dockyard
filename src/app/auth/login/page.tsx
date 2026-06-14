@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿"use client";
+"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -17,6 +17,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Mail,
+  Check,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -90,7 +91,7 @@ function LoginForm() {
       // 快速检查：如果 localStorage 没有 userId，直接显示登录页
       const localStorageUserId = localStorage.getItem("userId");
       const authToken = localStorage.getItem("auth_token");
-      
+
       // 检查有效的 cookie token（排除空值情况）
       const cookies = document.cookie.split(";");
       let hasValidToken = false;
@@ -149,7 +150,7 @@ function LoginForm() {
     } else {
       // 没有保存的原页面，使用默认值
       const redirect = searchParams.get("redirect");
-      setRedirectPath(redirect || "/");
+      setRedirectPath(redirect || "/workspace-hub");
     }
   }, [searchParams]);
 
@@ -481,10 +482,10 @@ function LoginForm() {
       const payload =
         loginMethod === "password"
           ? {
-              account: formData.account,
-              password: formData.password,
-              rememberMe,
-            }
+            account: formData.account,
+            password: formData.password,
+            rememberMe,
+          }
           : { phone: formData.phone, smsCode: formData.smsCode, rememberMe };
 
       console.log("开始登录，endpoint:", endpoint);
@@ -617,12 +618,19 @@ function LoginForm() {
             // 普通用户尝试访问管理员页面，重定向到用户首页
             console.log("普通用户尝试访问管理员页面，重定向到用户首页");
             finalPath = "/workspace-hub";
-          } else if (!isAdminPage && isAdminUser) {
-            // 管理员访问普通页面，保持原页面
-            console.log("管理员访问普通页面，保持原页面");
-            finalPath = targetPath;
+          } else if (isAdminUser) {
+            // 管理员用户：除非 URL 中有明确的 redirect 目标包含 /admin，否则一律默认进入工作台中枢 /workspace-hub，避免被 sessionStorage 内的过期拦截缓存带偏
+            const explicitRedirect = searchParams.get("redirect");
+            if (explicitRedirect && explicitRedirect.startsWith("/admin")) {
+              finalPath = explicitRedirect;
+            } else {
+              finalPath = "/workspace-hub";
+            }
           } else {
             console.log("正常访问，使用原页面 URL");
+            if (finalPath === "/") {
+              finalPath = "/workspace-hub";
+            }
           }
 
           // 清除保存的页面 URL
@@ -670,8 +678,14 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden">
-      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[16px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden relative"
+      style={{
+        backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.08) 1.5px, transparent 1.5px)",
+        backgroundSize: "24px 24px",
+      }}
+    >
+      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[24px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50 relative z-10">
         {/* 左侧品牌区 - 固定 */}
         <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">
@@ -724,8 +738,40 @@ function LoginForm() {
             <Logo variant="light" />
           </div>
 
-          <h2 className="text-xl font-bold text-slate-800 mb-1">欢迎回来</h2>
-          <p className="text-slate-600 mb-6 text-sm">请登录您的账号</p>
+          <div className="flex justify-between items-end mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 mb-1">欢迎回来</h2>
+              <p className="text-slate-600 text-sm">请登录您的账号</p>
+            </div>
+            {/* 切换登录方式按钮 */}
+            {!showSmsLogin ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSmsLogin(true);
+                  setLoginMethod("sms");
+                  setErrors({});
+                }}
+                className="text-[#3182ce] hover:text-[#2b6cb0] text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5 pb-0.5 border-b border-dashed border-[#3182ce] hover:border-[#2b6cb0]"
+              >
+                <Phone className="w-4 h-4" />
+                手机号快捷登录
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSmsLogin(false);
+                  setLoginMethod("password");
+                  setErrors({});
+                }}
+                className="text-[#3182ce] hover:text-[#2b6cb0] text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5 pb-0.5 border-b border-dashed border-[#3182ce] hover:border-[#2b6cb0]"
+              >
+                <Lock className="w-4 h-4" />
+                账号密码登录
+              </button>
+            )}
+          </div>
 
           {/* 根据 showSmsLogin 决定显示哪个表单 */}
           {!showSmsLogin ? (
@@ -734,7 +780,7 @@ function LoginForm() {
               <form onSubmit={handleLogin} className="space-y-4">
                 {/* 账号输入框 */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     账号 / 邮箱 / 手机号 <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
@@ -750,13 +796,12 @@ function LoginForm() {
                       value={formData.account}
                       onChange={handleAccountChange}
                       onBlur={handleAccountBlur}
-                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                        errors.account ? "border-red-500" : "border-[#e2e8f0]"
-                      }`}
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${errors.account ? "border-red-500" : "border-[#e2e8f0]"
+                        }`}
                       placeholder="请输入账号/邮箱/手机号"
                     />
                   </div>
-                  {errors.account && (
+                  {errors.account && !accountCheckStatus.locked && !accountCheckStatus.disabled && accountCheckStatus.exists !== false && (
                     <p className="mt-1 text-xs text-red-500">
                       {errors.account}
                     </p>
@@ -845,9 +890,8 @@ function LoginForm() {
                         if (errors.password)
                           setErrors({ ...errors, password: undefined });
                       }}
-                      className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                        errors.password ? "border-red-500" : "border-[#e2e8f0]"
-                      }`}
+                      className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${errors.password ? "border-red-500" : "border-[#e2e8f0]"
+                        }`}
                       placeholder="请输入密码"
                     />
                     <button
@@ -872,26 +916,31 @@ function LoginForm() {
                       <button
                         type="button"
                         onClick={() => setRememberMe(!rememberMe)}
-                        className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                          rememberMe
+                        onKeyDown={(e) => {
+                          if (e.key === " " || e.key === "Enter") {
+                            e.preventDefault();
+                            setRememberMe(!rememberMe);
+                          }
+                        }}
+                        className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 ${rememberMe
                             ? "bg-[#3182ce] border-[#3182ce]"
                             : "border-[#e2e8f0]"
-                        }`}
+                          }`}
                       >
                         {rememberMe && (
-                          <CheckCircle className="w-3 h-3 text-white" />
+                          <Check className="w-3 h-3 text-white" />
                         )}
                       </button>
                       <label
                         onClick={() => setRememberMe(!rememberMe)}
-                        className="text-xs text-slate-600 cursor-pointer select-none"
+                        className="text-xs text-slate-600 cursor-pointer select-none font-bold"
                       >
                         记住我
                       </label>
                     </div>
                     <Link
                       href={`/auth/forgot-password${formData.account ? `?account=${encodeURIComponent(formData.account)}` : ""}`}
-                      className="text-xs text-[#3182ce] hover:underline"
+                      className="text-xs text-[#3182ce] hover:underline font-bold"
                     >
                       忘记密码？
                     </Link>
@@ -900,58 +949,30 @@ function LoginForm() {
 
                 {/* 登录按钮上方的错误提示（服务器错误、网络错误等全局错误） */}
                 {globalError && (
-                  <p className="mt-3 text-xs text-red-500">{globalError}</p>
+                  <p className="mt-3 text-xs text-red-500 font-bold">{globalError}</p>
                 )}
 
                 {/* 登录按钮 */}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {loading ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>登录中...</span>
+                      <span className="font-black">登录中...</span>
                     </>
                   ) : (
                     <>
-                      <span>登录</span>
+                      <span className="font-black">登录</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </form>
 
-              {/* 手机号验证码快捷登录入口 */}
-              <div className="mt-6">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200"></div>
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="px-4 bg-white text-slate-500 text-sm">
-                      其他登录方式
-                    </span>
-                  </div>
-                </div>
 
-                {/* 手机号验证码登录入口（可展开） */}
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowSmsLogin(true);
-                      setLoginMethod("sms");
-                      setErrors({});
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-[#3182ce]/30 rounded-lg text-sm text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer"
-                  >
-                    <Phone className="w-4 h-4" />
-                    <span className="font-medium">手机号验证码快捷登录</span>
-                  </button>
-                </div>
-              </div>
             </>
           ) : (
             <>
@@ -991,9 +1012,8 @@ function LoginForm() {
                         }
                       }}
                       onBlur={handlePhoneBlur}
-                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                        errors.phone ? "border-red-500" : "border-[#e2e8f0]"
-                      }`}
+                      className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${errors.phone ? "border-red-500" : "border-[#e2e8f0]"
+                        }`}
                       placeholder="请输入 11 位手机号"
                     />
                     {errors.phone && (
@@ -1068,9 +1088,8 @@ function LoginForm() {
                             });
                           }
                         }}
-                        className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
-                          errors.smsCode ? "border-red-500" : "border-[#e2e8f0]"
-                        }`}
+                        className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${errors.smsCode ? "border-red-500" : "border-[#e2e8f0]"
+                          }`}
                         placeholder="请输入 6 位验证码"
                         maxLength={6}
                       />
@@ -1079,7 +1098,7 @@ function LoginForm() {
                       type="button"
                       onClick={sendSmsCode}
                       disabled={smsCountdown > 0 || loading}
-                      className="px-3 py-2.5 bg-[#3182ce] text-white rounded-lg text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      className="px-4 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl text-xs font-black hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
                     >
                       {smsCountdown > 0
                         ? `${smsCountdown}秒后重发`
@@ -1100,55 +1119,37 @@ function LoginForm() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {loading ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>登录中...</span>
+                      <span className="font-black">登录中...</span>
                     </>
                   ) : (
                     <>
-                      <span>登录</span>
+                      <span className="font-black">登录</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </form>
 
-              {/* 返回账号密码登录入口 */}
-              <div className="mt-6">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200"></div>
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="px-4 bg-white text-slate-500 text-sm">
-                      其他登录方式
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowSmsLogin(false);
-                      setLoginMethod("password");
-                      setErrors({});
-                    }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-[#3182ce]/30 rounded-lg text-sm text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer"
-                  >
-                    <Lock className="w-4 h-4" />
-                    <span className="font-medium">选择账号密码登录</span>
-                  </button>
-                </div>
-              </div>
             </>
           )}
 
           {/* 第三方登录 */}
           <div className="mt-6 mb-4">
+            <div className="relative mb-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200"></div>
+              </div>
+              <div className="relative flex justify-center">
+                <span className="px-4 bg-white text-slate-500 text-xs">
+                  第三方账号登录
+                </span>
+              </div>
+            </div>
             <div className="flex items-center justify-center gap-8">
               <button
                 type="button"

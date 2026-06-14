@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { MEMBERSHIP_QUOTAS, MembershipLevel } from "@/constants/roles";
@@ -34,8 +34,11 @@ export async function POST(request: NextRequest) {
 
     // 创建企业空间需要检查会员等级配额
     if (type === "ENTERPRISE") {
-      const user = authResult.user!;
-      const membershipLevel = user.membershipLevel as MembershipLevel;
+      const dbUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { membershipLevel: true },
+      });
+      const membershipLevel = (dbUser?.membershipLevel || "FREE") as MembershipLevel;
       const quotas = MEMBERSHIP_QUOTAS[membershipLevel] || MEMBERSHIP_QUOTAS[MembershipLevel.FREE];
 
       // 统计企业空间数量
@@ -64,6 +67,7 @@ export async function POST(request: NextRequest) {
     // 创建工作空间
     const workspace = await prisma.workspace.create({
       data: {
+        id: crypto.randomUUID(),
         name,
         type,
         description: description || null,
@@ -71,15 +75,18 @@ export async function POST(request: NextRequest) {
         contactEmail: contactEmail || null,
         contactPhone: contactPhone || null,
         ownerId: userId,
-        members: {
+        updatedAt: new Date(),
+        workspacemember: {
           create: {
+            id: crypto.randomUUID(),
             userId,
             role: "OWNER",
+            updatedAt: new Date(),
           },
         },
       },
       include: {
-        members: true,
+        workspacemember: true,
       },
     });
 

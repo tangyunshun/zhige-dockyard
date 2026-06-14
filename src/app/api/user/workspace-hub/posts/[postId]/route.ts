@@ -56,10 +56,10 @@ export async function GET(request: NextRequest) {
     }
 
     // 获取岗位信息
-    const post = await prisma.workspacePost.findUnique({
+    const post = await prisma.workspacepost.findUnique({
       where: { id: postId },
       include: {
-        members: {
+        postmember: {
           include: {
             user: {
               select: {
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
             },
           },
         },
-        componentPermissions: true,
+        componentpermission: true,
       },
     });
 
@@ -85,16 +85,16 @@ export async function GET(request: NextRequest) {
     // 构建权限矩阵
     const permissionMatrix = allComponents.map(component => ({
       ...component,
-      canView: post.componentPermissions.some(
+      canView: post.componentpermission.some(
         cp => cp.componentId === component.id && cp.canView
       ),
-      canEdit: post.componentPermissions.some(
+      canEdit: post.componentpermission.some(
         cp => cp.componentId === component.id && cp.canEdit
       ),
-      canDelete: post.componentPermissions.some(
+      canDelete: post.componentpermission.some(
         cp => cp.componentId === component.id && cp.canDelete
       ),
-      canExecute: post.componentPermissions.some(
+      canExecute: post.componentpermission.some(
         cp => cp.componentId === component.id && cp.canExecute
       ),
     }));
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
           color: post.color,
           isDefault: post.isDefault,
           isSystem: post.isSystem,
-          members: post.members.map(m => ({
+          members: post.postmember.map(m => ({
             id: m.id,
             user: m.user,
             assignedAt: m.assignedAt,

@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { useLogout } from "@/hooks/useLogout";
 import { Logo } from "@/components/Logo";
+import StepUpAuthModal from "@/components/StepUpAuthModal";
 import {
   User,
   Building2,
   Box,
   ArrowRight,
   ArrowLeft,
-  Sparkles,
   TrendingUp,
   Settings,
   ExternalLink,
@@ -76,6 +76,7 @@ interface UserInfo {
   id: string;
   name: string;
   avatar?: string;
+  role?: string;
 }
 
 interface Workspace {
@@ -83,6 +84,10 @@ interface Workspace {
   name: string;
   type: "PERSONAL" | "ENTERPRISE";
   componentCount?: number;
+  description?: string | null;
+  _count?: {
+    members: number;
+  } | null;
 }
 
 interface EnterpriseQuota {
@@ -688,6 +693,8 @@ export default function WorkspaceHub() {
   const [userQuota, setUserQuota] = useState<UserQuota | null>(null);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
+  const [showStepUpModal, setShowStepUpModal] = useState(false);
+  const stepUpCallbackRef = useRef<((token: string) => void) | null>(null);
 
   useEffect(() => {
     // 首先检查用户是否已登录
@@ -1117,7 +1124,7 @@ export default function WorkspaceHub() {
     setDeleteConfirmText("");
   };
 
-  const confirmDeleteUpgradedPersonal = async () => {
+  const confirmDeleteUpgradedPersonal = async (token?: string) => {
     console.log("开始确认注销个人空间...");
     console.log("deleteConfirmText:", deleteConfirmText);
     console.log("personalWorkspace:", personalWorkspace);
@@ -1130,6 +1137,12 @@ export default function WorkspaceHub() {
     if (!personalWorkspace) {
       console.error("personalWorkspace 不存在");
       toast.error("个人空间不存在");
+      return;
+    }
+
+    if (!token) {
+      stepUpCallbackRef.current = confirmDeleteUpgradedPersonal;
+      setShowStepUpModal(true);
       return;
     }
 
@@ -1152,6 +1165,7 @@ export default function WorkspaceHub() {
           body: JSON.stringify({
             workspaceId: personalWorkspace.id,
             action: "DELETE",
+            verifyToken: token,
           }),
         },
       );
@@ -1246,8 +1260,14 @@ export default function WorkspaceHub() {
     }
   };
 
-  const confirmDeleteWorkspace = async () => {
+  const confirmDeleteWorkspace = async (token?: string) => {
     if (!workspaceToDelete) return;
+
+    if (!token) {
+      stepUpCallbackRef.current = confirmDeleteWorkspace;
+      setShowStepUpModal(true);
+      return;
+    }
 
     try {
       const userId = checkUserId();
@@ -1266,6 +1286,7 @@ export default function WorkspaceHub() {
         body: JSON.stringify({
           workspaceId: workspaceToDelete,
           action: "DELETE", // 物理删除
+          verifyToken: token,
         }),
       });
 
@@ -1325,15 +1346,17 @@ export default function WorkspaceHub() {
 
   const handleGoToStudio = () => {
     toast.info("正在打开组件库...", 1000);
+    const wsId = localStorage.getItem("currentWorkspaceId") || personalWorkspace?.id || enterpriseWorkspace?.id || "";
     setTimeout(() => {
-      router.push("/studio");
+      router.push(`/studio${wsId ? `?workspaceId=${wsId}` : ""}`);
     }, 1000);
   };
 
   const handleGoToStage = (stageIndex: number) => {
     toast.info(`正在加载${componentStages[stageIndex].name}...`, 1000);
+    const wsId = localStorage.getItem("currentWorkspaceId") || personalWorkspace?.id || enterpriseWorkspace?.id || "";
     setTimeout(() => {
-      router.push(`/studio?stage=${stageIndex}`);
+      router.push(`/studio?stage=${stageIndex}${wsId ? `&workspaceId=${wsId}` : ""}`);
     }, 1000);
   };
 
@@ -1654,8 +1677,7 @@ export default function WorkspaceHub() {
                         ? "您的个人空间已成功平移升级为企业空间，所有数据、组件和项目已完整迁移至企业空间。个人空间已完成历史使命，不再支持任何操作。请直接前往企业空间继续您的工作。"
                         : upgradeMode === "migrate" &&
                             !personalWorkspace &&
-                            enterpriseWorkspace &&
-                            enterpriseWorkspace[0]
+                            enterpriseWorkspace
                           ? `个人空间已升级为企业空间，所有数据已保留。点击"进入企业空间"按钮可继续工作`
                           : upgradeMode === "migrate" && !personalWorkspace
                             ? "个人空间已升级为企业空间。如需使用个人空间，可以点击重新创建按钮创建新的个人空间"
@@ -1864,13 +1886,12 @@ export default function WorkspaceHub() {
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                 ) : upgradeMode === "migrate" &&
-                  enterpriseWorkspace &&
-                  enterpriseWorkspace[0] ? (
+                  enterpriseWorkspace ? (
                   // 平移升级且企业空间存在：显示"进入企业空间"按钮
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleEnterWorkspace(enterpriseWorkspace[0]);
+                      handleEnterWorkspace(enterpriseWorkspace);
                     }}
                     className="flex items-center gap-1 text-sm font-bold text-[#10b981] hover:text-[#059669] transition-colors cursor-pointer"
                   >
@@ -2250,8 +2271,8 @@ export default function WorkspaceHub() {
           </div>
         </div>
 
-        {/* 第二行：个人空间设置 + 加入已有空间 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        {/* 第二行：个人空间设置 + 加入已有空间 + 管理中枢快捷通道 */}
+        <div className={`grid grid-cols-1 ${user?.role === "admin" || user?.role === "super_admin" ? "lg:grid-cols-3" : "lg:grid-cols-2"} gap-4 mb-6`}>
           {/* 个人空间设置 */}
           <div className="group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border border-[#e2e8f0]/80 hover:border-[#3182ce]/40 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
             <div className="flex items-start gap-3">
@@ -2420,6 +2441,68 @@ export default function WorkspaceHub() {
               </div>
             </div>
           </div>
+
+          {/* 管理中枢快捷通道 Bento 卡片 */}
+          {(user?.role === "admin" || user?.role === "super_admin") && (
+            <div className="group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-red-500/30 hover:border-red-500/50 hover:shadow-2xl hover:shadow-red-500/10 transition-all duration-300 hover:-translate-y-1">
+              <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-red-500 to-red-600 text-white text-[10px] font-black rounded-full shadow-lg animate-pulse">
+                管理中枢
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/30">
+                  <ShieldCheck className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-base font-black text-slate-800">
+                      超级管理控制台
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+                    系统超级管理员专属入口。可进行系统全局监控、审批待创建企业空间、处理用户安全申诉与配额调整。
+                  </p>
+
+                  {/* 快捷宏观指标看板 */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <a
+                      href="/admin/workspaces"
+                      className="p-2 bg-red-50/50 hover:bg-red-50 rounded-lg border border-red-100 hover:border-red-200 block text-left group/btn"
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-bold text-slate-700">
+                          待审空间
+                        </span>
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                      </div>
+                      <p className="text-[9px] text-slate-500">审批企业申请</p>
+                    </a>
+                    <a
+                      href="/admin/appeals"
+                      className="p-2 bg-red-50/50 hover:bg-red-50 rounded-lg border border-[#f87171]/20 hover:border-red-200 block text-left group/btn"
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-bold text-slate-700">
+                          待处申诉
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-red-500 text-white text-[8px] font-extrabold rounded-full scale-90">
+                          3
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-slate-500">安全合规与纠纷</p>
+                    </a>
+                  </div>
+
+                  <a
+                    href="/admin"
+                    className="flex items-center gap-1 text-sm font-bold text-red-600 hover:text-red-700 transition-colors cursor-pointer"
+                  >
+                    <span>直达后台</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 第三行：Studio 组件库（核心功能） */}
@@ -2724,7 +2807,7 @@ export default function WorkspaceHub() {
       {/* 加入空间模态框 */}
       {showJoinModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 relative animate-in fade-in zoom-in duration-200">
             {/* 关闭按钮 */}
             <button
               onClick={handleCloseJoinModal}
@@ -3277,7 +3360,7 @@ export default function WorkspaceHub() {
                 取消
               </button>
               <button
-                onClick={confirmDeleteWorkspace}
+                onClick={() => confirmDeleteWorkspace()}
                 disabled={
                   deletingWorkspaceId !== null ||
                   deleteConfirmText !== "确认注销"
@@ -3437,7 +3520,7 @@ export default function WorkspaceHub() {
                 取消
               </button>
               <button
-                onClick={confirmDeleteUpgradedPersonal}
+                onClick={() => confirmDeleteUpgradedPersonal()}
                 disabled={deleting || deleteConfirmText !== "注销"}
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
@@ -3461,7 +3544,7 @@ export default function WorkspaceHub() {
       {/* 新增：高级组件拦截弹窗 */}
       {showPremiumModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-[8px] shadow-lg shadow-slate-200/50 max-w-md w-full p-6 relative">
+          <div className="bg-white rounded-[8px] shadow-lg shadow-slate-200/50 max-w-md w-full max-h-[90vh] overflow-y-auto p-6 relative">
             {/* 关闭按钮 */}
             <button
               onClick={() => setShowPremiumModal(false)}
@@ -3504,6 +3587,24 @@ export default function WorkspaceHub() {
           </div>
         </div>
       )}
+      {/* 新增：二次验证弹窗 */}
+      <StepUpAuthModal
+        isOpen={showStepUpModal}
+        title="敏感操作验证"
+        message="此高危操作需要进行二次身份验证，以确认是您本人操作。"
+        action="delete_workspace"
+        onConfirm={(token) => {
+          setShowStepUpModal(false);
+          if (stepUpCallbackRef.current) {
+            stepUpCallbackRef.current(token);
+            stepUpCallbackRef.current = null;
+          }
+        }}
+        onCancel={() => {
+          setShowStepUpModal(false);
+          stepUpCallbackRef.current = null;
+        }}
+      />
     </div>
   );
 }

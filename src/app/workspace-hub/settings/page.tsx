@@ -22,7 +22,7 @@ import {
   Loader2,
   Award,
   Lightbulb,
-  Sparkles,
+  Zap,
 } from "lucide-react";
 
 export default function PersonalWorkspaceSettings() {
@@ -460,7 +460,7 @@ export default function PersonalWorkspaceSettings() {
                       "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
                   }}
                 >
-                  <Sparkles className="w-5 h-5" />
+                  <Zap className="w-5 h-5" />
                   🚀 升级团队版
                 </button>
               </nav>

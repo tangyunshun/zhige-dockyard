@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // GET - 获取用户组件列表
@@ -14,21 +14,29 @@ export async function GET(req: NextRequest) {
     }
 
     // 获取用户组件列表
-    const components = await prisma.component.findMany({
+    const components = await prisma.componenttask.findMany({
       where: {
-        ownerId: userId,
-      },
-      include: {
-        componentusagestat: true,
+        userId,
       },
       orderBy: {
         updatedAt: "desc",
       },
     });
 
+    const formattedComponents = components.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      category: (c.config as any)?.category || "",
+      status: c.status === "pending" ? (c.isPublished ? "PUBLISHED" : "DRAFT") : c.status,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      usageCount: c.usageCount,
+    }));
+
     return NextResponse.json({
       success: true,
-      data: components,
+      data: formattedComponents,
     });
   } catch (error) {
     console.warn("Get user components error:", error);
@@ -56,10 +64,10 @@ export async function PUT(req: NextRequest) {
     const { name, description, status } = body;
 
     // 验证组件归属
-    const component = await prisma.component.findFirst({
+    const component = await prisma.componenttask.findFirst({
       where: {
         id: componentId,
-        ownerId: userId,
+        userId,
       },
     });
 
@@ -71,18 +79,28 @@ export async function PUT(req: NextRequest) {
     }
 
     // 更新组件
-    const updatedComponent = await prisma.component.update({
+    const updatedComponent = await prisma.componenttask.update({
       where: { id: componentId },
       data: {
         name: name || component.name,
         description: description !== undefined ? description : component.description,
         status: status || component.status,
+        isPublished: status === "PUBLISHED" ? true : (status === "DRAFT" || status === "ARCHIVED" ? false : undefined),
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: updatedComponent,
+      data: {
+        id: updatedComponent.id,
+        name: updatedComponent.name,
+        description: updatedComponent.description,
+        category: (updatedComponent.config as any)?.category || "",
+        status: updatedComponent.status === "pending" ? (updatedComponent.isPublished ? "PUBLISHED" : "DRAFT") : updatedComponent.status,
+        createdAt: updatedComponent.createdAt,
+        updatedAt: updatedComponent.updatedAt,
+        usageCount: updatedComponent.usageCount,
+      },
     });
   } catch (error) {
     console.error("Update component error:", error);
@@ -107,10 +125,10 @@ export async function DELETE(req: NextRequest) {
     }
 
     // 验证组件归属
-    const component = await prisma.component.findFirst({
+    const component = await prisma.componenttask.findFirst({
       where: {
         id: componentId,
-        ownerId: userId,
+        userId,
       },
     });
 
@@ -122,7 +140,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // 删除组件
-    await prisma.component.delete({
+    await prisma.componenttask.delete({
       where: { id: componentId },
     });
 

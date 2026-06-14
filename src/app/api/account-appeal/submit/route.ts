@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -70,6 +70,8 @@ export async function POST(request: NextRequest) {
         appealEvidence: appealEvidence || null,
         contactInfo: contactInfo || null,
         status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
     });
 

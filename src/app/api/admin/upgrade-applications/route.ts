@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -24,16 +24,15 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
-    const applications = await prisma.workspaceUpgradeApplication.findMany({
+    const applications = await prisma.upgradeapplication.findMany({
       where,
       include: {
         workspace: true,
-        applicant: true,
       },
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ success: true, data: applications });
+    return NextResponse.json({ success: true, data: { applications, total: applications.length, page: 1, totalPages: 1 } });
   } catch (error) {
     console.error("Get upgrade applications error:", error);
     return NextResponse.json({ error: "获取升级申请失败" }, { status: 500 });
@@ -54,21 +53,40 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    const { applicationId, status, reviewComment } = await request.json();
+    const body = await request.json();
+    const { id, applicationId, status } = body;
+    const targetId = applicationId || id;
 
-    if (!applicationId || !status) {
+    if (!targetId || !status) {
       return NextResponse.json({ error: "缺少参数" }, { status: 400 });
     }
 
-    const application = await prisma.workspaceUpgradeApplication.update({
-      where: { id: applicationId },
+    const app = await prisma.upgradeapplication.findUnique({
+      where: { id: targetId },
+    });
+
+    if (!app) {
+      return NextResponse.json({ error: "申请不存在" }, { status: 404 });
+    }
+
+    const application = await prisma.upgradeapplication.update({
+      where: { id: targetId },
       data: {
         status,
-        reviewComment,
-        reviewedAt: new Date(),
-        reviewerId: userId,
+        updatedAt: new Date(),
       },
     });
+
+    if (status === "APPROVED") {
+      await prisma.workspace.update({
+        where: { id: app.workspaceId },
+        data: {
+          type: "ENTERPRISE",
+          plan: "ENTERPRISE",
+          updatedAt: new Date(),
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, data: application });
   } catch (error) {

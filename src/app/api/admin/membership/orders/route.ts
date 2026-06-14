@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdminRole } from "@/lib/auth";
 
@@ -70,6 +70,8 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               nameZh: true,
+              icon: true,
+              color: true,
             },
           },
         },
@@ -77,24 +79,15 @@ export async function GET(request: NextRequest) {
       prisma.membershiporder.count({ where }),
     ]);
 
-    // 将 BigInt 转换为 Number 以便 JSON 序列化
-    const serializedOrders = orders.map(order => ({
-      ...order,
-      amount: Number(order.amount),
-      membershiplevel: order.membershiplevel ? {
-        ...order.membershiplevel,
-        maxPersonalWorkspaces: Number(order.membershiplevel.maxPersonalWorkspaces),
-        maxEnterpriseWorkspaces: Number(order.membershiplevel.maxEnterpriseWorkspaces),
-        maxComponents: Number(order.membershiplevel.maxComponents),
-        maxTeamSize: Number(order.membershiplevel.maxTeamSize),
-        maxStorage: Number(order.membershiplevel.maxStorage),
-        maxApiCalls: Number(order.membershiplevel.maxApiCalls),
-        priceMonthly: Number(order.membershiplevel.priceMonthly),
-        priceYearly: Number(order.membershiplevel.priceYearly),
-        trialDays: Number(order.membershiplevel.trialDays),
-        sortOrder: Number(order.membershiplevel.sortOrder),
-      } : null,
-    }));
+    // 将 BigInt 转换为 Number 以便 JSON 序列化并进行字段重命名
+    const serializedOrders = orders.map(order => {
+      const { membershiplevel, ...rest } = order;
+      return {
+        ...rest,
+        amount: Number(order.amount),
+        level: membershiplevel,
+      };
+    });
 
     return NextResponse.json({
       success: true,

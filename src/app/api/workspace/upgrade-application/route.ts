@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 验证用户是否有权限管理该工作空间
-    const membership = await prisma.workspaceMember.findFirst({
+    const membership = await prisma.workspacemember.findFirst({
       where: {
         userId,
         workspaceId,
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 检查是否已有待处理的升级申请
-    const existingApplication = await prisma.upgradeApplication.findFirst({
+    const existingApplication = await prisma.upgradeapplication.findFirst({
       where: {
         workspaceId,
         status: "PENDING",
@@ -79,14 +79,16 @@ export async function POST(req: NextRequest) {
     }
 
     // 创建升级申请
-    const application = await prisma.upgradeApplication.create({
+    const application = await prisma.upgradeapplication.create({
       data: {
+        id: crypto.randomUUID(),
         workspaceId,
         userId,
         companyName,
         contactName,
         contactPhone,
         status: "PENDING",
+        updatedAt: new Date(),
       },
     });
 
@@ -124,7 +126,7 @@ export async function GET(req: NextRequest) {
       where.status = status;
     }
 
-    const applications = await prisma.upgradeApplication.findMany({
+    const applications = await prisma.upgradeapplication.findMany({
       where,
       orderBy: {
         createdAt: "desc",

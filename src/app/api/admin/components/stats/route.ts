@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
-    const stats = await prisma.componentStats.findMany({
+    const stats = await prisma.componentstats.findMany({
       orderBy: { totalUses: "desc" },
       take: 100,
     });

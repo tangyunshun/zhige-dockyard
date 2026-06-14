@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     // 过滤掉阶段配置组件
     let filteredComponents = allComponents.filter(
-      (component) => component.config?.isStageConfig !== true,
+      (component) => (component.config as any)?.isStageConfig !== true,
     );
 
     // 应用筛选条件
@@ -88,7 +88,10 @@ export async function GET(request: NextRequest) {
     // 分页
     const total = filteredComponents.length;
     const skip = (page - 1) * limit;
-    const components = filteredComponents.slice(skip, skip + limit);
+    const components = filteredComponents.slice(skip, skip + limit).map(c => ({
+      ...c,
+      category: (c.config as any)?.category || "",
+    }));
 
     // 获取所有阶段类型
     const stages = Array.from(
@@ -145,13 +148,13 @@ export async function POST(request: NextRequest) {
 
     const component = await prisma.componenttask.create({
       data: {
+        id: `C-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         name,
         description,
         type,
         icon,
-        category,
         tags,
-        config,
+        config: config ? { ...(config as any), category } : { category },
         isPublished: isPublished ?? false,
         userId,
       },
@@ -159,7 +162,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: component,
+      data: {
+        ...component,
+        category: (component.config as any)?.category || "",
+      },
       message: "创建组件成功",
     });
   } catch (error) {
@@ -203,6 +209,9 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { name, description, type, icon, category, tags, config, isPublished } = body;
 
+    const current = await prisma.componenttask.findUnique({ where: { id: componentId } });
+    const currentConfig = (current?.config as any) || {};
+
     const component = await prisma.componenttask.update({
       where: { id: componentId },
       data: {
@@ -210,16 +219,20 @@ export async function PUT(request: NextRequest) {
         description: description !== undefined ? description : undefined,
         type: type || undefined,
         icon: icon !== undefined ? icon : undefined,
-        category: category !== undefined ? category : undefined,
         tags: tags !== undefined ? tags : undefined,
-        config: config !== undefined ? config : undefined,
+        config: config !== undefined 
+          ? { ...(config as any), category: category !== undefined ? category : currentConfig.category } 
+          : (category !== undefined ? { ...currentConfig, category } : undefined),
         isPublished: isPublished !== undefined ? isPublished : undefined,
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: component,
+      data: {
+        ...component,
+        category: (component.config as any)?.category || "",
+      },
       message: "更新组件成功",
     });
   } catch (error) {

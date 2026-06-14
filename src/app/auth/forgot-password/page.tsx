@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
@@ -27,7 +27,7 @@ import {
   getAccountType,
 } from "@/lib/validators";
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 1.5 | 2 | 3;
 type VerificationMethod = "phone" | "email" | null;
 
 interface UserBindInfo {
@@ -37,7 +37,7 @@ interface UserBindInfo {
   email?: string;
 }
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
@@ -270,9 +270,9 @@ export default function ForgotPasswordPage() {
     setVerificationMethod(method);
     // 设置对应的手机号或邮箱
     if (method === "phone" && userBindInfo?.phone) {
-      setFormData(prev => ({ ...prev, phone: userBindInfo.phone }));
+      setFormData(prev => ({ ...prev, phone: userBindInfo.phone || "" }));
     } else if (method === "email" && userBindInfo?.email) {
-      setFormData(prev => ({ ...prev, email: userBindInfo.email }));
+      setFormData(prev => ({ ...prev, email: userBindInfo.email || "" }));
     }
     setStep(2 as Step);
   };
@@ -430,7 +430,7 @@ export default function ForgotPasswordPage() {
 
     const passwordValidation = validatePasswordStrength(formData.password);
     if (!passwordValidation.valid) {
-      setErrors({ password: passwordValidation.message });
+      setErrors({ password: passwordValidation.messages[0] || "密码强度不足" });
       return;
     }
 
@@ -492,20 +492,20 @@ export default function ForgotPasswordPage() {
     }
 
     return (
-      <div className="flex items-center justify-center mb-6">
+      <div className="flex items-center justify-center mb-6 overflow-x-auto whitespace-nowrap scrollbar-none flex-nowrap py-1">
         {steps.map((s, idx) => (
-          <div key={s.num} className="flex items-center">
+          <div key={s.num} className="flex items-center shrink-0">
             <div
               className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
                 step >= s.num
-                  ? "bg-[#3182ce] text-white"
+                  ? "bg-[#3182ce] text-white shadow-sm"
                   : "bg-[#e2e8f0] text-slate-500"
               }`}
             >
               {s.num}
             </div>
             <span
-              className={`ml-2 text-xs ${
+              className={`ml-2 text-xs font-bold ${
                 step >= s.num ? "text-[#3182ce]" : "text-slate-400"
               }`}
             >
@@ -513,7 +513,7 @@ export default function ForgotPasswordPage() {
             </span>
             {idx < steps.length - 1 && (
               <div
-                className={`w-8 h-0.5 mx-2 ${
+                className={`w-8 h-0.5 mx-2 shrink-0 ${
                   step > s.num ? "bg-[#3182ce]" : "bg-[#e2e8f0]"
                 }`}
               />
@@ -554,25 +554,24 @@ export default function ForgotPasswordPage() {
               }`}
               placeholder="请输入手机号/邮箱/用户名"
             />
+            {showEmailSuggestions && emailSuggestions.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-[#e2e8f0] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {emailSuggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleEmailSuggestionClick(suggestion)}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-[#f0f8ff] text-slate-700 first:rounded-t-lg last:rounded-b-lg"
+                  >
+                    <Mail className="inline w-3 h-3 mr-2 text-[#3182ce]" />
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {errors.account && (
             <p className="mt-1 text-xs text-red-500">{errors.account}</p>
-          )}
-
-          {showEmailSuggestions && emailSuggestions.length > 0 && (
-            <div className="absolute z-10 w-full mt-1 bg-white border border-[#e2e8f0] rounded-lg shadow-lg">
-              {emailSuggestions.map((suggestion, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => handleEmailSuggestionClick(suggestion)}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-[#f0f8ff] text-slate-700 first:rounded-t-lg last:rounded-b-lg"
-                >
-                  <Mail className="inline w-3 h-3 mr-2 text-[#3182ce]" />
-                  {suggestion}
-                </button>
-              ))}
-            </div>
           )}
 
           {accountCheckStatus.exists === false && (
@@ -604,7 +603,7 @@ export default function ForgotPasswordPage() {
         <button
           type="submit"
           disabled={loading || !accountCheckStatus.exists || accountCheckStatus.locked || accountCheckStatus.disabled}
-          className="w-full py-2.5 bg-[#3182ce] text-white rounded-lg font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-2.5 bg-[#3182ce] text-white rounded-xl font-black hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -667,7 +666,7 @@ export default function ForgotPasswordPage() {
           // 返回第一步，但保留账号信息
           setStep(1 as Step);
         }}
-        className="w-full mt-4 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
+        className="w-full mt-4 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-xl font-black hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
       >
         <ArrowLeft className="w-4 h-4" />
         返回上一步
@@ -757,7 +756,7 @@ export default function ForgotPasswordPage() {
                 type="button"
                 onClick={sendVerificationCode}
                 disabled={smsCountdown > 0 || loading}
-                className="px-3 py-2.5 bg-[#3182ce] text-white rounded-lg text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                className="px-3 py-2.5 bg-[#3182ce] text-white rounded-xl text-xs font-black hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
                 {smsCountdown > 0 ? `${smsCountdown}秒后重发` : "获取验证码"}
               </button>
@@ -785,7 +784,7 @@ export default function ForgotPasswordPage() {
                   setStep(1 as Step);
                 }
               }}
-              className="flex-1 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-xl font-black hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
               上一步
@@ -793,7 +792,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading || formData.smsCode.length !== 6}
-              className="flex-1 py-2.5 bg-[#3182ce] text-white rounded-lg font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 bg-[#3182ce] text-white rounded-xl font-black hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -941,7 +940,7 @@ export default function ForgotPasswordPage() {
           <button
             type="button"
             onClick={() => setStep(2 as Step)}
-            className="flex-1 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-lg font-medium hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
+            className="flex-1 py-2.5 border border-[#e2e8f0] text-slate-600 rounded-xl font-black hover:bg-[#f8fafc] transition-colors flex items-center justify-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
             上一步
@@ -949,7 +948,7 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={loading || !formData.password || !formData.confirmPassword}
-            className="flex-1 py-2.5 bg-[#3182ce] text-white rounded-lg font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex-1 py-2.5 bg-[#3182ce] text-white rounded-xl font-black hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -966,8 +965,14 @@ export default function ForgotPasswordPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden">
-      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[16px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden relative"
+      style={{
+        backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.08) 1.5px, transparent 1.5px)",
+        backgroundSize: "24px 24px",
+      }}
+    >
+      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[24px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50 relative z-10">
         {/* 左侧品牌区 - 固定 */}
         <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">
@@ -1029,5 +1034,17 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <ForgotPasswordForm />
+    </Suspense>
   );
 }

@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
       include: {
-        members: {
+        workspacemember: {
           include: {
             user: true,
           },
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     }> = [];
 
     // 检查成员数量（除了 owner 之外的成员）
-    const otherMembers = workspace.members.filter(m => m.userId !== userId);
+    const otherMembers = workspace.workspacemember.filter(m => m.userId !== userId);
     if (otherMembers.length > 0) {
       issues.push({
         type: "warning",

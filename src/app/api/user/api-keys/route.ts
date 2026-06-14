@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 import { v4 as uuidv4 } from "uuid";
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
     const userId = token.id as string;
 
-    const apiKeys = await prisma.apiKey.findMany({
+    const apiKeys = await prisma.apikey.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
     });
@@ -57,14 +57,16 @@ export async function POST(req: NextRequest) {
     // 哈希处理
     const hashedKey = await bcrypt.hash(apiKey, 10);
 
-    const newApiKey = await prisma.apiKey.create({
+    const newApiKey = await prisma.apikey.create({
       data: {
+        id: crypto.randomUUID(),
         userId,
         name,
         description,
         keyHash: hashedKey,
         keyPrefix,
         lastUsedAt: null,
+        updatedAt: new Date(),
       },
     });
 
@@ -103,7 +105,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "缺少 API Key ID" }, { status: 400 });
     }
 
-    const apiKey = await prisma.apiKey.findFirst({
+    const apiKey = await prisma.apikey.findFirst({
       where: { id, userId },
     });
 
@@ -111,7 +113,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "API Key 不存在" }, { status: 404 });
     }
 
-    await prisma.apiKey.delete({
+    await prisma.apikey.delete({
       where: { id },
     });
 

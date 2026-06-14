@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [apiKeys, total] = await Promise.all([
-      prisma.apiKey.findMany({
+      prisma.apikey.findMany({
         where,
         skip,
         take: limit,
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.apiKey.count({ where }),
+      prisma.apikey.count({ where }),
     ]);
 
     return NextResponse.json({
@@ -104,7 +104,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "缺少 API Key ID" }, { status: 400 });
     }
 
-    await prisma.apiKey.delete({
+    await prisma.apikey.delete({
       where: { id },
     });
 

@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth";
 import { SignJWT } from "jose";
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     // 查找用户（支持邮箱、手机号、账号名）
     // 使用 Prisma 的 raw 查询来实现真正的大小写敏感匹配
-    const users = await prisma.$queryRaw`SELECT * FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}`;
+    const users = (await prisma.$queryRaw`SELECT * FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}`) as any[];
     const user = users.length > 0 ? users[0] : null;
 
     if (!user) {
@@ -32,25 +32,38 @@ export async function POST(request: NextRequest) {
 
     // 检查账号状态
     if (user.status === "banned") {
-      // 检查是否为临时封禁
-      let message = "账号已被永久封禁，无法登录";
-      if (user.bannedUntil) {
-        const remainingDays = Math.ceil(
-          (new Date(user.bannedUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-        );
-        if (remainingDays > 0) {
-          message = `账号已被临时封禁，${remainingDays}天后恢复`;
+      if (user.bannedUntil && new Date(user.bannedUntil) <= new Date()) {
+        // 临时封禁已过期，自动解封
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            status: "active",
+            bannedUntil: null,
+          },
+        });
+        user.status = "active";
+        user.bannedUntil = null;
+      } else {
+        // 检查是否为临时封禁
+        let message = "账号已被永久封禁，无法登录";
+        if (user.bannedUntil) {
+          const remainingDays = Math.ceil(
+            (new Date(user.bannedUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+          if (remainingDays > 0) {
+            message = `账号已被临时封禁，${remainingDays}天后恢复`;
+          }
         }
+        return NextResponse.json(
+          {
+            message: message,
+            accountExists: true,
+            status: user.status,
+            bannedUntil: user.bannedUntil?.toISOString(),
+          },
+          { status: 403 },
+        );
       }
-      return NextResponse.json(
-        {
-          message: message,
-          accountExists: true,
-          status: user.status,
-          bannedUntil: user.bannedUntil?.toISOString(),
-        },
-        { status: 403 },
-      );
     } else if (user.status === "inactive") {
       return NextResponse.json(
         {

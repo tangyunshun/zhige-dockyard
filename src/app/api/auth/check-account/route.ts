@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
 
     // 查找用户（支持邮箱、手机号、账号名）
     // 使用 Prisma 的 raw 查询来实现真正的大小写敏感匹配
-    const users = await prisma.$queryRaw`SELECT id, email, phone, name, status, loginAttempts, lockedUntil FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}`;
+    const users = (await prisma.$queryRaw`SELECT id, email, phone, name, status, loginAttempts, lockedUntil FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}`) as any[];
     const user = users.length > 0 ? users[0] : null;
 
     if (!user) {

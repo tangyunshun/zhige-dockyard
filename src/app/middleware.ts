@@ -1,4 +1,4 @@
-﻿﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +24,52 @@ const PUBLIC_PATHS = [
   "/terms-of-service",
   "/privacy-policy",
 ];
+
+// 内存计数缓存
+const userRequestCounts = new Map<string, number[]>();
+
+async function checkUserRateLimit(userId: string): Promise<boolean> {
+  const now = Date.now();
+  const oneMinuteAgo = now - 60000;
+
+  // 获取该用户的请求时间戳历史
+  let timestamps = userRequestCounts.get(userId) || [];
+  
+  // 过滤掉一分钟前的时间戳
+  timestamps = timestamps.filter((t) => t > oneMinuteAgo);
+  
+  // 添加当前请求时间戳
+  timestamps.push(now);
+  userRequestCounts.set(userId, timestamps);
+
+  // 如果一分钟内请求次数超过 1000 次，触发封禁
+  const limit = parseInt(process.env.API_RATE_LIMIT || "1000", 10);
+  if (timestamps.length > limit) {
+    console.error(`[安全风控] 用户 ${userId} 触发高频请求限制: 1分钟内请求次数为 ${timestamps.length}`);
+    return false;
+  }
+  return true;
+}
+
+async function banUserAndDisconnect(userId: string) {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        status: "banned",
+        bannedUntil: null, // 永久封禁
+        sessionToken: null,
+        sessionExpiresAt: null,
+        refreshToken: null,
+        refreshTokenExpiresAt: null,
+        lastForcedLogoutAt: new Date(),
+      },
+    });
+    console.log(`[安全风控] 用户 ${userId} 因恶意请求已被自动封禁并强制下线`);
+  } catch (err) {
+    console.error(`[安全风控] 自动封禁用户 ${userId} 失败:`, err);
+  }
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -66,7 +112,7 @@ export async function middleware(request: NextRequest) {
     // 验证用户是否在数据库中存储（关键修复：检查用户是否存在）
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, status: true, deletionRequestedAt: true },
+      select: { id: true, status: true, deletionRequestedAt: true, bannedUntil: true },
     });
 
     if (!user) {
@@ -113,15 +159,27 @@ export async function middleware(request: NextRequest) {
 
     // 检查用户状态
     if (user.status !== "active") {
-      console.log(
-        `[Middleware] User ${userId} is not active, status: ${user.status}`,
-      );
-      const response = NextResponse.redirect(
-        new URL("/auth/login", request.url),
-      );
-      response.cookies.set("auth_token", "", { maxAge: 0 });
-      response.cookies.set("token", "", { maxAge: 0 });
-      return response;
+      if (user.status === "banned" && user.bannedUntil && new Date(user.bannedUntil) <= new Date()) {
+        // 自动解封过期的临时封禁
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            status: "active",
+            bannedUntil: null,
+          },
+        });
+        user.status = "active";
+      } else {
+        console.log(
+          `[Middleware] User ${userId} is not active, status: ${user.status}`,
+        );
+        const response = NextResponse.redirect(
+          new URL("/auth/login", request.url),
+        );
+        response.cookies.set("auth_token", "", { maxAge: 0 });
+        response.cookies.set("token", "", { maxAge: 0 });
+        return response;
+      }
     }
 
     // 验证成功，将用户信息添加到请求头
@@ -197,7 +255,7 @@ async function handleApiRequest(
     // 验证用户是否在数据库中存储（关键修复：检查用户是否存在）
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, bannedUntil: true },
     });
 
     if (!user) {
@@ -212,12 +270,36 @@ async function handleApiRequest(
 
     // 检查用户状态
     if (user.status !== "active") {
-      console.log(`[Middleware] API User ${userId} is not active`);
+      if (user.status === "banned" && user.bannedUntil && new Date(user.bannedUntil) <= new Date()) {
+        // 自动解封过期的临时封禁
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            status: "active",
+            bannedUntil: null,
+          },
+        });
+        user.status = "active";
+      } else {
+        console.log(`[Middleware] API User ${userId} is not active`);
+        const response = NextResponse.json(
+          { error: "ACCOUNT_DISABLED" },
+          { status: 401 },
+        );
+        await recordApiUsage(request, response, startTime, null);
+        return response;
+      }
+    }
+
+    // 增加频率限制检测
+    const isRateLimitOk = await checkUserRateLimit(userId);
+    if (!isRateLimitOk) {
+      await banUserAndDisconnect(userId);
       const response = NextResponse.json(
-        { error: "ACCOUNT_DISABLED" },
-        { status: 401 },
+        { error: "ACCOUNT_DISABLED", message: "检测到异常高频请求，账号已被安全封禁并强制下线" },
+        { status: 403 },
       );
-      await recordApiUsage(request, response, startTime, null);
+      await recordApiUsage(request, response, startTime, userId);
       return response;
     }
 
@@ -273,8 +355,9 @@ async function recordApiUsage(
       }
 
       // 记录到数据库
-      await prisma.apiUsage.create({
+      await prisma.apiusage.create({
         data: {
+          id: crypto.randomUUID(),
           userId,
           endpoint: pathname,
           method: request.method,

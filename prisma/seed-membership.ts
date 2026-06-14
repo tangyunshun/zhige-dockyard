@@ -161,10 +161,15 @@ async function main() {
   console.log("开始初始化会员等级数据...");
 
   for (const level of membershipLevels) {
+    const data = {
+      ...level,
+      id: level.name,
+      updatedAt: new Date(),
+    };
     await prisma.membershiplevel.upsert({
       where: { name: level.name },
-      update: level,
-      create: level,
+      update: data,
+      create: data,
     });
     console.log(`✓ 已创建/更新会员等级：${level.nameZh}`);
   }

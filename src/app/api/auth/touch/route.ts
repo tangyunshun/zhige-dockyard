@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 
@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
         sessionExpiresAt: true,
         role: true,
         passwordChangedAt: true,
+        bannedUntil: true,
       },
     });
 
@@ -63,10 +64,31 @@ export async function POST(request: NextRequest) {
     }
 
     if (user.status === "banned") {
-      return NextResponse.json(
-        { error: "ACCOUNT_DISABLED", message: "您的账号已被永久封禁" },
-        { status: 403 },
-      );
+      if (user.bannedUntil && new Date(user.bannedUntil) <= new Date()) {
+        // 临时封禁已过期，自动解封
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            status: "active",
+            bannedUntil: null,
+          },
+        });
+        user.status = "active";
+      } else {
+        let message = "您的账号已被永久封禁";
+        if (user.bannedUntil) {
+          const remainingDays = Math.ceil(
+            (new Date(user.bannedUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+          if (remainingDays > 0) {
+            message = `您的账号已被临时封禁，${remainingDays}天后恢复`;
+          }
+        }
+        return NextResponse.json(
+          { error: "ACCOUNT_DISABLED", message },
+          { status: 403 },
+        );
+      }
     }
 
     if (user.status === "inactive") {

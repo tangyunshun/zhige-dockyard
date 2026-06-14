@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
 
-export default function OAuthCallback() {
+function OAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
@@ -60,5 +60,20 @@ export default function OAuthCallback() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function OAuthCallback() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">加载中...</p>
+        </div>
+      </div>
+    }>
+      <OAuthCallbackContent />
+    </Suspense>
   );
 }

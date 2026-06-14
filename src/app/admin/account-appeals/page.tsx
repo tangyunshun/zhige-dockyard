@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
@@ -48,7 +48,6 @@ interface AppealData {
 }
 
 export default function AdminAccountAppealsPage() {
-  const { confirm, ConfirmDialogComponent } = useConfirm();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);

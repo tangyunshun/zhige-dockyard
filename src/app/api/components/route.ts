@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -20,30 +20,38 @@ export async function GET(request: NextRequest) {
       where.type = type;
     }
 
-    if (category) {
-      where.category = category;
-    }
-
     const components = await prisma.componenttask.findMany({
       where,
       orderBy: [
         { sortOrder: "desc" },  // 按排序权重降序
         { createdAt: "desc" },   // 按创建时间降序
       ],
-      take: limit,
       select: {
         id: true,
         name: true,
         description: true,
         type: true,
         icon: true,
-        category: true,
         tags: true,
         config: true,
         usageCount: true,
         createdAt: true,
       },
     });
+
+    // 映射并注入分类信息
+    let mappedComponents = components.map((c) => ({
+      ...c,
+      category: (c.config as any)?.category || "",
+    }));
+
+    // 如果指定了分类，在内存中进行过滤
+    if (category) {
+      mappedComponents = mappedComponents.filter((c) => c.category === category);
+    }
+
+    // 截取 limit 数量
+    const limitedComponents = mappedComponents.slice(0, limit);
 
     // 获取所有组件类型
     const types = await prisma.componenttask.findMany({
@@ -59,23 +67,30 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取所有组件分类
-    const categories = await prisma.componenttask.findMany({
+    // 获取所有已发布的组件配置，用于汇总所有分类列表
+    const allPublished = await prisma.componenttask.findMany({
       where: {
         isPublished: true,
       },
       select: {
-        category: true,
+        config: true,
       },
-      distinct: ["category"],
     });
+
+    const categories = Array.from(
+      new Set(
+        allPublished
+          .map((c) => (c.config as any)?.category as string)
+          .filter(Boolean)
+      )
+    );
 
     return NextResponse.json({
       success: true,
       data: {
-        components,
+        components: limitedComponents,
         types: types.map((t) => t.type),
-        categories: categories.map((c) => c.category).filter(Boolean),
+        categories: categories,
       },
     });
   } catch (error) {

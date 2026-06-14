@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
         return {
           ...workspace,
           componentCount: componentCountValue,
-          members: workspace.members,
+          members: workspace.workspacemember,
         };
       }),
     );
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
 
     // 总成员数（基于所有工作空间，不受筛选影响）
     const totalMembers = allWorkspacesWithComponentCount.reduce(
-      (sum, ws) => sum + ws._count.members,
+      (sum, ws) => sum + ws._count.workspacemember,
       0,
     );
 

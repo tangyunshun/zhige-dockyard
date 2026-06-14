@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -473,7 +473,7 @@ export default function AdminComponentsPage() {
   const handleTogglePublished = async (id: string, isPublished: boolean) => {
     // 二次确认 - 使用自定义对话框
     const action = isPublished ? "下架" : "上架";
-    setConfirmModal({
+    setConfirmDialog({
       isOpen: true,
       title: `${action}确认`,
       message: `${action}后，用户将${isPublished ? "无法" : "可以"}使用此组件。\n\n请确认是否继续？`,
@@ -544,7 +544,7 @@ export default function AdminComponentsPage() {
     }
 
     // 二次确认 - 使用自定义对话框
-    setConfirmModal({
+    setConfirmDialog({
       isOpen: true,
       title: "⚠️ 删除确认",
       message: `组件名称：${component.name}\n\n此操作不可恢复，删除后将无法找回！\n\n请确认是否继续？`,
@@ -600,7 +600,7 @@ export default function AdminComponentsPage() {
     }
 
     // 二次确认 - 使用自定义对话框
-    setConfirmModal({
+    setConfirmDialog({
       isOpen: true,
       title: "编辑确认",
       message: `组件名称：${component.name}\n\n编辑后需要重新上架才能被用户看到使用。\n\n请确认是否继续？`,

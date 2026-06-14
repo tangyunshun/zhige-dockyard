@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
 
@@ -20,6 +20,22 @@ export async function POST(request: NextRequest) {
 
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as string;
+
+    const { verifyToken } = await request.json().catch(() => ({}));
+
+    // 验证二次鉴权令牌 (SCENARIO_033)
+    if (!verifyToken) {
+      return NextResponse.json({ error: "SEC_AUTH_REQUIRED", message: "此高危操作需要进行二次身份验证" }, { status: 403 });
+    }
+
+    try {
+      const { payload: verifyPayload } = await jwtVerify(verifyToken, JWT_SECRET);
+      if (!verifyPayload.verified || verifyPayload.userId !== userId || verifyPayload.action !== "cancel_account") {
+        return NextResponse.json({ error: "SEC_AUTH_INVALID", message: "验证令牌不匹配，请重新验证" }, { status: 403 });
+      }
+    } catch (err) {
+      return NextResponse.json({ error: "SEC_AUTH_EXPIRED", message: "验证令牌已过期，请重新验证" }, { status: 403 });
+    }
 
     // 检查用户是否存在
     const user = await prisma.user.findUnique({

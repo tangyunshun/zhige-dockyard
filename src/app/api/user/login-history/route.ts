@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(req.nextUrl.searchParams.get("limit") || "10");
 
     // 获取用户登录历史
-    const loginHistory = await prisma.loginHistory.findMany({
+    const loginHistory = await prisma.loginhistory.findMany({
       where: { userId },
       orderBy: { loginAt: "desc" },
       take: limit,
@@ -44,8 +44,9 @@ export async function POST(req: NextRequest) {
     const { ipAddress, userAgent, location, device } = await req.json();
 
     // 创建登录历史记录
-    await prisma.loginHistory.create({
+    await prisma.loginhistory.create({
       data: {
+        id: crypto.randomUUID(),
         userId,
         ipAddress: ipAddress || "",
         userAgent: userAgent || "",

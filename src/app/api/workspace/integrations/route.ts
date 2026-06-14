@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 import bcrypt from "bcryptjs";
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     }
 
     const integrations = await prisma.integration.findMany({
-      where: { userId, workspaceId },
+      where: { workspaceId },
       select: {
         id: true,
         provider: true,
@@ -74,12 +74,13 @@ export async function POST(req: NextRequest) {
 
     const integration = await prisma.integration.create({
       data: {
-        userId,
+        id: crypto.randomUUID(),
         workspaceId,
         provider,
         name,
-        credentials: encryptedCredentials,
+        tokenHash: encryptedCredentials || "",
         configured: true,
+        updatedAt: new Date(),
       },
     });
 

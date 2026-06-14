@@ -1,10 +1,10 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { isSuperAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    // 楠岃瘉绠＄悊鍛樻潈闄?
+    // 验证管理员权限
     const authHeader = request.headers.get("authorization");
     if (
       !authHeader ||
@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
       where: { id: userId },
     });
 
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "鏉冮檺涓嶈冻" }, { status: 403 });
+    if (!user || !isSuperAdminRole(user.role)) {
+      return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -16,6 +16,8 @@ import {
   MapPin,
   Clock,
   AlertTriangle,
+  Tablet,
+  Trash2,
 } from "lucide-react";
 
 interface LoginHistory {
@@ -37,6 +39,8 @@ export default function UserSecurityPage() {
   });
   const [loginHistory, setLoginHistory] = useState<LoginHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     currentPassword: "",
@@ -46,6 +50,7 @@ export default function UserSecurityPage() {
 
   useEffect(() => {
     loadLoginHistory();
+    loadDevices();
   }, []);
 
   const loadLoginHistory = async () => {
@@ -65,6 +70,57 @@ export default function UserSecurityPage() {
       console.warn("Load login history error:", error);
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const loadDevices = async () => {
+    try {
+      setDevicesLoading(true);
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
+      const res = await fetch("/api/user/devices", {
+        headers: { Authorization: `Bearer ${userId}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setDevices(data.devices || []);
+      }
+    } catch (error) {
+      console.warn("Load devices error:", error);
+    } finally {
+      setDevicesLoading(false);
+    }
+  };
+
+  const handleKickDevice = async (deviceId: string) => {
+    if (!confirm("确定要下线该设备吗？被下线的设备将需要重新登录。")) {
+      return;
+    }
+    try {
+      const userId =
+        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+
+      const res = await fetch("/api/user/devices", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userId}`,
+        },
+        body: JSON.stringify({ deviceId }),
+      });
+
+      if (res.ok) {
+        setMessage({ type: "success", text: "设备已成功强制下线" });
+        loadDevices();
+      } else {
+        const error = await res.json();
+        setMessage({ type: "error", text: error.error || "操作失败" });
+      }
+    } catch (error) {
+      console.error("Kick device error:", error);
+      setMessage({ type: "error", text: "操作失败，请稍后重试" });
     }
   };
 
@@ -337,6 +393,96 @@ export default function UserSecurityPage() {
                 <LogIn className="w-8 h-8 text-slate-400" />
               </div>
               <p className="text-slate-500 font-medium text-sm">暂无登录记录</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 登录设备管理 */}
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
+        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
+        <div className="relative">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
+                <Monitor className="w-5 h-5 text-[#3182ce]" />
+              </div>
+              <h2 className="text-lg font-black text-slate-800">登录设备管理</h2>
+            </div>
+            <span className="text-xs text-slate-500 font-medium bg-slate-100 px-3 py-1.5 rounded-full">
+              活跃设备: {devices.length} 台
+            </span>
+          </div>
+
+          {devicesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-2 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin"></div>
+            </div>
+          ) : devices.length > 0 ? (
+            <div className="space-y-3">
+              {devices.map((device) => {
+                const isMobile = device.deviceType === "mobile";
+                const isTablet = device.deviceType === "tablet";
+                return (
+                  <div
+                    key={device.id}
+                    className="flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-white hover:shadow-md transition-all duration-300 border border-slate-200"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+                        {isMobile ? (
+                          <Smartphone className="w-5 h-5" />
+                        ) : isTablet ? (
+                          <Tablet className="w-5 h-5" />
+                        ) : (
+                          <Monitor className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-bold text-slate-800">
+                            {device.deviceName}
+                          </span>
+                          {device.isCurrent ? (
+                            <span className="text-xs text-[#3182ce] font-medium bg-[#3182ce]/10 px-2 py-0.5 rounded-full">
+                              当前设备
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded-full">
+                              活跃
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Globe className="w-3 h-3" />
+                            {device.ipAddress}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            活跃于: {new Date(device.lastActiveAt).toLocaleString("zh-CN")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {!device.isCurrent && (
+                      <button
+                        type="button"
+                        onClick={() => handleKickDevice(device.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="下线此设备"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-slate-500 font-medium text-sm">无可用设备记录</p>
             </div>
           )}
         </div>

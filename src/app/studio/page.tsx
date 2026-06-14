@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useToast } from "@/components/Toast";
+import { useAppContext } from "@/contexts/AppContext";
+import { useSearchParams } from "next/navigation";
 import {
   Search,
   ChevronDown,
@@ -675,7 +677,173 @@ const componentDetails: Record<string, ComponentDetail> = {
 };
 
 export default function StudioPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#f0f8ff]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">正在加载组件工坊...</p>
+        </div>
+      </div>
+    }>
+      <StudioContent />
+    </Suspense>
+  );
+}
+
+function StudioContent() {
   const toast = useToast();
+  const { userState } = useAppContext();
+  const searchParams = useSearchParams();
+  const queryWorkspaceId = searchParams?.get("workspaceId");
+
+  const workspaces = userState?.workspaces || [];
+  const currentWorkspace = workspaces.find(w => w.id === queryWorkspaceId)
+    || workspaces.find(w => w.id === userState?.currentWorkspaceId)
+    || workspaces[0]
+    || null;
+
+  const [workspaceToken, setWorkspaceToken] = useState<number>(0);
+  const [restrictedComponentIds, setRestrictedComponentIds] = useState<string[]>([]);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [isBinding, setIsBinding] = useState(false);
+
+  // 加载当前空间的岗位受限组件列表 (安全闭环)
+  useEffect(() => {
+    const fetchRestrictedComponents = async () => {
+      if (!currentWorkspace) {
+        setRestrictedComponentIds([]);
+        return;
+      }
+      try {
+        const userId = localStorage.getItem("userId");
+        const headers: Record<string, string> = userId ? { Authorization: `Bearer ${userId}` } : {};
+        const res = await fetch(`/api/studio?action=restricted&workspaceId=${currentWorkspace.id}`, {
+          headers
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setRestrictedComponentIds(data.data || []);
+          }
+        }
+      } catch (e) {
+        console.error("加载受限组件失败:", e);
+      }
+    };
+    fetchRestrictedComponents();
+  }, [currentWorkspace]);
+
+  // 加载当前空间的算力配额
+  useEffect(() => {
+    const fetchToken = async () => {
+      if (!currentWorkspace) return;
+      try {
+        const userId = localStorage.getItem("userId");
+        if (!userId) return;
+        const res = await fetch("/api/user/workspace-hub/quota", {
+          headers: { Authorization: `Bearer ${userId}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const wsData = data.data?.workspaces?.find((w: any) => w.id === currentWorkspace.id);
+          if (wsData?.quota) {
+            setWorkspaceToken(wsData.quota.tokenBalance);
+          }
+        }
+      } catch (e) {
+        console.error("加载 Token 失败:", e);
+      }
+    };
+    fetchToken();
+  }, [currentWorkspace]);
+
+  // 模拟运行组件
+  const handleSimulateRun = async (componentId: string) => {
+    if (restrictedComponentIds.includes(componentId)) {
+      toast.error("您当前的岗位在当前企业空间下无此组件的执行权限，请联系管理员");
+      return;
+    }
+    if (!currentWorkspace) {
+      toast.warning("暂无可用工作空间，无法进行模拟运行");
+      return;
+    }
+    
+    setIsSimulating(true);
+    const cost = Math.floor(Math.random() * 9) + 2; // 2-10 随机点数
+    toast.info(`正在加载组件模拟沙箱并调用模型，预计消耗 ${cost} 点算力...`);
+    
+    try {
+      const userId = localStorage.getItem("userId");
+      const response = await fetch("/api/studio", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+        },
+        body: JSON.stringify({
+          action: "simulate",
+          componentId,
+          workspaceId: currentWorkspace.id,
+          tokens: cost
+        })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        setWorkspaceToken(result.tokenBalance);
+        toast.success(`组件模拟运行成功！已从空间 [${currentWorkspace.name}] 扣减 ${cost} 算力点，当前余额 ${result.tokenBalance}。`);
+      } else {
+        toast.error(result.error || "模拟运行失败");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("模拟运行失败，网络异常");
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  // 绑定组件至当前空间
+  const handleBindToWorkspace = async (componentId: string) => {
+    if (restrictedComponentIds.includes(componentId)) {
+      toast.error("您当前的岗位在当前企业空间下无此组件的绑定权限，请联系管理员");
+      return;
+    }
+    if (!currentWorkspace) {
+      toast.warning("暂无可用工作空间，无法完成绑定");
+      return;
+    }
+    
+    setIsBinding(true);
+    try {
+      const userId = localStorage.getItem("userId");
+      const response = await fetch("/api/studio", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+        },
+        body: JSON.stringify({
+          action: "bind",
+          componentId,
+          workspaceId: currentWorkspace.id
+        })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        toast.success(`组件已成功绑定安装至空间 [${currentWorkspace.name}]！数据流转和操作审计已持久化。`);
+      } else {
+        toast.error(result.error || "绑定失败");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("绑定失败，网络异常");
+    } finally {
+      setIsBinding(false);
+    }
+  };
   // 搜索相关
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -750,15 +918,18 @@ export default function StudioPage() {
   useEffect(() => {
     const loadUserData = async () => {
       try {
+        const userId = localStorage.getItem("userId");
+        const headers: Record<string, string> = userId ? { Authorization: `Bearer ${userId}` } : {};
+
         // 从 API 加载收藏
-        const favResponse = await fetch("/api/studio?action=favorites");
+        const favResponse = await fetch("/api/studio?action=favorites", { headers });
         const favResult = await favResponse.json();
         if (favResult.success) {
           setFavorites(favResult.data);
         }
 
         // 从 API 加载最近使用（去重处理）
-        const recentResponse = await fetch("/api/studio?action=recent");
+        const recentResponse = await fetch("/api/studio?action=recent", { headers });
         const recentResult = await recentResponse.json();
         if (recentResult.success) {
           // 去重并限制为 6 个
@@ -928,9 +1099,13 @@ export default function StudioPage() {
       const isFavorite = favorites.includes(componentId);
       console.log("切换收藏:", { componentId, isFavorite });
 
+      const userId = localStorage.getItem("userId");
       const response = await fetch("/api/studio", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+        },
         body: JSON.stringify({
           action: isFavorite ? "unfavorite" : "favorite",
           componentId,
@@ -963,9 +1138,13 @@ export default function StudioPage() {
   const addToRecentlyUsed = async (componentId: string) => {
     try {
       // 记录到数据库
+      const userId = localStorage.getItem("userId");
       const response = await fetch("/api/studio", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+        },
         body: JSON.stringify({
           action: "use",
           componentId,
@@ -995,13 +1174,21 @@ export default function StudioPage() {
 
   // 使用组件
   const useComponent = async (componentId: string) => {
+    if (restrictedComponentIds.includes(componentId)) {
+      toast.error("您当前的岗位在当前企业空间下无此组件的使用权限，请联系管理员");
+      return;
+    }
     addToRecentlyUsed(componentId);
 
     try {
       // 记录使用到数据库
+      const userId = localStorage.getItem("userId");
       const response = await fetch("/api/studio", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+        },
         body: JSON.stringify({
           action: "use",
           componentId,
@@ -1063,12 +1250,17 @@ export default function StudioPage() {
         return;
       }
 
+      const userId = localStorage.getItem("userId");
+
       // 批量添加到收藏
       await Promise.all(
         selectedComponents.map((componentId) =>
           fetch("/api/studio", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+            },
             body: JSON.stringify({
               action: "favorite",
               componentId,
@@ -1095,12 +1287,17 @@ export default function StudioPage() {
         return;
       }
 
+      const userId = localStorage.getItem("userId");
+
       // 批量取消收藏
       await Promise.all(
         selectedComponents.map((componentId) =>
           fetch("/api/studio", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+            },
             body: JSON.stringify({
               action: "unfavorite",
               componentId,
@@ -1188,6 +1385,24 @@ export default function StudioPage() {
             <ChevronDown className="w-4 h-4 text-slate-400 rotate-[-90deg]" />
             <span className="text-slate-800 font-bold">舟坊空间组件库</span>
           </nav>
+
+          {currentWorkspace && (
+            <div className="flex items-center gap-2 bg-[#3182ce]/10 text-[#3182ce] px-3.5 py-1.5 rounded-full text-xs font-bold border border-[#3182ce]/20 shadow-sm transition-all hover:bg-[#3182ce]/15">
+              <span className="opacity-75">空间:</span>
+              <span className="text-slate-800">{currentWorkspace.name}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3182ce]/30"></span>
+              <span className="opacity-75">算力余额:</span>
+              <span className="text-[#3182ce] font-extrabold">{workspaceToken.toLocaleString()} Token</span>
+            </div>
+          )}
+
+          {!currentWorkspace && (
+            <div className="flex items-center gap-2 bg-[#dd6b20]/10 text-[#dd6b20] px-3.5 py-1.5 rounded-full text-xs font-bold border border-[#dd6b20]/20 shadow-sm transition-all hover:bg-[#dd6b20]/15">
+              <span className="opacity-75">提示:</span>
+              <span className="text-slate-700">未关联工作区，无法启用模拟运行及绑定等工坊特权</span>
+              <a href="/auth/login" className="underline hover:text-[#dd6b20] transition-colors ml-1">立即登录空间</a>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -1632,14 +1847,15 @@ export default function StudioPage() {
                       {/* 底部操作按钮 */}
                       <div className="relative z-10 flex items-center gap-2 mt-3">
                         <button
+                          disabled={restrictedComponentIds.includes(componentId)}
                           onClick={(e) => {
                             e.stopPropagation();
                             useComponent(componentId);
                           }}
-                          className="flex-1 h-7 rounded-lg bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-[11px] font-bold hover:shadow-lg hover:shadow-[#10b981]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                          className={`flex-1 h-7 rounded-lg text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${restrictedComponentIds.includes(componentId) ? "bg-slate-400 opacity-50 cursor-not-allowed hover:shadow-none hover:-translate-y-0" : "bg-gradient-to-r from-[#10b981] to-[#059669] hover:shadow-lg hover:shadow-[#10b981]/30 hover:-translate-y-0.5"}`}
                         >
                           <Rocket className="w-3.5 h-3.5" />
-                          使用
+                          {restrictedComponentIds.includes(componentId) ? "岗位受限" : "使用"}
                         </button>
                         <button
                           onClick={(e) => {
@@ -1735,14 +1951,15 @@ export default function StudioPage() {
                       {/* 底部操作按钮 */}
                       <div className="relative z-10 flex items-center gap-2 mt-3">
                         <button
+                          disabled={restrictedComponentIds.includes(componentId)}
                           onClick={(e) => {
                             e.stopPropagation();
                             useComponent(componentId);
                           }}
-                          className="flex-1 h-7 rounded-lg bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-[11px] font-bold hover:shadow-lg hover:shadow-[#f59e0b]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                          className={`flex-1 h-7 rounded-lg text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${restrictedComponentIds.includes(componentId) ? "bg-slate-400 opacity-50 cursor-not-allowed hover:shadow-none hover:-translate-y-0" : "bg-gradient-to-r from-[#f59e0b] to-[#d97706] hover:shadow-lg hover:shadow-[#f59e0b]/30 hover:-translate-y-0.5"}`}
                         >
                           <Rocket className="w-3.5 h-3.5" />
-                          使用
+                          {restrictedComponentIds.includes(componentId) ? "岗位受限" : "使用"}
                         </button>
                         <button
                           onClick={(e) => {
@@ -2162,18 +2379,23 @@ export default function StudioPage() {
                             <div className="flex items-center gap-2">
                               {/* 使用按钮 */}
                               <button
+                                disabled={restrictedComponentIds.includes(component.id)}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   useComponent(component.id);
                                 }}
-                                className="h-9 px-4 rounded-[8px] text-white text-[11px] font-bold hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                className={`h-9 px-4 rounded-[8px] text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${restrictedComponentIds.includes(component.id) ? "opacity-50 cursor-not-allowed" : "hover:shadow-lg"}`}
                                 style={{
-                                  background: `linear-gradient(135deg, ${theme.color} 0%, ${theme.color}cc 100%)`,
-                                  boxShadow: `0 4px 12px -2px ${theme.color}40`,
+                                  background: restrictedComponentIds.includes(component.id)
+                                    ? "#94a3b8"
+                                    : `linear-gradient(135deg, ${theme.color} 0%, ${theme.color}cc 100%)`,
+                                  boxShadow: restrictedComponentIds.includes(component.id)
+                                    ? "none"
+                                    : `0 4px 12px -2px ${theme.color}40`,
                                 }}
                               >
                                 <ZapIcon className="w-3.5 h-3.5" />
-                                使用
+                                {restrictedComponentIds.includes(component.id) ? "岗位权限受限" : "使用"}
                               </button>
                               {/* 分享按钮 */}
                               <button
@@ -2463,18 +2685,23 @@ export default function StudioPage() {
                             {/* 底部操作按钮 */}
                             <div className="px-4 pb-4 pt-2 flex items-center gap-2 relative z-10">
                               <button
+                                disabled={restrictedComponentIds.includes(component.id)}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   useComponent(component.id);
                                 }}
-                                className="flex-1 h-9 rounded-[8px] text-white text-[11px] font-bold hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                className={`flex-1 h-9 rounded-[8px] text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${restrictedComponentIds.includes(component.id) ? "opacity-50 cursor-not-allowed" : "hover:shadow-lg"}`}
                                 style={{
-                                  background: `linear-gradient(135deg, ${theme.color} 0%, ${theme.color}cc 100%)`,
-                                  boxShadow: `0 4px 12px -2px ${theme.color}40`,
+                                  background: restrictedComponentIds.includes(component.id)
+                                    ? "#94a3b8"
+                                    : `linear-gradient(135deg, ${theme.color} 0%, ${theme.color}cc 100%)`,
+                                  boxShadow: restrictedComponentIds.includes(component.id)
+                                    ? "none"
+                                    : `0 4px 12px -2px ${theme.color}40`,
                                 }}
                               >
                                 <ZapIcon className="w-3.5 h-3.5" />
-                                使用
+                                {restrictedComponentIds.includes(component.id) ? "岗位权限受限" : "使用"}
                               </button>
                               <button
                                 onClick={(e) => {
@@ -2662,16 +2889,54 @@ export default function StudioPage() {
                   </button>
 
                   <div className="flex items-center gap-3">
+                    {currentWorkspace && (
+                      <>
+                        <button
+                          onClick={() => handleSimulateRun(selectedComponent)}
+                          disabled={isSimulating || restrictedComponentIds.includes(selectedComponent)}
+                          className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${restrictedComponentIds.includes(selectedComponent) ? "bg-slate-100 text-slate-400 border border-slate-200" : "bg-[#3182ce]/10 text-[#3182ce] hover:bg-[#3182ce]/20 border border-[#3182ce]/30"}`}
+                        >
+                          <ZapIcon className={`w-4 h-4 ${isSimulating ? "animate-bounce" : ""}`} />
+                          {restrictedComponentIds.includes(selectedComponent) ? "岗位权限受限" : isSimulating ? "正在模拟..." : "在当前空间模拟运行"}
+                        </button>
+                        <button
+                          onClick={() => handleBindToWorkspace(selectedComponent)}
+                          disabled={isBinding || restrictedComponentIds.includes(selectedComponent)}
+                          className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${restrictedComponentIds.includes(selectedComponent) ? "bg-slate-100 text-slate-400 border border-slate-200" : "bg-[#10b981]/10 text-[#10b981] hover:bg-[#10b981]/20 border border-[#10b981]/30"}`}
+                        >
+                          <Box className={`w-4 h-4 ${isBinding ? "animate-spin" : ""}`} />
+                          {restrictedComponentIds.includes(selectedComponent) ? "岗位权限受限" : isBinding ? "正在绑定..." : "绑定至当前空间"}
+                        </button>
+                      </>
+                    )}
+
+                    {!currentWorkspace && (
+                      <button
+                        onClick={() => {
+                          toast.info("请先登录并进入您的工作空间，以体验完整的模拟运行与算力消耗审计！");
+                          setTimeout(() => {
+                            window.location.href = "/auth/login";
+                          }, 1500);
+                        }}
+                        className="px-4 py-2 rounded-lg bg-slate-100 text-slate-400 border border-slate-200 text-sm font-bold transition-all flex items-center gap-2 cursor-pointer hover:bg-slate-200 hover:text-slate-500"
+                        title="请先登录并关联您的工作区"
+                      >
+                        <ZapIcon className="w-4 h-4 text-slate-400" />
+                        解锁工坊特权 (需登录空间)
+                      </button>
+                    )}
+
                     <button className="px-4 py-2 rounded-lg border border-[#e2e8f0] flex items-center gap-2 text-sm font-bold text-slate-700 hover:border-[#3182ce] transition-all cursor-pointer">
                       <Share2 className="w-4 h-4" />
                       分享
                     </button>
                     <button
                       onClick={() => useComponent(selectedComponent)}
-                      className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+                      disabled={restrictedComponentIds.includes(selectedComponent)}
+                      className={`px-6 py-2 rounded-lg text-white text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${restrictedComponentIds.includes(selectedComponent) ? "bg-slate-400 opacity-50 cursor-not-allowed hover:shadow-none" : "bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:shadow-lg"}`}
                     >
                       <ZapIcon className="w-4 h-4" />
-                      立即使用
+                      {restrictedComponentIds.includes(selectedComponent) ? "岗位权限受限" : "立即使用"}
                     </button>
                   </div>
                 </div>

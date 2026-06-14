@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const userId = token.id as string;
 
     // 获取用户偏好设置
-    const preferences = await prisma.userPreference.findFirst({
+    const preferences = await prisma.userpreference.findFirst({
       where: { userId },
     });
 
@@ -80,13 +80,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 检查是否已存在偏好设置
-    const existingPreference = await prisma.userPreference.findFirst({
+    const existingPreference = await prisma.userpreference.findFirst({
       where: { userId },
     });
 
     let preferences;
     if (existingPreference) {
-      preferences = await prisma.userPreference.update({
+      preferences = await prisma.userpreference.update({
         where: { id: existingPreference.id },
         data: {
           aiEngine: aiEngine || existingPreference.aiEngine,
@@ -94,17 +94,20 @@ export async function POST(req: NextRequest) {
           defaultModel: defaultModel || existingPreference.defaultModel,
           temperature: temperature ?? existingPreference.temperature,
           maxTokens: maxTokens ?? existingPreference.maxTokens,
+          updatedAt: new Date(),
         },
       });
     } else {
-      preferences = await prisma.userPreference.create({
+      preferences = await prisma.userpreference.create({
         data: {
+          id: crypto.randomUUID(),
           userId,
           aiEngine: aiEngine || "zhige",
           systemPrompt: systemPrompt || "",
           defaultModel: defaultModel || "zhige-v3",
           temperature: temperature ?? 0.7,
           maxTokens: maxTokens ?? 2000,
+          updatedAt: new Date(),
         },
       });
     }

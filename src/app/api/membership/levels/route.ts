@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET(request: NextRequest) {
   try {
     // 获取所有会员等级
-    const levels = await prisma.membershipLevel.findMany({
+    const levels = await prisma.membershiplevel.findMany({
       where: {
         isActive: true,
       },

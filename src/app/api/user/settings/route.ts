@@ -1,5 +1,32 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
+
+const STORE_PATH = path.join(process.cwd(), "src/app/api/user/settings/settings-store.json");
+
+function readStore() {
+  try {
+    if (fs.existsSync(STORE_PATH)) {
+      const data = fs.readFileSync(STORE_PATH, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error("Error reading settings store:", error);
+  }
+  return {};
+}
+
+function writeStore(store: Record<string, any>) {
+  try {
+    const dir = path.dirname(STORE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf-8");
+  } catch (error) {
+    console.error("Error writing settings store:", error);
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,17 +39,21 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 获取用户设置
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        preferences: true,
+    const store = readStore();
+    const userSettings = store[userId] || {
+      language: "zh-CN",
+      theme: "light",
+      notifications: {
+        email: true,
+        browser: true,
+        marketing: false,
       },
-    });
+      displayDensity: "comfortable",
+    };
 
     return NextResponse.json({
       success: true,
-      data: user?.preferences || {},
+      data: userSettings,
     });
   } catch (error) {
     console.error("Get user settings error:", error);
@@ -46,17 +77,13 @@ export async function PUT(req: NextRequest) {
 
     const body = await req.json();
 
-    // 更新用户设置
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        preferences: body,
-      },
-    });
+    const store = readStore();
+    store[userId] = body;
+    writeStore(store);
 
     return NextResponse.json({
       success: true,
-      data: user.preferences || {},
+      data: body,
     });
   } catch (error) {
     console.warn("Update user settings error:", error);

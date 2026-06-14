@@ -34,17 +34,23 @@ export type ComponentCategory =
   | "PROJ_MGMT" // C41-C45 项目管理
   | "KNOWLEDGE"; // C46-C53 知识资产
 
-export const COMPONENT_CATEGORIES: Record<ComponentCategory, string> = {
-  BID_PREP: "商机捕获与售前打单",
-  REQ_DESIGN: "需求定义与产品设计",
-  BACKEND_CORE: "后端核心与 API",
-  DATABASE_ENG: "数据库工程",
-  FRONTEND_DEV: "大前端开发",
-  TEST_QA: "测试与质量保证",
-  DEVOPS: "运维与持续集成",
-  SECURITY: "安全合规",
-  PROJ_MGMT: "项目管理",
-  KNOWLEDGE: "知识资产",
+export interface CategoryDetails {
+  name: string;
+  color: string;
+  range: string;
+}
+
+export const COMPONENT_CATEGORIES: Record<ComponentCategory, CategoryDetails> = {
+  BID_PREP: { name: "商机捕获与售前打单", color: "#2b6cb0", range: "C01-C06" },
+  REQ_DESIGN: { name: "需求定义与产品设计", color: "#319795", range: "C07-C10" },
+  BACKEND_CORE: { name: "后端核心与 API", color: "#805ad5", range: "C11-C16" },
+  DATABASE_ENG: { name: "数据库工程", color: "#dd6b20", range: "C17-C20" },
+  FRONTEND_DEV: { name: "大前端开发", color: "#3182ce", range: "C21-C25" },
+  TEST_QA: { name: "测试与质量保证", color: "#38a169", range: "C26-C30" },
+  DEVOPS: { name: "运维与持续集成", color: "#4a5568", range: "C31-C35" },
+  SECURITY: { name: "安全合规", color: "#e53e3e", range: "C36-C40" },
+  PROJ_MGMT: { name: "项目管理", color: "#d69e2e", range: "C41-C45" },
+  KNOWLEDGE: { name: "知识资产", color: "#4c51bf", range: "C46-C53" },
 };
 
 export const COMPONENTS: ComponentDefinition[] = [
@@ -892,7 +898,7 @@ export const COMPONENT_PERMISSION_TOKENS = COMPONENTS.reduce(
 );
 
 export function getComponentCategoryName(category: ComponentCategory): string {
-  return COMPONENT_CATEGORIES[category];
+  return COMPONENT_CATEGORIES[category].name;
 }
 
 export function getComponentById(id: string): ComponentDefinition | undefined {

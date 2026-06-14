@@ -19,7 +19,7 @@ import {
   LogOut,
   Shield,
   Crown,
-  Sparkles,
+  Layers,
 } from "lucide-react";
 import { COMPONENTS, COMPONENT_CATEGORIES, getComponentsByCategory, ComponentCategory } from "@/constants/components";
 import UpgradeModal from "@/components/UpgradeModal";
@@ -430,7 +430,7 @@ export default function WorkspaceHubPage() {
 
             <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-100">
               <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4 text-violet-500" />
+                <Layers className="w-4 h-4 text-violet-500" />
                 <span className="text-xs text-slate-500 font-medium">架构图</span>
               </div>
               <div className="text-2xl font-bold text-slate-800">

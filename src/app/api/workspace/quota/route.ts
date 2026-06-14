@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     // 统计 API 调用次数（过去 30 天）
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const apiCallsUsed = await prisma.apiUsage.count({
+    const apiCallsUsed = await prisma.apiusage.count({
       where: {
         userId,
         timestamp: {

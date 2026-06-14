@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import HeroSection from "@/components/HeroSection";
 import UserQuickAccess from "@/components/UserQuickAccess";
@@ -9,6 +10,7 @@ import RoleCapabilities from "@/components/RoleCapabilities";
 import EnterpriseSecurity from "@/components/EnterpriseSecurity";
 import CTA from "@/components/CTA";
 import Footer from "@/components/Footer";
+import DemoRequestModal from "@/components/DemoRequestModal";
 import {
   Clock,
   AlertTriangle,
@@ -18,8 +20,10 @@ import {
 } from "lucide-react";
 
 export default function Home() {
+  const router = useRouter();
   const toast = useToast();
   const [showDeletionModal, setShowDeletionModal] = useState(false);
+  const [showDemoModal, setShowDemoModal] = useState(false);
   const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number>(0);
   const [countdown, setCountdown] = useState<number>(0);
   const [cancelling, setCancelling] = useState(false);
@@ -48,6 +52,9 @@ export default function Home() {
           if (data.user?.status === "deleting") {
             setDeletionDaysRemaining(data.user.deletionDaysRemaining || 7);
             setShowDeletionModal(true);
+          } else {
+            // 已登录且状态正常的用户，自动重定向至工作台
+            router.replace("/workspace-hub");
           }
         }
       } catch (error) {
@@ -199,13 +206,14 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f8fafc] w-full overflow-x-hidden relative">
-      <HeroSection />
+    <main className="min-h-screen bg-transparent w-full overflow-x-hidden relative">
+      <HeroSection onDemoRequest={() => setShowDemoModal(true)} />
       <CoreFeatures />
       <RoleCapabilities />
       <EnterpriseSecurity />
-      <CTA />
+      <CTA onDemoRequest={() => setShowDemoModal(true)} />
       <Footer />
+      <DemoRequestModal isOpen={showDemoModal} onClose={() => setShowDemoModal(false)} />
 
       {/* 冷静期遮罩弹窗 */}
       {showDeletionModal && (

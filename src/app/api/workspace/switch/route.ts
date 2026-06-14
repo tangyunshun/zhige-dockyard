@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 验证用户是否有权限访问该工作空间
-    const membership = await prisma.workspaceMember.findUnique({
+    const membership = await prisma.workspacemember.findUnique({
       where: {
         userId_workspaceId: {
           userId,

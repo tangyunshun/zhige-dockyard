@@ -1,10 +1,10 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    // 楠岃瘉绠＄悊鍛樻潈闄?
+    // 验证管理员权限
     const authHeader = request.headers.get("authorization");
     if (
       !authHeader ||
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "鏉冮檺涓嶈冻" }, { status: 403 });
+      return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const [preferences, total] = await Promise.all([
-      prisma.userPreference.findMany({
+      prisma.userpreference.findMany({
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.userPreference.count(),
+      prisma.userpreference.count(),
     ]);
 
     return NextResponse.json({
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     console.error("Get preferences error:", error);
     return NextResponse.json(
       {
-        error: "鑾峰彇鍋忓ソ璁剧疆澶辫触",
+        error: "获取偏好设置失败",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

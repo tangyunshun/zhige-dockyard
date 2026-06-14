@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -77,7 +77,7 @@ export default function UserActivitiesPage() {
     return `${days}天前`;
   };
 
-  const getActivityIcon = (resourceType: string | null) => {
+  const getActivityIcon = (resourceType: string | null | undefined) => {
     switch (resourceType) {
       case "workspace":
         return FolderOpen;
@@ -94,7 +94,7 @@ export default function UserActivitiesPage() {
     }
   };
 
-  const getActivityColor = (resourceType: string | null) => {
+  const getActivityColor = (resourceType: string | null | undefined) => {
     switch (resourceType) {
       case "workspace":
         return "bg-[#3182ce]";

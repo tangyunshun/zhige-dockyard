@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -16,12 +16,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 验证邀请码
-    const invitation = await prisma.workspaceInvitation.findUnique({
+    const invitation = await prisma.workspaceinvitation.findUnique({
       where: { code: invitationCode },
       include: {
         workspace: {
           include: {
-            members: true,
+            workspacemember: true,
           },
         },
       },
@@ -48,9 +48,12 @@ export async function POST(request: NextRequest) {
 
     // 检查有效期
     if (invitation.expiresAt && new Date() > invitation.expiresAt) {
-      await prisma.workspaceInvitation.update({
+      await prisma.workspaceinvitation.update({
         where: { id: invitation.id },
-        data: { status: "EXPIRED" },
+        data: {
+          status: "EXPIRED",
+          updatedAt: new Date(),
+        },
       });
       return NextResponse.json(
         { error: "邀请码已过期" },
@@ -72,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 检查用户是否已是成员
-    const isMember = invitation.workspace.members.some(
+    const isMember = invitation.workspace.workspacemember.some(
       (m) => m.userId === userId,
     );
     if (isMember) {
@@ -83,8 +86,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 添加成员
-    await prisma.workspaceMember.create({
+    await prisma.workspacemember.create({
       data: {
+        id: crypto.randomUUID(),
         userId,
         workspaceId: invitation.workspaceId,
         role: invitation.role,
@@ -92,18 +96,20 @@ export async function POST(request: NextRequest) {
     });
 
     // 更新邀请码状态
-    await prisma.workspaceInvitation.update({
+    await prisma.workspaceinvitation.update({
       where: { id: invitation.id },
       data: {
         status: "USED",
         usedAt: new Date(),
         usedBy: userId,
+        updatedAt: new Date(),
       },
     });
 
     // 记录操作日志
-    await prisma.operationLog.create({
+    await prisma.operationlog.create({
       data: {
+        id: crypto.randomUUID(),
         userId,
         workspaceId: invitation.workspaceId,
         action: "JOIN_WORKSPACE",

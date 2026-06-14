@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 
@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
     // 创建会员等级
     const level = await prisma.membershiplevel.create({
       data: {
+        id: name,
         name,
         nameZh,
         icon: icon || null,
@@ -174,6 +175,7 @@ export async function POST(request: NextRequest) {
         isActive: isActive !== false,
         isRecommended: isRecommended === true,
         isPopular: isPopular === true,
+        updatedAt: new Date(),
       },
     });
 
@@ -290,6 +292,7 @@ export async function PUT(request: NextRequest) {
         isActive: isActive !== undefined ? isActive : existing.isActive,
         isRecommended: isRecommended !== undefined ? isRecommended : existing.isRecommended,
         isPopular: isPopular !== undefined ? isPopular : existing.isPopular,
+        updatedAt: new Date(),
       },
     });
 

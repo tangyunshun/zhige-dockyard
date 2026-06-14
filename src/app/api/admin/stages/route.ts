@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     // 过滤出阶段记录
     let stageRecords = allRecords.filter(
-      (record) => record.config?.isStageConfig === true,
+      (record) => (record.config as any)?.isStageConfig === true,
     );
 
     // 搜索过滤
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     // 统计每个阶段的组件数量
     const nonStageRecords = allRecords.filter(
-      (record) => record.config?.isStageConfig !== true,
+      (record) => (record.config as any)?.isStageConfig !== true,
     );
     
     const typeCountMap = new Map<string, number>();
@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
     // 创建阶段配置
     const stage = await prisma.componenttask.create({
       data: {
+        id: crypto.randomUUID(),
         name,
         description,
         type: name, // 阶段类型与名称相同

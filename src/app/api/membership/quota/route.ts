@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 获取会员等级配置
-    const membershipLevel = await prisma.membershipLevel.findUnique({
+    const membershipLevel = await prisma.membershiplevel.findUnique({
       where: { name: user.membershipLevel },
     });
 

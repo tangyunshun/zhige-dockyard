@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Mail,
   User,
+  Check,
 } from "lucide-react";
 import {
   validateAccount,
@@ -175,6 +176,14 @@ function RegisterContent() {
       setErrors({ ...errors, account: undefined });
     }
 
+    // 防错状态重置
+    if (smsCodeSent || smsCountdown > 0) {
+      setSmsCodeSent(false);
+      setSmsCountdown(0);
+      setSmsMessage(null);
+      setErrors((prev) => ({ ...prev, smsCode: undefined }));
+    }
+
     // 验证账号格式并检测类型
     const validation = validateAccount(value);
     if (!validation.valid && value.length > 0) {
@@ -232,6 +241,14 @@ function RegisterContent() {
     if (errors.phone || phoneCheckStatus.registered) {
       setErrors({ ...errors, phone: undefined });
       setPhoneCheckStatus({});
+    }
+
+    // 防错状态重置
+    if (smsCodeSent || smsCountdown > 0) {
+      setSmsCodeSent(false);
+      setSmsCountdown(0);
+      setSmsMessage(null);
+      setErrors((prev) => ({ ...prev, smsCode: undefined }));
     }
   };
 
@@ -501,8 +518,14 @@ function RegisterContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden">
-      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[16px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden relative"
+      style={{
+        backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.08) 1.5px, transparent 1.5px)",
+        backgroundSize: "24px 24px",
+      }}
+    >
+      <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[24px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50 relative z-10">
         {/* 左侧品牌区 - 固定 */}
         <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
           {/* 装饰背景 */}
@@ -556,13 +579,17 @@ function RegisterContent() {
             <Logo variant="light" />
           </div>
 
-          <h2 className="text-xl font-bold text-slate-800 mb-1">创建账号</h2>
-          <p className="text-slate-600 mb-6 text-sm">
-            {accountType === "phone" && "使用手机号注册新账号"}
-            {accountType === "email" && "使用邮箱注册新账号"}
-            {accountType === "username" && "使用用户名注册新账号"}
-            {accountType === "unknown" && "使用手机号/邮箱/用户名注册新账号"}
-          </p>
+          <div className="flex justify-between items-end mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 mb-1">创建账号</h2>
+              <p className="text-slate-600 text-sm">
+                {accountType === "phone" && "使用手机号注册新账号"}
+                {accountType === "email" && "使用邮箱注册新账号"}
+                {accountType === "username" && "使用用户名注册新账号"}
+                {accountType === "unknown" && "使用手机号/邮箱/用户名注册新账号"}
+              </p>
+            </div>
+          </div>
 
           <form onSubmit={handleRegister} className="space-y-4">
             {/* 账号输入框 */}
@@ -590,7 +617,7 @@ function RegisterContent() {
                   value={formData.account}
                   onChange={handleAccountChange}
                   onBlur={handleAccountBlur}
-                  className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                  className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${
                     errors.account ? "border-red-500" : "border-[#e2e8f0]"
                   }`}
                   placeholder={
@@ -609,21 +636,21 @@ function RegisterContent() {
                   </div>
                 )}
               </div>
-              {errors.account && (
+              {errors.account && !accountCheckStatus.registered && (
                 <p className="mt-1 text-xs text-red-500">{errors.account}</p>
               )}
 
               {/* 邮箱自动补全建议 */}
               {showEmailSuggestions && emailSuggestions.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-[#e2e8f0] rounded-lg shadow-lg">
+                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-100 rounded-xl shadow-xl pointer-events-auto overflow-hidden">
                   {emailSuggestions.map((suggestion, index) => (
                     <button
                       key={index}
                       type="button"
                       onClick={() => handleEmailSuggestionClick(suggestion)}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-[#f0f8ff] text-slate-700 first:rounded-t-lg last:rounded-b-lg"
+                      className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f0f8ff] text-slate-700 font-bold flex items-center gap-2 cursor-pointer transition-colors"
                     >
-                      <Mail className="inline w-3 h-3 mr-2 text-[#3182ce]" />
+                      <Mail className="inline w-3.5 h-3.5 text-[#3182ce]" />
                       {suggestion}
                     </button>
                   ))}
@@ -667,7 +694,7 @@ function RegisterContent() {
                     value={formData.phone}
                     onChange={handlePhoneChange}
                     onBlur={handlePhoneBlur}
-                    className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                    className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${
                       errors.phone ? "border-red-500" : "border-[#e2e8f0]"
                     }`}
                     placeholder="请输入 11 位手机号"
@@ -678,7 +705,7 @@ function RegisterContent() {
                     </div>
                   )}
                 </div>
-                {errors.phone && (
+                {errors.phone && !phoneCheckStatus.registered && (
                   <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
                 )}
                 {phoneCheckStatus.registered && (
@@ -726,7 +753,7 @@ function RegisterContent() {
                         setErrors({ ...errors, smsCode: undefined });
                       }
                     }}
-                    className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                    className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${
                       errors.smsCode ? "border-red-500" : "border-[#e2e8f0]"
                     }`}
                     placeholder="请输入 6 位验证码"
@@ -737,7 +764,7 @@ function RegisterContent() {
                   type="button"
                   onClick={sendSmsCode}
                   disabled={smsCountdown > 0}
-                  className="px-3 py-2.5 bg-[#3182ce] text-white rounded-lg text-xs font-medium hover:bg-[#2b6cb0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  className="px-4 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl text-xs font-black hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
                 >
                   {smsCountdown > 0 ? `${smsCountdown}秒后重发` : "获取验证码"}
                 </button>
@@ -767,7 +794,7 @@ function RegisterContent() {
                       setErrors({ ...errors, password: undefined });
                     }
                   }}
-                  className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                  className={`w-full pl-9 pr-10 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${
                     errors.password ? "border-red-500" : "border-[#e2e8f0]"
                   }`}
                   placeholder="请设置密码"
@@ -794,7 +821,7 @@ function RegisterContent() {
                   {[1, 2, 3, 4, 5].map((level) => (
                     <div
                       key={level}
-                      className={`flex-1 h-1.5 rounded-full transition-colors ${
+                      className={`flex-1 h-1.5 rounded-full transition-all duration-300 ease-in-out ${
                         level <= passwordStrength.score
                           ? passwordStrength.score === 5
                             ? "bg-green-500"
@@ -848,7 +875,7 @@ function RegisterContent() {
                       }
                     }
                   }}
-                  className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all ${
+                  className={`w-full pl-9 pr-4 py-2.5 border rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all duration-200 ease-in-out ${
                     confirmPasswordError || errors.confirmPassword
                       ? "border-red-500"
                       : "border-[#e2e8f0]"
@@ -867,24 +894,30 @@ function RegisterContent() {
               <button
                 type="button"
                 onClick={() => setAgreedToTerms(!agreedToTerms)}
-                className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                onKeyDown={(e) => {
+                  if (e.key === " " || e.key === "Enter") {
+                    e.preventDefault();
+                    setAgreedToTerms(!agreedToTerms);
+                  }
+                }}
+                className={`mt-0.5 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 ${
                   agreedToTerms
                     ? "bg-[#3182ce] border-[#3182ce]"
                     : "border-[#e2e8f0]"
                 }`}
               >
                 {agreedToTerms && (
-                  <CheckCircle className="w-3 h-3 text-white" />
+                  <Check className="w-3 h-3 text-white" />
                 )}
               </button>
               <label
                 onClick={() => setAgreedToTerms(!agreedToTerms)}
-                className="text-xs text-slate-600 cursor-pointer select-none"
+                className="text-xs text-slate-600 cursor-pointer select-none font-bold"
               >
                 我已阅读并同意{" "}
                 <Link
                   href="/terms"
-                  className="text-[#3182ce] hover:underline"
+                  className="text-[#3182ce] hover:underline font-bold"
                   onClick={(e) => e.stopPropagation()}
                 >
                   服务条款
@@ -892,7 +925,7 @@ function RegisterContent() {
                 和{" "}
                 <Link
                   href="/privacy"
-                  className="text-[#3182ce] hover:underline"
+                  className="text-[#3182ce] hover:underline font-bold"
                   onClick={(e) => e.stopPropagation()}
                 >
                   隐私政策
@@ -903,16 +936,16 @@ function RegisterContent() {
             <button
               type="submit"
               disabled={loading || !agreedToTerms}
-              className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-2.5 rounded-lg font-medium text-sm hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>注册中...</span>
+                  <span className="font-black">注册中...</span>
                 </>
               ) : (
                 <>
-                  <span>立即注册</span>
+                  <span className="font-black">立即注册</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

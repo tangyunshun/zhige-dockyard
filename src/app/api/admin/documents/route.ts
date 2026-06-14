@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
 
     const document = await prisma.systemdocument.create({
       data: {
+        id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         title,
         content,
         category,
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
         isPublished: isPublished || false,
         sortOrder: sortOrder || 0,
         authorId: userId,
+        updatedAt: new Date(),
       },
       include: {
         user: true,
@@ -146,6 +148,7 @@ export async function PATCH(request: NextRequest) {
         ...(tags !== undefined && { tags }),
         ...(isPublished !== undefined && { isPublished }),
         ...(sortOrder !== undefined && { sortOrder }),
+        updatedAt: new Date(),
       },
       include: {
         user: true,

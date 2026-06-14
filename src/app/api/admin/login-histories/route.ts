@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [histories, total] = await Promise.all([
-      prisma.loginHistory.findMany({
+      prisma.loginhistory.findMany({
         where,
         skip,
         take: limit,
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.loginHistory.count({ where }),
+      prisma.loginhistory.count({ where }),
     ]);
 
     return NextResponse.json({

@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { SignJWT } from 'jose';
 
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
         }
 
         // 检查工作空间
-        const workspaceMembers = await prisma.workspaceMember.findMany({
+        const workspaceMembers = await prisma.workspacemember.findMany({
           where: { userId: user.id },
           include: {
             workspace: {
@@ -103,16 +103,19 @@ export async function GET(request: NextRequest) {
           const workspaceName = `个人空间 - ${user.name || user.phone || user.email || '用户'}`;
           const newWorkspace = await prisma.workspace.create({
             data: {
+              id: crypto.randomUUID(),
               name: workspaceName,
               type: 'PERSONAL',
               ownerId: user.id,
               description: `${user.name || '用户'}的个人工作空间`,
+              updatedAt: new Date(),
             },
           });
 
           // 添加工作空间成员
-          await prisma.workspaceMember.create({
+          await prisma.workspacemember.create({
             data: {
+              id: crypto.randomUUID(),
               userId: user.id,
               workspaceId: newWorkspace.id,
               role: 'OWNER',
@@ -266,7 +269,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 检查工作空间
-    const workspaceMembers = await prisma.workspaceMember.findMany({
+    const workspaceMembers = await prisma.workspacemember.findMany({
       where: { userId: user.id },
       include: {
         workspace: {
@@ -292,16 +295,19 @@ export async function GET(request: NextRequest) {
       const workspaceName = `个人空间 - ${user.name || user.phone || user.email || '用户'}`;
       const newWorkspace = await prisma.workspace.create({
         data: {
+          id: crypto.randomUUID(),
           name: workspaceName,
           type: 'PERSONAL',
           ownerId: user.id,
           description: `${user.name || '用户'}的个人工作空间`,
+          updatedAt: new Date(),
         },
       });
 
       // 添加工作空间成员
-      await prisma.workspaceMember.create({
+      await prisma.workspacemember.create({
         data: {
+          id: crypto.randomUUID(),
           userId: user.id,
           workspaceId: newWorkspace.id,
           role: 'OWNER',

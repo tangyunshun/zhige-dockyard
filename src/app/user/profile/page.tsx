@@ -1,6 +1,7 @@
-﻿﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
+import StepUpAuthModal from "@/components/StepUpAuthModal";
 import {
   User,
   Mail,
@@ -28,6 +29,7 @@ export default function UserProfilePage() {
   const [showNoticeModal, setShowNoticeModal] = useState(false); // 显示注销须知弹窗
   const [showCheckModal, setShowCheckModal] = useState(false); // 显示检测进度弹窗
   const [checkComplete, setCheckComplete] = useState(false); // 检测是否完成
+  const [showStepUpModal, setShowStepUpModal] = useState(false);
   const [checkResults, setCheckResults] = useState<
     { item: string; status: string }[]
   >([]); // 检测结果
@@ -76,7 +78,12 @@ export default function UserProfilePage() {
     }
   };
 
-  const handleDeleteAccount = async () => {
+  const handleDeleteAccount = async (token?: string) => {
+    if (!token) {
+      setShowStepUpModal(true);
+      return;
+    }
+
     setShowCheckModal(false);
 
     try {
@@ -84,7 +91,11 @@ export default function UserProfilePage() {
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
       const res = await fetch("/api/user/delete-account", {
         method: "POST",
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userId}`,
+        },
+        body: JSON.stringify({ verifyToken: token }),
       });
 
       if (res.ok) {
@@ -641,7 +652,7 @@ export default function UserProfilePage() {
 
                 <button
                   type="button"
-                  onClick={handleDeleteAccount}
+                  onClick={() => handleDeleteAccount()}
                   className="w-full px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-red-500/30 transition-all text-sm"
                 >
                   确认注销
@@ -651,6 +662,20 @@ export default function UserProfilePage() {
           </div>
         </div>
       )}
+      {/* 二次身份验证弹窗 */}
+      <StepUpAuthModal
+        isOpen={showStepUpModal}
+        title="敏感操作验证"
+        message="此高危操作需要进行二次身份验证，以确认是您本人操作。"
+        action="cancel_account"
+        onConfirm={(token) => {
+          setShowStepUpModal(false);
+          handleDeleteAccount(token);
+        }}
+        onCancel={() => {
+          setShowStepUpModal(false);
+        }}
+      />
     </div>
   );
 }

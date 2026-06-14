@@ -70,6 +70,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // 批量分配成员
     const createData = userIds.map((userId) => ({
+      id: crypto.randomUUID(),
       postId,
       userId,
       workspaceId,

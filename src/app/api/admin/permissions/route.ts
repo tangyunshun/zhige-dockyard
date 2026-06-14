@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // GET: 获取权限配置
@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
           for (const member of members) {
             await prisma.postmember.create({
               data: {
+                id: crypto.randomUUID(),
                 userId: member.userId,
                 postId: id,
                 workspaceId,
@@ -150,14 +151,17 @@ export async function POST(request: NextRequest) {
               canEdit: canView, // 简化逻辑：能查看就能编辑
               canDelete: false,
               canExecute: canView,
+              updatedAt: new Date(),
             },
             create: {
+              id: crypto.randomUUID(),
               postId,
               componentId,
               canView,
               canEdit: canView,
               canDelete: false,
               canExecute: canView,
+              updatedAt: new Date(),
             },
           });
         });

@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 验证用户是否有权限管理该工作空间
-    const membership = await prisma.workspaceMember.findFirst({
+    const membership = await prisma.workspacemember.findFirst({
       where: {
         userId,
         workspaceId,
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 删除工作空间的所有成员（除了 owner）
-    await prisma.workspaceMember.deleteMany({
+    await prisma.workspacemember.deleteMany({
       where: {
         workspaceId,
         role: {
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     });
 
     // 删除工作空间的所有岗位
-    await prisma.workspacePost.deleteMany({
+    await prisma.workspacepost.deleteMany({
       where: { workspaceId },
     });
 

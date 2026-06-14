@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -49,6 +49,7 @@ interface WorkspaceData {
   stats?: {
     totalComponentCount: number;
     pendingCount: number;
+    totalMembers: number;
   };
 }
 
@@ -596,7 +597,7 @@ export default function AdminWorkspacesPage() {
               <option value="100+">100+ 个组件</option>
             </select>
             <button
-              onClick={handleSearch}
+              onClick={() => handleSearch()}
               className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
             >
               <Filter className="w-4 h-4 mr-2" />

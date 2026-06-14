@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import { ArrowLeft, Search, Settings, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Search, Settings, ChevronDown, ChevronUp, Menu, Plus, ExternalLink } from "lucide-react";
 import AvatarDropdown from "@/components/AvatarDropdown";
 import SearchInput from "@/components/common/SearchInput";
 import WorkspaceUpgradeModal from "./WorkspaceUpgradeModal";
+import { COMPONENTS, COMPONENT_CATEGORIES, ComponentCategory } from "@/constants/components";
 
 // 53个组件的定义结构
 interface ZhiGeComponent {
@@ -32,30 +33,52 @@ interface Stage {
   bgColor: string;
 }
 
-// 完整的组件市场数据（与 batch2 保持一致）
-const allComponents: ZhiGeComponent[] = [
-  // 第一阶段：商机捕获与售前打单
-  { id: "C01", title: "标书智能解析", stageId: 1, path: "/workspace/component/C01", icon: "📄" },
-  { id: "C02", title: "方案合规审查", stageId: 1, path: "/workspace/component/C02", icon: "✓" },
-  { id: "C03", title: "竞品对比分析", stageId: 1, path: "/workspace/component/C03", icon: "📊" },
-  { id: "C04", title: "汇报话术转换", stageId: 1, path: "/workspace/component/C04", icon: "💬" },
-  { id: "C05", title: "项目成本测算", stageId: 1, path: "/workspace/component/C05", icon: "💰" },
-  { id: "C06", title: "商业价值评估", stageId: 1, path: "/workspace/component/C06", icon: "📈" },
-  
-  // 第二阶段：需求定义
-  { id: "C07", title: "需求转 PRD", stageId: 2, path: "/workspace/component/C07", icon: "📝" },
-  { id: "C08", title: "用户故事生成", stageId: 2, path: "/workspace/component/C08", icon: "👤" },
-  { id: "C09", title: "原型设计建议", stageId: 2, path: "/workspace/component/C09", icon: "🎨" },
-  { id: "C10", title: "验收标准细化", stageId: 2, path: "/workspace/component/C10", icon: "✅" },
-  
-  // 其他阶段（省略，仅为示例）
-];
+// 建立 Category 到 1-10 阶段的转换关系
+const categoryToStageId: Record<ComponentCategory, number> = {
+  BID_PREP: 1,
+  REQ_DESIGN: 2,
+  BACKEND_CORE: 3,
+  DATABASE_ENG: 4,
+  FRONTEND_DEV: 5,
+  TEST_QA: 6,
+  DEVOPS: 7,
+  SECURITY: 8,
+  PROJ_MGMT: 9,
+  KNOWLEDGE: 10,
+};
 
-const stages: Stage[] = [
-  { id: 1, name: "商机捕获与售前打单", color: "#3182ce", bgColor: "from-[#3182ce] to-[#2b6cb0]" },
-  { id: 2, name: "需求定义", color: "#10b981", bgColor: "from-[#10b981] to-[#059669]" },
-  // 省略其他 8 个阶段
-];
+const categoryEmojis: Record<ComponentCategory, string> = {
+  BID_PREP: "📄",
+  REQ_DESIGN: "🧩",
+  BACKEND_CORE: "🧱",
+  DATABASE_ENG: "🗄️",
+  FRONTEND_DEV: "📐",
+  TEST_QA: "🧪",
+  DEVOPS: "🐳",
+  SECURITY: "🔒",
+  PROJ_MGMT: "👔",
+  KNOWLEDGE: "🧠",
+};
+
+// 动态将 COMPONENTS 映射为 ZhiGeComponent 列表
+const allComponents: ZhiGeComponent[] = COMPONENTS.map(c => ({
+  id: c.id,
+  title: c.name,
+  stageId: categoryToStageId[c.category] || 1,
+  path: `/workspace/component/${c.id}`,
+  icon: categoryEmojis[c.category] || "⚙️"
+}));
+
+// 动态映射 10 大阶段列表
+const stages: Stage[] = Object.entries(COMPONENT_CATEGORIES).map(([key, value]) => {
+  const cat = key as ComponentCategory;
+  return {
+    id: categoryToStageId[cat] || 1,
+    name: value.name,
+    color: value.color,
+    bgColor: `from-[${value.color}]/10 to-[${value.color}]/20`
+  };
+}).sort((a, b) => a.id - b.id);
 
 interface WorkspaceInternalLayoutProps {
   children?: React.ReactNode;
@@ -74,6 +97,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
   const [expandedStages, setExpandedStages] = useState<number[]>([1, 2]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // 模拟权限数据（实际应从后端获取）
   const [authData, setAuthData] = useState<CurrentAuth>({
@@ -92,12 +116,33 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
         if (workspace) {
           setWorkspaceName(workspace.name);
           setWorkspaceType(workspace.type);
+
+          // 动态拉取当前工作区在 Studio 中绑定的组件 ID 列表
+          let boundIds: string[] = [];
+          try {
+            const userId = localStorage.getItem("userId");
+            const boundRes = await fetch(`/api/studio?action=bound&workspaceId=${id}`, {
+              headers: userId ? { Authorization: `Bearer ${userId}` } : {},
+            });
+            if (boundRes.ok) {
+              const boundData = await boundRes.json();
+              if (boundData.success) {
+                boundIds = boundData.data || [];
+              }
+            }
+          } catch (err) {
+            console.error("拉取绑定组件失败:", err);
+          }
+
+          // 合并默认的基础组件与数据库中已绑定的组件 ID
+          const allowedIds = Array.from(new Set(["C01", "C02", "C07", ...boundIds]));
+
           setAuthData({
             workspaceType: workspace.type,
             userRole: workspace.role || "Owner",
             allowedComponentIds: workspace.type === "PERSONAL" 
               ? allComponents.map(c => c.id) // 个人空间默认所有组件都可用
-              : ["C01", "C02", "C07"] // 企业空间根据角色限制
+              : allowedIds // 企业空间允许默认基础组件 + 数据库中已绑定的组件
           });
         } else {
           toast.error("工作空间不存在");
@@ -137,15 +182,18 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
       return;
     }
     setCurrentComponentId(component.id);
+    setIsSidebarOpen(false);
     // router.push(component.path);
     toast.info(`即将进入 ${component.title}`);
   };
 
   const handleUpgradeClick = () => {
+    setIsSidebarOpen(false);
     setShowUpgradeModal(true);
   };
 
   const handleSettingsClick = () => {
+    setIsSidebarOpen(false);
     router.push("/workspace-hub/settings");
   };
 
@@ -182,39 +230,47 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
   return (
     <div className="min-h-screen w-full bg-[#f0f8ff] flex flex-col">
       {/* 顶部 Header (IDE 专用) */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-20">
-        <div className="flex items-center gap-4">
+      <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-4 flex items-center justify-between z-20">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="lg:hidden p-1.5 text-slate-600 hover:text-[#2b6cb0] hover:bg-slate-100 rounded-[4px] transition-all flex-shrink-0 cursor-pointer"
+            aria-label="Toggle Sidebar"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
           <button
             onClick={handleGoBack}
-            className="group flex items-center gap-2 text-slate-600 hover:text-[#2b6cb0] transition-all"
+            className="group flex items-center gap-1.5 text-slate-600 hover:text-[#2b6cb0] transition-all flex-shrink-0"
           >
-            <ArrowLeft className="w-5 h-5" />
-            <span className="font-bold">返回</span>
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="font-bold text-sm sm:text-base hidden xs:inline">返回</span>
           </button>
           
-          <div className="h-6 w-px bg-slate-300" />
+          <div className="h-6 w-px bg-slate-300 flex-shrink-0" />
           
           {/* 面包屑路径 */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-[8px] bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-[8px] bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center flex-shrink-0">
               <span className="text-white text-sm">🏢</span>
             </div>
-            <div>
-              <div className="flex items-center gap-1">
-                <span className="font-bold text-slate-800">{workspaceName}</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="font-bold text-slate-800 text-sm sm:text-base truncate">{workspaceName}</span>
                 {workspaceType === "PERSONAL" && (
-                  <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">个人</span>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded flex-shrink-0">个人</span>
                 )}
                 {workspaceType === "ENTERPRISE" && (
-                  <span className="text-[10px] px-1.5 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] rounded">企业</span>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] rounded flex-shrink-0">企业</span>
                 )}
               </div>
-              <div className="flex items-center gap-1 text-xs text-slate-500">
+              <div className="flex items-center gap-1 text-[10px] sm:text-xs text-slate-500 truncate">
                 {currentComponentId ? (
                   <>
-                    <span>当前阶段</span>
-                    <span>/</span>
-                    <span>{allComponents.find(c => c.id === currentComponentId)?.title || '组件'}</span>
+                    <span className="hidden sm:inline">当前阶段</span>
+                    <span className="hidden sm:inline">/</span>
+                    <span className="font-medium">{allComponents.find(c => c.id === currentComponentId)?.title || '组件'}</span>
                   </>
                 ) : (
                   <span>选择组件开始工作</span>
@@ -224,9 +280,9 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* 全局搜索 */}
-          <div className="w-64">
+        <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+          {/* 全局搜索 - 宽度自适应 */}
+          <div className="w-28 xs:w-36 sm:w-48 md:w-64">
             <SearchInput
               value={searchQuery}
               onChange={setSearchQuery}
@@ -238,7 +294,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
           {(userRole === "Owner" || userRole === "Admin") && (
             <button
               onClick={handleSettingsClick}
-              className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-[4px] transition-all"
+              className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-[4px] transition-all cursor-pointer"
             >
               <Settings className="w-5 h-5" />
             </button>
@@ -249,11 +305,43 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* 移动端侧边栏遮罩 */}
+        {isSidebarOpen && (
+          <div
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 lg:hidden transition-all duration-300"
+          />
+        )}
+
         {/* 动态侧边栏 (Sidebar - 核心防线) */}
-        <aside className="w-60 bg-slate-50 border-r border-slate-200 flex flex-col overflow-y-auto transition-all duration-300 ease-out">
+        <aside
+          className={`fixed inset-y-0 left-0 lg:static z-40 w-60 bg-slate-50 border-r border-slate-200 flex flex-col overflow-y-auto transition-transform duration-300 ease-out lg:translate-x-0 ${
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
           <div className="p-4">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">组件库</h2>
+            <div className="flex justify-between items-center mb-4 lg:mb-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-800">组件库</h2>
+                <button
+                  onClick={() => router.push(`/studio?workspaceId=${workspaceId}`)}
+                  className="flex items-center gap-1 text-[11px] text-[#3182ce] bg-[#3182ce]/5 hover:bg-[#3182ce]/15 px-2 py-0.5 rounded-[4px] border border-[#3182ce]/20 font-bold transition-all cursor-pointer"
+                  title="前往效能组件工坊导入更多组件"
+                >
+                  <Plus className="w-3 h-3" />
+                  导入
+                </button>
+              </div>
+              <button
+                onClick={() => setIsSidebarOpen(false)}
+                className="lg:hidden p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/50 cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
             
             {/* 阶段折叠面板 */}
             <div className="space-y-2">
@@ -269,7 +357,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
                   <div key={stage.id} className="border border-slate-200 rounded-[8px] bg-white">
                     <button
                       onClick={() => toggleStage(stage.id)}
-                      className="w-full px-3 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-[8px]"
+                      className="w-full px-3 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-[8px] cursor-pointer"
                     >
                       <span className="text-sm font-semibold text-slate-700">{stage.name}</span>
                       {expandedStages.includes(stage.id) ? (
@@ -285,7 +373,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
                           <button
                             key={component.id}
                             onClick={() => handleComponentClick(component)}
-                            className={`w-full text-left px-3 py-2 rounded-[4px] flex items-center gap-2 text-sm transition-all duration-200 ease-out ${
+                            className={`w-full text-left px-3 py-2 rounded-[4px] flex items-center gap-2 text-sm transition-all duration-200 ease-out cursor-pointer ${
                               currentComponentId === component.id
                                 ? "bg-[#2b6cb0]/10 text-[#2b6cb0] font-medium border-l-3 border-[#2b6cb0] pl-2"
                                 : "text-slate-600 hover:bg-slate-100"
@@ -313,7 +401,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
             {workspaceType === "PERSONAL" && (
               <button
                 onClick={handleUpgradeClick}
-                className="w-full px-4 py-3 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-sm font-bold rounded-[4px] hover:shadow-lg transition-all"
+                className="w-full px-4 py-3 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-sm font-bold rounded-[4px] hover:shadow-lg transition-all cursor-pointer"
               >
                 🚀 升级为企业协作版
               </button>
@@ -323,7 +411,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
             {workspaceType === "ENTERPRISE" && (userRole === "Owner" || userRole === "Admin") && (
               <button
                 onClick={handleSettingsClick}
-                className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-[4px] hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-[4px] hover:bg-slate-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Settings className="w-4 h-4" />
                 <span>🏢 企业空间设置</span>
@@ -333,26 +421,26 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
         </aside>
 
         {/* 主内容区域 */}
-        <main className="flex-1 overflow-auto p-6 bg-[#f0f8ff]">
+        <main className="flex-1 overflow-auto p-4 sm:p-6 bg-[#f0f8ff]">
           {children || (
             <div className="max-w-4xl mx-auto">
-              <div className="text-center py-12">
-                <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center mx-auto mb-6">
-                  <span className="text-4xl">💼</span>
+              <div className="text-center py-8 sm:py-12">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center mx-auto mb-6">
+                  <span className="text-3xl sm:text-4xl">💼</span>
                 </div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-3">
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-3">
                   欢迎来到 {workspaceName}
                 </h2>
-                <p className="text-slate-600 mb-8">
+                <p className="text-sm sm:text-base text-slate-600 mb-8">
                   从左侧选择一个组件开始您的工作
                 </p>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
                   {allComponents.slice(0, 3).map((component) => (
                     <button
                       key={component.id}
                       onClick={() => handleComponentClick(component)}
-                      className="bg-white border border-slate-200 rounded-[8px] p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 ease-out"
+                      className="bg-white border border-slate-200 rounded-[8px] p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 ease-out cursor-pointer"
                     >
                       <div className="text-3xl mb-3">{component.icon}</div>
                       <div className="font-bold text-slate-800">{component.title}</div>

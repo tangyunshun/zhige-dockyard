@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { getMembershipConfig, isTeamSizeExceeded, formatTeamSize } from "@/lib/membership";
@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 检查用户的会员等级
-    const userMembershipLevel = (authResult.user!.membershipLevel || 'FREE') as keyof typeof getMembershipConfig;
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipLevel: true },
+    });
+    const userMembershipLevel = (dbUser?.membershipLevel || 'FREE') as keyof typeof getMembershipConfig;
     const membershipConfig = getMembershipConfig(userMembershipLevel);
     
     // 检查企业空间数量限制
@@ -77,9 +81,31 @@ export async function POST(request: NextRequest) {
     // 获取计划配置
     const quotaConfig = getQuotaConfig(plan);
 
+    // 查询用户的 membershipLevel 并决定 mlId 关联
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipLevel: true },
+    });
+    const membershipLevel = user?.membershipLevel || 'FREE';
+    
+    let ml = await prisma.membershiplevel.findUnique({
+      where: { id: membershipLevel }
+    });
+    if (!ml) {
+      ml = await prisma.membershiplevel.findFirst();
+    }
+    const mlId = ml?.id || "FREE";
+
+    // 根据计划规划初始 Token 点数
+    const planUpper = plan.toUpperCase();
+    const tokenLimit = planUpper === "STANDARD" ? 20000 : planUpper === "PRO" ? 100000 : planUpper === "ENTERPRISE" ? 500000 : 1000000;
+
+    const workspaceId = crypto.randomUUID();
+
     // 创建工作空间
     const workspace = await prisma.workspace.create({
       data: {
+        id: workspaceId,
         name: name.trim(),
         description: description?.trim() || null,
         type: "ENTERPRISE",
@@ -89,25 +115,38 @@ export async function POST(request: NextRequest) {
         contactEmail: contactEmail?.trim() || null,
         contactPhone: contactPhone?.trim() || null,
         logo: logo || null,
-        plan: plan.toUpperCase(),
+        plan: planUpper,
         visibility: visibility.toUpperCase(),
         status: "ACTIVE",
         quota: quotaConfig,
-        members: {
+        updatedAt: new Date(),
+        workspacemember: {
           create: {
+            id: crypto.randomUUID(),
             userId,
             role: "OWNER",
           },
         },
+        workspacequota: {
+          create: {
+            id: crypto.randomUUID(),
+            workspaceId: workspaceId,
+            membershipLevelId: mlId,
+            tokenBalance: BigInt(tokenLimit),
+            updatedAt: new Date(),
+          }
+        }
       },
       include: {
-        members: true,
+        workspacemember: true,
+        workspacequota: true,
       },
     });
 
     // 记录操作日志
-    await prisma.operationLog.create({
+    await prisma.operationlog.create({
       data: {
+        id: crypto.randomUUID(),
         userId,
         workspaceId: workspace.id,
         action: "CREATE_ENTERPRISE_WORKSPACE",

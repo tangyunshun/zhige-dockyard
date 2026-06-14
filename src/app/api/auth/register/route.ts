@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
@@ -72,6 +72,9 @@ export async function POST(request: NextRequest) {
           role: true,
         },
       });
+
+      // 自动开通默认个人工作空间
+      await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
 
       // 删除验证码
       deleteSmsCode(phone);
@@ -170,6 +173,9 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // 自动开通默认个人工作空间
+      await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
+
       // 删除验证码
       deleteSmsCode(phone);
 
@@ -262,6 +268,9 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // 自动开通默认个人工作空间
+      await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
+
       // 删除验证码
       deleteSmsCode(phone);
 
@@ -285,5 +294,76 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Register error:", error);
     return NextResponse.json({ message: "服务器内部错误" }, { status: 500 });
+  }
+}
+
+async function createDefaultWorkspace(userId: string, userName?: string | null, phone?: string | null, email?: string | null) {
+  try {
+    const workspaceName = `个人空间 - ${userName || phone || email || '用户'}`;
+    const workspaceId = `ws-personal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const now = new Date();
+    
+    // 创建 workspace
+    const workspace = await prisma.workspace.create({
+      data: {
+        id: workspaceId,
+        name: workspaceName,
+        type: 'PERSONAL',
+        ownerId: userId,
+        description: `${userName || '用户'}的个人工作空间`,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    
+    // 创建 WorkspaceMember 记录
+    const memberId = `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    await prisma.workspacemember.create({
+      data: {
+        id: memberId,
+        userId,
+        workspaceId: workspace.id,
+        role: 'OWNER',
+        updatedAt: now,
+      },
+    });
+
+    // 获取用户对应的会员等级并同步为该个人空间创建 Quota 记录
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipLevel: true }
+    });
+    const membershipLevel = user?.membershipLevel || "FREE";
+    
+    let ml = await prisma.membershiplevel.findUnique({
+      where: { id: membershipLevel }
+    });
+    if (!ml) {
+      ml = await prisma.membershiplevel.findFirst();
+    }
+    const mlId = ml?.id || "FREE";
+    const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+    
+    await prisma.workspacequota.create({
+      data: {
+        id: crypto.randomUUID(),
+        workspaceId: workspace.id,
+        membershipLevelId: mlId,
+        tokenBalance: BigInt(tokenLimit),
+        updatedAt: now
+      }
+    });
+    
+    // 更新用户的 lastWorkspaceId
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastWorkspaceId: workspace.id,
+      },
+    });
+    
+    console.log(`[注册] 成功为用户 ${userId} 创建默认个人空间并赋予配额: ${workspaceId}`);
+  } catch (error) {
+    console.error(`[注册] 为用户 ${userId} 创建默认个人空间失败:`, error);
   }
 }

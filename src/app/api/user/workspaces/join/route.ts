@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -57,9 +57,11 @@ export async function POST(request: NextRequest) {
       // 创建成员关系
       const member = await prisma.workspacemember.create({
         data: {
+          id: crypto.randomUUID(),
           userId,
           workspaceId: workspace.id,
           role: "MEMBER",
+          updatedAt: new Date(),
         },
       });
 
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     // 通过邀请 ID 加入
     if (invitationId) {
-      const invitation = await prisma.workspaceInvitation.findUnique({
+      const invitation = await prisma.workspaceinvitation.findUnique({
         where: { id: invitationId },
       });
 
@@ -103,18 +105,21 @@ export async function POST(request: NextRequest) {
       // 创建成员关系
       const member = await prisma.workspacemember.create({
         data: {
+          id: crypto.randomUUID(),
           userId,
           workspaceId: invitation.workspaceId,
           role: invitation.role || "MEMBER",
+          updatedAt: new Date(),
         },
       });
 
       // 标记邀请为已使用
-      await prisma.workspaceInvitation.update({
+      await prisma.workspaceinvitation.update({
         where: { id: invitationId },
         data: {
           usedAt: new Date(),
           status: "USED",
+          updatedAt: new Date(),
         },
       });
 

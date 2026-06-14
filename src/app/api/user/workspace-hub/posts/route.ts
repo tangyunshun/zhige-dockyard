@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { COMPONENTS } from "@/constants/components";
@@ -131,12 +131,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const userId = authHeader.replace("Bearer ", "");
-    const authResult = await auth(userId);
+    const authResult = await validateUser(authHeader);
     
-    if (!authResult.user) {
+    if (!authResult.valid || !authResult.user) {
       return NextResponse.json({ error: "未找到用户" }, { status: 401 });
     }
+
+    const userId = authResult.user.id;
 
     const body = await request.json();
     const { workspaceId, name, description, color, templatePermissions } = body;
@@ -184,11 +185,13 @@ export async function POST(request: NextRequest) {
     // 创建岗位
     const post = await prisma.workspacepost.create({
       data: {
+        id: crypto.randomUUID(),
         workspaceId,
         name,
         description: description || null,
         color: color || "#64748b",
         createdBy: userId,
+        updatedAt: new Date(),
       },
     });
 
@@ -197,12 +200,14 @@ export async function POST(request: NextRequest) {
       const permissionsToCreate = Object.entries(templatePermissions)
         .filter(([_, value]) => value === true)
         .map(([componentId]) => ({
+          id: crypto.randomUUID(),
           postId: post.id,
           componentId,
           canView: true,
           canEdit: false,
           canDelete: false,
           canExecute: true,
+          updatedAt: new Date(),
         }));
 
       if (permissionsToCreate.length > 0) {

@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
@@ -10,12 +10,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "缺少邀请码" }, { status: 400 });
     }
 
-    const invitation = await prisma.workspaceInvitation.findUnique({
+    const invitation = await prisma.workspaceinvitation.findUnique({
       where: { code },
       include: {
         workspace: {
           include: {
-            members: {
+            workspacemember: {
               include: {
                 user: {
                   select: {
@@ -53,9 +53,9 @@ export async function GET(request: NextRequest) {
 
     // 检查有效期
     if (invitation.expiresAt && new Date() > invitation.expiresAt) {
-      await prisma.workspaceInvitation.update({
+      await prisma.workspaceinvitation.update({
         where: { id: invitation.id },
-        data: { status: "EXPIRED" },
+        data: { status: "EXPIRED", updatedAt: new Date() },
       });
       return NextResponse.json(
         { error: "邀请码已过期" },
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     // 检查用户是否已是成员
     if (userId) {
-      const isMember = invitation.workspace.members.some(
+      const isMember = invitation.workspace.workspacemember.some(
         (m) => m.userId === userId,
       );
       if (isMember) {
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
           name: invitation.workspace.name,
           type: invitation.workspace.type,
           logo: invitation.workspace.logo,
-          memberCount: invitation.workspace.members.length,
+          memberCount: invitation.workspace.workspacemember.length,
         },
         role: invitation.role,
         expiresAt: invitation.expiresAt,

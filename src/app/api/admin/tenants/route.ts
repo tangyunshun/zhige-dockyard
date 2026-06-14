@@ -1,6 +1,6 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { isSuperAdminRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       where: { id: userId },
     });
 
-    if (!user || !isAdminRole(user.role)) {
+    if (!user || !isSuperAdminRole(user.role)) {
       return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
@@ -91,7 +91,7 @@ export async function PATCH(request: NextRequest) {
       where: { id: userId },
     });
 
-    if (!user || !isAdminRole(user.role)) {
+    if (!user || !isSuperAdminRole(user.role)) {
       return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 

@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -55,6 +55,28 @@ export async function POST(request: NextRequest) {
     console.log(
       `[系统维护] 管理员 ${adminId} 设置维护模式: ${maintenanceMode}, 结束时间: ${maintenanceEnd}`
     );
+
+    // 如果启用了维护模式，则强制断开所有非管理员用户的连接
+    if (maintenanceMode) {
+      const result = await prisma.user.updateMany({
+        where: {
+          role: {
+            notIn: ["ADMIN", "SUPERADMIN", "SUPER_ADMIN", "admin", "superadmin", "super_admin"],
+          },
+          sessionToken: {
+            not: null,
+          },
+        },
+        data: {
+          sessionToken: null,
+          sessionExpiresAt: null,
+          refreshToken: null,
+          refreshTokenExpiresAt: null,
+          lastForcedLogoutAt: new Date(),
+        },
+      });
+      console.log(`[系统维护] 维护开启，已强制清除 ${result.count} 个在线普通用户的会话 Token`);
+    }
 
     return NextResponse.json({
       success: true,

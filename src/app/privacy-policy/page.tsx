@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -48,7 +48,7 @@ export default function PrivacyPolicyPage() {
   };
 
   // 简单的 Markdown 渲染
-  const renderContent = (content: string | null) => {
+  const renderContent = (content: string | null | undefined) => {
     if (!content) return null;
     
     let rendered = content;

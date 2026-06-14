@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // 检查工作空间是否存在
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true, type: true, ownerId: true },
     });
 
     if (!workspace) {

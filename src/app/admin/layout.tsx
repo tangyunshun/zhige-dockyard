@@ -1,4 +1,4 @@
-﻿﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -16,6 +16,9 @@ import {
   X,
   Crown,
   Package,
+  Building2,
+  AlertCircle,
+  TrendingUp,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 
@@ -26,7 +29,15 @@ interface UserInfo {
   role?: string | null;
 }
 
-const adminMenuItems = [
+interface AdminMenuItem {
+  icon: any;
+  label: string;
+  href: string;
+  description: string;
+  superAdminOnly?: boolean;
+}
+
+const adminMenuItems: AdminMenuItem[] = [
   {
     icon: LayoutDashboard,
     label: "仪表盘",
@@ -46,11 +57,22 @@ const adminMenuItems = [
     description: "空间审核、资源配额、成员查看",
   },
   {
+    icon: Users,
+    label: "岗位管理",
+    href: "/admin/posts",
+    description: "岗位列表、成员设置",
+  },
+  {
+    icon: Shield,
+    label: "企业权限配置",
+    href: "/admin/matrix/select",
+    description: "权限矩阵、组件授权",
+  },
+  {
     icon: Crown,
     label: "会员管理",
     href: "/admin/membership",
     description: "会员等级、订单管理",
-    hasSubItems: true,
   },
   {
     icon: Package,
@@ -77,6 +99,32 @@ const adminMenuItems = [
     description: "用户行为、功能使用率",
   },
   {
+    icon: Building2,
+    label: "租户管理",
+    href: "/admin/tenants",
+    description: "多租户系统管理与监控",
+    superAdminOnly: true,
+  },
+  {
+    icon: FileText,
+    label: "操作审计日志",
+    href: "/admin/operation-logs",
+    description: "全局操作审计记录",
+    superAdminOnly: true,
+  },
+  {
+    icon: TrendingUp,
+    label: "升级申请管理",
+    href: "/admin/upgrade-applications",
+    description: "空间容量升级申请",
+  },
+  {
+    icon: AlertCircle,
+    label: "申诉管理",
+    href: "/admin/account-appeals",
+    description: "封禁账号申诉审核",
+  },
+  {
     icon: Settings,
     label: "系统设置",
     href: "/admin/settings",
@@ -98,9 +146,29 @@ export default function AdminLayout({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  const isSuperAdmin = user?.role?.toUpperCase() === "SUPER_ADMIN" || user?.role === "SuperAdmin";
+  const displayedMenuItems = adminMenuItems.filter((item) => {
+    if (item.superAdminOnly) {
+      return isSuperAdmin;
+    }
+    return true;
+  });
+
   useEffect(() => {
     checkAdminPermission();
   }, [router]);
+
+  // 当路由或用户状态改变时，强制拦截非法越权访问超级管理员页面的行为
+  useEffect(() => {
+    if (!loading && isAdmin && user) {
+      const isSuperUser = user.role?.toUpperCase() === "SUPER_ADMIN" || user.role === "SuperAdmin";
+      const isSuperPath = pathname.startsWith("/admin/tenants") || 
+                          pathname.startsWith("/admin/operation-logs");
+      if (isSuperPath && !isSuperUser) {
+        router.replace("/admin");
+      }
+    }
+  }, [pathname, loading, isAdmin, user]);
 
   const checkAdminPermission = async () => {
     try {
@@ -118,6 +186,15 @@ export default function AdminLayout({
       if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN") {
         // 不是管理员，直接重定向到首页，不显示提示
         router.replace("/workspace-hub");
+        return;
+      }
+
+      // 强校验当前超级管理员专属路由的可访问性
+      const isSuperUser = userRole === "SUPER_ADMIN" || data.user?.role === "SuperAdmin";
+      const isSuperPath = pathname.startsWith("/admin/tenants") || 
+                          pathname.startsWith("/admin/operation-logs");
+      if (isSuperPath && !isSuperUser) {
+        router.replace("/admin");
         return;
       }
 
@@ -170,7 +247,7 @@ export default function AdminLayout({
 
         {/* 导航菜单 */}
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
-          {adminMenuItems.map((item) => {
+          {displayedMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
 
@@ -263,7 +340,7 @@ export default function AdminLayout({
             </div>
 
             <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
-              {adminMenuItems.map((item) => {
+              {displayedMenuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
 

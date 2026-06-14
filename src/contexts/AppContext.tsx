@@ -10,6 +10,7 @@ interface UserState {
     email: string;
     avatar: string;
     role: "SuperAdmin" | "Admin" | "User";
+    membershipLevel?: string | null;
   } | null;
   workspaces: Workspace[];
   currentWorkspaceId: string | null;
@@ -69,6 +70,7 @@ const getInitialLoginState = (): Pick<UserState, "isLoggedIn" | "userInfo"> => {
         email: "",
         avatar: "",
         role,
+        membershipLevel: "FREE",
       },
     };
   }
@@ -107,6 +109,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         const workspacesRes = await fetch("/api/workspace/list", {
           credentials: "include",
+          headers: {
+            Authorization: `Bearer ${data.user.id}`
+          }
         });
         let workspaces: Workspace[] = [];
         let currentWorkspaceId: string | null = null;
@@ -137,6 +142,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             email: data.user.email || "",
             avatar: data.user.avatar || "",
             role,
+            membershipLevel: data.user.membershipLevel,
           },
           workspaces,
           currentWorkspaceId,

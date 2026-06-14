@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const userId = token.id as string;
 
     // 获取用户通知设置
-    const notifications = await prisma.userNotification.findFirst({
+    const notifications = await prisma.usernotification.findFirst({
       where: { userId },
     });
 
@@ -69,13 +69,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 检查是否已存在通知设置
-    const existingNotification = await prisma.userNotification.findFirst({
+    const existingNotification = await prisma.usernotification.findFirst({
       where: { userId },
     });
 
     let notifications;
     if (existingNotification) {
-      notifications = await prisma.userNotification.update({
+      notifications = await prisma.usernotification.update({
         where: { id: existingNotification.id },
         data: {
           emailNotifications: emailNotifications ?? true,
@@ -83,17 +83,20 @@ export async function POST(req: NextRequest) {
           projectUpdates: projectUpdates ?? true,
           commentMentions: commentMentions ?? true,
           frequency: frequency || "REALTIME",
+          updatedAt: new Date(),
         },
       });
     } else {
-      notifications = await prisma.userNotification.create({
+      notifications = await prisma.usernotification.create({
         data: {
+          id: crypto.randomUUID(),
           userId,
           emailNotifications: emailNotifications ?? true,
           systemMessages: systemMessages ?? true,
           projectUpdates: projectUpdates ?? true,
           commentMentions: commentMentions ?? true,
           frequency: frequency || "REALTIME",
+          updatedAt: new Date(),
         },
       });
     }

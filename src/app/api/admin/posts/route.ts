@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 
@@ -156,6 +156,7 @@ export async function POST(request: NextRequest) {
     // 创建岗位
     const post = await prisma.workspacepost.create({
       data: {
+        id: crypto.randomUUID(),
         workspaceId,
         name,
         description: description || null,
@@ -163,6 +164,7 @@ export async function POST(request: NextRequest) {
         isDefault: false,
         isSystem: false,
         createdBy: adminId,
+        updatedAt: new Date(),
       },
     });
 

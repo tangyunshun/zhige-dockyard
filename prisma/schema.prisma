@@ -98,6 +98,7 @@ model user {
   upgradeapplication                                       upgradeapplication[]
   userdevice                                               userdevice[]
   workspacekickhistory                                     workspacekickhistory[]
+  accountappeal                                            accountappeal[]
   tenant                                                   tenant?               @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
   usernotification                                         usernotification?
   userpreference                                           userpreference?
@@ -699,4 +700,30 @@ model workspacekickhistory {
   @@index([workspaceId], map: "WorkspaceKickHistory_workspaceId_idx")
   @@index([userId], map: "WorkspaceKickHistory_userId_idx")
   @@index([createdAt], map: "WorkspaceKickHistory_createdAt_idx")
+}
+
+model accountappeal {
+  id             String    @id
+  userId         String
+  userAccount    String
+  userName       String?
+  userPhone      String?
+  userEmail      String?
+  banReason      String?   @db.Text
+  appealReason   String    @db.Text
+  appealEvidence String?   @db.Text
+  contactInfo    String?
+  status         String    @default("pending")
+  adminId        String?
+  adminName      String?
+  adminComment   String?   @db.Text
+  processedAt    DateTime?
+  createdAt      DateTime
+  updatedAt      DateTime
+  user           user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "AccountAppeal_userId_fkey")
+
+  @@index([userId], map: "idx_userId")
+  @@index([status], map: "idx_status")
+  @@index([createdAt], map: "idx_createdAt")
+  @@map("AccountAppeal")
 }

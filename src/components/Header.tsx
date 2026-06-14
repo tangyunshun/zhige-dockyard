@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown, User, LogOut, Hammer, Settings } from "lucide-react";
 import { Logo } from "./Logo";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
@@ -26,6 +26,12 @@ interface Workspace {
 
 export default function Header() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isDevelopmentRoute = pathname && (
+    pathname.startsWith("/workspace-hub") || 
+    pathname.startsWith("/studio") || 
+    pathname.startsWith("/workspace")
+  );
   const handleLogout = useLogout();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -126,6 +132,8 @@ export default function Header() {
     }
   };
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/65 backdrop-blur-2xl border-b border-white/80">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -180,13 +188,15 @@ export default function Header() {
             </div>
           ) : isLoggedIn && user ? (
             <>
-              <button
-                onClick={() => router.push("/workspace-hub")}
-                className="inline-flex items-center justify-center h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer gap-2"
-              >
-                <Hammer className="w-[16px] h-[16px]" />
-                进入操作工坊
-              </button>
+              {!isDevelopmentRoute && (
+                <button
+                  onClick={() => router.push("/workspace-hub")}
+                  className="inline-flex items-center justify-center h-[38px] px-3 sm:px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer gap-1.5"
+                >
+                  <Hammer className="w-[16px] h-[16px]" />
+                  <span className="hidden sm:inline">进入操作工坊</span>
+                </button>
+              )}
 
               <div className="relative" ref={userMenuRef}>
                 <button
@@ -366,23 +376,89 @@ export default function Header() {
             </>
           ) : (
             <>
+              {!isDevelopmentRoute && (
+                <button
+                  onClick={() => router.push("/auth/login")}
+                  className="inline-flex items-center justify-center h-[38px] px-3 sm:px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer gap-1.5"
+                >
+                  <Hammer className="w-[16px] h-[16px]" />
+                  <span className="hidden sm:inline">进入操作工坊</span>
+                </button>
+              )}
               <button
                 onClick={() => router.push("/auth/login")}
-                className="inline-flex items-center justify-center h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer gap-2"
+                className="inline-flex items-center justify-center h-[38px] px-3 sm:px-[18px] rounded-[8px] text-[14px] font-[600] bg-white/95 border border-[#e2e8f0]/90 text-slate-700 backdrop-blur-[8px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-white hover:border-[#3182ce] hover:text-[#3182ce] hover:shadow-[0_4px_10px_rgba(49,130,206,0.08)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer"
               >
-                <Hammer className="w-[16px] h-[16px]" />
-                进入操作工坊
-              </button>
-              <button
-                onClick={() => router.push("/auth/login")}
-                className="inline-flex items-center justify-center h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-white/95 border border-[#e2e8f0]/90 text-slate-700 backdrop-blur-[8px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-white hover:border-[#3182ce] hover:text-[#3182ce] hover:shadow-[0_4px_10px_rgba(49,130,206,0.08)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer"
-              >
-                登录/注册
+                <span>登录</span><span className="hidden sm:inline">/注册</span>
               </button>
             </>
           )}
+
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="flex md:hidden p-1.5 text-slate-600 hover:text-[#3182ce] transition-colors cursor-pointer rounded-lg border border-slate-200/60 hover:bg-slate-50"
+            aria-label="Toggle Menu"
+          >
+            {isMobileMenuOpen ? (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
+
+      {/* Mobile Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-x-0 top-16 bg-white/95 backdrop-blur-2xl border-b border-slate-200 py-6 px-6 shadow-xl md:hidden z-40 flex flex-col gap-6 animate-in slide-in-from-top-2 duration-200">
+          <nav className="flex flex-col gap-4 text-sm font-semibold text-slate-700">
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 cursor-pointer hover:text-[#3182ce] transition-colors">
+              产品能力 <ChevronDown className="w-4 h-4" />
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-slate-100 cursor-pointer hover:text-[#3182ce] transition-colors">
+              解决方案 <ChevronDown className="w-4 h-4" />
+            </div>
+            <a
+              href="#security"
+              onClick={(e) => {
+                e.preventDefault();
+                setIsMobileMenuOpen(false);
+                router.push("/#security");
+              }}
+              className="py-2 border-b border-slate-100 hover:text-[#3182ce] transition-colors"
+            >
+              私有化与安全
+            </a>
+            <a
+              href="#pricing"
+              onClick={(e) => {
+                e.preventDefault();
+                setIsMobileMenuOpen(false);
+                router.push("/#pricing");
+              }}
+              className="py-2 border-b border-slate-100 hover:text-[#3182ce] transition-colors"
+            >
+              价格方案
+            </a>
+            <a
+              href="#docs"
+              onClick={(e) => {
+                e.preventDefault();
+                setIsMobileMenuOpen(false);
+                router.push("/#docs");
+              }}
+              className="py-2 hover:text-[#3182ce] transition-colors"
+            >
+              开发者文档
+            </a>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

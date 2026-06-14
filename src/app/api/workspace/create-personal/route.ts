@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { prisma } from '@/lib/prisma';
 
@@ -82,9 +82,11 @@ export async function POST(request: NextRequest) {
         try {
           await prisma.workspacemember.create({
             data: {
+              id: crypto.randomUUID(),
               userId,
               workspaceId: existingWorkspace.id,
               role: 'OWNER',
+              updatedAt: new Date(),
             },
           });
           console.log('WorkspaceMember 补创建成功');
@@ -135,6 +137,7 @@ export async function POST(request: NextRequest) {
           userId,
           workspaceId: workspace.id,
           role: 'OWNER',
+          updatedAt: now,
         },
       });
       

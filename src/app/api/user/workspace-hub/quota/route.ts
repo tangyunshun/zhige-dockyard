@@ -1,7 +1,6 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { MEMBERSHIP_QUOTAS, MembershipLevel } from "@/constants/roles";
 
 /**
  * 获取用户配额信息
@@ -49,17 +48,35 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取会员等级配额
-    const membershipLevel = user.membershipLevel as MembershipLevel;
-    const quotas = MEMBERSHIP_QUOTAS[membershipLevel] || MEMBERSHIP_QUOTAS[MembershipLevel.FREE];
+    // 从数据库获取会员等级配额
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipLevel: true },
+    });
+    const membershipLevel = dbUser?.membershipLevel || "FREE";
+
+    const levelData = await prisma.membershiplevel.findUnique({
+      where: { id: membershipLevel },
+    });
 
     // 统计企业空间数量
     const enterpriseCount = workspaces.filter(ws => ws.type === "ENTERPRISE").length;
 
-    // 计算可用配额
-    const availableEnterpriseSlots = quotas.enterpriseSlots === -1 
+    // 算力配额计算 (从数据库中统计运行的组件任务)
+    const usedTasksCount = await prisma.componenttask.count({
+      where: { userId },
+    });
+    const usedTokens = usedTasksCount * 120; // 假设每次运行组件消耗平均120个Token
+
+    const maxEnterpriseWorkspaces = levelData ? Number(levelData.maxEnterpriseWorkspaces) : 1;
+    const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
+    const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
+    const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
+    const tokenLimit = levelData ? (membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000) : 10000;
+
+    const availableEnterpriseSlots = maxEnterpriseWorkspaces === -1 
       ? -1 
-      : quotas.enterpriseSlots - enterpriseCount;
+      : maxEnterpriseWorkspaces - enterpriseCount;
 
     return NextResponse.json({
       success: true,
@@ -67,26 +84,41 @@ export async function GET(request: NextRequest) {
         membershipLevel,
         quotas: {
           enterpriseSlots: {
-            total: quotas.enterpriseSlots,
+            total: maxEnterpriseWorkspaces,
             used: enterpriseCount,
             available: availableEnterpriseSlots,
           },
-          maxTeamSize: quotas.maxTeamSize,
-          maxStorage: quotas.maxStorage,
-          maxApiCalls: quotas.maxApiCalls,
-          tokenBalance: quotas.tokenBalance,
+          maxTeamSize,
+          maxStorage,
+          maxApiCalls,
+          tokenBalance: {
+            total: tokenLimit,
+            used: usedTokens,
+            available: Math.max(0, tokenLimit - usedTokens),
+          },
         },
         workspaces: workspaces.map(ws => ({
           id: ws.id,
           name: ws.name,
           type: ws.type,
           role: ws.workspacemember[0]?.role,
-          quota: ws.workspacequota,
+          quota: ws.workspacequota ? {
+            id: ws.workspacequota.id,
+            workspaceId: ws.workspacequota.workspaceId,
+            membershipLevelId: ws.workspacequota.membershipLevelId,
+            enterpriseSlots: Number(ws.workspacequota.enterpriseSlots),
+            usedSlots: Number(ws.workspacequota.usedSlots),
+            tokenBalance: Number(ws.workspacequota.tokenBalance),
+            storageUsed: Number(ws.workspacequota.storageUsed),
+            storageLimit: Number(ws.workspacequota.storageLimit),
+            apiCallsUsed: Number(ws.workspacequota.apiCallsUsed),
+            apiCallsLimit: Number(ws.workspacequota.apiCallsLimit),
+          } : null,
         })),
       },
     });
   } catch (error) {
     console.error("Get quota error:", error);
-    return NextResponse.json({ error: "获取配额信息失败" }, { status: 500 });
+    return NextResponse.json({ error: "获取配额信息失败", details: error instanceof Error ? error.message : error }, { status: 500 });
   }
 }

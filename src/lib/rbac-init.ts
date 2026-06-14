@@ -1,4 +1,4 @@
-﻿﻿/**
+﻿/**
  * RBAC 初始化脚本
  * 用于在创建工作空间时初始化默认的岗位和权限数据
  */
@@ -6,6 +6,7 @@
 import { prisma } from "./prisma";
 import { COMPONENTS } from "@/constants/components";
 import { POST_PERMISSION_TEMPLATES } from "@/constants/roles";
+import crypto from "crypto";
 
 export async function initializeRBACData(workspaceId: string, createdBy: string) {
   try {
@@ -76,6 +77,7 @@ export async function initializeRBACData(workspaceId: string, createdBy: string)
       defaultPosts.map(async (post) => {
         const createdPost = await prisma.workspacepost.create({
           data: {
+            id: crypto.randomUUID(),
             workspaceId,
             name: post.name,
             description: post.description,
@@ -83,6 +85,7 @@ export async function initializeRBACData(workspaceId: string, createdBy: string)
             isDefault: post.isDefault,
             isSystem: post.isSystem,
             createdBy,
+            updatedAt: new Date(),
           },
         });
 
@@ -93,12 +96,14 @@ export async function initializeRBACData(workspaceId: string, createdBy: string)
           const permissions = Object.entries(post.template)
             .filter(([_, value]) => value === true)
             .map(([componentId]) => ({
+              id: crypto.randomUUID(),
               postId: createdPost.id,
               componentId,
               canView: true,
               canEdit: false,
               canDelete: false,
               canExecute: true,
+              updatedAt: new Date(),
             }));
 
           if (permissions.length > 0) {

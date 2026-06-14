@@ -1,10 +1,60 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
+import { createHmac, createHash } from "crypto";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
 );
+
+function verifySSOSignature(provider: string, body: any, signature: string): boolean {
+  try {
+    if (provider === "feishu" || provider === "lark") {
+      // 方式1：校验verification token
+      const verifyToken = process.env.FEISHU_VERIFICATION_TOKEN || "mock-feishu-verify-token";
+      if (body.token === verifyToken) {
+        return true;
+      }
+      
+      // 方式2：SHA256哈希验签
+      const encryptKey = process.env.FEISHU_ENCRYPT_KEY || "mock-feishu-encrypt-key";
+      const timestamp = body.timestamp || "";
+      const nonce = body.nonce || "";
+      const content = timestamp + nonce + encryptKey;
+      const computedSignature = createHash("sha256").update(content).digest("hex");
+      
+      return signature === computedSignature;
+    } 
+    
+    if (provider === "dingtalk") {
+      const secret = process.env.DINGTALK_SIGNATURE_SECRET || "mock-dingtalk-signature-secret";
+      const timestamp = body.timestamp || "";
+      const stringToSign = timestamp + "\n" + secret;
+      const computedSignature = createHmac("sha256", secret)
+        .update(stringToSign)
+        .digest("base64");
+        
+      return signature === computedSignature;
+    }
+    
+    if (provider === "wecom") {
+      const token = process.env.WECOM_TOKEN || "mock-wecom-token";
+      const timestamp = body.timestamp || "";
+      const nonce = body.nonce || "";
+      const msgEncrypt = body.encrypt || "";
+      const arr = [token, timestamp, nonce, msgEncrypt].sort();
+      const stringToSign = arr.join("");
+      const computedSignature = createHash("sha1").update(stringToSign).digest("hex");
+      
+      return signature === computedSignature;
+    }
+
+    return false;
+  } catch (err) {
+    console.error("SSO signature verification exception:", err);
+    return false;
+  }
+}
 
 /**
  * SSO授权失效回调API
@@ -28,9 +78,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SSO撤销] 收到${provider}授权撤销通知`, { openid, unionid });
 
-    // 在生产环境中，应该验证签名以确保请求来自合法的SSO提供商
-    // 这里简化处理，实际应该验证 signature
-    if (process.env.NODE_ENV === "production") {
+    // 在生产环境或提供了签名时，必须进行签名验证以确保安全
+    if (process.env.NODE_ENV === "production" || signature) {
       // 验证签名
       if (!signature) {
         return NextResponse.json(
@@ -39,11 +88,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // TODO: 实现实际的签名验证逻辑
-      // const isValid = verifySSOSignature(provider, body, signature);
-      // if (!isValid) {
-      //   return NextResponse.json({ error: "签名验证失败" }, { status: 401 });
-      // }
+      const isValid = verifySSOSignature(provider, body, signature);
+      if (!isValid) {
+        return NextResponse.json({ error: "签名验证失败" }, { status: 401 });
+      }
     }
 
     // 根据不同SSO提供商查找用户

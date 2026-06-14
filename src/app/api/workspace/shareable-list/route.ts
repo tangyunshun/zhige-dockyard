@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
         OR: [
           { ownerId: userId },
           {
-            members: {
+            workspacemember: {
               some: {
                 userId,
                 role: "ADMIN",
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         ],
       },
       include: {
-        members: {
+        workspacemember: {
           include: {
             user: {
               select: {
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         },
         _count: {
           select: {
-            members: true,
+            workspacemember: true,
           },
         },
       },

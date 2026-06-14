@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
@@ -63,6 +63,7 @@ interface User {
   membershipLevel: string;
   tenantId?: string | null;
   lastLoginAt?: string | null;
+  isOnline: boolean;
   createdAt: string;
 }
 

@@ -1,19 +1,10 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 
 /**
  * POST /api/admin/workspaces/archive-inactive
  * 自动归档 2 年未活跃的工作空间
- * 
- * 业务逻辑：
- * 1. 查找超过 2 年（730 天）未活跃的企业空间
- * 2. 将状态更新为已归档（ARCHIVED）
- * 3. 记录操作日志
- * 
- * 注意：
- * - 只处理状态为 ACTIVE 的企业空间
- * - 需要管理员权限
  */
 export async function POST(request: NextRequest) {
   try {
@@ -59,13 +50,6 @@ export async function POST(request: NextRequest) {
         ownerId: true,
         updatedAt: true,
         lastActiveAt: true,
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
       },
     });
 
@@ -82,6 +66,20 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    // 查询所有所有者邮箱
+    const ownerIds = Array.from(new Set(inactiveWorkspaces.map((ws) => ws.ownerId)));
+    const owners = await prisma.user.findMany({
+      where: {
+        id: { in: ownerIds },
+      },
+      select: {
+        id: true,
+        email: true,
+      },
+    });
+
+    const emailMap = new Map(owners.map((u) => [u.id, u.email || ""]));
 
     // 记录操作日志
     console.log(`已归档 ${archivedIds.length} 个长期未活跃的企业空间`, {
@@ -101,7 +99,7 @@ export async function POST(request: NextRequest) {
         archivedWorkspaces: inactiveWorkspaces.map((ws) => ({
           id: ws.id,
           name: ws.name,
-          ownerEmail: ws.owner.email,
+          ownerEmail: emailMap.get(ws.ownerId) || "",
           lastActive: ws.lastActiveAt || ws.updatedAt,
         })),
       },
@@ -161,21 +159,35 @@ export async function GET(request: NextRequest) {
         ownerId: true,
         updatedAt: true,
         lastActiveAt: true,
-        owner: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
       },
       take: 100, // 最多返回 100 条
     });
 
+    // 查询所有者信息
+    const ownerIds = Array.from(new Set(inactiveWorkspaces.map((ws) => ws.ownerId)));
+    const owners = await prisma.user.findMany({
+      where: {
+        id: { in: ownerIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    const ownerMap = new Map(owners.map((u) => [u.id, { name: u.name, email: u.email }]));
+
+    const formattedWorkspaces = inactiveWorkspaces.map((ws) => ({
+      ...ws,
+      owner: ownerMap.get(ws.ownerId) || null,
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
-        count: inactiveWorkspaces.length,
-        workspaces: inactiveWorkspaces,
+        count: formattedWorkspaces.length,
+        workspaces: formattedWorkspaces,
       },
     });
   } catch (error) {

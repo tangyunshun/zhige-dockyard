@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { randomBytes } from "crypto";
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
       include: {
-        members: true,
+        workspacemember: true,
       },
     });
 
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     // 验证用户权限
     if (workspace.ownerId !== userId) {
-      const member = workspace.members.find(
+      const member = workspace.workspacemember.find(
         (m: any) => m.userId === userId && m.role === "ADMIN",
       );
       if (!member) {
@@ -59,13 +59,15 @@ export async function POST(request: NextRequest) {
       : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 默认 7 天有效期
 
     // 保存邀请码到数据库
-    const invitation = await prisma.workspaceInvitation.create({
+    const invitation = await prisma.workspaceinvitation.create({
       data: {
+        id: crypto.randomUUID(),
         workspaceId,
         email,
-        invitationCode,
+        code: invitationCode,
         expiresAt,
         createdBy: userId,
+        updatedAt: new Date(),
       },
     });
 

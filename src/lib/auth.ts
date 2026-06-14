@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
 export interface AuthenticatedUser {
@@ -111,6 +111,17 @@ export function isAdminRole(role: string): boolean {
     "SUPER_ADMIN",
   ];
   return adminRoles.includes(role);
+}
+
+export function isSuperAdminRole(role: string): boolean {
+  const superAdminRoles = [
+    "super_admin",
+    "superadmin",
+    "SUPERADMIN",
+    "SUPER_ADMIN",
+    "SuperAdmin",
+  ];
+  return superAdminRoles.includes(role);
 }
 
 /**
