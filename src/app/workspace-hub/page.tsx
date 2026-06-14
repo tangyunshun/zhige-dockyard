@@ -696,7 +696,6 @@ export default function WorkspaceHub() {
   // 新添加的状态
   const [userQuota, setUserQuota] = useState<UserQuota | null>(null);
   const [dashboardData, setDashboardData] = useState<any>(null);
-  const [adminReviewingId, setAdminReviewingId] = useState<string | null>(null);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
   const [showStepUpModal, setShowStepUpModal] = useState(false);
@@ -1310,31 +1309,7 @@ export default function WorkspaceHub() {
     }
   };
 
-  const handleAdminReview = async (id: string, status: "APPROVED" | "REJECTED") => {
-    try {
-      setAdminReviewingId(id);
-      const res = await fetch("/api/admin/upgrade-applications", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
-        },
-        body: JSON.stringify({ id, status }),
-      });
 
-      if (!res.ok) throw new Error("审核失败");
-
-      toast.success(status === "APPROVED" ? "企业升级申请已通过" : "企业升级申请已驳回");
-      
-      // 重新加载数据
-      await loadUserInfo();
-    } catch (error) {
-      console.error("Admin review error:", error);
-      toast.error("操作失败，请重试");
-    } finally {
-      setAdminReviewingId(null);
-    }
-  };
 
   const handleJoinWorkspace = async () => {
     if (!invitationCode) {
@@ -1603,12 +1578,6 @@ export default function WorkspaceHub() {
               协同您的个人独立研发环境和企业级高阶团队工作室
             </p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 border border-slate-200 hover:border-red-200 text-slate-600 hover:text-red-500 rounded-xl bg-white/60 backdrop-blur-sm shadow-sm transition-all duration-300 flex items-center gap-1.5 text-xs font-bold cursor-pointer"
-          >
-            <span>注销退出</span>
-          </button>
         </div>
 
         {/* 核心 Bento Grid */}
@@ -1753,98 +1722,7 @@ export default function WorkspaceHub() {
             </div>
           </div>
 
-          {/* Card 2: 超级管理员监控与审批 Bento 看板 (若是管理员, 占 8 列) */}
-          {isAdmin && (
-            <div className="md:col-span-8 relative overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-red-500/20 transition-all duration-300">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-red-500/5 to-transparent rounded-bl-full -mr-8 -mt-8" />
-              
-              {/* 标题 */}
-              <div className="flex items-center justify-between mb-4 relative">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center border border-red-500/20">
-                    <ShieldCheck className="w-4 h-4 text-red-500" />
-                  </div>
-                  <h3 className="text-base font-black text-slate-800 tracking-tight">
-                    系统超级管理中枢
-                  </h3>
-                </div>
-                <span className="flex items-center gap-1.5 text-[10px] font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                  管理中枢正常运行
-                </span>
-              </div>
 
-              {/* 宏观监控指标气泡网格 */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 relative">
-                <div className="p-3 bg-red-50/30 border border-red-100/50 rounded-2xl text-left">
-                  <div className="text-[10px] text-slate-500 font-bold mb-1">全站总用户</div>
-                  <div className="text-lg font-black text-slate-800">
-                    {dashboardData?.systemStats?.totalUsers?.toLocaleString() || "-"}
-                  </div>
-                </div>
-                <div className="p-3 bg-red-50/30 border border-red-100/50 rounded-2xl text-left">
-                  <div className="text-[10px] text-slate-500 font-bold mb-1">总工作空间</div>
-                  <div className="text-lg font-black text-slate-800">
-                    {dashboardData?.systemStats?.totalWorkspaces?.toLocaleString() || "-"}
-                  </div>
-                </div>
-                <div className="p-3 bg-red-50/30 border border-red-100/50 rounded-2xl text-left">
-                  <div className="text-[10px] text-slate-500 font-bold mb-1">已开发组件</div>
-                  <div className="text-lg font-black text-slate-800">
-                    {dashboardData?.systemStats?.totalComponents?.toLocaleString() || "-"}
-                  </div>
-                </div>
-                <div className="p-3 bg-red-50/30 border border-red-100/50 rounded-2xl text-left">
-                  <div className="text-[10px] text-slate-500 font-bold mb-1">全站月 Token</div>
-                  <div className="text-lg font-black text-red-600">
-                    {dashboardData?.systemStats?.monthTokens?.toLocaleString() || "-"}
-                  </div>
-                </div>
-              </div>
-
-              {/* 滚动审批待办面板 */}
-              <div className="relative">
-                <div className="text-xs font-black text-slate-700 mb-2">待审核企业升级申请 ({dashboardData?.pendingApplications?.length || 0})</div>
-                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                  {dashboardData?.pendingApplications && dashboardData.pendingApplications.length > 0 ? (
-                    dashboardData.pendingApplications.map((app: any) => (
-                      <div key={app.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 hover:border-red-200/50 transition-all">
-                        <div className="flex-1 min-w-0 mr-3">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-xs font-black text-slate-800 truncate">{app.companyName}</span>
-                            <span className="text-[9px] text-slate-400 font-bold">({app.contactName})</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 truncate">
-                            申请升级空间：{app.workspaceName}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <button
-                            onClick={() => handleAdminReview(app.id, "APPROVED")}
-                            disabled={adminReviewingId === app.id}
-                            className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[10px] font-black rounded-lg transition-all cursor-pointer"
-                          >
-                            {adminReviewingId === app.id ? "处理中" : "通过"}
-                          </button>
-                          <button
-                            onClick={() => handleAdminReview(app.id, "REJECTED")}
-                            disabled={adminReviewingId === app.id}
-                            className="px-2.5 py-1 border border-red-200 hover:bg-red-50 disabled:opacity-50 text-red-500 text-[10px] font-black rounded-lg transition-all cursor-pointer"
-                          >
-                            拒绝
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 bg-slate-50/50 border border-dashed border-slate-200 rounded-2xl">
-                      <span className="text-xs text-slate-500 font-bold">✨ 暂无待审批的申请，系统健康平稳</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Card 3: 企业协作空间列表 Bento 板 (若非管理员，在第一行占 8 列；若是管理员，在第二行占 8 列) */}
           <div className={`${isAdmin ? "md:col-span-8" : "md:col-span-8"} relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300`}>
