@@ -44,7 +44,24 @@ export default function Header() {
   >();
   const [loading, setLoading] = useState(true);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const fetchPendingCount = async () => {
+    try {
+      const res = await fetch("/api/user/workspace-hub/dashboard", {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          setPendingCount(data.data.pendingApplicationsCount || 0);
+        }
+      }
+    } catch (error) {
+      console.error("Fetch pending count error:", error);
+    }
+  };
 
   useEffect(() => {
     const userId = localStorage.getItem("userId");
@@ -88,6 +105,11 @@ export default function Header() {
         setIsLoggedIn(true);
         setUser(data.user);
         await fetchWorkspaces();
+
+        const role = data.user?.role?.toUpperCase().replace(/_/g, "");
+        if (role === "ADMIN" || role === "SUPERADMIN") {
+          fetchPendingCount();
+        }
       } else {
         setIsLoggedIn(false);
         setUser(null);
@@ -206,17 +228,25 @@ export default function Header() {
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer"
                 >
-                  {user.avatar ? (
-                    <img
-                      src={user.avatar}
-                      alt={user.name || "用户头像"}
-                      className="w-7 h-7 rounded-full object-cover border-2 border-white shadow-sm"
-                    />
-                  ) : (
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                      {user.name?.charAt(0).toUpperCase() || "U"}
-                    </div>
-                  )}
+                  <div className="relative">
+                    {user.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={user.name || "用户头像"}
+                        className="w-7 h-7 rounded-full object-cover border-2 border-white shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                        {user.name?.charAt(0).toUpperCase() || "U"}
+                      </div>
+                    )}
+                    {pendingCount > 0 && (
+                      <>
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border border-white animate-ping" />
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                      </>
+                    )}
+                  </div>
                   <span className="text-xs font-bold text-slate-700 max-w-[60px] truncate hidden lg:block">
                     {user.name || "用户"}
                   </span>
@@ -299,11 +329,18 @@ export default function Header() {
                               d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
                             />
                           </svg>
-                          <span className="text-sm text-slate-700 font-medium group-hover:text-red-600 transition-colors flex items-center gap-1.5">
-                            管理员后台
-                            <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-xs font-bold rounded">
-                              管理
+                          <span className="text-sm text-slate-700 font-medium group-hover:text-red-600 transition-colors flex items-center justify-between w-full">
+                            <span className="flex items-center gap-1.5">
+                              管理员后台
+                              <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] font-bold rounded">
+                                管理
+                              </span>
                             </span>
+                            {pendingCount > 0 && (
+                              <span className="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-black leading-none text-white bg-red-500 rounded-full animate-pulse">
+                                {pendingCount} 待办
+                              </span>
+                            )}
                           </span>
                         </button>
                       )}

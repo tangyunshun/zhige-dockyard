@@ -107,12 +107,28 @@ export async function GET(request: NextRequest) {
       where: { userId },
     });
 
+    // 查询最近使用最频繁的 Top 3 组件
+    const topComponentsPromise = prisma.componentusage.groupBy({
+      by: ["componentId"],
+      where: { userId },
+      _count: {
+        id: true,
+      },
+      orderBy: {
+        _count: {
+          id: "desc",
+        },
+      },
+      take: 3,
+    });
+
     // 并行运行基础用户数据查询
-    const [workspaceMembers, ownedWorkspaces, monthUsageCount, totalUsageCount] = await Promise.all([
+    const [workspaceMembers, ownedWorkspaces, monthUsageCount, totalUsageCount, topComponentsData] = await Promise.all([
       workspaceMembersPromise,
       ownedWorkspacesPromise,
       monthUsagePromise,
       totalUsagePromise,
+      topComponentsPromise,
     ]);
 
     // 合并并去重工作空间
@@ -242,6 +258,12 @@ export async function GET(request: NextRequest) {
       membershipLevel,
       ownedEnterpriseCount: enterpriseCount,
       maxEnterpriseLimit: maxEnterpriseWorkspaces,
+      workspaceLimits: {
+        personalCount: personalWorkspace ? 1 : 0,
+        personalLimit: 1,
+        enterpriseCount: enterpriseCount,
+        enterpriseLimit: maxEnterpriseWorkspaces,
+      },
       quotas: {
         enterpriseSlots: {
           total: maxEnterpriseWorkspaces,
@@ -297,6 +319,26 @@ export async function GET(request: NextRequest) {
       pendingApplicationsCount = pendingCount;
     }
 
+    // 处理 Top 3 高频组件中文映射
+    const componentNameMap: Record<string, string> = {
+      C01: "标书智能解析与售后打单",
+      C02: "需求定义与产品设计",
+      C03: "合规与风控审计",
+      C04: "标书智能解析",
+      C05: "方案合规审查",
+      C06: "竞品对比分析",
+      C07: "汇报话术转换",
+      C08: "异常场景补全",
+      C09: "客诉归因分析",
+      C10: "仿真数据生成",
+    };
+
+    const topComponents = topComponentsData.map((item) => ({
+      componentId: item.componentId,
+      name: componentNameMap[item.componentId] || `组件 ${item.componentId}`,
+      callCount: item._count.id,
+    }));
+
     // 5. 组装并返回 Bento Dashboard 的完整聚合数据，防前端多次加载引起的网络开销
     return NextResponse.json({
       success: true,
@@ -313,6 +355,7 @@ export async function GET(request: NextRequest) {
         userQuota,
         systemStats,
         pendingApplicationsCount,
+        topComponents,
       },
     });
   } catch (error) {

@@ -694,6 +694,7 @@ export default function WorkspaceHub() {
   const [redirecting, setRedirecting] = useState(false);
   
   // 新添加的状态
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"personal" | "enterprise">("personal");
   const [userQuota, setUserQuota] = useState<UserQuota | null>(null);
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -844,8 +845,12 @@ export default function WorkspaceHub() {
   };
 
   const handleGoToCreateEnterprise = () => {
-    if (quota && quota.enterpriseCount >= quota.maxEnterprise) {
-      toast.error(`您当前最多可创建${quota.maxEnterprise}个企业空间`);
+    const limits = dashboardData?.userQuota?.workspaceLimits;
+    const used = limits?.enterpriseCount ?? 0;
+    const limit = limits?.enterpriseLimit ?? 0;
+    if (limit === 0 || used >= limit) {
+      setShowPremiumModal(true);
+      toast.error(`企业协作空间创建数量已达上限 (${used}/${limit})，请升级 VIP`);
       return;
     }
     router.push("/workspace-hub/create");
@@ -954,6 +959,12 @@ export default function WorkspaceHub() {
   };
 
   const handleCreatePersonal = async () => {
+    const personalCount = personalWorkspace ? 1 : 0;
+    if (personalCount >= 1) {
+      setShowPremiumModal(true);
+      toast.error("个人空间创建数量已达上限 (1/1)，请升级 VIP");
+      return;
+    }
     try {
       const userId = checkUserId();
       if (!userId) {
@@ -1583,13 +1594,13 @@ export default function WorkspaceHub() {
         {/* 核心 Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8">
           
-          {/* Card 1: 用户欢迎与个人空间 Bento 块 (占 8 列) */}
-          <div className="md:col-span-8 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-blue-500/20 transition-all duration-300">
+          {/* Card 1: 用户欢迎与个人名片 (占 8 列) */}
+          <div className="md:col-span-8 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-blue-500/20 transition-all duration-300 flex flex-col justify-between min-h-[220px]">
             {/* 卡片装饰 */}
             <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-2xl group-hover:scale-125 transition-all duration-500" />
             
             {/* 用户身份与头像 */}
-            <div className="flex items-center gap-4 mb-6 relative">
+            <div className="flex items-center gap-4 relative">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-500/25 relative overflow-hidden">
                 {user?.avatar ? (
                   <img src={user.avatar} alt={user.name || "Avatar"} className="w-full h-full object-cover" />
@@ -1609,116 +1620,17 @@ export default function WorkspaceHub() {
               </div>
             </div>
 
-            {/* 个人工作空间状态 */}
-            <div className="p-4 bg-slate-50/70 border border-slate-200/60 rounded-2xl relative mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-black text-slate-700">个人主空间</span>
-                {personalWorkspaceDeleted && upgradeMode === "replace" ? (
-                  <span className="px-2 py-0.5 bg-red-50 text-red-600 text-[10px] font-black rounded-full border border-red-100">
-                    已替换注销
-                  </span>
-                ) : personalWorkspaceDeleted ? (
-                  <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-black rounded-full border border-slate-300">
-                    已注销
-                  </span>
-                ) : upgradeMode === "migrate" && !personalWorkspace ? (
-                  <span className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] text-[10px] font-black rounded-full border border-[#f59e0b]/20">
-                    已迁移升级
-                  </span>
-                ) : personalWorkspaceUpgraded && personalWorkspace ? (
-                  <span className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] text-[10px] font-black rounded-full border border-[#f59e0b]/20">
-                    已并行升级
-                  </span>
-                ) : personalWorkspace ? (
-                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-full border border-emerald-100">
-                    已激活
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-black rounded-full">
-                    未创建
-                  </span>
-                )}
+            {/* 当前活跃研发环境 */}
+            <div className="mt-4 relative bg-slate-50/70 border border-slate-200/50 rounded-2xl p-4">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                当前活跃研发环境
               </div>
-              <p className="text-xs text-slate-500 mb-3 leading-relaxed">
-                {personalWorkspaceDeleted && upgradeMode === "replace"
-                  ? "个人空间已被物理注销，对应的数据已清理完毕。您可以选择重新创建干净的个人空间。"
-                  : personalWorkspaceDeleted
-                    ? "个人空间已注销。所有本地资产已清空，如需使用请点击重新创建按钮。"
-                    : upgradeMode === "migrate" && !personalWorkspace
-                      ? "您的个人资产已完全平移升级为企业空间，所有组件和项目已迁移。请直接前往企业空间继续工作。"
-                      : personalWorkspace ? `适合独立开发、常用轻量级任务，提供专属调用接口。当前已绑定 ${(personalWorkspace.componentCount || 0)} 个组件。`
-                      : "适合独立开发者与个人项目使用，提供基础的组件调用和资产管理。"}
-              </p>
-
-              {/* 升级提示 */}
-              {personalWorkspace && quota && quota.enterpriseCount < quota.maxEnterprise && !personalWorkspaceUpgraded && (
-                <div className="mb-3 p-2 bg-gradient-to-r from-emerald-500/5 to-blue-500/5 border border-emerald-500/20 rounded-xl flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-emerald-600">可升级为企业空间</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUpgradeWorkspace();
-                    }}
-                    className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
-                  >
-                    <span>升级</span>
-                    <ArrowUpRight className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 个人空间操作按钮组 */}
-            <div className="flex items-center gap-2">
-              {upgradeMode === "migrate" && !personalWorkspace ? (
-                // 平移升级后个人空间不操作
-                <div className="text-xs text-slate-400 italic text-center w-full py-1">空间已全量迁移至企业</div>
-              ) : !personalWorkspace && (personalWorkspaceDeleted || personalWorkspaceUpgraded) ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRecreatePersonal();
-                  }}
-                  className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-xs font-black rounded-xl hover:shadow-md hover:shadow-blue-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>重新创建个人空间</span>
-                </button>
-              ) : personalWorkspace ? (
-                <div className="flex items-center gap-2 w-full">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEnterWorkspace(personalWorkspace);
-                    }}
-                    className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <span>进入个人空间</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteUpgradedPersonal();
-                    }}
-                    className="px-3 py-2.5 border border-red-200 text-red-500 hover:bg-red-50 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer"
-                    title="注销个人空间"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCreatePersonal();
-                  }}
-                  className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <span>创建个人空间</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <div className="text-sm font-black text-slate-800">
+                {personalWorkspace ? personalWorkspace.name : "暂无活跃空间"}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                知阁·舟坊为您提供微隔离开发沙箱与全流程组件协作链路，即开即用。
+              </div>
             </div>
           </div>
 
@@ -1827,204 +1739,215 @@ export default function WorkspaceHub() {
             )}
           </div>
 
-          {/* Card 3: 企业协作空间列表 Bento 板 (在第二行占 8 列) */}
+          {/* Card 3: 工作空间管理中枢 (占 8 列) */}
           <div className="md:col-span-8 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300">
-            {/* 顶栏 */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
+            {/* 顶栏与 Tab 切换 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200/60">
+              <div className="flex items-center gap-4">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
                   <Building2 className="w-4 h-4 text-emerald-500" />
                 </div>
-                <h3 className="text-base font-black text-slate-800 tracking-tight">
-                  企业协作工作空间
-                </h3>
+                {/* Tab 按钮 */}
+                <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
+                  <button
+                    onClick={() => setActiveWorkspaceTab("personal")}
+                    className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                      activeWorkspaceTab === "personal"
+                        ? "bg-white text-slate-800 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    个人主空间
+                  </button>
+                  <button
+                    onClick={() => setActiveWorkspaceTab("enterprise")}
+                    className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                      activeWorkspaceTab === "enterprise"
+                        ? "bg-white text-slate-800 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    协作空间
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={handleGoToCreateEnterprise}
-                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black rounded-xl hover:shadow-md transition-all flex items-center gap-0.5 cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>新建协作空间</span>
-                </button>
-                <button
-                  onClick={handleOpenShareModal}
-                  className="px-3 py-1.5 border border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 text-[10px] font-black rounded-xl transition-all flex items-center gap-0.5 cursor-pointer"
-                >
-                  <Users className="w-3 h-3" />
-                  <span>分享空间</span>
-                </button>
+
+              {/* 空间配额显示 */}
+              <div className="flex items-center gap-3">
+                <div className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/80">
+                  {activeWorkspaceTab === "personal" ? (
+                    <span>容量配额：{personalWorkspace ? 1 : 0} / 1</span>
+                  ) : (
+                    <span>
+                      容量配额：{dashboardData?.userQuota?.workspaceLimits?.enterpriseCount || 0} /{" "}
+                      {dashboardData?.userQuota?.workspaceLimits?.enterpriseLimit || 0}
+                    </span>
+                  )}
+                </div>
+                {activeWorkspaceTab === "personal" ? (
+                  !personalWorkspace && (
+                    <button
+                      onClick={handleCreatePersonal}
+                      className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black rounded-lg hover:shadow-md transition-all flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>创建个人空间</span>
+                    </button>
+                  )
+                ) : (
+                  <button
+                    onClick={handleGoToCreateEnterprise}
+                    className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black rounded-lg hover:shadow-md transition-all flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>新建协作空间</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* 企业空间内容区 */}
-            {enterpriseData && enterpriseData.workspaces.length > 0 ? (
-              <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
-                {enterpriseData.workspaces.map((ws, index) => (
-                  <div
-                    key={ws.id}
-                    className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-white hover:bg-slate-50/50 rounded-2xl border border-slate-200/80 hover:border-emerald-500/30 transition-all duration-300 gap-4"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-6 h-6 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[10px] font-black text-white">{index + 1}</span>
-                        </div>
-                        <h4 className="text-sm font-black text-slate-800 truncate">{ws.name}</h4>
-                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
-                          已激活
-                        </span>
+            {/* 内容区 */}
+            {activeWorkspaceTab === "personal" ? (
+              // 个人空间内容
+              personalWorkspace ? (
+                <div className="p-4 bg-white/60 border border-slate-200/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                        <span className="text-[10px] font-black text-white">P</span>
                       </div>
-                      
-                      {/* 企业空间专属算力进度条 */}
-                      <div className="w-full md:max-w-xs mb-1">
-                        <div className="flex items-center justify-between text-[9px] text-slate-500 mb-1 font-bold">
-                          <span>专属算力 Quota</span>
-                          <span>75% 剩余</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full"
-                            style={{ width: "75%" }}
-                          />
-                        </div>
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-medium">
-                        {ws.memberCount || 1} 名协同成员 · {ws.componentCount || 0} 个绑定组件
-                      </div>
+                      <h4 className="text-sm font-black text-slate-800 truncate">{personalWorkspace.name}</h4>
+                      <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
+                        已激活
+                      </span>
                     </div>
-
-                    {/* 操作 */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={() => handleEnterWorkspace({ ...ws, type: "ENTERPRISE" })}
-                        className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
-                      >
-                        <span>进入空间</span>
-                        <ArrowRight className="w-2.5 h-2.5" />
-                      </button>
-                      <button
-                        onClick={() => handleExpandEnterprise(ws.id)}
-                        className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all flex items-center gap-0.5 cursor-pointer"
-                        title="扩容额度"
-                      >
-                        <TrendingUp className="w-2.5 h-2.5 text-slate-500" />
-                        <span>扩容</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteWorkspace(ws.id)}
-                        disabled={deletingWorkspaceId === ws.id || checkingDelete}
-                        className="px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
-                      >
-                        {checkingDelete && workspaceToDelete === ws.id ? "检测中" : "注销"}
-                      </button>
-                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      独立研发环境 · 已绑定 {personalWorkspace.componentCount || 0} 个组件
+                    </p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-5 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 border border-emerald-500/10 rounded-2xl text-left">
-                <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                  企业协作工作空间是面向工作室或研发团队的协作环境。支持多人协同开发，共享算力配额，并开启细粒度安全合规管理和组件级岗位过滤。
-                </p>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="p-3 bg-white/60 border border-slate-200/50 rounded-xl">
-                    <div className="text-[10px] font-black text-slate-700 mb-0.5">👥 多角色协同</div>
-                    <div className="text-[9px] text-slate-500">一键分享空间邀请码</div>
-                  </div>
-                  <div className="p-3 bg-white/60 border border-slate-200/50 rounded-xl">
-                    <div className="text-[10px] font-black text-slate-700 mb-0.5">📈 共享算力配额</div>
-                    <div className="text-[9px] text-slate-500">统一管控月度 Token</div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleEnterWorkspace(personalWorkspace)}
+                      className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <span>进入空间</span>
+                      <ArrowRight className="w-2.5 h-2.5" />
+                    </button>
+                    <button
+                      onClick={handleDeleteUpgradedPersonal}
+                      className="px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                    >
+                      注销
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={handleGoToCreateEnterprise}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-lg transition-all flex items-center gap-1 cursor-pointer"
-                >
-                  <span>立即开通企业空间</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              ) : (
+                <div className="p-6 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 border border-blue-500/10 rounded-2xl text-center">
+                  <p className="text-xs text-slate-500 mb-4">暂无激活的个人主空间，点击上方按钮一键创建。</p>
+                </div>
+              )
+            ) : (
+              // 企业协作空间内容
+              enterpriseData && enterpriseData.workspaces.length > 0 ? (
+                <div className="space-y-3 max-h-[190px] overflow-y-auto pr-1">
+                  {enterpriseData.workspaces.map((ws, index) => (
+                    <div
+                      key={ws.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white hover:bg-slate-50/50 rounded-2xl border border-slate-200/80 hover:border-emerald-500/30 transition-all duration-300 gap-4"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-6 h-6 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
+                            <span className="text-[10px] font-black text-white">{index + 1}</span>
+                          </div>
+                          <h4 className="text-sm font-black text-slate-800 truncate">{ws.name}</h4>
+                          <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
+                            已激活
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-medium">
+                          {ws.memberCount || 1} 名协同成员 · {ws.componentCount || 0} 个绑定组件
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => handleEnterWorkspace({ ...ws, type: "ENTERPRISE" })}
+                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <span>进入空间</span>
+                          <ArrowRight className="w-2.5 h-2.5" />
+                        </button>
+                        <button
+                          onClick={() => handleExpandEnterprise(ws.id)}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all flex items-center gap-0.5 cursor-pointer"
+                          title="扩容额度"
+                        >
+                          <TrendingUp className="w-2.5 h-2.5 text-slate-500" />
+                          <span>扩容</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteWorkspace(ws.id)}
+                          disabled={deletingWorkspaceId === ws.id || checkingDelete}
+                          className="px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                        >
+                          {checkingDelete && workspaceToDelete === ws.id ? "检测中" : "注销"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 border border-emerald-500/10 rounded-2xl text-left">
+                  <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                    企业协作空间是面向工作室或研发团队的协作环境。支持多角色协同开发、共享算力配额与岗位细粒度拦截。
+                  </p>
+                  <button
+                    onClick={handleGoToCreateEnterprise}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-lg transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>开通企业协作空间</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
             )}
           </div>
 
-          {/* Card 4': 动态导流卡片 (在第二行占 4 列) */}
-          {isAdmin ? (
-            <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-red-500/20 transition-all duration-300 flex flex-col justify-between">
-              <div>
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-red-500/20">
-                    <ShieldCheck className="w-5 h-5 text-red-500 animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight flex items-center gap-1.5">
-                      <span>超级管理员中枢</span>
-                      {dashboardData?.pendingApplicationsCount && dashboardData.pendingApplicationsCount > 0 ? (
-                        <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
-                      ) : null}
-                    </h3>
-                    <p className="text-[10px] text-red-500 font-bold mt-1">
-                      运维红点与监控导流
-                    </p>
-                  </div>
+          {/* Card 4: 特权兑换与空间快速加入 (占 4 列) */}
+          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300 flex flex-col justify-between">
+            <div>
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-emerald-500/20">
+                  <Users className="w-5 h-5 text-emerald-600" />
                 </div>
-                
-                <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-                  系统当前运行稳定。有需要处理的企业级升级申请，请点击下方按钮前往审批专区。
-                </p>
-
-                <div className="p-3 bg-red-50/50 border border-red-100 rounded-2xl mb-4 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700">待审批企业申请</span>
-                  <span className="px-2.5 py-1 bg-red-500 text-white text-xs font-black rounded-full shadow-sm">
-                    {dashboardData?.pendingApplicationsCount || 0} 项待办
-                  </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight">
+                    加入协作空间
+                  </h3>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    通过邀请码或兑换码加入团队
+                  </p>
                 </div>
               </div>
+              
+              <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+                使用同事分享的 8 位大写邀请码或安全链接，直接加入企业组织，开启团队无缝协作。
+              </p>
 
-              <a
-                href="/admin/upgrade-applications"
-                className="w-full py-2.5 bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-black rounded-xl hover:shadow-md hover:shadow-red-500/15 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <span>进入审批专区</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </a>
-            </div>
-          ) : (
-            <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300 flex flex-col justify-between">
-              <div>
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-emerald-500/20">
-                    <Users className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight">
-                      加入已有工作空间
-                    </h3>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      通过邀请码加入团队
-                    </p>
-                  </div>
-                </div>
-                
-                <p className="text-xs text-slate-600 mb-4 leading-relaxed line-clamp-2">
-                  使用同事分享的 8 位大写邀请码或安全链接，直接加入企业组织，开启团队无缝协作。
-                </p>
-
-                <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-500/15 text-left mb-4">
-                  <span className="text-[9px] text-emerald-700 font-bold block mb-0.5">快捷指南：</span>
-                  <span className="text-[9px] text-slate-500 block leading-tight">1. 输入 8 位码 ➔ 2. 自动校验 ➔ 3. 一键加入</span>
-                </div>
+              <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-500/15 text-left mb-4">
+                <span className="text-[9px] text-emerald-700 font-bold block mb-0.5">快捷指南：</span>
+                <span className="text-[9px] text-slate-500 block leading-tight">1. 输入 8 位码 ➔ 2. 自动校验 ➔ 3. 一键加入</span>
               </div>
-
-              <button
-                onClick={handleOpenJoinModal}
-                className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <span>立即输入加入</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
             </div>
-          )}
+
+            <button
+              onClick={handleOpenJoinModal}
+              className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span>立即输入加入</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
           {/* Card 5: 舟坊研发高阶组件库 (占 8 列) */}
           <div className="md:col-span-8 relative overflow-hidden bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-indigo-500/10 rounded-3xl p-6 border border-violet-500/20 shadow-md hover:shadow-[0_0_20px_rgba(139,92,246,0.15)] hover:border-violet-500/30 transition-all duration-300">
@@ -2220,6 +2143,45 @@ export default function WorkspaceHub() {
                     {usageStats ? usageStats.avgResponseTime || 0 : "-"}
                   </div>
                   <span className="text-[9px] text-slate-400 font-medium">毫秒</span>
+                </div>
+              </div>
+
+              {/* 高频调用组件 Top 3 看板 */}
+              <div className="mb-6">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">
+                  高频调用组件 Top 3
+                </div>
+                <div className="space-y-2">
+                  {dashboardData?.topComponents && dashboardData.topComponents.length > 0 ? (
+                    dashboardData.topComponents.map((comp: any, idx: number) => (
+                      <div
+                        key={comp.componentId}
+                        className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/50 hover:border-violet-500/20 hover:bg-violet-50/10 transition-all duration-300"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white ${
+                            idx === 0
+                              ? "bg-gradient-to-br from-amber-400 to-orange-500"
+                              : idx === 1
+                                ? "bg-gradient-to-br from-slate-400 to-slate-500"
+                                : "bg-gradient-to-br from-amber-600 to-amber-700"
+                          }`}>
+                            {idx + 1}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700 truncate">
+                            {comp.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-extrabold text-slate-500">
+                          {comp.callCount} 次调用
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-[10px] text-slate-400 italic py-2 text-center">
+                      暂无组件调用统计
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
