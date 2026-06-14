@@ -1425,11 +1425,23 @@ export default function WorkspaceHub() {
       }
 
       const data = await res.json();
-      setWorkspaces(data.workspaces);
-      setInvitations(data.invitations);
+      const workspacesList = data.success ? data.data : (data.workspaces || []);
+      const invitationsList = data.invitations || [];
 
-      if (data.workspaces.length > 0) {
-        setSelectedWorkspace(data.workspaces[0].id);
+      // 统一格式化为 Workspace 接口类型
+      const formattedWorkspaces = workspacesList.map((ws: any) => ({
+        id: ws.id,
+        name: ws.name,
+        type: ws.type || "ENTERPRISE",
+        memberCount: ws.memberCount ?? (ws._count?.workspacemember || 0),
+        description: ws.description || null,
+      }));
+
+      setWorkspaces(formattedWorkspaces);
+      setInvitations(invitationsList);
+
+      if (formattedWorkspaces.length > 0) {
+        setSelectedWorkspace(formattedWorkspaces[0].id);
       }
     } catch (error) {
       console.error("加载可分享空间失败:", error);
