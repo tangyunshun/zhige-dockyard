@@ -365,7 +365,7 @@ export default function CapabilitiesPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          setRecentComponents(data.data);
+          setRecentComponents(Array.from(new Set(data.data)));
         }
       }
     } catch (e) {
@@ -597,7 +597,7 @@ export default function CapabilitiesPage() {
         if (recRes.ok) {
           const data = await recRes.json();
           if (data.success) {
-            setRecentComponents(data.data);
+            setRecentComponents(Array.from(new Set(data.data)));
           }
         }
       } catch (error) {

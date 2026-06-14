@@ -95,17 +95,17 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 获取用户最近使用的组件
+    // 获取用户最近使用的组件 (进行去重保证 React Key 唯一)
     if (action === "recent") {
       const recent = await prisma.componentusage.findMany({
         where: { userId },
-        select: { componentId: true, usedAt: true },
+        select: { componentId: true },
         orderBy: { usedAt: "desc" },
-        take: 10,
       });
+      const uniqueIds = Array.from(new Set(recent.map(r => r.componentId))).slice(0, 10);
       return NextResponse.json({ 
         success: true, 
-        data: recent.map(r => r.componentId) 
+        data: uniqueIds
       });
     }
 
