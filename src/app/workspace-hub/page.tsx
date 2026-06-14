@@ -1583,8 +1583,8 @@ export default function WorkspaceHub() {
         {/* 核心 Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8">
           
-          {/* Card 1: 用户欢迎与个人空间 Bento 块 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-blue-500/20 transition-all duration-300">
+          {/* Card 1: 用户欢迎与个人空间 Bento 块 (占 8 列) */}
+          <div className="md:col-span-8 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-blue-500/20 transition-all duration-300">
             {/* 卡片装饰 */}
             <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-2xl group-hover:scale-125 transition-all duration-500" />
             
@@ -1722,10 +1722,113 @@ export default function WorkspaceHub() {
             </div>
           </div>
 
+          {/* Card 2: SVG 圆环配额进度仪表盘与 VIP 升级卡片 (占 4 列) */}
+          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
+            <div>
+              {/* 标题 */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center border border-violet-500/20">
+                    <Activity className="w-4 h-4 text-violet-500" />
+                  </div>
+                  <h3 className="text-base font-black text-slate-800 tracking-tight">
+                    算力消耗与 Quota
+                  </h3>
+                </div>
+              </div>
 
+              {/* SVG 圆环仪表盘 */}
+              <div className="relative flex items-center justify-center py-4 mb-4">
+                <div className="relative w-32 h-32 flex items-center justify-center">
+                  <svg className="w-32 h-32 transform -rotate-90">
+                    {/* 背景环 */}
+                    <circle
+                      cx="64"
+                      cy="64"
+                      r={radius}
+                      stroke="#f1f5f9"
+                      strokeWidth={strokeWidth}
+                      fill="transparent"
+                    />
+                    {/* 进度环 */}
+                    <circle
+                      cx="64"
+                      cy="64"
+                      r={radius}
+                      stroke="url(#progressGradient)"
+                      strokeWidth={strokeWidth}
+                      fill="transparent"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000 ease-out"
+                    />
+                    <defs>
+                      <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor={gradientStart} />
+                        <stop offset="100%" stopColor={gradientEnd} />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-2xl font-black text-slate-800 tracking-tighter leading-none mb-1">
+                      {tokenUsedPercent}%
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-extrabold tracking-wider uppercase">已使用</span>
+                  </div>
+                </div>
+              </div>
 
-          {/* Card 3: 企业协作空间列表 Bento 板 (若非管理员，在第一行占 8 列；若是管理员，在第二行占 8 列) */}
-          <div className={`${isAdmin ? "md:col-span-8" : "md:col-span-8"} relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300`}>
+              {/* 本月详细 Token 数额 */}
+              <div className="grid grid-cols-2 gap-2 text-center p-3 bg-slate-50 rounded-2xl border border-slate-200/50 mb-4">
+                <div>
+                  <div className="text-[9px] text-slate-400 font-bold mb-0.5">本月已用 Token</div>
+                  <div className="text-sm font-black text-slate-800">
+                    {tokenUsed.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] text-slate-400 font-bold mb-0.5">可用 Token 上限</div>
+                  <div className="text-sm font-black text-slate-800">
+                    {tokenTotal.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* VIP 升级或特权展示 */}
+            {membership === "FREE" ? (
+              <div className="p-3.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/25 rounded-2xl relative">
+                <div className="text-[10px] font-black text-amber-800 mb-1 flex items-center gap-1">
+                  <span>👑</span>
+                  <span>升级 VIP 尊享特权</span>
+                </div>
+                <p className="text-[10px] text-slate-600 leading-relaxed mb-3">
+                  立享更多算力，解锁 53 个高阶研发组件。
+                </p>
+                <button
+                  onClick={() => router.push("/pricing")}
+                  className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[10px] font-black rounded-lg shadow-sm hover:shadow-lg transition-all text-center flex items-center justify-center gap-0.5 cursor-pointer"
+                >
+                  <span>立即升级 VIP</span>
+                  <ArrowUpRight className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <div className="p-3.5 bg-gradient-to-r from-violet-500/10 to-indigo-500/10 border border-violet-500/25 rounded-2xl">
+                <div className="text-[10px] font-black text-indigo-800 mb-1 flex items-center gap-1">
+                  <span>🚀</span>
+                  <span>已尊享 VIP 专业级特权</span>
+                </div>
+                <p className="text-[10px] text-slate-600 leading-relaxed">
+                  享有多空间协同配额及全站高阶组件工坊。
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Card 3: 企业协作空间列表 Bento 板 (在第二行占 8 列) */}
+          <div className="md:col-span-8 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300">
             {/* 顶栏 */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -1822,7 +1925,7 @@ export default function WorkspaceHub() {
             ) : (
               <div className="p-5 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 border border-emerald-500/10 rounded-2xl text-left">
                 <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                  企业协作工作空间是面向工作室或研发团队的协作环境。支持多人协同开发（产品、设计、开发、测试），共享算力配额，并开启细粒度安全合规管理和组件级岗位过滤。
+                  企业协作工作空间是面向工作室或研发团队的协作环境。支持多人协同开发，共享算力配额，并开启细粒度安全合规管理和组件级岗位过滤。
                 </p>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="p-3 bg-white/60 border border-slate-200/50 rounded-xl">
@@ -1845,270 +1948,86 @@ export default function WorkspaceHub() {
             )}
           </div>
 
-          {/* Card 4: SVG 圆环配额进度仪表盘与 VIP 升级卡片 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
-            <div>
-              {/* 标题 */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center border border-violet-500/20">
-                    <Activity className="w-4 h-4 text-violet-500" />
-                  </div>
-                  <h3 className="text-base font-black text-slate-800 tracking-tight">
-                    算力消耗与 Quota
-                  </h3>
-                </div>
-              </div>
-
-              {/* SVG 圆环仪表盘 */}
-              <div className="relative flex items-center justify-center py-4 mb-4">
-                <div className="relative w-32 h-32 flex items-center justify-center">
-                  <svg className="w-32 h-32 transform -rotate-90">
-                    {/* 背景环 */}
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r={radius}
-                      stroke="#f1f5f9"
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                    />
-                    {/* 进度环 */}
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r={radius}
-                      stroke="url(#progressGradient)"
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                      strokeDasharray={circumference}
-                      strokeDashoffset={strokeDashoffset}
-                      strokeLinecap="round"
-                      className="transition-all duration-1000 ease-out"
-                    />
-                    <defs>
-                      <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor={gradientStart} />
-                        <stop offset="100%" stopColor={gradientEnd} />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-2xl font-black text-slate-800 tracking-tighter leading-none mb-1">
-                      {tokenUsedPercent}%
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-extrabold tracking-wider uppercase">已使用</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 本月详细 Token 数额 */}
-              <div className="grid grid-cols-2 gap-2 text-center p-3 bg-slate-50 rounded-2xl border border-slate-200/50 mb-4">
-                <div>
-                  <div className="text-[9px] text-slate-400 font-bold mb-0.5">本月已用 Token</div>
-                  <div className="text-sm font-black text-slate-800">
-                    {tokenUsed.toLocaleString()}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-slate-400 font-bold mb-0.5">可用 Token 上限</div>
-                  <div className="text-sm font-black text-slate-800">
-                    {tokenTotal.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* VIP 升级或特权展示 */}
-            {membership === "FREE" ? (
-              <div className="p-3.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/25 rounded-2xl relative">
-                <div className="text-[10px] font-black text-amber-800 mb-1 flex items-center gap-1">
-                  <span>👑</span>
-                  <span>开通黄金/钻石 VIP 尊享特权</span>
-                </div>
-                <p className="text-[10px] text-slate-600 leading-relaxed mb-3">
-                  立享 50,000+ 算力，解锁 53 个高阶研发组件并允许最多创建 3 个企业协同空间。
-                </p>
-                <button
-                  onClick={() => router.push("/pricing")}
-                  className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[10px] font-black rounded-lg shadow-sm hover:shadow-lg transition-all text-center flex items-center justify-center gap-0.5 cursor-pointer"
-                >
-                  <span>立即升级 VIP</span>
-                  <ArrowUpRight className="w-3 h-3" />
-                </button>
-              </div>
-            ) : (
-              <div className="p-3.5 bg-gradient-to-r from-violet-500/10 to-indigo-500/10 border border-violet-500/25 rounded-2xl">
-                <div className="text-[10px] font-black text-indigo-800 mb-1 flex items-center gap-1">
-                  <span>🚀</span>
-                  <span>您已尊享 VIP 专业级特权</span>
-                </div>
-                <p className="text-[10px] text-slate-600 leading-relaxed">
-                  享有多空间协同配额及全站高阶工坊组件，感谢您支持极客生态。
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Card 5: 个人空间设置 Bento 卡片 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-slate-400/20 transition-all duration-300">
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-slate-200/80 flex items-center justify-center flex-shrink-0 shadow-sm border border-slate-300/30">
-                <Settings className="w-5 h-5 text-slate-600" />
-              </div>
+          {/* Card 4': 动态导流卡片 (在第二行占 4 列) */}
+          {isAdmin ? (
+            <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-red-500/20 transition-all duration-300 flex flex-col justify-between">
               <div>
-                <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight">
-                  个人空间设置
-                </h3>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  研发偏好及第三方配置
-                </p>
-              </div>
-            </div>
-            
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed line-clamp-2">
-              配置个人编辑器快捷键、数据备份与导出、API-Key 第三方应用授权及云服务器部署。
-            </p>
-
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-left">
-                <span className="text-[10px] font-bold text-slate-700 block mb-0.5">偏好配置</span>
-                <span className="text-[9px] text-slate-400">主题、快捷键</span>
-              </div>
-              <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-left">
-                <span className="text-[10px] font-bold text-slate-700 block mb-0.5">集成管理</span>
-                <span className="text-[9px] text-slate-400">Git 与 Webhook</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleGoToPersonalSettings}
-              className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-blue-500 transition-all cursor-pointer"
-            >
-              <span>直达个人设置</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-          </div>
-
-          {/* Card 6: 加入已有空间 Bento 卡片 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300">
-            <div className="flex items-start gap-4 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-emerald-500/20">
-                <Users className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight">
-                  加入已有工作空间
-                </h3>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  通过邀请码加入团队
-                </p>
-              </div>
-            </div>
-            
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed line-clamp-2">
-              使用同事分享的 8 位大写邀请码或安全链接，直接加入企业组织，开启团队无缝协作。
-            </p>
-
-            <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-500/15 text-left mb-4">
-              <span className="text-[9px] text-emerald-700 font-bold block mb-0.5">快捷指南：</span>
-              <span className="text-[9px] text-slate-500 block leading-tight">1. 输入 8 位码 ➔ 2. 自动校验 ➔ 3. 一键加入</span>
-            </div>
-
-            <button
-              onClick={handleOpenJoinModal}
-              className="flex items-center gap-1 text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-all cursor-pointer"
-            >
-              <span>立即输入加入</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-          </div>
-
-          {/* Card 7: 极客后台管理/组件库导航 Bento 快捷卡片 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300">
-            {isAdmin ? (
-              <>
                 <div className="flex items-start gap-4 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-red-500/20">
-                    <ShieldCheck className="w-5 h-5 text-red-500" />
+                    <ShieldCheck className="w-5 h-5 text-red-500 animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight">
-                      系统超级后台
+                    <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight flex items-center gap-1.5">
+                      <span>超级管理员中枢</span>
+                      {dashboardData?.pendingApplicationsCount && dashboardData.pendingApplicationsCount > 0 ? (
+                        <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                      ) : null}
                     </h3>
                     <p className="text-[10px] text-red-500 font-bold mt-1">
-                      超管级运维入口
+                      运维红点与监控导流
                     </p>
                   </div>
                 </div>
                 
-                <p className="text-xs text-slate-600 mb-4 leading-relaxed line-clamp-2">
-                  进行系统全局监控、安全合规审计、申诉仲裁待办处理以及进行全局核心配额调整。
+                <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+                  系统当前运行稳定。有需要处理的企业级升级申请，请点击下方按钮前往审批专区。
                 </p>
 
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  <a href="/admin/workspaces" className="p-2 bg-slate-50 hover:bg-red-50 rounded-xl border border-slate-200 text-left block">
-                    <span className="text-[10px] font-bold text-slate-700 block">审批管理</span>
-                    <span className="text-[8px] text-slate-400">企业升级</span>
-                  </a>
-                  <a href="/admin/appeals" className="p-2 bg-slate-50 hover:bg-red-50 rounded-xl border border-slate-200 text-left block">
-                    <span className="text-[10px] font-bold text-slate-700 block">申诉处理</span>
-                    <span className="text-[8px] text-slate-400">账号解封</span>
-                  </a>
+                <div className="p-3 bg-red-50/50 border border-red-100 rounded-2xl mb-4 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">待审批企业申请</span>
+                  <span className="px-2.5 py-1 bg-red-500 text-white text-xs font-black rounded-full shadow-sm">
+                    {dashboardData?.pendingApplicationsCount || 0} 项待办
+                  </span>
                 </div>
+              </div>
 
-                <a
-                  href="/admin"
-                  className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-600 transition-all cursor-pointer"
-                >
-                  <span>进入后台管理系统</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                </a>
-              </>
-            ) : (
-              <>
+              <a
+                href="/admin/upgrade-applications"
+                className="w-full py-2.5 bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-black rounded-xl hover:shadow-md hover:shadow-red-500/15 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <span>进入审批专区</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          ) : (
+            <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300 flex flex-col justify-between">
+              <div>
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-blue-500/20">
-                    <Terminal className="w-5 h-5 text-blue-500" />
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-emerald-500/20">
+                    <Users className="w-5 h-5 text-emerald-600" />
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight">
-                      组件开发 Studio
+                      加入已有工作空间
                     </h3>
-                    <p className="text-[10px] text-blue-500 mt-1">
-                      组件工坊直达通道
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      通过邀请码加入团队
                     </p>
                   </div>
                 </div>
                 
                 <p className="text-xs text-slate-600 mb-4 leading-relaxed line-clamp-2">
-                  直接进入组件研发工坊，浏览全套 53 个高阶云端极客组件，支持低代码及生成。
+                  使用同事分享的 8 位大写邀请码或安全链接，直接加入企业组织，开启团队无缝协作。
                 </p>
 
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  <button onClick={handleGoToStudio} className="p-2 bg-slate-50 hover:bg-blue-50 rounded-xl border border-slate-200 text-left block">
-                    <span className="text-[10px] font-bold text-slate-700 block">组件工坊</span>
-                    <span className="text-[8px] text-slate-400">组件设计器</span>
-                  </button>
-                  <button onClick={handleGoToGuide} className="p-2 bg-slate-50 hover:bg-blue-50 rounded-xl border border-slate-200 text-left block">
-                    <span className="text-[10px] font-bold text-slate-700 block">说明手册</span>
-                    <span className="text-[8px] text-slate-400">开发指南</span>
-                  </button>
+                <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-500/15 text-left mb-4">
+                  <span className="text-[9px] text-emerald-700 font-bold block mb-0.5">快捷指南：</span>
+                  <span className="text-[9px] text-slate-500 block leading-tight">1. 输入 8 位码 ➔ 2. 自动校验 ➔ 3. 一键加入</span>
                 </div>
+              </div>
 
-                <button
-                  onClick={handleGoToStudio}
-                  className="flex items-center gap-1 text-xs font-bold text-blue-500 hover:text-blue-600 transition-all cursor-pointer"
-                >
-                  <span>立即启动组件工坊</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                </button>
-              </>
-            )}
-          </div>
+              <button
+                onClick={handleOpenJoinModal}
+                className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <span>立即输入加入</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
-          {/* Card 8: 舟坊空间组件库大看板 (占 12 列) */}
-          <div className="md:col-span-12 relative overflow-hidden bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-indigo-500/10 rounded-3xl p-6 border border-violet-500/20 shadow-md">
+          {/* Card 5: 舟坊研发高阶组件库 (占 8 列) */}
+          <div className="md:col-span-8 relative overflow-hidden bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-indigo-500/10 rounded-3xl p-6 border border-violet-500/20 shadow-md hover:shadow-[0_0_20px_rgba(139,92,246,0.15)] hover:border-violet-500/30 transition-all duration-300">
             {/* 头部 */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-4">
@@ -2120,7 +2039,7 @@ export default function WorkspaceHub() {
                     舟坊研发高阶组件库
                   </h2>
                   <p className="text-xs text-slate-500 mt-1">
-                    提供覆盖软件全生命周期（设计、开发、测试、运维）的 53 个云端高阶极客组件
+                    提供覆盖软件全生命周期的 53 个云端高阶极客组件
                   </p>
                 </div>
               </div>
@@ -2136,15 +2055,15 @@ export default function WorkspaceHub() {
                   onClick={handleGoToStudio}
                   className="px-4 py-2.5 bg-gradient-to-r from-violet-500 to-indigo-600 text-white text-xs font-black rounded-xl hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  <span>浏览全量组件</span>
+                  <span>浏览全量</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
             {/* 阶段组件展示 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {componentStages.slice(0, 3).map((stage, index) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {componentStages.slice(0, 2).map((stage, index) => (
                 <div
                   key={stage.name}
                   onClick={() => handleGoToStage(index)}
@@ -2256,138 +2175,83 @@ export default function WorkspaceHub() {
               ))}
             </div>
           </div>
-        </div>
 
-        {/* 第三行：使用统计 */}
-        <div className="bg-white/80 backdrop-blur-xl rounded-xl p-6 border border-[#e2e8f0]/80">
-          <h3 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-[#f59e0b]" />
-            我的使用统计
-          </h3>
-
-          {/* 第一行：核心指标 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          {/* Card 6: 科技感使用统计卡片 (占 4 列) */}
+          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
             <div>
-              <div className="text-xs text-slate-600 mb-1">累计组件调用</div>
-              <div className="text-2xl font-black text-slate-800">
-                {usageStats
-                  ? (usageStats.totalComponentCalls || 0).toLocaleString()
-                  : "-"}
-              </div>
-              <div className="text-xs text-slate-500">次</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-600 mb-1">活跃组件</div>
-              <div className="text-2xl font-black text-[#3182ce]">
-                {usageStats ? usageStats.activeComponents || 0 : "-"}
-              </div>
-              <div className="text-xs text-slate-500">个</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-600 mb-1">成功率</div>
-              <div className="text-2xl font-black text-[#10b981]">
-                {usageStats ? usageStats.successRate || 0 : "-"}
-              </div>
-              <div className="text-xs text-slate-500">%</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-600 mb-1">平均响应时间</div>
-              <div className="text-2xl font-black text-slate-800">
-                {usageStats ? usageStats.avgResponseTime || 0 : "-"}
-              </div>
-              <div className="text-xs text-slate-500">毫秒</div>
-            </div>
-          </div>
-
-          {/* 第二行：空间和组件统计 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-4 bg-slate-50 rounded-xl">
-            <div>
-              <div className="text-xs text-slate-600 mb-1">个人空间</div>
-              <div className="text-xl font-black text-[#3182ce]">
-                {usageStats ? usageStats.personalSpaceCount || 0 : "-"}
-              </div>
-              <div className="text-xs text-slate-500">个</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-600 mb-1">企业空间</div>
-              <div className="text-xl font-black text-[#f59e0b]">
-                {usageStats ? usageStats.enterpriseSpaceCount || 0 : "-"}
-              </div>
-              <div className="text-xs text-slate-500">个</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-600 mb-1">协作成员</div>
-              <div className="text-xl font-black text-[#10b981]">
-                {usageStats ? usageStats.totalMembers || 0 : "-"}
-              </div>
-              <div className="text-xs text-slate-500">人</div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-600 mb-1">总组件数</div>
-              <div className="text-xl font-black text-[#8b5cf6]">
-                {usageStats ? usageStats.totalComponents || 0 : "-"}
-              </div>
-              <div className="text-xs text-slate-500">个</div>
-            </div>
-          </div>
-
-          {/* 第三行：Token 消耗和最近活动 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-gradient-to-br from-[#f59e0b]/5 to-[#d97706]/5 rounded-xl border border-[#f59e0b]/20">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center">
-                  <Zap className="w-3 h-3 text-white" />
-                </div>
-                <div className="text-sm font-black text-slate-800">
-                  Token 消耗统计
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">本月消耗</div>
-                  <div className="text-lg font-black text-[#f59e0b]">
-                    {usageStats
-                      ? (usageStats.monthlyTokens || 0).toLocaleString()
-                      : "-"}
+              {/* 标题 */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                    <TrendingUp className="w-4 h-4 text-amber-500" />
                   </div>
-                  <div className="text-xs text-slate-400">tokens</div>
+                  <h3 className="text-base font-black text-slate-800 tracking-tight">
+                    我的使用统计
+                  </h3>
                 </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">总计消耗</div>
-                  <div className="text-lg font-black text-slate-800">
-                    {usageStats
-                      ? (usageStats.totalTokens || 0).toLocaleString()
-                      : "-"}
+              </div>
+
+              {/* 4 个指标气泡 */}
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
+                  <div className="text-[10px] text-slate-400 font-bold mb-1">累计调用</div>
+                  <div className="text-base font-black text-slate-800">
+                    {usageStats ? (usageStats.totalComponentCalls || 0).toLocaleString() : "-"}
                   </div>
-                  <div className="text-xs text-slate-400">tokens</div>
+                  <span className="text-[9px] text-slate-400 font-medium">次</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
+                  <div className="text-[10px] text-slate-400 font-bold mb-1">活跃组件</div>
+                  <div className="text-base font-black text-blue-500">
+                    {usageStats ? usageStats.activeComponents || 0 : "-"}
+                  </div>
+                  <span className="text-[9px] text-slate-400 font-medium">个</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
+                  <div className="text-[10px] text-slate-400 font-bold mb-1">调用成功率</div>
+                  <div className="text-base font-black text-emerald-500">
+                    {usageStats ? usageStats.successRate || 0 : "-"}
+                  </div>
+                  <span className="text-[9px] text-slate-400 font-medium">%</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
+                  <div className="text-[10px] text-slate-400 font-bold mb-1">平均响应</div>
+                  <div className="text-base font-black text-slate-800">
+                    {usageStats ? usageStats.avgResponseTime || 0 : "-"}
+                  </div>
+                  <span className="text-[9px] text-slate-400 font-medium">毫秒</span>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 bg-gradient-to-br from-[#10b981]/5 to-[#059669]/5 rounded-xl border border-[#10b981]/20">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center">
-                  <Activity className="w-3 h-3 text-white" />
-                </div>
-                <div className="text-sm font-black text-slate-800">
-                  最近活动
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">近 7 天任务</div>
-                  <div className="text-lg font-black text-[#10b981]">
-                    {usageStats ? usageStats.recentActivity || 0 : "-"}
-                  </div>
-                  <div className="text-xs text-slate-400">个任务</div>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">完成率</div>
-                  <div className="text-lg font-black text-slate-800">
-                    {usageStats ? usageStats.completionRate || 0 : "-"}
-                  </div>
-                  <div className="text-xs text-slate-400">%</div>
-                </div>
+            {/* 底部 SVG 微光科技趋势线 */}
+            <div className="relative h-16 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/5 to-indigo-500/5 border border-violet-500/10">
+              <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
+                <defs>
+                  <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.2"/>
+                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/>
+                  </linearGradient>
+                </defs>
+                {/* 趋势填充阴影 */}
+                <path
+                  d="M 0 40 Q 15 20, 30 25 T 60 10 T 90 20 T 100 15 L 100 40 Z"
+                  fill="url(#trendGradient)"
+                />
+                {/* 趋势折线 */}
+                <path
+                  d="M 0 40 Q 15 20, 30 25 T 60 10 T 90 20 T 100 15"
+                  fill="none"
+                  stroke="#8b5cf6"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                {/* 脉冲亮点效果 */}
+                <circle cx="60" cy="10" r="2" fill="#8b5cf6" className="animate-ping" style={{ transformOrigin: '60px 10px' }} />
+                <circle cx="60" cy="10" r="1.5" fill="#8b5cf6" />
+              </svg>
+              <div className="absolute top-2 left-3 text-[9px] font-black text-violet-600/70 tracking-wider uppercase">
+                算力趋势律动
               </div>
             </div>
           </div>
