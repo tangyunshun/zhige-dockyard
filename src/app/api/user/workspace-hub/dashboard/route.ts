@@ -262,7 +262,7 @@ export async function GET(request: NextRequest) {
 
     // 4. 管理员专属宏观指标与滚动审批任务拉取
     let systemStats = null;
-    let pendingApplications: any[] = [];
+    let pendingApplicationsCount = 0;
 
     if (isAdmin) {
       // 并行拉取全系统关键运维指标
@@ -272,7 +272,7 @@ export async function GET(request: NextRequest) {
         totalComponents,
         systemMonthUsageCount,
         systemTotalUsageCount,
-        applications,
+        pendingCount,
       ] = await Promise.all([
         prisma.user.count(),
         prisma.workspace.count(),
@@ -281,18 +281,8 @@ export async function GET(request: NextRequest) {
           where: { usedAt: { gte: startOfMonth } },
         }),
         prisma.componentusage.count(),
-        prisma.upgradeapplication.findMany({
+        prisma.upgradeapplication.count({
           where: { status: "PENDING" },
-          take: 5,
-          include: {
-            user: {
-              select: { id: true, name: true, email: true, phone: true },
-            },
-            workspace: {
-              select: { id: true, name: true },
-            },
-          },
-          orderBy: { submittedAt: "desc" },
         }),
       ]);
 
@@ -304,19 +294,7 @@ export async function GET(request: NextRequest) {
         totalTokens: systemTotalUsageCount * 120,
       };
 
-      pendingApplications = applications.map(app => ({
-        id: app.id,
-        workspaceId: app.workspaceId,
-        workspaceName: app.workspace?.name || "未知空间",
-        userId: app.userId,
-        userName: app.user?.name || "未知用户",
-        userEmail: app.user?.email || "",
-        companyName: app.companyName,
-        contactName: app.contactName,
-        contactPhone: app.contactPhone,
-        status: app.status,
-        submittedAt: app.submittedAt,
-      }));
+      pendingApplicationsCount = pendingCount;
     }
 
     // 5. 组装并返回 Bento Dashboard 的完整聚合数据，防前端多次加载引起的网络开销
@@ -334,7 +312,7 @@ export async function GET(request: NextRequest) {
         enterpriseWorkspaces,
         userQuota,
         systemStats,
-        pendingApplications,
+        pendingApplicationsCount,
       },
     });
   } catch (error) {
