@@ -14,6 +14,15 @@ export default function GlobalHeader() {
   const { userState, isLoading } = useAppContext();
 
   const isWorkspaceRoute = pathname.startsWith("/workspace/") && pathname !== "/workspace-hub";
+  
+  const isDevelopmentRoute = pathname && (
+    pathname.startsWith("/workspace-hub") || 
+    pathname.startsWith("/studio") || 
+    pathname.startsWith("/workspace") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/user") ||
+    pathname.startsWith("/settings")
+  );
 
   return (
     <header className="h-[60px] fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-white/95 border-b border-slate-200/80 shadow-sm">
@@ -74,7 +83,7 @@ export default function GlobalHeader() {
               >
                 登录/注册
               </button>
-              <DynamicCTA size="sm" />
+              {!isDevelopmentRoute && <DynamicCTA size="sm" />}
             </>
           ) : (
             <>
@@ -84,7 +93,7 @@ export default function GlobalHeader() {
                   <Search className="w-5 h-5 text-slate-500" />
                 </button>
               )}
-              <DynamicCTA size="sm" />
+              {!isDevelopmentRoute && <DynamicCTA size="sm" />}
               <AvatarDropdown />
             </>
           )}

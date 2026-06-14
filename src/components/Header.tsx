@@ -30,7 +30,10 @@ export default function Header() {
   const isDevelopmentRoute = pathname && (
     pathname.startsWith("/workspace-hub") || 
     pathname.startsWith("/studio") || 
-    pathname.startsWith("/workspace")
+    pathname.startsWith("/workspace") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/user") ||
+    pathname.startsWith("/settings")
   );
   const handleLogout = useLogout();
   const [isLoggedIn, setIsLoggedIn] = useState(false);

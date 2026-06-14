@@ -867,8 +867,17 @@ export default function CapabilitiesPage() {
   };
 
   // 从最近使用中移除单个记录
-  const removeFromRecent = (componentId: string) => {
+  const removeFromRecent = async (componentId: string) => {
     setRecentComponents((prev) => prev.filter((id) => id !== componentId));
+    try {
+      const userId = localStorage.getItem("userId");
+      await fetch(`/api/studio?action=remove-recent&componentId=${componentId}`, {
+        method: "DELETE",
+        headers: userId ? { Authorization: `Bearer ${userId}` } : {},
+      });
+    } catch (err) {
+      console.error("Failed to delete recent component:", err);
+    }
   };
 
   // 处理搜索
@@ -1648,17 +1657,6 @@ export default function CapabilitiesPage() {
 
       <section className="relative pt-6 pb-16 px-6">
         <div className="max-w-7xl mx-auto">
-          {/* Breadcrumb Return Button */}
-          <div className="flex items-center gap-2 mb-6">
-            <button
-              onClick={() => router.push(userState.isLoggedIn ? "/workspace-hub" : "/")}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#2b6cb0] transition-colors px-3 py-1.5 bg-white/80 backdrop-blur-sm rounded-lg border border-slate-200/50 shadow-sm hover:shadow-md cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              返回{userState.isLoggedIn ? "工作空间主页" : "官网首页"}
-            </button>
-          </div>
-
           <div className="text-center mb-6">
             <div
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-3"

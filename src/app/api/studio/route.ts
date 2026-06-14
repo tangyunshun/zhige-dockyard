@@ -736,6 +736,17 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // 删除单条最近使用记录
+    if (action === "remove-recent" && componentId) {
+      await prisma.componentusage.deleteMany({
+        where: { 
+          userId,
+          componentId,
+        },
+      });
+      return NextResponse.json({ success: true });
+    }
+
     return NextResponse.json({ 
       success: false, 
       error: "缺少 action 参数" 

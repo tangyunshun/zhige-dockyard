@@ -696,6 +696,8 @@ function StudioContent() {
   const { userState } = useAppContext();
   const searchParams = useSearchParams();
   const queryWorkspaceId = searchParams?.get("workspaceId");
+  const queryComponentId = searchParams?.get("componentId");
+  const queryStage = searchParams?.get("stage");
 
   const workspaces = userState?.workspaces || [];
   const currentWorkspace = workspaces.find(w => w.id === queryWorkspaceId)
@@ -997,6 +999,103 @@ function StudioContent() {
     localStorage.setItem("studio_view_mode", viewMode);
   }, [favorites, recentlyUsed, viewMode]);
 
+  // 智能定位、滚动、高亮并自动打开来自中控台或宣发页的组件/阶段 (体验与数据流大闭环)
+  useEffect(() => {
+    // 优先处理组件定位
+    if (queryComponentId) {
+      // 1. 查找组件所处的阶段
+      let foundStageIndex = -1;
+      for (let i = 0; i < componentStages.length; i++) {
+        const stage = componentStages[i];
+        if (stage.components.some((c: any) => c.id === queryComponentId)) {
+          foundStageIndex = i;
+          break;
+        }
+      }
+
+      // 如果筛选了某个不匹配的阶段，重置为“全部阶段 (-1)”以防止组件被过滤隐藏
+      if (foundStageIndex !== -1 && selectedStage !== -1 && selectedStage !== foundStageIndex) {
+        setSelectedStage(-1);
+      }
+
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`component-${queryComponentId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+          // 设置高亮
+          setHighlightedComponent(queryComponentId);
+          setTimeout(() => {
+            setHighlightedComponent(null);
+          }, 3000);
+        }
+        // 自动展开右侧面板
+        openComponentDetail(queryComponentId);
+      }, 600);
+
+      return () => clearTimeout(timer);
+    }
+    
+    // 如果没有组件定位，但有阶段定位
+    if (queryStage) {
+      const stageIdx = parseInt(queryStage);
+      if (!isNaN(stageIdx) && stageIdx >= 0 && stageIdx < componentStages.length) {
+        // 自动筛选该阶段以聚焦
+        setSelectedStage(stageIdx);
+        
+        const timer = setTimeout(() => {
+          const element = document.getElementById(`stage-container-${stageIdx}`);
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 600);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [queryComponentId, queryStage]);
+
+  // 智能定位、高亮并自动打开来自外部导流（如 capabilities 页面）的组件 (体验闭环)
+  useEffect(() => {
+    if (!queryComponentId) return;
+    
+    // 1. 查找该组件属于哪一个阶段
+    let foundStageIndex = -1;
+    for (let i = 0; i < componentStages.length; i++) {
+      const stage = componentStages[i];
+      if (stage.components.some((c) => c.id === queryComponentId)) {
+        foundStageIndex = i;
+        break;
+      }
+    }
+
+    if (foundStageIndex !== -1) {
+      // 2. 自动将该阶段设为展开状态
+      setExpandedStages((prev) => ({
+        ...prev,
+        [foundStageIndex]: true,
+      }));
+
+      // 3. 延迟等 DOM 渲染完毕，然后定位滚动并高亮
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`component-${queryComponentId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+          
+          // 设置高亮组件以在 UI 上做出高亮闪烁效果
+          setHighlightedComponent(queryComponentId);
+          setTimeout(() => {
+            setHighlightedComponent(null);
+          }, 3000);
+        }
+        
+        // 4. 自动打开配置详情面板
+        openComponentDetail(queryComponentId);
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [queryComponentId]);
+
   // 高亮显示的组件 ID
   const [highlightedComponent, setHighlightedComponent] = useState<
     string | null
@@ -1169,7 +1268,6 @@ function StudioContent() {
   const openComponentDetail = (componentId: string) => {
     setSelectedComponent(componentId);
     setShowDetail(true);
-    addToRecentlyUsed(componentId);
   };
 
   // 使用组件
@@ -1775,11 +1873,20 @@ function StudioContent() {
 
                       {/* 右上角删除按钮 */}
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           setRecentlyUsed(
                             recentlyUsed.filter((id) => id !== componentId),
                           );
+                          try {
+                            const userId = localStorage.getItem("userId");
+                            await fetch(`/api/studio?action=remove-recent&componentId=${componentId}`, {
+                              method: "DELETE",
+                              headers: userId ? { Authorization: `Bearer ${userId}` } : {},
+                            });
+                          } catch (err) {
+                            console.error("Failed to delete recent component:", err);
+                          }
                         }}
                         className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm border-2 border-slate-200 flex items-center justify-center hover:scale-110 hover:border-[#ef4444] transition-all z-20 cursor-pointer opacity-0 group-hover:opacity-100"
                         title="删除此记录"
@@ -2226,6 +2333,7 @@ function StudioContent() {
               return (
                 <div
                   key={stageIndex}
+                  id={`stage-container-${stageIndex}`}
                   className="bg-white/80 backdrop-blur-xl rounded-xl border border-[#e2e8f0] overflow-hidden"
                 >
                   {/* 阶段标题 */}
@@ -2469,7 +2577,7 @@ function StudioContent() {
               if (componentsToShow.length === 0) return null;
 
               return (
-                <div key={stageIndex} className="mb-10">
+                <div key={stageIndex} id={`stage-container-${stageIndex}`} className="mb-10">
                   {/* 阶段标题 - 优化版（带展开/收起） */}
                   <div className="mb-6 relative">
                     <div className="flex items-center gap-3 mb-3">

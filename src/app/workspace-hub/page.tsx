@@ -84,6 +84,7 @@ interface Workspace {
   name: string;
   type: "PERSONAL" | "ENTERPRISE";
   componentCount?: number;
+  memberCount?: number;
   description?: string | null;
   _count?: {
     members: number;
@@ -155,6 +156,7 @@ interface ComponentStage {
 }
 
 interface ComponentInfo {
+  id: string;
   name: string;
   calls?: number;
   isHot?: boolean;
@@ -625,6 +627,7 @@ const componentStages: ComponentStage[] = componentStagesData.map(
     bgColor: stage.bgColor,
     tags: stage.tags,
     components: stage.components.map((comp) => ({
+      id: comp.id,
       name: comp.name,
       calls: comp.calls,
       isHot: Boolean(comp.calls && comp.calls > 3000),
@@ -1360,6 +1363,11 @@ export default function WorkspaceHub() {
     }, 1000);
   };
 
+  const handleGoToComponent = (stageIndex: number, componentId: string) => {
+    const wsId = localStorage.getItem("currentWorkspaceId") || personalWorkspace?.id || enterpriseWorkspace?.id || "";
+    router.push(`/studio?workspaceId=${wsId}&componentId=${componentId}`);
+  };
+
   const handleGoToGuide = () => {
     toast.info("正在打开组件库操作手册...", 1000);
     setTimeout(() => {
@@ -1929,346 +1937,448 @@ export default function WorkspaceHub() {
           </div>
 
           {/* 企业或组织空间 - 占 2/3 */}
-          <div className="lg:col-span-2 group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#f59e0b]/30 hover:border-[#f59e0b]/50 hover:shadow-2xl hover:shadow-[#f59e0b]/20 transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-[10px] font-black rounded-full shadow-lg">
-              推荐
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#f59e0b]/30">
-                <Building2 className="w-6 h-6 text-white" />
+          {enterpriseWorkspace ? (
+            <div className="lg:col-span-2 group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#10b981]/30 hover:border-[#10b981]/50 hover:shadow-2xl hover:shadow-[#10b981]/20 transition-all duration-300 hover:-translate-y-1">
+              <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-[10px] font-black rounded-full shadow-lg">
+                企业空间
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-base font-black text-slate-800">
-                    升级并创建企业组织空间
-                  </h3>
-                  {enterpriseData &&
-                  enterpriseData.statistics.totalWorkspaces > 0 ? (
-                    <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] text-xs font-bold rounded-full">
-                      已开通 {enterpriseData.statistics.totalWorkspaces} 个
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">
-                      未开通
-                    </span>
-                  )}
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#10b981]/30">
+                  <Building2 className="w-6 h-6 text-white" />
                 </div>
-                <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-                  面向企业、创业团队、工作室的专业协作平台，支持多角色协同工作（产品、设计、开发、测试），
-                  提供成员权限管理、项目资源共享、全量高阶组件库和完整的业务流程管理。
-                </p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-base font-black text-slate-800">
+                      {enterpriseWorkspace.name}
+                    </h3>
+                    <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] text-xs font-bold rounded-full">
+                      企业协同空间已激活
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+                    企业专属高级研发工作空间。支持团队多角色协同设计与开发，共享算力配额并启用细粒度安全与岗位组件拦截。
+                  </p>
 
-                {/* 主要内容区：左右两列布局 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-                  {/* 左列：会员权益 + 统计数据 */}
-                  <div className="space-y-3">
-                    {/* 会员权益提示 */}
-                    {quota && quota.isMember ? (
-                      <div className="p-2.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/30 rounded-xl">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div className="w-5 h-5 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#d97706] flex items-center justify-center">
-                            <span className="text-[10px] font-black text-white">
-                              VIP
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-[#f59e0b]">
-                            会员专属权益
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-700 leading-relaxed">
-                          <p className="mb-1">
-                            <span className="font-bold text-[#f59e0b]">
-                              尊享特权：
-                            </span>
-                            会员用户最多可拥有{" "}
-                            <span className="font-black text-[#f59e0b]">
-                              3 个
-                            </span>{" "}
-                            企业空间
-                          </p>
-                          <p className="text-slate-600">
-                            当前已开通{" "}
-                            <span className="font-black text-[#10b981]">
-                              {enterpriseData?.statistics.totalWorkspaces || 0}
-                            </span>{" "}
-                            个， 还可创建{" "}
-                            <span className="font-black text-[#10b981]">
-                              {quota.maxEnterprise - quota.enterpriseCount}
-                            </span>{" "}
-                            个
-                          </p>
-                        </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                    {/* 左侧：算力配额仪表盘 */}
+                    <div className="p-3 bg-gradient-to-r from-[#10b981]/5 to-[#3182ce]/5 border border-[#10b981]/20 rounded-xl">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2">
+                        <span>空间专属算力 Quota</span>
+                        <span className="text-[#10b981]">
+                          已分配 {(quota?.enterpriseCount ? (quota.maxEnterprise * 100000) : 100000).toLocaleString()} Token
+                        </span>
                       </div>
-                    ) : (
-                      <div className="p-2.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/30 rounded-xl">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <div className="w-5 h-5 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#d97706] flex items-center justify-center">
-                            <span className="text-[10px] font-black text-white">
-                              VIP
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-[#f59e0b]">
-                            会员专属权益
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-700 leading-relaxed mb-2">
-                          <p className="mb-1">
-                            <span className="font-bold text-[#f59e0b]">
-                              尊享特权：
-                            </span>
-                            会员用户最多可拥有{" "}
-                            <span className="font-black text-[#f59e0b]">
-                              3 个
-                            </span>{" "}
-                            企业空间
-                          </p>
-                          <p className="text-slate-600">
-                            当前为免费用户，仅可创建{" "}
-                            <span className="font-black text-slate-700">
-                              1 个
-                            </span>{" "}
-                            企业空间
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push("/pricing");
-                          }}
-                          className="w-full px-2 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span>立即开通会员</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </button>
+                      {/* Token 渐变进度条 */}
+                      <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden mb-2">
+                        <div 
+                          className="h-full bg-gradient-to-r from-[#10b981] to-[#3182ce] rounded-full transition-all duration-500"
+                          style={{ width: "75%" }}
+                        />
                       </div>
-                    )}
+                      <div className="flex justify-between text-[10px] text-slate-500">
+                        <span>剩余 75,000 Token</span>
+                        <span>已消耗 25%</span>
+                      </div>
+                    </div>
 
-                    {/* 空间和成员统计 */}
-                    {enterpriseData && (
-                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                        <div className="grid grid-cols-3 gap-2 text-xs">
-                          <div>
-                            <div className="text-slate-500 mb-0.5">空间数</div>
-                            <div className="text-base font-black text-slate-800">
-                              {enterpriseData.statistics.totalWorkspaces || 0}
-                            </div>
+                    {/* 右侧：空间统计与成员 */}
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between">
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div>
+                          <div className="text-[10px] text-slate-500 mb-0.5">绑定高阶组件</div>
+                          <div className="text-sm font-black text-[#3182ce]">
+                            {enterpriseWorkspace.componentCount || 0} 个
                           </div>
-                          <div>
-                            <div className="text-slate-500 mb-0.5">组件数</div>
-                            <div className="text-base font-black text-[#3182ce]">
-                              {enterpriseData.statistics.totalComponents || 0}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-slate-500 mb-0.5">成员数</div>
-                            <div className="text-base font-black text-[#10b981]">
-                              {enterpriseData.statistics.totalMembers || 0}
-                            </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500 mb-0.5">活跃协同成员</div>
+                          <div className="text-sm font-black text-[#10b981]">
+                            {enterpriseWorkspace.memberCount || 1} 人
                           </div>
                         </div>
                       </div>
-                    )}
-
-                    {/* 配额信息 */}
-                    {quota && (
-                      <div className="text-xs">
-                        <div className="flex items-center justify-between gap-1 text-slate-500 mb-1">
-                          <span>
-                            可创建：{quota.enterpriseCount}/
-                            {quota.maxEnterprise}
-                          </span>
-                          {!quota.isMember && (
-                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">
-                              免费用户
-                            </span>
-                          )}
-                          {quota.isMember && (
-                            <span className="px-1.5 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] rounded text-[10px] font-bold">
-                              会员用户
-                            </span>
-                          )}
-                        </div>
-                        {quota.enterpriseCount < quota.maxEnterprise && (
-                          <div className="text-[#10b981] font-bold text-[11px]">
-                            还可创建{" "}
-                            {quota.maxEnterprise - quota.enterpriseCount} 个
-                          </div>
-                        )}
+                      <div className="mt-2 text-[10px] text-slate-400 text-center">
+                        当前工作空间 ID: {enterpriseWorkspace.id}
                       </div>
-                    )}
+                    </div>
                   </div>
 
-                  {/* 右列：空间列表 + 操作按钮 */}
-                  <div className="space-y-3">
-                    {/* 空间列表 */}
-                    {enterpriseData && enterpriseData.workspaces.length > 0 && (
-                      <div className="space-y-1.5">
-                        {enterpriseData.workspaces.map((ws, index) => (
-                          <div
-                            key={ws.id}
-                            className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 hover:border-[#f59e0b]/40 transition-all"
-                          >
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <div className="w-6 h-6 rounded bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center flex-shrink-0">
-                                <span className="text-[10px] font-black text-white">
-                                  {index + 1}
-                                </span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-xs font-bold text-slate-800 truncate">
-                                  {ws.name}
-                                </div>
-                                <div className="text-[10px] text-slate-500">
-                                  {ws.memberCount} 名成员 · {ws.componentCount}{" "}
-                                  个组件
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/workspace/${ws.id}`);
-                                }}
-                                className="px-2 py-1 bg-[#f59e0b]/10 text-[#f59e0b] text-[10px] font-bold rounded hover:bg-[#f59e0b]/20 transition-all cursor-pointer"
-                                title="进入空间"
-                              >
-                                进入
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleExpandEnterprise(ws.id);
-                                }}
-                                className="px-2 py-1 bg-[#10b981]/10 text-[#10b981] text-[10px] font-bold rounded hover:bg-[#10b981]/20 transition-all flex items-center gap-0.5 cursor-pointer"
-                                title="扩容"
-                              >
-                                <TrendingUp className="w-2.5 h-2.5" />
-                                扩容
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteWorkspace(ws.id);
-                                }}
-                                disabled={
-                                  deletingWorkspaceId === ws.id ||
-                                  checkingDelete
-                                }
-                                className="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[50px] cursor-pointer"
-                                title="注销空间"
-                              >
-                                {checkingDelete ? (
-                                  <div className="w-3 h-3 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                                ) : deletingWorkspaceId === ws.id ? (
-                                  "..."
-                                ) : (
-                                  "注销"
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                  {/* 快捷控制操作 */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => handleEnterWorkspace(enterpriseWorkspace)}
+                      className="px-4 py-2 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>进入企业空间</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={handleOpenShareModal}
+                      className="px-4 py-2 border-2 border-[#10b981] text-[#10b981] text-xs font-bold rounded-lg hover:bg-[#10b981]/5 transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>分享邀请码</span>
+                    </button>
+                    <button
+                      onClick={() => handleExpandEnterprise(enterpriseWorkspace.id)}
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>额度扩容</span>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteWorkspace(enterpriseWorkspace.id)}
+                      className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ml-auto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>注销空间</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="lg:col-span-2 group relative overflow-hidden bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-2xl p-5 border-2 border-[#f59e0b]/30 hover:border-[#f59e0b]/50 hover:shadow-2xl hover:shadow-[#f59e0b]/20 transition-all duration-300 hover:-translate-y-1">
+              <div className="absolute top-2 right-2 px-2 py-1 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-[10px] font-black rounded-full shadow-lg">
+                推荐
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#f59e0b]/30">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-base font-black text-slate-800">
+                      升级并创建企业组织空间
+                    </h3>
+                    {enterpriseData &&
+                    enterpriseData.statistics.totalWorkspaces > 0 ? (
+                      <span className="px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] text-xs font-bold rounded-full">
+                        已开通 {enterpriseData.statistics.totalWorkspaces} 个
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">
+                        未开通
+                      </span>
                     )}
+                  </div>
+                  <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+                    面向企业、创业团队、工作室的专业协作平台，支持多角色协同工作（产品、设计、开发、测试），
+                    提供成员权限管理、项目资源共享、全量高阶组件库 and 完整的业务流程管理。
+                  </p>
 
-                    {/* 操作按钮 */}
-                    <div className="space-y-2">
-                      {enterpriseData &&
-                      enterpriseData.statistics.totalWorkspaces > 0 ? (
-                        <>
-                          {quota &&
-                            quota.enterpriseCount < quota.maxEnterprise && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleGoToCreateEnterprise();
-                                }}
-                                className="w-full px-3 py-1.5 bg-white border-2 border-[#f59e0b] text-[#f59e0b] text-xs font-bold rounded-lg hover:bg-[#f59e0b]/10 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
-                              >
-                                <Plus className="w-3 h-3" />
-                                <span>新建空间</span>
-                              </button>
-                            )}
-                          {quota &&
-                            quota.enterpriseCount >= quota.maxEnterprise && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleGoToCreateEnterprise();
-                                }}
-                                disabled
-                                className="w-full px-3 py-1.5 bg-slate-100 text-slate-400 text-xs font-bold rounded-lg cursor-not-allowed text-center"
-                              >
-                                已达上限
-                              </button>
-                            )}
-                          {/* 分享空间按钮 */}
+                  {/* 主要内容区：左右两列布局 */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+                    {/* 左列：会员权益 + 统计数据 */}
+                    <div className="space-y-3">
+                      {/* 会员权益提示 */}
+                      {quota && quota.isMember ? (
+                        <div className="p-2.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/30 rounded-xl">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#d97706] flex items-center justify-center">
+                              <span className="text-[10px] font-black text-white">
+                                VIP
+                              </span>
+                            </div>
+                            <span className="text-xs font-bold text-[#f59e0b]">
+                              会员专属权益
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-700 leading-relaxed">
+                            <p className="mb-1">
+                              <span className="font-bold text-[#f59e0b]">
+                                尊享特权：
+                              </span>
+                              会员用户最多可拥有{" "}
+                              <span className="font-black text-[#f59e0b]">
+                                3 个
+                              </span>{" "}
+                              企业空间
+                            </p>
+                            <p className="text-slate-600">
+                              当前已开通{" "}
+                              <span className="font-black text-[#10b981]">
+                                {enterpriseData?.statistics.totalWorkspaces || 0}
+                              </span>{" "}
+                              个， 还可创建{" "}
+                              <span className="font-black text-[#10b981]">
+                                {quota.maxEnterprise - quota.enterpriseCount}
+                              </span>{" "}
+                              个
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/30 rounded-xl">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#d97706] flex items-center justify-center">
+                              <span className="text-[10px] font-black text-white">
+                                VIP
+                              </span>
+                            </div>
+                            <span className="text-xs font-bold text-[#f59e0b]">
+                               会员专属权益
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-700 leading-relaxed mb-2">
+                            <p className="mb-1">
+                              <span className="font-bold text-[#f59e0b]">
+                                尊享特权：
+                              </span>
+                              会员用户最多可拥有{" "}
+                              <span className="font-black text-[#f59e0b]">
+                                3 个
+                              </span>{" "}
+                              企业空间
+                            </p>
+                            <p className="text-slate-600">
+                              当前为免费用户，仅可创建{" "}
+                              <span className="font-black text-slate-700">
+                                1 个
+                              </span>{" "}
+                              企业空间
+                            </p>
+                          </div>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleOpenShareModal();
+                              router.push("/pricing");
                             }}
-                            className="w-full px-3 py-1.5 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                            className="w-full px-2 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
                           >
-                            <Users className="w-3 h-3" />
-                            <span>分享空间</span>
+                            <span>立即开通会员</span>
+                            <ArrowRight className="w-3 h-3" />
                           </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleGoToCreateEnterprise();
-                          }}
-                          className="w-full px-3 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span>立即创建</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </button>
+                        </div>
                       )}
 
-                      {/* 提示信息 - 当没有企业空间时显示 */}
-                      {enterpriseData &&
-                      enterpriseData.statistics.totalWorkspaces === 0 ? (
-                        <div className="p-3 bg-gradient-to-br from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/20 rounded-xl">
-                          <div className="flex items-start gap-2">
-                            <Lightbulb className="w-4 h-4 text-[#f59e0b] flex-shrink-0 mt-0.5" />
-                            <div className="text-xs text-slate-700">
-                              <p className="font-bold text-[#f59e0b] mb-1">
-                                为什么需要企业空间？
-                              </p>
-                              <ul className="space-y-0.5 text-slate-600">
-                                <li>
-                                  •
-                                  团队协作：支持产品、设计、开发、测试多角色协同
-                                </li>
-                                <li>
-                                  • 权限管理：细粒度的成员权限控制，保障数据安全
-                                </li>
-                                <li>
-                                  • 资源共享：团队组件库、项目资源统一管理和复用
-                                </li>
-                                <li>• 流程规范：完整的业务流程和审批机制</li>
-                              </ul>
+                      {/* 空间和成员统计 */}
+                      {enterpriseData && (
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <div className="text-slate-500 mb-0.5">空间数</div>
+                              <div className="text-base font-black text-slate-800">
+                                {enterpriseData.statistics.totalWorkspaces || 0}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-slate-500 mb-0.5">组件数</div>
+                              <div className="text-base font-black text-[#3182ce]">
+                                {enterpriseData.statistics.totalComponents || 0}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-slate-500 mb-0.5">成员数</div>
+                              <div className="text-base font-black text-[#10b981]">
+                                {enterpriseData.statistics.totalMembers || 0}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      ) : null}
+                      )}
+
+                      {/* 配额信息 */}
+                      {quota && (
+                        <div className="text-xs">
+                          <div className="flex items-center justify-between gap-1 text-slate-500 mb-1">
+                            <span>
+                              可创建：{quota.enterpriseCount}/
+                              {quota.maxEnterprise}
+                            </span>
+                            {!quota.isMember && (
+                              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">
+                                免费用户
+                              </span>
+                            )}
+                            {quota.isMember && (
+                              <span className="px-1.5 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] rounded text-[10px] font-bold">
+                                会员用户
+                              </span>
+                            )}
+                          </div>
+                          {quota.enterpriseCount < quota.maxEnterprise && (
+                            <div className="text-[#10b981] font-bold text-[11px]">
+                              还可创建{" "}
+                              {quota.maxEnterprise - quota.enterpriseCount} 个
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {/* 提示信息 */}
-                    {quota && quota.enterpriseCount >= quota.maxEnterprise && (
-                      <div className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-[#f59e0b]" />
-                        <span>已达空间数量上限，如需更多请联系客服</span>
+                    {/* 右列：空间列表 + 操作按钮 */}
+                    <div className="space-y-3">
+                      {/* 空间列表 */}
+                      {enterpriseData && enterpriseData.workspaces.length > 0 && (
+                        <div className="space-y-1.5">
+                          {enterpriseData.workspaces.map((ws, index) => (
+                            <div
+                              key={ws.id}
+                              className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 hover:border-[#f59e0b]/40 transition-all"
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <div className="w-6 h-6 rounded bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center flex-shrink-0">
+                                  <span className="text-[10px] font-black text-white">
+                                    {index + 1}
+                                  </span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-bold text-slate-800 truncate">
+                                    {ws.name}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {ws.memberCount} 名成员 · {ws.componentCount}{" "}
+                                    个组件
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/workspace/${ws.id}`);
+                                  }}
+                                  className="px-2 py-1 bg-[#f59e0b]/10 text-[#f59e0b] text-[10px] font-bold rounded hover:bg-[#f59e0b]/20 transition-all cursor-pointer"
+                                  title="进入空间"
+                                >
+                                  进入
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExpandEnterprise(ws.id);
+                                  }}
+                                  className="px-2 py-1 bg-[#10b981]/10 text-[#10b981] text-[10px] font-bold rounded hover:bg-[#10b981]/20 transition-all flex items-center gap-0.5 cursor-pointer"
+                                  title="扩容"
+                                >
+                                  <TrendingUp className="w-2.5 h-2.5" />
+                                  扩容
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteWorkspace(ws.id);
+                                  }}
+                                  disabled={
+                                    deletingWorkspaceId === ws.id ||
+                                    checkingDelete
+                                  }
+                                  className="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[50px] cursor-pointer"
+                                  title="注销空间"
+                                >
+                                  {checkingDelete ? (
+                                    <div className="w-3 h-3 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                                  ) : deletingWorkspaceId === ws.id ? (
+                                    "..."
+                                  ) : (
+                                    "注销"
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 操作按钮 */}
+                      <div className="space-y-2">
+                        {enterpriseData &&
+                        enterpriseData.statistics.totalWorkspaces > 0 ? (
+                          <>
+                            {quota &&
+                              quota.enterpriseCount < quota.maxEnterprise && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleGoToCreateEnterprise();
+                                  }}
+                                  className="w-full px-3 py-1.5 bg-white border-2 border-[#f59e0b] text-[#f59e0b] text-xs font-bold rounded-lg hover:bg-[#f59e0b]/10 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>新建空间</span>
+                                </button>
+                              )}
+                            {quota &&
+                              quota.enterpriseCount >= quota.maxEnterprise && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleGoToCreateEnterprise();
+                                  }}
+                                  disabled
+                                  className="w-full px-3 py-1.5 bg-slate-100 text-slate-400 text-xs font-bold rounded-lg cursor-not-allowed text-center"
+                                >
+                                  已达上限
+                                </button>
+                              )}
+                            {/* 分享空间按钮 */}
+                            <button
+                              onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenShareModal();
+                              }}
+                              className="w-full px-3 py-1.5 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Users className="w-3 h-3" />
+                              <span>分享空间</span>
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleGoToCreateEnterprise();
+                            }}
+                            className="w-full px-3 py-1.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white text-xs font-bold rounded-lg hover:shadow-lg transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <span>立即创建</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        )}
+
+                        {/* 提示信息 - 当没有企业空间时显示 */}
+                        {enterpriseData &&
+                        enterpriseData.statistics.totalWorkspaces === 0 ? (
+                          <div className="p-3 bg-gradient-to-br from-[#f59e0b]/10 to-[#d97706]/10 border border-[#f59e0b]/20 rounded-xl">
+                            <div className="flex items-start gap-2">
+                              <Lightbulb className="w-4 h-4 text-[#f59e0b] flex-shrink-0 mt-0.5" />
+                              <div className="text-xs text-slate-700">
+                                <p className="font-bold text-[#f59e0b] mb-1">
+                                  为什么需要企业空间？
+                                </p>
+                                <ul className="space-y-0.5 text-slate-600">
+                                  <li>
+                                    •
+                                    团队协作：支持产品、设计、开发、测试多角色协同
+                                  </li>
+                                  <li>
+                                    • 权限管理：细粒度的成员权限控制，保障数据安全
+                                  </li>
+                                  <li>
+                                    • 资源共享：团队组件库、项目资源统一管理和复用
+                                  </li>
+                                  <li>• 流程规范：完整的业务流程和审批机制</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                    )}
+
+                      {/* 提示信息 */}
+                      {quota && quota.enterpriseCount >= quota.maxEnterprise && (
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-[#f59e0b]" />
+                          <span>已达空间数量上限，如需更多请联系客服</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* 第二行：个人空间设置 + 加入已有空间 + 管理中枢快捷通道 */}
@@ -2608,7 +2718,8 @@ export default function WorkspaceHub() {
                     {stage.components.slice(0, 5).map((component, idx) => (
                       <div
                         key={`${stage.name}-${component.name}-${idx}`}
-                        className="group/component relative flex items-center justify-between p-2.5 hover:bg-white/60 rounded-lg transition-all cursor-pointer"
+                        onClick={() => handleGoToComponent(index, component.id)}
+                        className="group/component relative flex items-center justify-between p-2.5 hover:bg-[#8b5cf6]/5 rounded-lg transition-all cursor-pointer"
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           {/* 组件名称 */}
