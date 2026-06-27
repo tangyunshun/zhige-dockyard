@@ -25,8 +25,6 @@ export default function AppLayout({
     pathname.startsWith("/platform-admin") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/workspace/") ||
-    pathname === "/studio" ||
-    pathname.startsWith("/studio/") ||
     pathname.startsWith("/user/") ||
     pathname.startsWith("/docs");
 
@@ -62,7 +60,7 @@ export default function AppLayout({
                   <GlobalHeader />
                   {/* 顶部滚动进度条 */}
                   <div
-                    className="fixed top-[60px] left-0 right-0 h-1 z-[60] transition-all duration-300 pointer-events-none"
+                    className="fixed top-[60px] left-0 right-0 h-1 z-40 transition-all duration-300 pointer-events-none"
                     style={{
                       backgroundColor: "#3182ce",
                       width: `${scrollProgress}%`,

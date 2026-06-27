@@ -1,22 +1,26 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { getToken } from "next-auth/jwt";
-
-const prisma = new PrismaClient();
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 // 清空工作空间数据
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req });
-    if (!token?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    // 验证用户身份
+    const authHeader = req.headers.get("authorization");
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json(
+        { error: authResult.error || "UNAUTHORIZED" },
+        { status: 401 }
+      );
     }
 
-    const userId = token.id as string;
+    const userId = authResult.user!.id;
     const { workspaceId, confirmText } = await req.json();
 
     // 验证确认文本
-    if (confirmText !== "确认删除") {
+    if (confirmText !== "确认删除" && confirmText !== "确认重置") {
       return NextResponse.json(
         { error: "确认文本不正确" },
         { status: 400 }
@@ -28,24 +32,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "缺少工作空间 ID" },
         { status: 400 }
-      );
-    }
-
-    // 验证用户是否有权限管理该工作空间
-    const membership = await prisma.workspacemember.findFirst({
-      where: {
-        userId,
-        workspaceId,
-        role: {
-          in: ["OWNER", "ADMIN"],
-        },
-      },
-    });
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: "无权管理该工作空间" },
-        { status: 403 }
       );
     }
 
@@ -61,12 +47,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 个人空间不能清空数据
-    if (workspace.type === "PERSONAL") {
+    // 验证用户是否有权限管理该工作空间 (Owner 拥有绝对权限，或者在 workspacemember 中是 OWNER/ADMIN)
+    const isOwner = workspace.ownerId === userId;
+    let isAuthorized = isOwner;
+
+    if (!isAuthorized) {
+      const membership = await prisma.workspacemember.findFirst({
+        where: {
+          userId,
+          workspaceId,
+          role: {
+            in: ["OWNER", "ADMIN"],
+          },
+        },
+      });
+      if (membership) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
       return NextResponse.json(
-        { error: "个人空间不能清空数据" },
-        { status: 400 }
+        { error: "无权管理该工作空间" },
+        { status: 403 }
       );
+    }
+
+    // 如果是个人空间，只重置关联数据而不禁用该工作空间
+    if (workspace.type === "PERSONAL") {
+      // 删除个人空间的所有岗位
+      await prisma.workspacepost.deleteMany({
+        where: { workspaceId },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "个人工作空间数据已成功清空重置",
+      });
     }
 
     // 删除工作空间的所有成员（除了 owner）

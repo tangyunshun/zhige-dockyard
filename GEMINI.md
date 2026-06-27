@@ -2,7 +2,7 @@
 
 
 
-本项目的 AI 开发流程遵循 Superpowers Framework (D:\\superpowers-skills)：
+本项目的 AI 开发流程遵循 Superpowers Framework (D:\\agents-skills\)：
 
 
 

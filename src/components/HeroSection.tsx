@@ -84,7 +84,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
     if (e) e.preventDefault();
     const query = inputText.trim();
     if (!query) return;
-    router.push(`/capabilities?search=${encodeURIComponent(query)}`);
+    router.push(`/studio?search=${encodeURIComponent(query)}`);
   };
 
   return (
@@ -194,7 +194,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                     <div className="bg-white p-6 rounded-[20px] shadow-2xl border border-slate-100 flex flex-col items-center gap-3 max-w-xs text-center animate-fade-in">
                       <div className="w-10 h-10 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin" />
                       <div>
-                        <h4 className="text-sm font-bold text-slate-800">舟坊 AI 引擎提取中</h4>
+                        <h4 className="text-sm font-bold text-slate-800">舟坊效能引擎提取中</h4>
                         <p className="text-[10px] text-slate-500 mt-1">正在模拟推演效能组件沙盘...</p>
                       </div>
                     </div>
@@ -452,7 +452,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             <div className="text-red-400 bg-red-950/20 px-2 py-0.5">- return count * price;</div>
                             <div className="text-emerald-400 bg-emerald-950/20 px-2 py-0.5">+ double rawTotal = count * price;</div>
                             <div className="text-emerald-400 bg-emerald-950/20 px-2 py-0.5">+ return applyDiscount(rawTotal, userMembership);</div>
-                            <div className="text-slate-500 mt-4">// AI 自动审计分析建议：</div>
+                            <div className="text-slate-500 mt-4">// 自动审计分析建议：</div>
                             <div className="text-amber-400 px-2">⚠️ 检测到原逻辑存在漏算折扣的业务逻辑偏差风险，已修正为调用会员折扣逻辑。</div>
                           </div>
                         </div>
@@ -602,7 +602,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             根据碎片脑图提取的“冷静期与账号注销”需求文档整理完毕。
                           </div>
                           <div className="bg-blue-50/70 rounded-12 p-4 border border-blue-100 text-xs text-slate-700 leading-relaxed mb-6">
-                            AI 已自动追加关于 <span className="text-[#3182ce] font-semibold">“多标签页注销同步清除”</span> 的系统非功能性需求条款。
+                            系统已自动追加关于 <span className="text-[#3182ce] font-semibold">“多标签页注销同步清除”</span> 的系统非功能性需求条款。
                           </div>
                         </>
                       )}

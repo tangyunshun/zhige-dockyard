@@ -576,7 +576,7 @@ export default function PricingPage() {
             立即释放百倍研发效能
           </h2>
           <p className="text-sm md:text-base text-slate-400 mb-10 max-w-2xl mx-auto">
-            一键绑定组织空间，立即解锁 53 项高阶研发辅助组件与专用 AI 离线运行时算力。
+            一键绑定组织空间，立即解锁 53 项高阶研发辅助组件与专用高性能离线运行时算力。
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button

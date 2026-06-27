@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // 获取企业空间配额
@@ -23,7 +23,7 @@ async function getEnterpriseQuota(userId: string) {
     },
   });
 
-  const isMember = user.role === "admin" || user.role === "super_admin";
+  const isMember = user.membershipLevel !== "FREE" || user.role === "admin" || user.role === "super_admin";
   const maxEnterprise = isMember ? 3 : 1;
 
   return {

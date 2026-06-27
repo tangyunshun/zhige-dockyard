@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿"use client";
+﻿﻿﻿﻿﻿﻿"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -397,17 +397,19 @@ function UpgradeWorkspaceForm() {
               </div>
             </div>
 
-            {/* 兼容性检查 */}
-            <div className="mb-6 p-4 bg-[#10b981]/10 border border-[#10b981]/20 rounded-xl">
+            {/* 升级须知 */}
+            <div className="mb-6 p-4 bg-[#3182ce]/5 border border-[#3182ce]/20 rounded-xl">
               <div className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-[#10b981] flex-shrink-0 mt-0.5" />
+                <svg className="w-5 h-5 text-[#3182ce] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 <div className="text-sm text-slate-700">
-                  <p className="font-bold text-[#10b981] mb-1">
-                    兼容性检查通过
-                  </p>
-                  <p className="text-slate-600">
-                    当前个人空间数据符合升级要求，可以安全升级为企业空间
-                  </p>
+                  <p className="font-bold text-[#3182ce] mb-2">升级须知</p>
+                  <ul className="space-y-1 text-slate-600">
+                    <li className="flex items-start gap-1.5"><span className="text-[#3182ce] font-bold flex-shrink-0 mt-0.5">•</span><span>企业空间支持多角色协同：所有者、管理员、成员三级权限体系</span></li>
+                    <li className="flex items-start gap-1.5"><span className="text-[#3182ce] font-bold flex-shrink-0 mt-0.5">•</span><span>可邀请团队成员加入，按岗位分配组件使用权限</span></li>
+                    <li className="flex items-start gap-1.5"><span className="text-[#3182ce] font-bold flex-shrink-0 mt-0.5">•</span><span>共享算力额度与资产资源库，提升整体研发效能</span></li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -421,7 +423,7 @@ function UpgradeWorkspaceForm() {
               {/* 选项 A：保留个人空间（并行创建） */}
               <div
                 onClick={() => setSelectedOption("retain")}
-                className={`group cursor-pointer p-0 rounded-xl border-2 transition-all overflow-hidden ${
+                className={`zg-card cursor-pointer p-0 border-2 transition-all overflow-hidden hover:scale-[1.01] ${
                   selectedOption === "retain"
                     ? "border-[#3182ce] bg-[#3182ce]/5 shadow-lg shadow-[#3182ce]/20"
                     : "border-slate-200 hover:border-[#3182ce]/40 hover:shadow-md"
@@ -492,7 +494,7 @@ function UpgradeWorkspaceForm() {
               {/* 选项 B：删除个人空间（替换升级） */}
               <div
                 onClick={() => handleOptionChange("delete")}
-                className={`group cursor-pointer p-0 rounded-xl border-2 transition-all overflow-hidden ${
+                className={`zg-card cursor-pointer p-0 border-2 transition-all overflow-hidden hover:scale-[1.01] ${
                   selectedOption === "delete"
                     ? "border-[#f59e0b] bg-[#f59e0b]/5 shadow-lg shadow-[#f59e0b]/20"
                     : "border-slate-200 hover:border-[#f59e0b]/40 hover:shadow-md"
@@ -585,7 +587,7 @@ function UpgradeWorkspaceForm() {
               {/* 选项 C：直接升级（平移升级） */}
               <div
                 onClick={() => setSelectedOption("upgrade")}
-                className={`group cursor-pointer p-0 rounded-xl border-2 transition-all overflow-hidden ${
+                className={`zg-card cursor-pointer p-0 border-2 transition-all overflow-hidden hover:scale-[1.01] ${
                   selectedOption === "upgrade"
                     ? "border-[#10b981] bg-[#10b981]/5 shadow-lg shadow-[#10b981]/20"
                     : "border-slate-200 hover:border-[#10b981]/40 hover:shadow-md"
@@ -675,7 +677,7 @@ function UpgradeWorkspaceForm() {
               <button
                 onClick={handleGoBack}
                 disabled={loading}
-                className="px-6 py-3.5 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50"
+                className="zg-btn zg-btn-default px-6 py-3.5 h-auto rounded-xl"
               >
                 取消
               </button>
@@ -688,7 +690,7 @@ function UpgradeWorkspaceForm() {
                   (selectedOption === "delete" &&
                     checkResult.status === "error")
                 }
-                className="flex-1 px-6 py-3.5 bg-gradient-to-r from-[#10b981] to-[#059669] text-white font-bold rounded-xl hover:shadow-xl hover:shadow-[#10b981]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="zg-btn zg-btn-primary flex-1 px-6 py-3.5 h-auto rounded-xl bg-gradient-to-r from-[#10b981] to-[#059669] border-none flex items-center justify-center gap-2"
               >
                 {checking ? (
                   <>

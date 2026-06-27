@@ -17,7 +17,6 @@ export default function GlobalHeader() {
   
   const isDevelopmentRoute = pathname && (
     pathname.startsWith("/workspace-hub") || 
-    pathname.startsWith("/studio") || 
     pathname.startsWith("/workspace") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/user") ||
@@ -37,10 +36,10 @@ export default function GlobalHeader() {
         {/* 中间区：营销菜单 */}
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
           <button 
-            onClick={() => router.push("/capabilities")} 
-            className={`transition-colors cursor-pointer ${pathname === "/capabilities" ? "text-[#2b6cb0] font-bold" : "hover:text-[#2b6cb0]"}`}
+            onClick={() => router.push("/studio")} 
+            className={`transition-colors cursor-pointer ${pathname === "/studio" ? "text-[#2b6cb0] font-bold" : "hover:text-[#2b6cb0]"}`}
           >
-            产品能力
+            组件大厅
           </button>
           <button 
             onClick={() => router.push("/solutions")} 

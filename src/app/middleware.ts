@@ -23,6 +23,7 @@ const PUBLIC_PATHS = [
   "/init",
   "/terms-of-service",
   "/privacy-policy",
+  "/studio",
 ];
 
 // 内存计数缓存
@@ -76,6 +77,13 @@ export async function middleware(request: NextRequest) {
   const startTime = Date.now();
 
   console.log(`[Middleware] Processing pathname: ${pathname}`);
+
+  // 处理原本 /capabilities 和 /market 的重定向，下线这两个路由并跳转至 /studio
+  if (pathname.startsWith("/capabilities") || pathname.startsWith("/market")) {
+    const search = request.nextUrl.search;
+    console.log(`[Middleware] Redirecting legacy route ${pathname} to /studio`);
+    return NextResponse.redirect(new URL(`/studio${search}`, request.url));
+  }
 
   // 对于 API 路由，先执行请求，然后记录使用情况
   if (pathname.startsWith("/api")) {
@@ -144,8 +152,13 @@ export async function middleware(request: NextRequest) {
           console.log(
             `[Middleware] User ${userId} in deletion cooldown, allowing access to ${pathname}`,
           );
-          const response = NextResponse.next();
-          response.headers.set("x-user-id", userId);
+          const requestHeaders = new Headers(request.headers);
+          requestHeaders.set("x-user-id", userId);
+          const response = NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          });
           return response;
         } else {
           // 冷静期内访问其他页面，重定向到首页
@@ -183,10 +196,16 @@ export async function middleware(request: NextRequest) {
     }
 
     // 验证成功，将用户信息添加到请求头
-    const response = NextResponse.next();
-    response.headers.set("x-user-id", userId);
-    response.headers.set("x-user-email", payload.email as string);
-    response.headers.set("x-user-role", payload.role as string);
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-user-id", userId);
+    requestHeaders.set("x-user-email", payload.email as string);
+    requestHeaders.set("x-user-role", payload.role as string);
+
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
 
     console.log(`[Middleware] User ${userId} authenticated successfully`);
     return response;
@@ -304,10 +323,16 @@ async function handleApiRequest(
     }
 
     // 验证成功，记录 API 使用
-    const response = NextResponse.next();
-    response.headers.set("x-user-id", userId);
-    response.headers.set("x-user-email", payload.email as string);
-    response.headers.set("x-user-role", payload.role as string);
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-user-id", userId);
+    requestHeaders.set("x-user-email", payload.email as string);
+    requestHeaders.set("x-user-role", payload.role as string);
+
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
 
     await recordApiUsage(request, response, startTime, userId);
 

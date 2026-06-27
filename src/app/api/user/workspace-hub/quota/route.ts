@@ -97,23 +97,51 @@ export async function GET(request: NextRequest) {
             available: Math.max(0, tokenLimit - usedTokens),
           },
         },
-        workspaces: workspaces.map(ws => ({
-          id: ws.id,
-          name: ws.name,
-          type: ws.type,
-          role: ws.workspacemember[0]?.role,
-          quota: ws.workspacequota ? {
-            id: ws.workspacequota.id,
-            workspaceId: ws.workspacequota.workspaceId,
-            membershipLevelId: ws.workspacequota.membershipLevelId,
-            enterpriseSlots: Number(ws.workspacequota.enterpriseSlots),
-            usedSlots: Number(ws.workspacequota.usedSlots),
-            tokenBalance: Number(ws.workspacequota.tokenBalance),
-            storageUsed: Number(ws.workspacequota.storageUsed),
-            storageLimit: Number(ws.workspacequota.storageLimit),
-            apiCallsUsed: Number(ws.workspacequota.apiCallsUsed),
-            apiCallsLimit: Number(ws.workspacequota.apiCallsLimit),
-          } : null,
+        workspaces: await Promise.all(workspaces.map(async (ws) => {
+          let wsQuota = ws.workspacequota;
+          if (!wsQuota) {
+            const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+            let ml = await prisma.membershiplevel.findUnique({
+              where: { id: membershipLevel }
+            });
+            if (!ml) {
+              ml = await prisma.membershiplevel.findFirst();
+            }
+            const mlId = ml?.id || "FREE";
+            
+            try {
+              wsQuota = await prisma.workspacequota.create({
+                data: {
+                  id: crypto.randomUUID(),
+                  workspaceId: ws.id,
+                  membershipLevelId: mlId,
+                  tokenBalance: BigInt(tokenLimit),
+                  updatedAt: new Date()
+                }
+              });
+            } catch (e) {
+              console.error("兜底创建配额记录失败:", e);
+            }
+          }
+
+          return {
+            id: ws.id,
+            name: ws.name,
+            type: ws.type,
+            role: ws.workspacemember[0]?.role,
+            quota: wsQuota ? {
+              id: wsQuota.id,
+              workspaceId: wsQuota.workspaceId,
+              membershipLevelId: wsQuota.membershipLevelId,
+              enterpriseSlots: Number(wsQuota.enterpriseSlots),
+              usedSlots: Number(wsQuota.usedSlots),
+              tokenBalance: Number(wsQuota.tokenBalance),
+              storageUsed: Number(wsQuota.storageUsed),
+              storageLimit: Number(wsQuota.storageLimit),
+              apiCallsUsed: Number(wsQuota.apiCallsUsed),
+              apiCallsLimit: Number(wsQuota.apiCallsLimit),
+            } : null,
+          };
         })),
       },
     });

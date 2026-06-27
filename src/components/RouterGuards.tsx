@@ -7,7 +7,7 @@ import { useAppContext } from "@/contexts/AppContext";
 // 公共营销页面 - 所有人都能访问（包括未登录用户）
 const PUBLIC_ROUTES = [
   "/",
-  "/capabilities",
+  "/studio",
   "/solutions",
   "/security",
   "/pricing",

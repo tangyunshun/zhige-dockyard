@@ -3,6 +3,8 @@
  * 按 10 大软件工程阶段分组
  */
 
+export const DEFAULT_ALLOWED_COMPONENT_IDS = ["C01", "C02", "C07"];
+
 export interface ComponentPreviewData {
   inputMock: string;
   outputMock: string;
@@ -68,7 +70,7 @@ export const COMPONENTS: ComponentDefinition[] = [
       inputMock: "上传一份政府招标 PDF 标书文档",
       outputMock:
         "输出结构化偏离表：含 5 项完全满足、2 项部分满足、1 项不满足，推荐替代方案",
-      roiText: "人工逐条核对需 3 小时，自动解析仅需 30 秒",
+      roiText: "人工逆条核对需 3 小时，自动解析仅需 30 秒",
     },
   },
   {
@@ -482,7 +484,7 @@ export const COMPONENTS: ComponentDefinition[] = [
     name: "API 接口测试",
     description: "使用 Postman/ApiFox 进行 API 测试",
     category: "TEST_QA",
-    icon: "flask-conical",
+    icon: "check-circle",
     tags: ["API 测试", "Postman"],
     isPremium: false,
     estimatedTokens: 100,
@@ -771,7 +773,7 @@ export const COMPONENTS: ComponentDefinition[] = [
     name: "API 文档生成",
     description: "自动生成 API 接口文档",
     category: "KNOWLEDGE",
-    icon: "book-open",
+    icon: "file-text",
     tags: ["API 文档", "文档生成"],
     isPremium: false,
     estimatedTokens: 80,
@@ -813,7 +815,7 @@ export const COMPONENTS: ComponentDefinition[] = [
   },
   {
     id: "C49",
-    name: "智能问答",
+    name: "问答助手",
     description: "基于项目知识的问答服务",
     category: "KNOWLEDGE",
     icon: "help-circle",
@@ -847,7 +849,7 @@ export const COMPONENTS: ComponentDefinition[] = [
     name: "最佳实践推荐",
     description: "推荐行业最佳实践与优化建议",
     category: "KNOWLEDGE",
-    icon: "lightbulb",
+    icon: "award",
     tags: ["最佳实践"],
     isPremium: true,
     estimatedTokens: 150,

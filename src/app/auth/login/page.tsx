@@ -619,9 +619,9 @@ function LoginForm() {
             console.log("普通用户尝试访问管理员页面，重定向到用户首页");
             finalPath = "/workspace-hub";
           } else if (isAdminUser) {
-            // 管理员用户：除非 URL 中有明确的 redirect 目标包含 /admin，否则一律默认进入工作台中枢 /workspace-hub，避免被 sessionStorage 内的过期拦截缓存带偏
+            // 管理员用户：如果 URL 中有明确的 redirect 目标且不是根路径，尊重该目标
             const explicitRedirect = searchParams.get("redirect");
-            if (explicitRedirect && explicitRedirect.startsWith("/admin")) {
+            if (explicitRedirect && explicitRedirect !== "/") {
               finalPath = explicitRedirect;
             } else {
               finalPath = "/workspace-hub";

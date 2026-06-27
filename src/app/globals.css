@@ -190,6 +190,125 @@ textarea.zg-input {
   white-space: nowrap;
 }
 
+.zg-section-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--zhige-text-main);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+}
+.zg-section-title::before {
+  content: "";
+  display: block;
+  width: 4px;
+  height: 16px;
+  background: linear-gradient(to bottom, var(--zhige-primary), #8b5cf6);
+  border-radius: 4px;
+  margin-right: 10px;
+}
+
+@keyframes zg-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.zg-skeleton {
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.5) 25%, rgba(241, 245, 249, 0.8) 50%, rgba(226, 232, 240, 0.5) 75%);
+  background-size: 400% 100%;
+  animation: zg-shimmer 1.5s infinite linear;
+  border-radius: 6px;
+}
+
+.zg-spinner {
+  border-radius: 50%;
+  border-style: solid;
+  border-color: rgba(49, 130, 206, 0.2);
+  border-top-color: var(--zhige-primary);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.zg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.zg-modal {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: var(--radius-card);
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+.zg-modal-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+  font-size: 16px;
+}
+.zg-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+.zg-modal-footer {
+  padding: 16px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: rgba(248, 250, 252, 0.5);
+  border-bottom-left-radius: var(--radius-card);
+  border-bottom-right-radius: var(--radius-card);
+}
+
+.zg-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  gap: 24px;
+}
+.zg-tab-item {
+  padding: 10px 4px;
+  font-size: 14px;
+  color: var(--zhige-text-sub);
+  cursor: pointer;
+  position: relative;
+  font-weight: 600;
+  transition: color 0.2s;
+  white-space: nowrap;
+  background: none;
+  border: none;
+}
+.zg-tab-item:hover { color: var(--zhige-text-main); }
+.zg-tab-item.active {
+  color: var(--zhige-primary);
+  font-weight: 800;
+}
+.zg-tab-item.active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--zhige-primary);
+  border-radius: 2px 2px 0 0;
+}
+
 /* ===================================
    全局视口与滚动管控 (Viewport & Scroll Management)
    =================================== */

@@ -42,3 +42,9 @@ coverage
 backup/
 public/uploads/
 
+
+# Local environment variables
+.env
+
+# TypeScript build info
+*.tsbuildinfo

@@ -45,12 +45,12 @@ export default function RoleCapabilities() {
     },
     pm: {
       title: "混沌想法智能补全，需求转 PRD 一步到位",
-      subtitle: "免去手动撰写繁杂文档，AI 帮您补齐异常流逻辑、安全限制以及多标签状态同步规则。",
+      subtitle: "免去手动撰写繁杂文档，系统帮您补齐异常流逻辑、安全限制以及多标签状态同步规则。",
       activeStep: 1, // step 2 (边界补齐)
       highlightText: "正在推导系统非功能性需求...",
       steps: [
         { label: "录入想法", desc: "自由录入碎片需求或原始脑图。" },
-        { label: "边界补全", desc: "AI 智能自动补充业务逻辑漏洞。" },
+        { label: "边界补全", desc: "智能自动补充业务逻辑漏洞。" },
         { label: "原型生成", desc: "根据功能描述渲染低保真草图。" },
         { label: "PRD 导出", desc: "一键导出 Markdown 格式的 PRD。" }
       ],

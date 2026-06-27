@@ -418,6 +418,44 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 解绑组件从工作空间
+    if (action === "unbind") {
+      if (!workspaceId || !componentId) {
+        return NextResponse.json({ 
+          success: false, 
+          error: "缺少必要的 workspaceId 或 componentId 参数" 
+        }, { status: 400 });
+      }
+
+      // 删除绑定记录
+      await prisma.componentusage.deleteMany({
+        where: {
+          workspaceId,
+          componentId,
+        },
+      });
+
+      // 写入空间操作审计日志
+      await prisma.operationlog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          workspaceId,
+          action: "UNBIND_COMPONENT",
+          resource: componentId,
+          details: {
+            componentId,
+            unboundAt: new Date(),
+          },
+        },
+      });
+
+      return NextResponse.json({ 
+        success: true, 
+        message: `组件已从当前工作空间成功解绑` 
+      });
+    }
+
     // 收藏组件
     if (action === "favorite") {
       if (!componentId) {

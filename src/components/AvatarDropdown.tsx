@@ -6,7 +6,19 @@ import { Check, Search, Plus, LogOut, Shield, Settings, Palette, Globe } from "l
 import { useAppContext } from "@/contexts/AppContext";
 import { useLogout } from "@/hooks/useLogout";
 
-export default function AvatarDropdown() {
+interface AvatarDropdownProps {
+  workspaceId?: string | null;
+  workspaceType?: "PERSONAL" | "ENTERPRISE";
+  userRole?: "Owner" | "Admin" | "Member" | "Viewer";
+  onUpgradeClick?: () => void;
+}
+
+export default function AvatarDropdown({
+  workspaceId,
+  workspaceType,
+  userRole,
+  onUpgradeClick,
+}: AvatarDropdownProps) {
   const router = useRouter();
   const { userState, setUserState } = useAppContext();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -62,7 +74,7 @@ export default function AvatarDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+        className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer animate-fade-in"
       >
         {userInfo.avatar ? (
           <img
@@ -101,8 +113,7 @@ export default function AvatarDropdown() {
       </button>
 
       {showDropdown && (
-        <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-[0_8px_20px_-4px_rgba(15,23,42,0.12)] border border-slate-100 py-1 z-50 overflow-hidden">
-          {/* 设置导航区 */}
+        <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-[0_8px_20px_-4px_rgba(15,23,42,0.12)] border border-slate-100 py-1 z-50 overflow-hidden text-left animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="px-4 py-2">
             {/* 管理员后台入口 */}
             {userInfo.role?.toUpperCase() === "SUPERADMIN" && (
@@ -111,13 +122,13 @@ export default function AvatarDropdown() {
                   router.push("/platform-admin");
                   setShowDropdown(false);
                 }}
-                className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 transition-colors group mb-1 whitespace-nowrap"
+                className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 transition-colors group mb-1 text-left"
               >
                 <Shield className="w-4 h-4 text-red-500 flex-shrink-0" />
-                <span className="text-sm text-red-600 font-medium flex-1 text-left whitespace-nowrap">
+                <span className="text-xs text-red-655 font-bold flex-1">
                   平台管理中心
                 </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gradient-to-r from-orange-500 to-red-500 text-white flex-shrink-0">
+                <span className="px-2 py-0.5 rounded text-[9px] font-black bg-gradient-to-r from-orange-500 to-red-500 text-white flex-shrink-0">
                   超管
                 </span>
               </button>
@@ -128,13 +139,13 @@ export default function AvatarDropdown() {
                   router.push("/admin");
                   setShowDropdown(false);
                 }}
-                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-red-50 transition-colors group mb-1"
+                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-red-50 transition-colors group mb-1 text-left"
               >
                 <Shield className="w-4 h-4 text-red-500" />
-                <span className="text-sm text-red-600 font-medium flex-1 text-left">
+                <span className="text-xs text-red-600 font-bold flex-1">
                   管理员后台
                 </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">
+                <span className="px-2 py-0.5 rounded text-[9px] font-black bg-red-100 text-red-600">
                   管理员
                 </span>
               </button>
@@ -146,10 +157,10 @@ export default function AvatarDropdown() {
                 router.push("/user/dashboard");
                 setShowDropdown(false);
               }}
-              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group mb-1"
+              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group mb-1 text-left"
             >
               <Settings className="w-4 h-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
-              <span className="text-sm text-slate-700 font-medium group-hover:text-blue-600 transition-colors">
+              <span className="text-xs text-slate-700 font-bold group-hover:text-blue-600 transition-colors">
                 个人工作台
               </span>
             </button>
@@ -160,43 +171,14 @@ export default function AvatarDropdown() {
                 router.push("/user/profile");
                 setShowDropdown(false);
               }}
-              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group"
+              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group text-left"
             >
               <Palette className="w-4 h-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
-              <span className="text-sm text-slate-700 font-medium group-hover:text-blue-600 transition-colors">
+              <span className="text-xs text-slate-700 font-bold group-hover:text-blue-600 transition-colors">
                 个人设置
               </span>
             </button>
           </div>
-
-          {/* 工作空间切换区 */}
-          {userState.workspaces.length > 0 && (
-            <>
-              <div className="px-4 py-2 border-t border-slate-100">
-                {userState.workspaces.map((workspace) => (
-                  <button
-                    key={workspace.id}
-                    onClick={() => handleSwitchWorkspace(workspace.id)}
-                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] hover:bg-slate-50 transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-700">
-                        {workspace.name}
-                      </span>
-                      {workspace.type === "PERSONAL" && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">
-                          个人
-                        </span>
-                      )}
-                    </div>
-                    {workspace.isCurrent && (
-                      <Check className="w-4 h-4 text-blue-500" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
 
           {/* 退出登录 */}
           <div className="px-4 py-2 border-t border-slate-100">
@@ -205,10 +187,10 @@ export default function AvatarDropdown() {
                 handleLogout();
                 setShowDropdown(false);
               }}
-              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-red-50 transition-colors group"
+              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-red-50 transition-colors group text-left"
             >
               <LogOut className="w-4 h-4 text-red-500" />
-              <span className="text-sm text-red-600 font-medium">
+              <span className="text-xs text-red-650 font-bold">
                 退出登录
               </span>
             </button>

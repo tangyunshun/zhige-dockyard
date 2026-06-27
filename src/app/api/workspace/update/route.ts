@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -32,11 +32,14 @@ export async function GET(request: NextRequest) {
       workspace: {
         id: workspace.id,
         name: workspace.name,
+        type: workspace.type,
         description: workspace.description,
         teamSize: workspace.teamSize,
         industry: workspace.industry,
         contactEmail: workspace.contactEmail,
         contactPhone: workspace.contactPhone,
+        logo: workspace.logo,
+        createdAt: workspace.createdAt,
       },
     });
   } catch (error) {
@@ -82,6 +85,7 @@ export async function PATCH(request: NextRequest) {
       industry,
       contactEmail,
       contactPhone,
+      logo,
     } = body;
 
     const updatedWorkspace = await prisma.workspace.update({
@@ -93,6 +97,7 @@ export async function PATCH(request: NextRequest) {
         industry: industry || null,
         contactEmail: contactEmail?.trim() || null,
         contactPhone: contactPhone?.trim() || null,
+        logo: logo || null,
       },
     });
 

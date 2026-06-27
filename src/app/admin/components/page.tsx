@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -43,7 +43,6 @@ import {
   Plug,
   SearchCheck,
   Bug,
-  TestTube2,
   Wind,
   ImageMinus,
   Wrench,
@@ -438,7 +437,6 @@ export default function AdminComponentsPage() {
     Plug,
     SearchCheck,
     Bug,
-    TestTube2,
     Wind,
     ImageMinus,
     Wrench,

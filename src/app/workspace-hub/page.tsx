@@ -1,1522 +1,245 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import { useLogout } from "@/hooks/useLogout";
 import { Logo } from "@/components/Logo";
+
+// 引入 5 个独立拆分的 Hooks
+import { useWorkspaceHubData } from "@/hooks/useWorkspaceHubData";
+import { usePersonalWorkspace } from "@/hooks/usePersonalWorkspace";
+import { useEnterpriseWorkspace } from "@/hooks/useEnterpriseWorkspace";
+import { useInvitation } from "@/hooks/useInvitation";
+import { useDeleteWorkspace } from "@/hooks/useDeleteWorkspace";
+
+// 引入 Bento 基础子组件
+import UserGreeting from "@/components/workspace-hub/UserGreeting";
+import PersonalWorkspaceCard from "@/components/workspace-hub/PersonalWorkspaceCard";
+import EnterpriseWorkspaceList from "@/components/workspace-hub/EnterpriseWorkspaceList";
+import ResourceOverview from "@/components/workspace-hub/ResourceOverview";
+import QuickActions from "@/components/workspace-hub/QuickActions";
+import FeaturedComponents from "@/components/workspace-hub/FeaturedComponents";
+import PendingSection from "@/components/workspace-hub/PendingSection";
+import PageSkeleton from "@/components/workspace-hub/PageSkeleton";
+
+// 引入全量封装的 Modals
+import UpgradeModal from "@/components/workspace-hub/modals/UpgradeModal";
+import JoinEnterpriseModal from "@/components/workspace-hub/modals/JoinEnterpriseModal";
+import ShareWorkspaceModal from "@/components/workspace-hub/modals/ShareWorkspaceModal";
+import DeleteConfirmModal from "@/components/workspace-hub/modals/DeleteConfirmModal";
+import CreateEnterpriseModal from "@/components/workspace-hub/modals/CreateEnterpriseModal";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
-import {
-  User,
-  Building2,
-  Box,
-  ArrowRight,
-  ArrowLeft,
-  TrendingUp,
-  Settings,
-  ExternalLink,
-  Users,
-  FileText,
-  Code,
-  Database,
-  Target,
-  Layers,
-  Server,
-  ChevronRight,
-  BookOpen,
-  Plus,
-  Flame,
-  Star,
-  Clock,
-  Zap,
-  ShieldCheck,
-  Palette,
-  MessageSquare,
-  AlertTriangle,
-  Heart,
-  LayoutTemplate,
-  Image,
-  Accessibility,
-  GitMerge,
-  FileCode,
-  Braces,
-  Plug,
-  SearchCheck,
-  Bug,
-  TestTube2,
-  Wind,
-  ImageMinus,
-  Wrench,
-  Cloud,
-  Scale,
-  FileWarning,
-  Package,
-  Shirt,
-  Phone,
-  Signature,
-  Smile,
-  Network,
-  Terminal,
-  CreditCard,
-  Trash2,
-  FolderLock,
-  MonitorPlay,
-  Scissors,
-  FileSpreadsheet,
-  ArrowUpRight,
-  Activity,
-  Copy,
-  RefreshCw,
-  Share2,
-  Lightbulb,
-  CheckCircle,
-} from "lucide-react";
-
-interface UserInfo {
-  id: string;
-  name: string;
-  avatar?: string;
-  role?: string;
-  membershipLevel?: string;
-  email?: string;
-}
-
-interface Workspace {
-  id: string;
-  name: string;
-  type: "PERSONAL" | "ENTERPRISE";
-  componentCount?: number;
-  memberCount?: number;
-  description?: string | null;
-  _count?: {
-    members: number;
-  } | null;
-}
-
-interface EnterpriseQuota {
-  hasEnterprise: boolean;
-  enterpriseCount: number;
-  maxEnterprise: number;
-  isMember: boolean;
-}
-
-interface UserQuota {
-  isVip: boolean;
-  ownedEnterpriseCount: number;
-  maxEnterpriseLimit: number;
-}
-
-interface ComponentItem {
-  id: string;
-  name: string;
-  stage: string;
-  isPremium: boolean;
-  icon: string;
-}
-
-interface StageComponentData {
-  name: string;
-  color: string;
-  bgColor: string;
-  components: ComponentItem[];
-}
-
-interface EnterpriseWorkspace {
-  id: string;
-  name: string;
-  description?: string;
-  memberCount: number;
-  componentCount: number;
-  createdAt: string;
-  role?: string;
-}
-
-interface EnterpriseData {
-  workspaces: EnterpriseWorkspace[];
-  statistics: {
-    totalWorkspaces: number;
-    totalComponents: number;
-    totalMembers: number;
-    totalActiveComponents?: number;
-    totalCompletedComponents?: number;
-    totalComponentCalls?: number;
-    avgResponseTime?: number;
-    successRate?: number;
-    recentActivity?: number;
-    activeMembers?: number;
-  };
-}
-
-interface ComponentStage {
-  icon: React.ReactNode;
-  name: string;
-  description: string;
-  count: number;
-  color: string;
-  bgColor: string;
-  components: ComponentInfo[];
-  tags?: string[];
-}
-
-interface ComponentInfo {
-  id: string;
-  name: string;
-  calls?: number;
-  isHot?: boolean;
-  isNew?: boolean;
-  isRecommended?: boolean;
-}
-
-interface ComponentStageData {
-  title: string;
-  icon: any;
-  color: string;
-  bgColor: string;
-  tags: string[];
-  components: Array<{
-    id: string;
-    name: string;
-    calls: number;
-    successRate: number;
-  }>;
-}
-
-// 从 studio 页面导入真实的 53 个组件数据
-const componentStagesData = [
-  {
-    title: "第一阶段：商机捕获与售前打单",
-    icon: Target,
-    color: "#3182ce",
-    bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
-    tags: ["周热门", "推荐"] as string[],
-    components: [
-      {
-        id: "C01",
-        name: "标书智能解析",
-        calls: 3421,
-        successRate: 98.5,
-      },
-      {
-        id: "C02",
-        name: "方案合规审查",
-        calls: 2156,
-        successRate: 97.8,
-      },
-      {
-        id: "C03",
-        name: "竞品对比分析",
-        calls: 1876,
-        successRate: 96.5,
-      },
-      {
-        id: "C04",
-        name: "汇报话术转换",
-        calls: 2543,
-        successRate: 99.1,
-      },
-      {
-        id: "C05",
-        name: "项目成本测算",
-        calls: 1234,
-        successRate: 95.8,
-      },
-      {
-        id: "C06",
-        name: "商业价值评估",
-        calls: 987,
-        successRate: 94.2,
-      },
-    ],
-  },
-  {
-    title: "第二阶段：需求定义与产品设计",
-    icon: Layers,
-    color: "#10b981",
-    bgColor: "from-[#10b981]/10 to-[#059669]/10",
-    tags: ["月热门"] as string[],
-    components: [
-      {
-        id: "C07",
-        name: "需求转 PRD",
-        calls: 4521,
-        successRate: 98.9,
-      },
-      {
-        id: "C08",
-        name: "异常场景补全",
-        calls: 3245,
-        successRate: 97.6,
-      },
-      {
-        id: "C09",
-        name: "客诉归因分析",
-        calls: 2876,
-        successRate: 96.8,
-      },
-      {
-        id: "C10",
-        name: "仿真数据生成",
-        calls: 5432,
-        successRate: 99.5,
-      },
-    ],
-  },
-  {
-    title: "第三阶段：大前端与交互",
-    icon: Palette,
-    color: "#f59e0b",
-    bgColor: "from-[#f59e0b]/10 to-[#d97706]/10",
-    tags: ["周热门", "月热门"] as string[],
-    components: [
-      {
-        id: "C11",
-        name: "CSS 样式重构",
-        calls: 2134,
-        successRate: 97.2,
-      },
-      {
-        id: "C12",
-        name: "国际化词条校验",
-        calls: 1765,
-        successRate: 98.1,
-      },
-      {
-        id: "C13",
-        name: "页面合规检测",
-        calls: 1432,
-        successRate: 96.5,
-      },
-      {
-        id: "C14",
-        name: "SVG 组件转换",
-        calls: 2987,
-        successRate: 99.2,
-      },
-      {
-        id: "C15",
-        name: "设计稿转代码",
-        calls: 3654,
-        successRate: 98.7,
-      },
-    ],
-  },
-  {
-    title: "第四阶段：架构设计与 DBA",
-    icon: Database,
-    color: "#8b5cf6",
-    bgColor: "from-[#8b5cf6]/10 to-[#7c3aed]/10",
-    tags: ["推荐"] as string[],
-    components: [
-      {
-        id: "C16",
-        name: "数据库逆向解析",
-        calls: 4123,
-        successRate: 97.9,
-      },
-      {
-        id: "C17",
-        name: "慢 SQL 优化",
-        calls: 3567,
-        successRate: 96.8,
-      },
-      {
-        id: "C18",
-        name: "微服务拆分建议",
-        calls: 2345,
-        successRate: 95.6,
-      },
-      {
-        id: "C19",
-        name: "数据迁移脚本",
-        calls: 1876,
-        successRate: 94.8,
-      },
-      {
-        id: "C20",
-        name: "国产库语法转换",
-        calls: 1234,
-        successRate: 93.5,
-      },
-      {
-        id: "C21",
-        name: "架构图代码生成",
-        calls: 2987,
-        successRate: 98.3,
-      },
-    ],
-  },
-  {
-    title: "第五阶段：后端研发与 API",
-    icon: Server,
-    color: "#3182ce",
-    bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
-    tags: ["周热门"] as string[],
-    components: [
-      {
-        id: "C22",
-        name: "生产数据脱敏",
-        calls: 3421,
-        successRate: 99.1,
-      },
-      {
-        id: "C23",
-        name: "接口文档逆向",
-        calls: 2654,
-        successRate: 97.5,
-      },
-      {
-        id: "C24",
-        name: "JSON 转实体类",
-        calls: 4532,
-        successRate: 98.8,
-      },
-      {
-        id: "C25",
-        name: "接口参数映射",
-        calls: 1987,
-        successRate: 96.2,
-      },
-      {
-        id: "C26",
-        name: "正则表达式解析",
-        calls: 1543,
-        successRate: 95.8,
-      },
-      {
-        id: "C27",
-        name: "硬件错误码诊断",
-        calls: 2876,
-        successRate: 97.3,
-      },
-    ],
-  },
-  {
-    title: "第六阶段：质量保证 QA",
-    icon: TestTube2,
-    color: "#10b981",
-    bgColor: "from-[#10b981]/10 to-[#059669]/10",
-    tags: ["月热门"] as string[],
-    components: [
-      {
-        id: "C28",
-        name: "测试用例生成",
-        calls: 3765,
-        successRate: 98.6,
-      },
-      {
-        id: "C29",
-        name: "漏洞 Payload 构造",
-        calls: 2134,
-        successRate: 96.9,
-      },
-      {
-        id: "C30",
-        name: "缺陷单自动完善",
-        calls: 2987,
-        successRate: 97.8,
-      },
-      {
-        id: "C31",
-        name: "压测脚本与分析",
-        calls: 1876,
-        successRate: 95.5,
-      },
-      {
-        id: "C32",
-        name: "UI 自动化修复",
-        calls: 2345,
-        successRate: 96.7,
-      },
-    ],
-  },
-  {
-    title: "第七阶段：DevOps 与运维",
-    icon: Cloud,
-    color: "#f59e0b",
-    bgColor: "from-[#f59e0b]/10 to-[#d97706]/10",
-    tags: ["周热门", "推荐"] as string[],
-    components: [
-      {
-        id: "C33",
-        name: "报错日志根因分析",
-        calls: 4321,
-        successRate: 98.9,
-      },
-      {
-        id: "C34",
-        name: "云资源降本优化",
-        calls: 1654,
-        successRate: 94.8,
-      },
-      {
-        id: "C35",
-        name: "开源合规审计",
-        calls: 2123,
-        successRate: 97.2,
-      },
-      {
-        id: "C36",
-        name: "漏扫报告转化",
-        calls: 2876,
-        successRate: 96.5,
-      },
-      {
-        id: "C37",
-        name: "配置文件检查",
-        calls: 1987,
-        successRate: 95.8,
-      },
-      {
-        id: "C38",
-        name: "容器镜像瘦身",
-        calls: 3245,
-        successRate: 98.3,
-      },
-    ],
-  },
-  {
-    title: "第八阶段：交付实施与协同",
-    icon: Shirt,
-    color: "#8b5cf6",
-    bgColor: "from-[#8b5cf6]/10 to-[#7c3aed]/10",
-    tags: [] as string[],
-    components: [
-      {
-        id: "C39",
-        name: "项目汇报美化",
-        calls: 2654,
-        successRate: 97.6,
-      },
-      {
-        id: "C40",
-        name: "硬件日志诊断",
-        calls: 1876,
-        successRate: 96.2,
-      },
-      {
-        id: "C41",
-        name: "验收单据生成",
-        calls: 1234,
-        successRate: 95.5,
-      },
-      {
-        id: "C42",
-        name: "操作手册生成",
-        calls: 3421,
-        successRate: 98.7,
-      },
-      {
-        id: "C43",
-        name: "敏捷回顾总结",
-        calls: 2134,
-        successRate: 96.8,
-      },
-      {
-        id: "C44",
-        name: "研发效能分析",
-        calls: 1543,
-        successRate: 94.9,
-      },
-      {
-        id: "C45",
-        name: "团队知识库问答",
-        calls: 2987,
-        successRate: 97.5,
-      },
-    ],
-  },
-  {
-    title: "第九阶段：系统扩展底座",
-    icon: Server,
-    color: "#3182ce",
-    bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
-    tags: ["月热门", "推荐"] as string[],
-    components: [
-      {
-        id: "C46",
-        name: "多模型路由网关",
-        calls: 5432,
-        successRate: 99.2,
-      },
-      {
-        id: "C47",
-        name: "全局视觉内核",
-        calls: 4321,
-        successRate: 98.9,
-      },
-      {
-        id: "C48",
-        name: "工作流编排器",
-        calls: 3654,
-        successRate: 97.8,
-      },
-      {
-        id: "C49",
-        name: "脚本 UI 化工具",
-        calls: 2876,
-        successRate: 96.5,
-      },
-      {
-        id: "C50",
-        name: "本地向量数据库",
-        calls: 2134,
-        successRate: 98.1,
-      },
-      {
-        id: "C51",
-        name: "授权与计费中心",
-        calls: 1765,
-        successRate: 95.8,
-      },
-      {
-        id: "C52",
-        name: "沙箱隔离环境",
-        calls: 2345,
-        successRate: 97.2,
-      },
-    ],
-  },
-  {
-    title: "第十阶段：交付与可视化",
-    icon: MonitorPlay,
-    color: "#10b981",
-    bgColor: "from-[#10b981]/10 to-[#059669]/10",
-    tags: ["周热门"] as string[],
-    components: [
-      {
-        id: "C53",
-        name: "架构可视化渲染",
-        calls: 3987,
-        successRate: 98.6,
-      },
-    ],
-  },
-];
-
-// 组件市场数据（用于新UI）
-const componentMarketData: StageComponentData[] = [
-  {
-    name: "商机与售前",
-    color: "#3182ce",
-    bgColor: "from-[#3182ce] to-[#2b6cb0]",
-    components: [
-      { id: "C01", name: "标书智能解析", stage: "商机与售前", isPremium: false, icon: "📄" },
-      { id: "C02", name: "方案合规审查", stage: "商机与售前", isPremium: true, icon: "✓" },
-      { id: "C03", name: "竞品对比分析", stage: "商机与售前", isPremium: true, icon: "📊" },
-      { id: "C04", name: "汇报话术转换", stage: "商机与售前", isPremium: true, icon: "💬" },
-    ],
-  },
-  {
-    name: "需求定义",
-    color: "#10b981",
-    bgColor: "from-[#10b981] to-[#059669]",
-    components: [
-      { id: "C07", name: "需求转 PRD", stage: "需求定义", isPremium: false, icon: "📝" },
-      { id: "C08", name: "用户故事生成", stage: "需求定义", isPremium: true, icon: "👤" },
-      { id: "C09", name: "原型设计建议", stage: "需求定义", isPremium: true, icon: "🎨" },
-      { id: "C10", name: "验收标准细化", stage: "需求定义", isPremium: true, icon: "✅" },
-    ],
-  },
-];
-
-// 转换为组件阶段数据
-const componentStages: ComponentStage[] = componentStagesData.map(
-  (stage: ComponentStageData) => ({
-    icon: <stage.icon className="w-5 h-5" />,
-    name: stage.title.split("：")[1] || stage.title,
-    description: "",
-    count: stage.components.length,
-    color: stage.color,
-    bgColor: stage.bgColor,
-    tags: stage.tags,
-    components: stage.components.map((comp) => ({
-      id: comp.id,
-      name: comp.name,
-      calls: comp.calls,
-      isHot: Boolean(comp.calls && comp.calls > 3000),
-      isNew: Boolean(
-        comp.id.startsWith("C") && parseInt(comp.id.substring(1)) > 40,
-      ),
-      isRecommended: Boolean(comp.successRate && comp.successRate > 98),
-    })),
-  }),
-);
 
 export default function WorkspaceHub() {
   const router = useRouter();
   const toast = useToast();
-  const handleLogout = useLogout();
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [personalWorkspace, setPersonalWorkspace] = useState<Workspace | null>(
-    null,
-  );
-  const [enterpriseWorkspace, setEnterpriseWorkspace] =
-    useState<Workspace | null>(null);
-  const [quota, setQuota] = useState<EnterpriseQuota | null>(null);
-  const [enterpriseData, setEnterpriseData] = useState<EnterpriseData | null>(
-    null,
-  );
-  const [usageStats, setUsageStats] = useState<any>(null);
-  const [personalWorkspaceDeleted, setPersonalWorkspaceDeleted] =
-    useState(false);
-  const [personalWorkspaceUpgraded, setPersonalWorkspaceUpgraded] =
-    useState(false);
-  const [upgradeMode, setUpgradeMode] = useState<
-    "parallel" | "replace" | "migrate" | null
-  >(null);
-  const [isLoading, setIsLoading] = useState(true); // 添加加载状态
-  const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(
-    null,
-  );
-  const [deleteCheckResult, setDeleteCheckResult] = useState<any>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [workspaceToDelete, setWorkspaceToDelete] = useState<string | null>(
-    null,
-  );
-  const [checkingDelete, setCheckingDelete] = useState(false); // 检测中的状态
-  const [deleteConfirmText, setDeleteConfirmText] = useState(""); // 注销确认输入
+
+  // 1. 数据状态与加载 Hook
+  const {
+    user,
+    personalWorkspace,
+    enterpriseWorkspace,
+    enterpriseData,
+    quota,
+    usageStats,
+    dashboardData,
+    personalState,
+    isLoading,
+    redirecting,
+    refresh,
+  } = useWorkspaceHubData();
+
+  // 2. 个人空间核心 CRUD Hook
+  const {
+    handleCreatePersonal,
+    handleRecreatePersonal,
+  } = usePersonalWorkspace({ refresh });
+
+  // 3. 企业空间核心创建 Hook
+  const {
+    newEnterpriseName,
+    setNewEnterpriseName,
+    newEnterpriseEmail,
+    setNewEnterpriseEmail,
+    newEnterprisePhone,
+    setNewEnterprisePhone,
+    newEnterpriseTeamSize,
+    setNewEnterpriseTeamSize,
+    newEnterpriseDesc,
+    setNewEnterpriseDesc,
+    creatingEnterprise,
+    handleCreateEnterprise,
+  } = useEnterpriseWorkspace({ refresh });
+
+  // 4. 协作邀请加入与分享生成 Hook
+  const {
+    invitationCode,
+    setInvitationCode,
+    invitationInfo,
+    setInvitationInfo,
+    verifyingCode,
+    joiningCode,
+    verifyInvitation,
+    handleJoinWorkspace,
+    workspaces,
+    invitations,
+    selectedWorkspace,
+    setSelectedWorkspace,
+    generating,
+    showAdvanced,
+    setShowAdvanced,
+    inviteEmail,
+    setInviteEmail,
+    inviteRole,
+    setInviteRole,
+    expiresInDays,
+    setExpiresInDays,
+    copiedCode,
+    loadShareableWorkspaces,
+    handleGenerateInvitation,
+    handleCopyCode,
+    handleCopyLink,
+    handleCopyInvitation,
+  } = useInvitation({ refresh });
+
+  // 5. 注销、重置物理状态与二次鉴权 Step-Up Hook
+  const {
+    deleteConfirmText,
+    setDeleteConfirmText,
+    showDeleteModal,
+    setShowDeleteModal,
+    showDeleteConfirmModal,
+    setShowDeleteConfirmModal,
+    showStepUpModal,
+    setShowStepUpModal,
+    stepUpPurpose,
+    setStepUpPurpose,
+    workspaceToDelete,
+    deleteCheckResult,
+    deletingWorkspaceId,
+    deleting,
+    handleDeleteWorkspace,
+    confirmDeleteWorkspace,
+    confirmDeleteUpgradedPersonal,
+    cancelDeleteWorkspace,
+    handleDeleteUpgradedPersonal,
+  } = useDeleteWorkspace({ refresh });
+
+  // 6. 前端专属 Modal 显隐控制
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showCreateEnterpriseModal, setShowCreateEnterpriseModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [invitationCode, setInvitationCode] = useState("");
-  const [invitationInfo, setInvitationInfo] = useState<any>(null);
-  const [verifyingCode, setVerifyingCode] = useState(false);
-  const [joiningCode, setJoiningCode] = useState(false);
-  // 分享空间相关状态
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [invitations, setInvitations] = useState<any[]>([]);
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string>("");
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"MEMBER" | "ADMIN">("MEMBER");
-  const [expiresInDays, setExpiresInDays] = useState<number>(7);
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
-  
-  // 新添加的状态
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"personal" | "enterprise">("personal");
-  const [userQuota, setUserQuota] = useState<UserQuota | null>(null);
-  const [dashboardData, setDashboardData] = useState<any>(null);
-  const [showPremiumModal, setShowPremiumModal] = useState(false);
-  const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
-  const [showStepUpModal, setShowStepUpModal] = useState(false);
-  const stepUpCallbackRef = useRef<((token: string) => void) | null>(null);
 
-  useEffect(() => {
-    // 首先检查用户是否已登录
-    const userId = localStorage.getItem("userId");
-    if (!userId) {
-      console.warn("用户未登录，即将重定向到登录页面...");
-      setRedirecting(true);
-      // 直接跳转，不使用 setTimeout
-      window.location.href = "/auth/login";
-      return;
-    }
+  // 真正个人工作空间一键重置相关状态
+  const [showPersonalResetModal, setShowPersonalResetModal] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resetting, setResetting] = useState(false);
 
-    // 已登录，继续加载页面
-    // 检查 URL 参数中的邀请码
-    const params = new URLSearchParams(window.location.search);
-    const codeFromUrl = params.get("invitationCode");
-    if (codeFromUrl) {
-      setInvitationCode(codeFromUrl);
-      setShowJoinModal(true);
-      verifyInvitation(codeFromUrl);
+  // 绑定全局命令，使无数据时的“输入邀请码加入”按钮能隔空呼出邀请 Modal
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__toggleJoinModal = () => setShowJoinModal(true);
     }
-    // 从 localStorage 读取升级方式
-    const mode = localStorage.getItem("upgradeMode");
-    if (mode && ["parallel", "replace", "migrate"].includes(mode)) {
-      setUpgradeMode(mode as "parallel" | "replace" | "migrate");
-    }
-    // 从 localStorage 读取个人空间删除状态
-    const deleted = localStorage.getItem("personalWorkspaceDeleted");
-    if (deleted === "true") {
-      setPersonalWorkspaceDeleted(true);
-      // 如果是删除状态，确保升级状态为 false
-      setPersonalWorkspaceUpgraded(false);
-      localStorage.setItem("personalWorkspaceUpgraded", "false");
-    } else {
-      // 从 localStorage 读取个人空间升级状态
-      const upgraded = localStorage.getItem("personalWorkspaceUpgraded");
-      if (upgraded === "true") {
-        setPersonalWorkspaceUpgraded(true);
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__toggleJoinModal;
       }
-    }
-
-    // 加载用户信息
-    loadUserInfo();
+    };
   }, []);
 
-  const loadUserInfo = async () => {
-    try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      if (!userId) {
-        console.warn("User ID not found in localStorage, redirecting to login...");
-        router.push("/auth/login");
-        return;
-      }
-
-      const res = await fetch("/api/user/workspace-hub/dashboard", {
-        headers: {
-          Authorization: `Bearer ${userId}`,
-        },
-      });
-
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 404) {
-          console.warn("用户认证失效，请重新登录");
-          localStorage.removeItem("userId");
-          localStorage.removeItem("userRole");
-          router.push("/auth/login");
-        }
-        return;
-      }
-
-      const result = await res.json();
-      if (result.success && result.data) {
-        const d = result.data;
-        setDashboardData(d);
-        setUser(d.user);
-
-        // 如果个人空间实际存在，重置 personalWorkspaceDeleted 状态
-        if (d.personalWorkspace) {
-          setPersonalWorkspace(d.personalWorkspace);
-          setPersonalWorkspaceDeleted(false);
-          localStorage.setItem("personalWorkspaceDeleted", "false");
-        } else {
-          setPersonalWorkspace(null);
-        }
-
-        // 默认取第一个企业空间兼容单空间逻辑
-        setEnterpriseWorkspace(d.enterpriseWorkspaces[0] || null);
-
-        // 兼容原有的配额与限制状态
-        setQuota({
-          hasEnterprise: d.userQuota.ownedEnterpriseCount > 0,
-          enterpriseCount: d.userQuota.ownedEnterpriseCount,
-          maxEnterprise: d.userQuota.maxEnterpriseLimit,
-          isMember: d.userQuota.isVip,
-        });
-
-        setUserQuota({
-          isVip: d.userQuota.isVip,
-          ownedEnterpriseCount: d.userQuota.ownedEnterpriseCount,
-          maxEnterpriseLimit: d.userQuota.maxEnterpriseLimit,
-        });
-
-        // 兼容原有的企业列表状态
-        setEnterpriseData({
-          workspaces: d.enterpriseWorkspaces,
-          statistics: {
-            totalWorkspaces: d.userQuota.ownedEnterpriseCount,
-            totalComponents: d.enterpriseWorkspaces.reduce((acc: number, ws: any) => acc + (ws.componentCount || 0), 0),
-            totalMembers: d.enterpriseWorkspaces.reduce((acc: number, ws: any) => acc + (ws.memberCount || 0), 0),
-          },
-        });
-
-        // 兼容原有的使用统计状态，包含 Token 与活跃组件
-        setUsageStats({
-          totalComponentCalls: Math.round(d.userQuota.quotas.tokenBalance.historyTotalUsed / 120),
-          activeComponents: d.personalWorkspace?.componentCount || 0,
-          successRate: 98.5,
-          avgResponseTime: 120,
-          personalSpaceCount: d.personalWorkspace ? 1 : 0,
-          enterpriseSpaceCount: d.userQuota.ownedEnterpriseCount,
-          totalMembers: d.enterpriseWorkspaces.reduce((acc: number, ws: any) => acc + (ws.memberCount || 0), 0) + (d.personalWorkspace ? 1 : 0),
-          totalComponents: d.enterpriseWorkspaces.reduce((acc: number, ws: any) => acc + (ws.componentCount || 0), 0) + (d.personalWorkspace?.componentCount || 0),
-        });
-      }
-    } catch (error) {
-      console.error("加载用户信息与 Dashboard 聚合数据失败:", error);
-      setPersonalWorkspace(null);
-      setEnterpriseWorkspace(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleEnterWorkspace = async (workspace: Workspace | null) => {
+  // 7. 进入空间跳转与包装
+  const handleEnterWorkspace = async (workspace: any) => {
     toast.info("正在加载空间信息...", 1000);
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    if (workspace) {
+    if (workspace && workspace.id) {
       router.push(`/workspace/${workspace.id}`);
     } else {
       router.push("/workspace-hub/create");
     }
   };
 
-  const handleGoToCreateEnterprise = () => {
-    const limits = dashboardData?.userQuota?.workspaceLimits;
-    const used = limits?.enterpriseCount ?? 0;
-    const limit = limits?.enterpriseLimit ?? 0;
-    if (limit === 0 || used >= limit) {
-      setShowPremiumModal(true);
-      toast.error(`企业协作空间创建数量已达上限 (${used}/${limit})，请升级 VIP`);
-      return;
-    }
-    router.push("/workspace-hub/create");
-  };
-
-  const handleExpandEnterprise = (workspaceId: string) => {
-    router.push(
-      `/workspace-hub/create?action=expand&workspaceId=${workspaceId}`,
-    );
-  };
-
-  /**
-   * 统一的用户认证失效处理
-   * 当 API 返回用户不存在或 404 错误时，显示友好提示并跳转到登录页
-   */
-  const handleAuthError = (errorMessage: string, statusCode?: number) => {
-    // 检查是否是用户不存在的错误
-    if (errorMessage.includes("用户不存在") || statusCode === 404) {
-      toast.error("会话已过期，请重新登录");
-      // 清除本地存储
-      localStorage.removeItem("userId");
-      localStorage.removeItem("userRole");
-      // 延迟跳转到登录页
-      setTimeout(() => {
-        router.push("/auth/login");
-      }, 1500);
-      return true;
-    }
-    return false;
-  };
-
-  /**
-   * 检查用户 ID 是否有效，无效则显示提示并跳转登录
-   */
-  const checkUserId = () => {
-    const userId =
-      typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-    if (!userId) {
-      toast.error("会话已过期，请重新登录");
-      localStorage.removeItem("userId");
-      localStorage.removeItem("userRole");
-      router.push("/auth/login");
-      return null;
-    }
-    return userId;
-  };
-
-  const handleDeleteWorkspace = async (workspaceId: string) => {
-    try {
-      const userId = checkUserId();
-      if (!userId) {
-        return;
-      }
-
-      // 开始检测，显示检测中提示
-      setCheckingDelete(true);
-      setWorkspaceToDelete(workspaceId);
-
-      // 调用检测 API
-      const res = await fetch(
-        `/api/workspace/check-delete?workspaceId=${workspaceId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${userId}`,
-          },
-        },
-      );
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        const errorMsg = errorData.error || errorData.message || "检查失败";
-
-        // 检查是否是认证错误
-        if (handleAuthError(errorMsg, res.status)) {
-          return;
-        }
-
-        setCheckingDelete(false);
-        setWorkspaceToDelete(null);
-        throw new Error(errorMsg);
-      }
-
-      const checkData = await res.json();
-      setDeleteCheckResult(checkData);
-
-      // 如果有阻止删除的问题，显示详细错误
-      if (checkData.issues && checkData.issues.length > 0) {
-        setCheckingDelete(false);
-        setWorkspaceToDelete(null);
-        const errorMessage = checkData.issues.length > 0
-          ? `❌ 无法注销：${checkData.issues.join('；')}`
-          : "❌ 无法注销，存在未知问题";
-        toast.error(errorMessage);
-        return;
-      }
-
-      // 检测通过，显示注销确认弹窗
-      setCheckingDelete(false);
-      setShowDeleteModal(true);
-    } catch (error) {
-      console.warn("Check delete workspace error:", error);
-      setCheckingDelete(false);
-      setWorkspaceToDelete(null);
-      toast.error(error instanceof Error ? error.message : "检查失败");
-    }
-  };
-
-  const handleCreatePersonal = async () => {
-    const personalCount = personalWorkspace ? 1 : 0;
-    if (personalCount >= 1) {
-      setShowPremiumModal(true);
-      toast.error("个人空间创建数量已达上限 (1/1)，请升级 VIP");
-      return;
-    }
-    try {
-      const userId = checkUserId();
-      if (!userId) {
-        return;
-      }
-
-      const createRes = await fetch("/api/workspace/create-personal", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
-        },
-      });
-
-      if (createRes.ok) {
-        const createData = await createRes.json();
-        setPersonalWorkspace(createData.workspace);
-        toast.success("个人空间创建成功");
-        // 跳转到个人空间页面
-        setTimeout(() => {
-          router.push(`/workspace/${createData.workspace.id}`);
-        }, 500);
-      } else {
-        const errorData = await createRes.json();
-        const errorMsg = errorData.error || errorData.message || "创建失败";
-
-        // 检查是否是认证错误
-        if (handleAuthError(errorMsg, createRes.status)) {
-          return;
-        }
-
-        throw new Error(errorMsg);
-      }
-    } catch (error) {
-      console.warn("Create personal workspace error:", error);
-      toast.error(error instanceof Error ? error.message : "创建失败");
-    }
-  };
-
-  // 新添加的业务逻辑函数
-  const handleCreateEnterprise = () => {
-    if (!userQuota) return;
-    
-    if (!userQuota.isVip) {
-      toast.error("您当前为免费社区版，无法创建企业协作空间。请开通 VIP 获取企业空间额度。");
-      return;
-    }
-    
-    if (userQuota.ownedEnterpriseCount >= userQuota.maxEnterpriseLimit) {
-      toast.error(`您的企业空间额度已达上限 (${userQuota.maxEnterpriseLimit}个)，请升级至更高版本。`);
-      return;
-    }
-    
-    // 符合条件，跳转到创建企业空间页面
-    router.push("/workspace-hub/create");
-  };
-
-  const handleComponentClick = (component: ComponentItem) => {
-    if (component.isPremium) {
-      setShowPremiumModal(true);
-      return;
-    }
-    toast.info("请先进入工作空间后使用组件");
-  };
-
-  const handleDeleteUpgradedPersonal = () => {
-    setShowDeleteConfirmModal(true);
-    setDeleteConfirmText("");
-  };
-
-  const confirmDeleteUpgradedPersonal = async (token?: string) => {
-    console.log("开始确认注销个人空间...");
-    console.log("deleteConfirmText:", deleteConfirmText);
-    console.log("personalWorkspace:", personalWorkspace);
-
-    if (deleteConfirmText !== "注销") {
-      toast.error('请输入"注销"以确认操作');
-      return;
-    }
-
-    if (!personalWorkspace) {
-      console.error("personalWorkspace 不存在");
-      toast.error("个人空间不存在");
-      return;
-    }
-
-    if (!token) {
-      stepUpCallbackRef.current = confirmDeleteUpgradedPersonal;
-      setShowStepUpModal(true);
-      return;
-    }
-
-    try {
-      setDeleting(true);
-      const userId = checkUserId();
-      if (!userId) {
-        return;
-      }
-
-      console.log("开始调用删除 API，workspaceId:", personalWorkspace.id);
-      const deleteRes = await fetch(
-        `/api/workspace/delete?workspaceId=${personalWorkspace.id}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${userId}`,
-          },
-          body: JSON.stringify({
-            workspaceId: personalWorkspace.id,
-            action: "DELETE",
-            verifyToken: token,
-          }),
-        },
-      );
-
-      console.log("删除 API 响应状态:", deleteRes.status);
-
-      if (deleteRes.ok) {
-        setPersonalWorkspace(null);
-        // 关键修复：注销已升级的个人空间时，保持 personalWorkspaceUpgraded 为 true
-        // 因为用户之前已经升级过，只是现在注销了个人空间而已
-        setPersonalWorkspaceDeleted(true);
-        localStorage.setItem("personalWorkspaceDeleted", "true");
-        // personalWorkspaceUpgraded 保持为 true，不要设置为 false
-        // localStorage.setItem("personalWorkspaceUpgraded", "false"); // 删除这行
-        // localStorage.removeItem("upgradeMode"); // 删除这行，保持 upgradeMode
-        setShowDeleteConfirmModal(false);
-        setDeleteConfirmText("");
-        toast.success("个人空间已注销");
-      } else {
-        const errorData = await deleteRes.json();
-        const errorMsg = errorData.error || errorData.message || "注销失败";
-
-        // 检查是否是认证错误
-        if (handleAuthError(errorMsg, deleteRes.status)) {
-          return;
-        }
-
-        console.error("删除失败:", errorMsg);
-        throw new Error(errorMsg);
-      }
-    } catch (error) {
-      console.error("Delete upgraded personal workspace error:", error);
-      toast.error(error instanceof Error ? error.message : "注销失败");
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleRecreatePersonal = async () => {
-    try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      if (!userId) {
-        toast.error("请先登录");
-        setTimeout(() => {
-          router.push("/auth/login");
-        }, 1500);
-        return;
-      }
-
-      const createRes = await fetch("/api/workspace/create-personal", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
-        },
-      });
-
-      if (createRes.ok) {
-        const createData = await createRes.json();
-        console.log("重新创建个人空间成功:", createData.workspace);
-        setPersonalWorkspace(createData.workspace);
-        setPersonalWorkspaceDeleted(false);
-        setPersonalWorkspaceUpgraded(false);
-        setUpgradeMode(null);
-        localStorage.setItem("personalWorkspaceDeleted", "false");
-        localStorage.setItem("personalWorkspaceUpgraded", "false");
-        localStorage.removeItem("upgradeMode");
-        console.log(
-          "状态已更新：personalWorkspaceDeleted=false, personalWorkspaceUpgraded=false, upgradeMode=null",
-        );
-        toast.success("个人空间创建成功");
-      } else {
-        const errorData = await createRes.json();
-        const errorMessage = errorData.error || errorData.message || "创建失败";
-
-        // 如果是用户不存在，显示友好提示并跳转到登录页
-        if (errorMessage.includes("用户不存在") || createRes.status === 404) {
-          toast.error("会话已过期，请重新登录");
-          localStorage.removeItem("userId");
-          localStorage.removeItem("userRole");
-          setTimeout(() => {
-            router.push("/auth/login");
-          }, 1500);
-        } else {
-          throw new Error(errorMessage);
-        }
-      }
-    } catch (error) {
-      console.warn("Recreate personal workspace error:", error);
-      toast.error(error instanceof Error ? error.message : "创建失败");
-    }
-  };
-
-  const confirmDeleteWorkspace = async (token?: string) => {
-    if (!workspaceToDelete) return;
-
-    if (!token) {
-      stepUpCallbackRef.current = confirmDeleteWorkspace;
-      setShowStepUpModal(true);
-      return;
-    }
-
-    try {
-      const userId = checkUserId();
-      if (!userId) {
-        return;
-      }
-
-      // 执行注销操作（物理删除）
-      setDeletingWorkspaceId(workspaceToDelete);
-      const deleteRes = await fetch("/api/workspace/delete", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
-        },
-        body: JSON.stringify({
-          workspaceId: workspaceToDelete,
-          action: "DELETE", // 物理删除
-          verifyToken: token,
-        }),
-      });
-
-      if (!deleteRes.ok) {
-        const errorData = await deleteRes.json();
-        const errorMsg = errorData.error || errorData.message || "注销失败";
-
-        // 检查是否是认证错误
-        if (handleAuthError(errorMsg, deleteRes.status)) {
-          return;
-        }
-
-        throw new Error(errorMsg);
-      }
-
-      toast.success("空间已注销");
-      setShowDeleteModal(false);
-      setWorkspaceToDelete(null);
-      setDeleteCheckResult(null);
-      setDeleteConfirmText(""); // 重置确认输入
-
-      // 重新加载数据
-      await loadUserInfo();
-    } catch (error) {
-      console.error("Delete workspace error:", error);
-      toast.error(error instanceof Error ? error.message : "注销失败");
-    } finally {
-      setDeletingWorkspaceId(null);
-    }
-  };
-
-  const cancelDeleteWorkspace = () => {
-    setShowDeleteModal(false);
-    setWorkspaceToDelete(null);
-    setDeleteCheckResult(null);
-    setDeleteConfirmText(""); // 重置确认输入
-  };
-
-  const handleUpgradeWorkspace = () => {
-    if (!personalWorkspace) {
-      toast.error("请先创建个人空间");
-      return;
-    }
-    if (quota && quota.enterpriseCount >= quota.maxEnterprise) {
-      toast.error(`您当前最多可拥有${quota.maxEnterprise}个企业空间`);
-      return;
-    }
-    router.push(`/workspace/upgrade?workspaceId=${personalWorkspace.id}`);
-  };
-
-  const handleGoToPersonalSettings = () => {
-    toast.info("正在加载个人空间设置...", 1000);
-    setTimeout(() => {
-      router.push("/workspace-hub/settings");
-    }, 1000);
-  };
-
-  const handleGoToStudio = () => {
-    toast.info("正在打开组件库...", 1000);
-    const wsId = localStorage.getItem("currentWorkspaceId") || personalWorkspace?.id || enterpriseWorkspace?.id || "";
-    setTimeout(() => {
-      router.push(`/studio${wsId ? `?workspaceId=${wsId}` : ""}`);
-    }, 1000);
-  };
-
-  const handleGoToStage = (stageIndex: number) => {
-    toast.info(`正在加载${componentStages[stageIndex].name}...`, 1000);
-    const wsId = localStorage.getItem("currentWorkspaceId") || personalWorkspace?.id || enterpriseWorkspace?.id || "";
-    setTimeout(() => {
-      router.push(`/studio?stage=${stageIndex}${wsId ? `&workspaceId=${wsId}` : ""}`);
-    }, 1000);
-  };
-
-  const handleGoToComponent = (stageIndex: number, componentId: string) => {
-    const wsId = localStorage.getItem("currentWorkspaceId") || personalWorkspace?.id || enterpriseWorkspace?.id || "";
-    router.push(`/studio?workspaceId=${wsId}&componentId=${componentId}`);
-  };
-
-  const handleGoToGuide = () => {
-    toast.info("正在打开组件库操作手册...", 1000);
-    setTimeout(() => {
-      router.push("/studio/guide");
-    }, 1000);
-  };
-
-  const verifyInvitation = async (code: string) => {
-    try {
-      setVerifyingCode(true);
-      const userId = checkUserId();
-      if (!userId) {
-        return;
-      }
-
-      const res = await fetch(`/api/workspace/invitation/verify?code=${code}`, {
-        headers: {
-          Authorization: `Bearer ${userId}`,
-        },
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setInvitationInfo(data.invitation);
-      } else {
-        const errorMsg = data.error || data.message || "邀请码无效";
-
-        // 检查是否是认证错误
-        if (handleAuthError(errorMsg, res.status)) {
-          return;
-        }
-
-        setInvitationInfo(null);
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      console.error("验证邀请码失败:", error);
-      toast.error("验证邀请码失败");
-      setInvitationInfo(null);
-    } finally {
-      setVerifyingCode(false);
-    }
-  };
-
-
-
-  const handleJoinWorkspace = async () => {
-    if (!invitationCode) {
-      toast.error("请输入邀请码");
-      return;
-    }
-
-    if (!invitationInfo) {
-      toast.error("请先验证邀请码");
-      return;
-    }
-
-    try {
-      setJoiningCode(true);
-      const userId = checkUserId();
-      if (!userId) {
-        return;
-      }
-
-      const res = await fetch("/api/workspace/join", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
-        },
-        body: JSON.stringify({
-          invitationCode,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(`已成功加入空间 "${data.workspace.name}"`);
-        setShowJoinModal(false);
-        setInvitationCode("");
-        setInvitationInfo(null);
-        // 重新加载用户信息
-        await loadUserInfo();
-        // 跳转到新加入的空间
-        router.push(`/workspace/${data.workspace.id}`);
-      } else {
-        const errorMsg = data.error || data.message || "加入空间失败";
-
-        // 检查是否是认证错误
-        if (handleAuthError(errorMsg, res.status)) {
-          return;
-        }
-
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      console.error("加入空间失败:", error);
-      toast.error("加入空间失败");
-    } finally {
-      setJoiningCode(false);
-    }
-  };
-
-  const handleOpenJoinModal = () => {
-    setShowJoinModal(true);
-    setInvitationCode("");
-    setInvitationInfo(null);
-  };
-
-  const handleCloseJoinModal = () => {
-    setShowJoinModal(false);
-    setInvitationCode("");
-    setInvitationInfo(null);
-  };
-
-  // 分享空间相关函数
-  const loadShareableWorkspaces = async () => {
-    try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      if (!userId) {
-        return;
-      }
-
-      const res = await fetch("/api/workspace/shareable-list", {
-        headers: {
-          Authorization: `Bearer ${userId}`,
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error("加载失败");
-      }
-
-      const data = await res.json();
-      const workspacesList = data.success ? data.data : (data.workspaces || []);
-      const invitationsList = data.invitations || [];
-
-      // 统一格式化为 Workspace 接口类型
-      const formattedWorkspaces = workspacesList.map((ws: any) => ({
-        id: ws.id,
-        name: ws.name,
-        type: ws.type || "ENTERPRISE",
-        memberCount: ws.memberCount ?? (ws._count?.workspacemember || 0),
-        description: ws.description || null,
-      }));
-
-      setWorkspaces(formattedWorkspaces);
-      setInvitations(invitationsList);
-
-      if (formattedWorkspaces.length > 0) {
-        setSelectedWorkspace(formattedWorkspaces[0].id);
-      }
-    } catch (error) {
-      console.error("加载可分享空间失败:", error);
-      toast.error("加载失败");
-    }
-  };
-
-  const handleOpenShareModal = async () => {
+  const handleOpenShare = async (id?: string) => {
+    if (id) setSelectedWorkspace(id);
     setShowShareModal(true);
     await loadShareableWorkspaces();
   };
 
-  const handleGenerateInvitation = async () => {
-    if (!selectedWorkspace) {
-      toast.error("请选择要分享的空间");
+  const handleOpenResetPersonal = () => {
+    setShowPersonalResetModal(true);
+    setResetConfirmText("");
+  };
+
+  const handleConfirmResetPersonal = async (token?: string) => {
+    if (resetConfirmText !== "确认重置") {
+      toast.error('请输入"确认重置"以确认操作');
+      return;
+    }
+
+    const actualToken = typeof token === "string" ? token : undefined;
+    if (!actualToken) {
+      setStepUpPurpose("reset_personal" as any);
+      setShowStepUpModal(true);
+      setShowPersonalResetModal(false);
       return;
     }
 
     try {
-      setGenerating(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      setResetting(true);
+      const userId = localStorage.getItem("userId");
+      if (!userId) return;
 
-      const res = await fetch("/api/workspace/invitation/generate", {
+      // 1. 获取个人空间 ID
+      const workspacesRes = await fetch("/api/workspace/list", {
+        headers: {
+          Authorization: `Bearer ${userId}`,
+        },
+      });
+
+      if (!workspacesRes.ok) throw new Error("获取空间信息失败");
+      const listData = await workspacesRes.json();
+      const personal = listData.workspaces.find((w: any) => w.type === "PERSONAL");
+
+      if (!personal) {
+        toast.error("个人空间不存在");
+        return;
+      }
+
+      // 2. 调用清空工作空间数据接口（真正的重置）
+      const resetRes = await fetch("/api/workspace/clear-data", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${userId}`,
         },
         body: JSON.stringify({
-          workspaceId: selectedWorkspace,
-          email: showAdvanced ? inviteEmail : null,
-          expiresInDays: showAdvanced ? expiresInDays : null,
+          workspaceId: personal.id,
+          confirmText: resetConfirmText,
+          verifyToken: actualToken,
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "生成失败");
+      if (resetRes.ok) {
+        setShowPersonalResetModal(false);
+        setResetConfirmText("");
+        toast.success("个人沙箱数据已成功重置为出厂状态");
+        refresh();
+      } else {
+        const errorData = await resetRes.json();
+        throw new Error(errorData.error || errorData.message || "重置失败");
       }
-
-      toast.success("邀请码生成成功");
-      await loadShareableWorkspaces();
     } catch (error) {
-      console.warn("生成邀请码失败:", error);
-      toast.error(error instanceof Error ? error.message : "生成失败");
+      console.error("重置个人空间数据失败:", error);
+      toast.error(error instanceof Error ? error.message : "重置失败");
     } finally {
-      setGenerating(false);
+      setResetting(false);
     }
   };
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    toast.success("邀请码已复制");
-    setTimeout(() => setCopiedCode(null), 2000);
-  };
-
-  const handleCopyLink = (code: string) => {
-    const url = `${window.location.origin}/workspace-hub?invitationCode=${code}`;
-    navigator.clipboard.writeText(url);
-    setCopiedCode(code);
-    toast.success("链接已复制");
-    setTimeout(() => setCopiedCode(null), 2000);
-  };
-
-  const handleCopyInvitation = (code: string, invitationUrl: string) => {
-    const text = `邀请您加入工作空间！\n\n邀请码：${code}\n\n点击链接加入：${invitationUrl}`;
-    navigator.clipboard.writeText(text);
-    setCopiedCode(code);
-    toast.success("已复制到剪贴板");
-    setTimeout(() => setCopiedCode(null), 2000);
-  };
-
-  // 如果正在加载，显示加载界面
   if (isLoading) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-[#f0f8ff]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-600">正在加载工作空间...</p>
-        </div>
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
-  // 如果正在重定向，不渲染任何内容
   if (redirecting) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-[#f0f8ff]">
@@ -1528,46 +251,10 @@ export default function WorkspaceHub() {
     );
   }
 
-  // 计算 SVG 配额进度
-  const tokenQuota = dashboardData?.userQuota?.quotas?.tokenBalance;
-  const tokenUsed = tokenQuota?.used || 0;
-  const tokenTotal = tokenQuota?.total || 10000;
-  const tokenUsedPercent = Math.min(100, Math.round((tokenUsed / tokenTotal) * 100));
-  
-  // SVG 环参数
-  const strokeWidth = 8;
-  const radius = 48;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (tokenUsedPercent / 100) * circumference;
-
-  // 根据会员等级决定环渐变色与徽章
-  const membership = user?.membershipLevel || "FREE";
-  let gradientStart = "#10b981"; // 绿色
-  let gradientEnd = "#3b82f6";   // 蓝色
-  let levelText = "社区免费极客";
-  let levelBg = "bg-gradient-to-r from-emerald-500/10 to-blue-500/10 text-emerald-600 border border-emerald-500/20";
-  let levelIcon = "🌱";
-  
-  if (membership === "GOLD") {
-    gradientStart = "#fbbf24";
-    gradientEnd = "#d97706";
-    levelText = "黄金 VIP 会员";
-    levelBg = "bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-amber-700 border border-amber-500/20";
-    levelIcon = "👑";
-  } else if (membership === "DIAMOND" || membership === "ENTERPRISE") {
-    gradientStart = "#8b5cf6";
-    gradientEnd = "#6366f1";
-    levelText = "至尊钻石极客";
-    levelBg = "bg-gradient-to-r from-violet-500/15 to-indigo-500/15 text-indigo-700 border border-violet-500/20";
-    levelIcon = "💎";
-  }
-
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
-
   return (
-    <div className="min-h-screen w-full relative bg-[#f0f8ff] overflow-y-auto">
-      {/* 背景：渐变效果 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pointer-events-none">
+    <div className="w-full relative pb-6">
+      {/* 背景渐变效果 */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pointer-events-none overflow-hidden">
         <div
           className="absolute inset-0 opacity-[0.02]"
           style={{
@@ -1579,1604 +266,218 @@ export default function WorkspaceHub() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#10b981]/[0.06] rounded-full blur-[120px]" />
       </div>
 
-      {/* 核心区 */}
-      <main className="relative z-10 px-6 py-8 max-w-7xl mx-auto">
-        {/* 欢迎与面包屑导航 */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-black text-slate-800 mb-2 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-900 bg-clip-text text-transparent flex items-center gap-2">
-              工作空间中枢
-            </h1>
-            <p className="text-slate-500 text-sm font-medium">
-              协同您的个人独立研发环境和企业级高阶团队工作室
-            </p>
+
+
+      {/* 主核心区 */}
+      <main className="relative z-10 max-w-[1440px] mx-auto px-6 pt-8 pb-0 space-y-4">
+        <UserGreeting user={user} />
+
+        {/* 待处理邀请（条件渲染） */}
+        <PendingSection
+          pendingItems={dashboardData?.pendingItems}
+          onAcceptInvitation={(code) => {
+            setInvitationCode(code);
+            setShowJoinModal(true);
+            verifyInvitation(code);
+          }}
+        />
+
+        {/* Bento Bento 12 列网格布局 */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start mt-6">
+          {/* 左侧区域：占 8 列 */}
+          <div className="lg:col-span-8 space-y-4">
+            <PersonalWorkspaceCard
+              state={personalState}
+              workspace={personalWorkspace}
+              onEnter={handleEnterWorkspace}
+              onCreate={handleCreatePersonal}
+              onRecreate={handleRecreatePersonal}
+              onRename={(id) => router.push(`/workspace/${id}/settings`)}
+              onReset={handleOpenResetPersonal}
+              onDelete={handleDeleteUpgradedPersonal}
+              onUpgrade={() => setShowUpgradeModal(true)}
+              onViewEnterprise={() => {
+                if (enterpriseWorkspace) {
+                  handleEnterWorkspace(enterpriseWorkspace);
+                } else {
+                  router.push("/workspace-hub");
+                }
+              }}
+              showUpgradeLink={quota ? quota.enterpriseCount < quota.maxEnterprise : false}
+            />
+
+            <EnterpriseWorkspaceList
+              workspaces={enterpriseData?.workspaces || []}
+              quota={quota}
+              searchQuery={""}
+              onSearchChange={() => {}}
+              onCreateClick={() => setShowCreateEnterpriseModal(true)}
+              onEnter={handleEnterWorkspace}
+              onManage={(id) => router.push(`/workspace/${id}/members`)}
+              onInvite={handleOpenShare}
+              onManageComponents={(id) => router.push(`/workspace/${id}/components`)}
+              onEnterpriseSettings={(id) => router.push(`/workspace/${id}/settings`)}
+              onUpgradePackage={(id) => router.push(`/workspace/${id}/settings`)}
+              onViewStats={(id) => router.push(`/workspace/${id}/stats`)}
+              onDelete={handleDeleteWorkspace}
+              onUpgrade={() => setShowUpgradeModal(true)}
+            />
+
+            <FeaturedComponents />
+          </div>
+
+          {/* 右侧边栏监控与操作：占 4 列 */}
+          <div className="lg:col-span-4 space-y-4">
+            <ResourceOverview user={user} dashboardData={dashboardData} quota={quota} />
+
+            <QuickActions
+              onJoinClick={() => setShowJoinModal(true)}
+            />
           </div>
         </div>
-
-        {/* 核心 Bento Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8">
-          
-          {/* Card 1: 用户欢迎与个人名片 (占 8 列) */}
-          <div className="md:col-span-8 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-blue-500/20 transition-all duration-300 flex flex-col justify-between min-h-[220px]">
-            {/* 卡片装饰 */}
-            <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-2xl group-hover:scale-125 transition-all duration-500" />
-            
-            {/* 用户身份与头像 */}
-            <div className="flex items-center gap-4 relative">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-500/25 relative overflow-hidden">
-                {user?.avatar ? (
-                  <img src={user.avatar} alt={user.name || "Avatar"} className="w-full h-full object-cover" />
-                ) : (
-                  <User className="w-6 h-6 text-white" />
-                )}
-                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-800 tracking-tight leading-none mb-2">
-                  {user?.name || "极客研发者"}
-                </h3>
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide ${levelBg}`}>
-                      <span>{levelIcon}</span>
-                      <span>{levelText}</span>
-                    </span>
-                    {user?.role && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                        {user.role.toUpperCase() === "SUPERADMIN" || user.role.toUpperCase() === "ADMIN" ? "系统管理员" : "极客用户"}
-                      </span>
-                    )}
-                  </div>
-                  {user?.email && (
-                    <span className="text-[10px] text-slate-400 font-semibold tracking-tight">
-                      联络账号: {user.email}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 极客安全中心与快速导航 */}
-            <div className="my-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-b border-slate-200/50 py-4 relative z-10">
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">极客安全中心</span>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-100 text-emerald-700">安全级别：高</span>
-                </div>
-                <div className="flex items-center gap-4 text-slate-500">
-                  <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                    <span className="text-[10px] font-bold text-slate-600">三方账号已绑定</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] bg-slate-100 px-1 py-0.5 rounded border border-slate-200 text-slate-500 font-bold">微信</span>
-                    <span className="text-[10px] bg-slate-100 px-1 py-0.5 rounded border border-slate-200 text-slate-500 font-bold">QQ</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-1.5 sm:border-l sm:border-slate-200/50 sm:pl-4">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">控制台快捷直达</span>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => router.push("/studio")}
-                    className="text-[10px] font-bold text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-0.5 cursor-pointer"
-                  >
-                    <span>组件 Studio 工坊</span>
-                    <ArrowRight className="w-2.5 h-2.5" />
-                  </button>
-                  <span className="text-slate-300">|</span>
-                  <button
-                    onClick={() => router.push("/pricing")}
-                    className="text-[10px] font-bold text-violet-500 hover:text-violet-600 hover:underline flex items-center gap-0.5 cursor-pointer"
-                  >
-                    <span>订阅与升级计划</span>
-                    <ArrowUpRight className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 当前活跃研发环境 */}
-            <div className="mt-2 relative bg-slate-50/70 border border-slate-200/50 rounded-2xl p-4">
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-                当前活跃研发环境
-              </div>
-              <div className="text-sm font-black text-slate-800">
-                {personalWorkspace ? personalWorkspace.name : "暂无活跃空间"}
-              </div>
-              <div className="text-[11px] text-slate-500 mt-1">
-                知阁·舟坊为您提供微隔离开发沙箱与全流程组件协作链路，即开即用。
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: SVG 圆环配额进度仪表盘与 VIP 升级卡片 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
-            <div>
-              {/* 标题 */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center border border-violet-500/20">
-                    <Activity className="w-4 h-4 text-violet-500" />
-                  </div>
-                  <h3 className="text-base font-black text-slate-800 tracking-tight">
-                    算力消耗与 Quota
-                  </h3>
-                </div>
-              </div>
-
-              {/* SVG 圆环仪表盘 */}
-              <div className="relative flex items-center justify-center py-4 mb-4">
-                <div className="relative w-32 h-32 flex items-center justify-center">
-                  <svg className="w-32 h-32 transform -rotate-90">
-                    {/* 背景环 */}
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r={radius}
-                      stroke="#f1f5f9"
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                    />
-                    {/* 进度环 */}
-                    <circle
-                      cx="64"
-                      cy="64"
-                      r={radius}
-                      stroke="url(#progressGradient)"
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                      strokeDasharray={circumference}
-                      strokeDashoffset={strokeDashoffset}
-                      strokeLinecap="round"
-                      className="transition-all duration-1000 ease-out"
-                    />
-                    <defs>
-                      <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor={gradientStart} />
-                        <stop offset="100%" stopColor={gradientEnd} />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-2xl font-black text-slate-800 tracking-tighter leading-none mb-1">
-                      {tokenUsedPercent}%
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-extrabold tracking-wider uppercase">已使用</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 本月详细 Token 数额 */}
-              <div className="grid grid-cols-2 gap-2 text-center p-3 bg-slate-50 rounded-2xl border border-slate-200/50 mb-4">
-                <div>
-                  <div className="text-[9px] text-slate-400 font-bold mb-0.5">本月已用 Token</div>
-                  <div className="text-sm font-black text-slate-800">
-                    {tokenUsed.toLocaleString()}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-slate-400 font-bold mb-0.5">可用 Token 上限</div>
-                  <div className="text-sm font-black text-slate-800">
-                    {tokenTotal.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* VIP 升级或特权展示 */}
-            {membership === "FREE" ? (
-              <div className="p-3.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/25 rounded-2xl relative">
-                <div className="text-[10px] font-black text-amber-800 mb-1 flex items-center gap-1">
-                  <span>👑</span>
-                  <span>升级 VIP 尊享特权</span>
-                </div>
-                <p className="text-[10px] text-slate-600 leading-relaxed mb-3">
-                  立享更多算力，解锁 53 个高阶研发组件。
-                </p>
-                <button
-                  onClick={() => router.push("/pricing")}
-                  className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[10px] font-black rounded-lg shadow-sm hover:shadow-lg transition-all text-center flex items-center justify-center gap-0.5 cursor-pointer"
-                >
-                  <span>立即升级 VIP</span>
-                  <ArrowUpRight className="w-3 h-3" />
-                </button>
-              </div>
-            ) : (
-              <div className="p-3.5 bg-gradient-to-r from-violet-500/10 to-indigo-500/10 border border-violet-500/25 rounded-2xl">
-                <div className="text-[10px] font-black text-indigo-800 mb-1 flex items-center gap-1">
-                  <span>🚀</span>
-                  <span>已尊享 VIP 专业级特权</span>
-                </div>
-                <p className="text-[10px] text-slate-600 leading-relaxed">
-                  享有多空间协同配额及全站高阶组件工坊。
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Card 3: 工作空间管理中枢 (占 8 列) */}
-          <div className="md:col-span-8 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300">
-            {/* 顶栏与 Tab 切换 */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200/60">
-              <div className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                  <Building2 className="w-4 h-4 text-emerald-500" />
-                </div>
-                {/* Tab 按钮 */}
-                <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
-                  <button
-                    onClick={() => setActiveWorkspaceTab("personal")}
-                    className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                      activeWorkspaceTab === "personal"
-                        ? "bg-white text-slate-800 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    个人主空间
-                  </button>
-                  <button
-                    onClick={() => setActiveWorkspaceTab("enterprise")}
-                    className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                      activeWorkspaceTab === "enterprise"
-                        ? "bg-white text-slate-800 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    企业空间
-                  </button>
-                </div>
-              </div>
-
-              {/* 空间配额显示 */}
-              <div className="flex items-center gap-3">
-                <div className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/80">
-                  {activeWorkspaceTab === "personal" ? (
-                    <span>容量配额：{personalWorkspace ? 1 : 0} / 1</span>
-                  ) : (
-                    <span>
-                      容量配额：{dashboardData?.userQuota?.workspaceLimits?.enterpriseCount || 0} /{" "}
-                      {dashboardData?.userQuota?.workspaceLimits?.enterpriseLimit || 0}
-                    </span>
-                  )}
-                </div>
-                {activeWorkspaceTab === "personal" ? (
-                  !personalWorkspace && (
-                    <button
-                      onClick={handleCreatePersonal}
-                      className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black rounded-lg hover:shadow-md transition-all flex items-center gap-0.5 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>创建个人空间</span>
-                    </button>
-                  )
-                ) : (
-                  <button
-                    onClick={handleGoToCreateEnterprise}
-                    className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black rounded-lg hover:shadow-md transition-all flex items-center gap-0.5 cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>新建企业空间</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* 内容区 */}
-            {activeWorkspaceTab === "personal" ? (
-              // 个人空间内容
-              personalWorkspace ? (
-                <div className="space-y-3">
-                  <div className="p-4 bg-white/60 border border-slate-200/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[10px] font-black text-white">P</span>
-                        </div>
-                        <h4 className="text-sm font-black text-slate-800 truncate">{personalWorkspace.name}</h4>
-                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
-                          已激活
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        独立研发环境 · 已绑定 {personalWorkspace.componentCount || 0} 个组件
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => handleEnterWorkspace(personalWorkspace)}
-                        className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
-                      >
-                        <span>进入空间</span>
-                        <ArrowRight className="w-2.5 h-2.5" />
-                      </button>
-                      <button
-                        onClick={handleDeleteUpgradedPersonal}
-                        className="px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
-                      >
-                        注销
-                      </button>
-                    </div>
-                  </div>
-
-                  {quota && quota.enterpriseCount < quota.maxEnterprise && !personalWorkspaceUpgraded && (
-                    <div className="p-3 bg-gradient-to-r from-emerald-500/5 to-blue-500/5 border border-emerald-500/15 rounded-xl flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                        ✨ 当前个人研发环境支持平滑升级至企业级空间，保留所有组件及资产
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUpgradeWorkspace();
-                        }}
-                        className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
-                      >
-                        <span>立即升级</span>
-                        <ArrowUpRight className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : upgradeMode === "migrate" && !personalWorkspace ? (
-                <div className="p-6 bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/10 rounded-2xl text-left">
-                  <p className="text-xs text-slate-600 leading-relaxed mb-2">
-                    您的个人资产已完全平移升级为企业空间，所有组件和项目已迁移。请直接前往企业空间继续工作。
-                  </p>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    空间已全量迁移至企业
-                  </div>
-                </div>
-              ) : (personalWorkspaceDeleted || personalWorkspaceUpgraded) ? (
-                <div className="p-6 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 border border-blue-500/10 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0 text-left">
-                    <h4 className="text-xs font-black text-slate-700 mb-1">个人空间已被注销</h4>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      所有本地资产已清空。您可以随时重新创建干净的个人独立研发环境。
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleRecreatePersonal}
-                    className="px-3.5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer flex-shrink-0"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>重新创建个人空间</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="p-6 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 border border-blue-500/10 rounded-2xl text-center">
-                  <p className="text-xs text-slate-500 mb-4">暂无激活的个人主空间，点击上方按钮一键创建。</p>
-                </div>
-              )
-            ) : (
-              // 企业协作空间内容
-              enterpriseData && enterpriseData.workspaces.length > 0 ? (
-                <div className="space-y-3 max-h-[190px] overflow-y-auto pr-1">
-                  {enterpriseData.workspaces.map((ws, index) => {
-                    const isEnterpriseAdminOrOwner = ws.role === "OWNER" || ws.role === "ADMIN" || !ws.role;
-                    const isEnterpriseOwner = ws.role === "OWNER" || !ws.role;
-
-                    return (
-                      <div
-                        key={ws.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white hover:bg-slate-50/50 rounded-2xl border border-slate-200/80 hover:border-emerald-500/30 transition-all duration-300 gap-4"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <div className="w-6 h-6 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
-                              <span className="text-[10px] font-black text-white">{index + 1}</span>
-                            </div>
-                            <h4 className="text-sm font-black text-slate-800 truncate">{ws.name}</h4>
-                            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded-full border border-emerald-100">
-                              已激活
-                            </span>
-                            {ws.role === "OWNER" && (
-                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-orange-700 border border-orange-200/50 text-[9px] font-bold rounded-full">
-                                所有者
-                              </span>
-                            )}
-                            {ws.role === "ADMIN" && (
-                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-700 border border-emerald-200/50 text-[9px] font-bold rounded-full">
-                                管理员
-                              </span>
-                            )}
-                            {ws.role === "MEMBER" && (
-                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 text-blue-700 border border-blue-200/50 text-[9px] font-bold rounded-full">
-                                协同成员
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-medium">
-                            {ws.memberCount || 1} 名协同成员 · {ws.componentCount || 0} 个绑定组件
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <button
-                            onClick={() => handleEnterWorkspace({ ...ws, type: "ENTERPRISE" })}
-                            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black rounded-lg shadow-sm transition-all flex items-center gap-0.5 cursor-pointer"
-                          >
-                            <span>进入空间</span>
-                            <ArrowRight className="w-2.5 h-2.5" />
-                          </button>
-                          <button
-                            onClick={() => handleExpandEnterprise(ws.id)}
-                            disabled={!isEnterpriseAdminOrOwner}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-[10px] font-bold rounded-lg transition-all flex items-center gap-0.5 cursor-pointer"
-                            title={isEnterpriseAdminOrOwner ? "扩容额度" : "仅空间所有者或管理员可扩容此空间"}
-                          >
-                            <TrendingUp className="w-2.5 h-2.5 text-slate-500" />
-                            <span>扩容</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteWorkspace(ws.id)}
-                            disabled={deletingWorkspaceId === ws.id || checkingDelete || !isEnterpriseOwner}
-                            className="px-2.5 py-1.5 border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
-                            title={isEnterpriseOwner ? "注销空间" : "仅空间所有者可注销此空间"}
-                          >
-                            {checkingDelete && workspaceToDelete === ws.id ? "检测中" : "注销"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="p-6 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 border border-emerald-500/10 rounded-2xl text-left">
-                  <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                    企业空间是面向工作室或研发团队的协作环境。支持多角色协同开发、共享算力配额与安全岗位过滤。
-                  </p>
-                  <button
-                    onClick={handleGoToCreateEnterprise}
-                    className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-lg transition-all flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>开通企业空间</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-
-          {/* Card 4: 特权兑换与空间快速加入 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-emerald-500/20 transition-all duration-300 flex flex-col justify-between">
-            <div>
-              <div className="flex items-start gap-4 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0 shadow-sm border border-emerald-500/20">
-                  <Users className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-800 tracking-tight leading-tight">
-                    加入协作空间
-                  </h3>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    通过邀请码或兑换码加入团队
-                  </p>
-                </div>
-              </div>
-              
-              <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-                使用同事分享的 8 位大写邀请码或安全链接，直接加入企业组织，开启团队无缝协作。
-              </p>
-
-              <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-500/15 text-left mb-4">
-                <span className="text-[9px] text-emerald-700 font-bold block mb-0.5">快捷指南：</span>
-                <span className="text-[9px] text-slate-500 block leading-tight">1. 输入 8 位码 ➔ 2. 自动校验 ➔ 3. 一键加入</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleOpenJoinModal}
-              className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black rounded-xl hover:shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer"
-            >
-              <span>立即输入加入</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Card 5: 舟坊研发高阶组件库 (占 8 列) */}
-          <div className="md:col-span-8 relative overflow-hidden bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-indigo-500/10 rounded-3xl p-6 border border-violet-500/20 shadow-md hover:shadow-[0_0_20px_rgba(139,92,246,0.15)] hover:border-violet-500/30 transition-all duration-300">
-            {/* 头部 */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-                  <Box className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-800 tracking-tight">
-                    舟坊研发高阶组件库
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    提供覆盖软件全生命周期的 53 个云端高阶极客组件
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleGoToGuide}
-                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-xs font-black rounded-xl hover:shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>操作手册</span>
-                </button>
-                <button
-                  onClick={handleGoToStudio}
-                  className="px-4 py-2.5 bg-gradient-to-r from-violet-500 to-indigo-600 text-white text-xs font-black rounded-xl hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span>浏览全量</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* 阶段组件展示 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {componentStages.slice(0, 2).map((stage, index) => (
-                <div
-                  key={stage.name}
-                  onClick={() => handleGoToStage(index)}
-                  className="group cursor-pointer bg-white/90 rounded-2xl p-4 border border-slate-200/60 transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5"
-                  style={{ borderColor: `${stage.color}25` }}
-                >
-                  {/* 阶段头部 */}
-                  <div className="flex items-start gap-3 mb-3">
-                    <div
-                      className={`w-10 h-10 rounded-xl bg-gradient-to-br ${stage.bgColor} flex items-center justify-center flex-shrink-0 shadow-sm`}
-                    >
-                      <div style={{ color: stage.color }}>{stage.icon}</div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h4 className="text-xs font-black text-slate-800 truncate">
-                          {stage.name}
-                        </h4>
-                        <span
-                          className="px-1.5 py-0.5 text-[9px] font-black rounded-full"
-                          style={{
-                            backgroundColor: `${stage.color}15`,
-                            color: stage.color,
-                          }}
-                        >
-                          {stage.count}
-                        </span>
-                      </div>
-                      
-                      {/* 热门标签 */}
-                      {stage.tags && stage.tags.length > 0 && (
-                        <div className="flex items-center gap-1 mb-1">
-                          {stage.tags.includes("周热门") && (
-                            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-gradient-to-r from-red-400 to-red-500 text-white text-[8px] font-black rounded shadow-sm">
-                              <Flame className="w-2 h-2" />
-                              周热门
-                            </span>
-                          )}
-                          {stage.tags.includes("月热门") && (
-                            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[8px] font-black rounded shadow-sm">
-                              <TrendingUp className="w-2 h-2" />
-                              月热门
-                            </span>
-                          )}
-                          {stage.tags.includes("推荐") && (
-                            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-gradient-to-r from-blue-400 to-blue-500 text-white text-[8px] font-black rounded shadow-sm">
-                              <Star className="w-2 h-2" />
-                              推荐
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 组件列表 */}
-                  <div className="space-y-1.5 mt-2">
-                    {stage.components.slice(0, 4).map((component, idx) => (
-                      <div
-                        key={`${stage.name}-${component.name}-${idx}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleGoToComponent(index, component.id);
-                        }}
-                        className="group/component flex items-center justify-between p-2 hover:bg-violet-500/5 rounded-xl transition-all cursor-pointer"
-                      >
-                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                          <span className="text-[11px] font-bold text-slate-700 truncate">
-                            {component.name}
-                          </span>
-                          <div className="flex items-center gap-0.5 flex-shrink-0">
-                            {component.isHot && (
-                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-red-400 to-red-500 rounded-full text-[7px]" title="热门组件">
-                                <Flame className="w-2 h-2 text-white" />
-                              </span>
-                            )}
-                            {component.isNew && (
-                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full text-[7px]" title="新上架">
-                                <Zap className="w-2 h-2 text-white" />
-                              </span>
-                            )}
-                            {component.isRecommended && (
-                              <span className="inline-flex items-center justify-center w-3.5 h-3.5 bg-gradient-to-br from-blue-400 to-blue-500 rounded-full text-[7px]" title="推荐">
-                                <Star className="w-2 h-2 text-white" />
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {/* 调用次数 */}
-                        {component.calls && (
-                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                            <span className="text-xs font-bold text-slate-500">
-                              {component.calls.toLocaleString()}
-                            </span>
-                            <span className="text-xs text-slate-400">次</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {stage.components.length > 5 && (
-                      <div className="flex items-center justify-center p-2 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-                        <span className="text-xs font-medium text-slate-500">
-                          +{stage.components.length - 5} 更多组件
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Card 6: 科技感使用统计卡片 (占 4 列) */}
-          <div className="md:col-span-4 relative group overflow-hidden bg-gradient-to-br from-white/95 to-slate-50/90 backdrop-blur-xl rounded-3xl p-6 pb-0 border border-slate-200/80 shadow-md hover:shadow-xl hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
-            <div>
-              {/* 标题 */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-                    <TrendingUp className="w-4 h-4 text-amber-500" />
-                  </div>
-                  <h3 className="text-base font-black text-slate-800 tracking-tight">
-                    我的使用统计
-                  </h3>
-                </div>
-              </div>
-
-              {/* 4 个指标气泡 */}
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-1">累计调用</div>
-                  <div className="text-base font-black text-slate-800">
-                    {usageStats ? (usageStats.totalComponentCalls || 0).toLocaleString() : "-"}
-                  </div>
-                  <span className="text-[9px] text-slate-400 font-medium">次</span>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-1">活跃组件</div>
-                  <div className="text-base font-black text-blue-500">
-                    {usageStats ? usageStats.activeComponents || 0 : "-"}
-                  </div>
-                  <span className="text-[9px] text-slate-400 font-medium">个</span>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-1">调用成功率</div>
-                  <div className="text-base font-black text-emerald-500">
-                    {usageStats ? usageStats.successRate || 0 : "-"}
-                  </div>
-                  <span className="text-[9px] text-slate-400 font-medium">%</span>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/50">
-                  <div className="text-[10px] text-slate-400 font-bold mb-1">平均响应</div>
-                  <div className="text-base font-black text-slate-800">
-                    {usageStats ? usageStats.avgResponseTime || 0 : "-"}
-                  </div>
-                  <span className="text-[9px] text-slate-400 font-medium">毫秒</span>
-                </div>
-              </div>
-
-              {/* 高频调用组件 Top 3 看板 */}
-              <div className="mb-6">
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">
-                  高频调用组件 Top 3
-                </div>
-                <div className="space-y-2">
-                  {dashboardData?.topComponents && dashboardData.topComponents.length > 0 ? (
-                    dashboardData.topComponents.map((comp: any, idx: number) => (
-                      <div
-                        key={comp.componentId}
-                        className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/50 hover:border-violet-500/20 hover:bg-violet-50/10 transition-all duration-300"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white ${
-                            idx === 0
-                              ? "bg-gradient-to-br from-amber-400 to-orange-500"
-                              : idx === 1
-                                ? "bg-gradient-to-br from-slate-400 to-slate-500"
-                                : "bg-gradient-to-br from-amber-600 to-amber-700"
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          <span className="text-[11px] font-bold text-slate-700 truncate">
-                            {comp.name}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-extrabold text-slate-500">
-                          {comp.callCount} 次调用
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex flex-col gap-2 p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 select-none">
-                      <div className="flex items-center justify-between opacity-50">
-                        <div className="flex items-center gap-2">
-                          <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white bg-slate-300">1</span>
-                          <span className="text-[11px] font-bold text-slate-400">智能助理解析组件</span>
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-300">示例</span>
-                      </div>
-                      <div className="flex items-center justify-between opacity-35">
-                        <div className="flex items-center gap-2">
-                          <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white bg-slate-300">2</span>
-                          <span className="text-[11px] font-bold text-slate-400">方案合规审查组件</span>
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-300">示例</span>
-                      </div>
-                      <div className="flex items-center justify-between opacity-20">
-                        <div className="flex items-center gap-2">
-                          <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center text-white bg-slate-300">3</span>
-                          <span className="text-[11px] font-bold text-slate-400">数据报表生成组件</span>
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-300">示例</span>
-                      </div>
-                      <div className="text-center text-[9px] text-slate-400 font-bold border-t border-slate-200/50 pt-2 mt-1">
-                        🚀 进入工坊调用组件即可激活排行榜
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 底部 SVG 微光科技趋势线 */}
-            <div className="relative h-24 w-[calc(100%+3rem)] -mx-6 overflow-hidden rounded-b-3xl bg-gradient-to-t from-violet-500/10 via-indigo-500/5 to-transparent border-t border-violet-500/10 mt-auto pointer-events-none z-0">
-              <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
-                <defs>
-                  <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.2"/>
-                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/>
-                  </linearGradient>
-                </defs>
-                {/* 趋势填充阴影 */}
-                <path
-                  d="M 0 40 Q 15 20, 30 25 T 60 10 T 90 20 T 100 15 L 100 40 Z"
-                  fill="url(#trendGradient)"
-                />
-                {/* 趋势折线 */}
-                <path
-                  d="M 0 40 Q 15 20, 30 25 T 60 10 T 90 20 T 100 15"
-                  fill="none"
-                  stroke="#8b5cf6"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-                {/* 脉冲亮点效果 */}
-                <circle cx="60" cy="10" r="2" fill="#8b5cf6" className="animate-ping" style={{ transformOrigin: '60px 10px' }} />
-                <circle cx="60" cy="10" r="1.5" fill="#8b5cf6" />
-              </svg>
-              <div className="absolute top-2 left-3 text-[9px] font-black text-violet-600/70 tracking-wider uppercase">
-                算力趋势律动
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 全站极客科技感页脚 */}
-        <footer className="mt-16 py-8 border-t border-slate-200/50 text-center relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-xs text-slate-400 font-medium">
-          <div>知阁·舟坊 © 2026 | 全球领先的极客协同研发平台</div>
-          <div className="flex items-center justify-center gap-4">
-            <a href="/terms-of-service" className="hover:text-blue-500 transition-colors">服务协议</a>
-            <span>·</span>
-            <a href="/privacy-policy" className="hover:text-blue-500 transition-colors">隐私政策</a>
-            <span>·</span>
-            <a href="/security" className="hover:text-blue-500 transition-colors">安全合规</a>
-          </div>
-        </footer>
       </main>
 
-      {/* 加入空间模态框 */}
-      {showJoinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 relative animate-in fade-in zoom-in duration-200">
-            {/* 关闭按钮 */}
-            <button
-              onClick={handleCloseJoinModal}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-all"
-            >
-              <span className="text-slate-500 text-xl">×</span>
-            </button>
+      {/* 8. 声明式挂载外部 Modals 组件 */}
+      <CreateEnterpriseModal
+        isOpen={showCreateEnterpriseModal}
+        onClose={() => setShowCreateEnterpriseModal(false)}
+        newEnterpriseName={newEnterpriseName}
+        setNewEnterpriseName={setNewEnterpriseName}
+        newEnterpriseEmail={newEnterpriseEmail}
+        setNewEnterpriseEmail={setNewEnterpriseEmail}
+        newEnterprisePhone={newEnterprisePhone}
+        setNewEnterprisePhone={setNewEnterprisePhone}
+        newEnterpriseTeamSize={newEnterpriseTeamSize}
+        setNewEnterpriseTeamSize={setNewEnterpriseTeamSize}
+        newEnterpriseDesc={newEnterpriseDesc}
+        setNewEnterpriseDesc={setNewEnterpriseDesc}
+        creatingEnterprise={creatingEnterprise}
+        onCreate={handleCreateEnterprise}
+      />
 
-            {/* 标题 */}
-            <div className="mb-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center">
-                  <Users className="w-5 h-5 text-white" />
-                </div>
-                <h2 className="text-xl font-black text-slate-800">
-                  加入已有空间
-                </h2>
-              </div>
-              <p className="text-sm text-slate-600">
-                请输入同事分享的邀请码，或点击分享链接自动填充
-              </p>
-            </div>
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        personalWorkspace={personalWorkspace}
+        quota={quota}
+        onUpgradeSuccess={refresh}
+      />
 
-            {/* 邀请码输入 */}
-            <div className="mb-6">
-              <label className="block text-sm font-bold text-slate-700 mb-2">
-                邀请码
-              </label>
-              <input
-                type="text"
-                value={invitationCode}
-                onChange={(e) => {
-                  const code = e.target.value
-                    .toUpperCase()
-                    .replace(/[^A-Z0-9]/g, "");
-                  setInvitationCode(code);
-                  if (code.length === 8) {
-                    verifyInvitation(code);
-                  } else {
-                    setInvitationInfo(null);
-                  }
-                }}
-                placeholder="请输入 8 位邀请码"
-                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/20 outline-none transition-all text-center text-lg font-mono tracking-widest uppercase"
-                maxLength={8}
-                disabled={verifyingCode || joiningCode}
-              />
-              {verifyingCode && (
-                <div className="mt-2 text-sm text-slate-500 flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-[#10b981] border-t-transparent rounded-full animate-spin"></div>
-                  <span>正在验证邀请码...</span>
-                </div>
-              )}
-            </div>
+      <JoinEnterpriseModal
+        isOpen={showJoinModal}
+        onClose={() => setShowJoinModal(false)}
+        invitationCode={invitationCode}
+        setInvitationCode={setInvitationCode}
+        invitationInfo={invitationInfo}
+        setInvitationInfo={setInvitationInfo}
+        verifyingCode={verifyingCode}
+        joiningCode={joiningCode}
+        verifyInvitation={verifyInvitation}
+        onJoin={handleJoinWorkspace}
+      />
 
-            {/* 邀请信息展示 */}
-            {invitationInfo && (
-              <div className="mb-6 p-4 bg-[#10b981]/5 rounded-xl border border-[#10b981]/20">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-bold text-slate-800">
-                      {invitationInfo.workspace.name}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {invitationInfo.workspace.memberCount} 名成员 ·{" "}
-                      {invitationInfo.role === "ADMIN" ? "管理员" : "成员"}
-                    </div>
-                  </div>
-                </div>
-                {invitationInfo.expiresAt && (
-                  <div className="text-xs text-slate-500 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    <span>
-                      有效期至{" "}
-                      {new Date(invitationInfo.expiresAt).toLocaleDateString(
-                        "zh-CN",
-                      )}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+      <ShareWorkspaceModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        workspaces={workspaces}
+        invitations={invitations}
+        selectedWorkspace={selectedWorkspace}
+        setSelectedWorkspace={setSelectedWorkspace}
+        generating={generating}
+        showAdvanced={showAdvanced}
+        setShowAdvanced={setShowAdvanced}
+        inviteEmail={inviteEmail}
+        setInviteEmail={setInviteEmail}
+        inviteRole={inviteRole}
+        setInviteRole={setInviteRole}
+        expiresInDays={expiresInDays}
+        setExpiresInDays={setExpiresInDays}
+        copiedCode={copiedCode}
+        handleGenerateInvitation={handleGenerateInvitation}
+        handleCopyCode={handleCopyCode}
+        handleCopyLink={handleCopyLink}
+        handleCopyInvitation={handleCopyInvitation}
+      />
 
-            {/* 操作按钮 */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleCloseJoinModal}
-                className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-200 transition-all"
-                disabled={joiningCode}
-              >
-                取消
-              </button>
-              <button
-                onClick={handleJoinWorkspace}
-                disabled={!invitationInfo || joiningCode}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {joiningCode ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>正在加入...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>确认加入</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 注销协作空间确认弹窗 */}
+      <DeleteConfirmModal
+        isOpen={showDeleteModal && deleteCheckResult}
+        title="注销空间确认"
+        confirmWord="确认注销"
+        warnings={deleteCheckResult?.warnings || []}
+        workspaceName={deleteCheckResult?.workspace?.name}
+        workspaceMeta={`成员数：${deleteCheckResult?.workspace?.memberCount || 0}人 | 组件数：${deleteCheckResult?.workspace?.componentCount || 0}个`}
+        isLoading={deletingWorkspaceId !== null}
+        deleteConfirmText={deleteConfirmText}
+        setDeleteConfirmText={setDeleteConfirmText}
+        onConfirm={() => confirmDeleteWorkspace()}
+        onCancel={cancelDeleteWorkspace}
+      />
 
-      {/* 分享空间模态框 */}
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
-            {/* 头部 */}
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center">
-                  <Users className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-800">
-                    分享空间
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    生成邀请码或分享链接，邀请同事加入您的空间
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-all"
-              >
-                <span className="text-slate-500 text-xl">×</span>
-              </button>
-            </div>
+      {/* 注销个人工作空间确认弹窗 */}
+      <DeleteConfirmModal
+        isOpen={showDeleteConfirmModal}
+        title="注销个人空间确认"
+        confirmWord="确认注销"
+        warnings={[
+          "个人空间将被物理注销并删除所有数据，此操作不可逆",
+          "空间下的全部组件研发资产和环境备份将被永久清空",
+          "注销后您可以随时在控制台重新创建一个全新的干净开发沙箱",
+        ]}
+        workspaceName={personalWorkspace?.name || "个人工作空间"}
+        workspaceMeta={`组件数：${personalWorkspace?.componentCount || 0}个`}
+        isLoading={deleting}
+        deleteConfirmText={deleteConfirmText}
+        setDeleteConfirmText={setDeleteConfirmText}
+        onConfirm={() => confirmDeleteUpgradedPersonal()}
+        onCancel={() => {
+          setShowDeleteConfirmModal(false);
+          setDeleteConfirmText("");
+        }}
+      />
 
-            {/* 内容区域 */}
-            <div className="p-6 space-y-6">
-              {/* 空间选择 */}
-              <div>
-                <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-[#3182ce]" />
-                  选择要分享的空间
-                </h3>
-                <div className="space-y-2">
-                  {workspaces.map((workspace) => (
-                    <label
-                      key={workspace.id}
-                      className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                        selectedWorkspace === workspace.id
-                          ? "border-[#10b981] bg-[#10b981]/5"
-                          : "border-slate-200 hover:border-slate-300"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 flex-1">
-                        <input
-                          type="radio"
-                          name="workspace"
-                          value={workspace.id}
-                          checked={selectedWorkspace === workspace.id}
-                          onChange={(e) => setSelectedWorkspace(e.target.value)}
-                          className="w-4 h-4 text-[#10b981] focus:ring-[#10b981]"
-                        />
-                        <div className="flex-1">
-                          <div className="font-bold text-slate-800">
-                            {workspace.name || "未命名空间"}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            {workspace.description || "暂无描述"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-500">成员：</span>
-                        <span className="font-bold text-[#10b981]">
-                          {workspace._count?.members || 0}人
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                  {workspaces.length === 0 && (
-                    <div className="text-center py-8 text-slate-500">
-                      <AlertTriangle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p>暂无可分享的空间</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+      {/* 一键重置个人空间数据确认弹窗 */}
+      <DeleteConfirmModal
+        isOpen={showPersonalResetModal}
+        title="重置个人空间数据"
+        confirmWord="确认重置"
+        warnings={[
+          "个人空间数据将被清空，并自动为您重新开辟一个干净的全新沙箱环境",
+          "个人空间内的所有组件、研发存档将被物理抹除且无法恢复",
+          "当前绑定的协作企业空间将不受任何影响，您可以照常使用",
+        ]}
+        workspaceName={personalWorkspace?.name || "个人工作空间"}
+        workspaceMeta={`组件数：${personalWorkspace?.componentCount || 0}个`}
+        isLoading={resetting}
+        deleteConfirmText={resetConfirmText}
+        setDeleteConfirmText={setResetConfirmText}
+        onConfirm={() => handleConfirmResetPersonal()}
+        onCancel={() => {
+          setShowPersonalResetModal(false);
+          setResetConfirmText("");
+        }}
+      />
 
-              {/* 高级选项 */}
-              <div>
-                <button
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="flex items-center gap-2 text-sm font-bold text-slate-700 hover:text-[#3182ce] transition-all"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span>高级选项</span>
-                  <ChevronRight
-                    className={`w-4 h-4 transition-transform ${
-                      showAdvanced ? "rotate-90" : ""
-                    }`}
-                  />
-                </button>
-
-                {showAdvanced && (
-                  <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">
-                        指定成员邮箱（可选）
-                      </label>
-                      <input
-                        type="email"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        placeholder="example@company.com"
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#10b981]/20 focus:border-[#10b981] outline-none text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">
-                        邀请角色
-                      </label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setInviteRole("MEMBER")}
-                          className={`flex-1 px-3 py-2 text-sm font-bold rounded-lg border-2 transition-all ${
-                            inviteRole === "MEMBER"
-                              ? "border-[#10b981] bg-[#10b981]/10 text-[#10b981]"
-                              : "border-slate-200 text-slate-600 hover:border-slate-300"
-                          }`}
-                        >
-                          普通成员
-                        </button>
-                        <button
-                          onClick={() => setInviteRole("ADMIN")}
-                          className={`flex-1 px-3 py-2 text-sm font-bold rounded-lg border-2 transition-all ${
-                            inviteRole === "ADMIN"
-                              ? "border-[#3182ce] bg-[#3182ce]/10 text-[#3182ce]"
-                              : "border-slate-200 text-slate-600 hover:border-slate-300"
-                          }`}
-                        >
-                          管理员
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">
-                        有效期
-                      </label>
-                      <select
-                        value={expiresInDays}
-                        onChange={(e) =>
-                          setExpiresInDays(Number(e.target.value))
-                        }
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#10b981]/20 focus:border-[#10b981] outline-none text-sm"
-                      >
-                        <option value={1}>1 天</option>
-                        <option value={3}>3 天</option>
-                        <option value={7}>7 天</option>
-                        <option value={15}>15 天</option>
-                        <option value={30}>30 天</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 生成按钮 */}
-              <button
-                onClick={handleGenerateInvitation}
-                disabled={generating || workspaces.length === 0}
-                className="w-full px-4 py-3 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {generating ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>生成中...</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-5 h-5" />
-                    <span>生成邀请码</span>
-                  </>
-                )}
-              </button>
-
-              {/* 邀请码列表 */}
-              {invitations.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-[#3182ce]" />
-                    已生成的邀请码
-                  </h3>
-                  <div className="space-y-2">
-                    {invitations.map((invitation: any) => (
-                      <div
-                        key={invitation.id}
-                        className="p-4 bg-slate-50 rounded-xl border border-slate-200"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-lg font-mono font-bold text-[#10b981]">
-                                {invitation.code}
-                              </span>
-                              {copiedCode === invitation.code && (
-                                <span className="text-xs text-[#10b981] font-bold">
-                                  已复制
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              空间：{invitation.workspace?.name || "未知空间"}
-                            </div>
-                          </div>
-                          <div className="text-right text-xs text-slate-500">
-                            <div>
-                              角色：
-                              <span className="font-bold text-slate-700">
-                                {invitation.role === "ADMIN"
-                                  ? "管理员"
-                                  : "普通成员"}
-                              </span>
-                            </div>
-                            <div>
-                              过期时间：
-                              <span
-                                className={`font-bold ${
-                                  invitation.expiresAt &&
-                                  new Date(invitation.expiresAt) < new Date()
-                                    ? "text-red-600"
-                                    : "text-slate-700"
-                                }`}
-                              >
-                                {invitation.expiresAt
-                                  ? new Date(
-                                      invitation.expiresAt,
-                                    ).toLocaleDateString()
-                                  : "永久有效"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 复制按钮组 */}
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleCopyCode(invitation.code)}
-                            className="flex-1 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition-all flex items-center justify-center gap-1"
-                          >
-                            <Copy className="w-3 h-3" />
-                            <span>复制邀请码</span>
-                          </button>
-                          <button
-                            onClick={() => handleCopyLink(invitation.code)}
-                            className="flex-1 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition-all flex items-center justify-center gap-1"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            <span>复制链接</span>
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleCopyInvitation(
-                                invitation.code,
-                                `${window.location.origin}/workspace-hub?invitationCode=${invitation.code}`,
-                              )
-                            }
-                            className="flex-1 px-3 py-2 bg-[#10b981] text-white text-xs font-bold rounded-lg hover:bg-[#059669] transition-all flex items-center justify-center gap-1"
-                          >
-                            <Share2 className="w-3 h-3" />
-                            <span>复制全部</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 注销空间确认模态框 */}
-      {showDeleteModal && deleteCheckResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-8 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-            {/* 头部 */}
-            <div className="p-6 border-b border-slate-200 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center">
-                  <AlertTriangle className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-800">
-                    注销空间确认
-                  </h2>
-                  <p className="text-xs text-slate-500">请仔细阅读以下信息</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 内容区域 - 可滚动 */}
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              {/* 检测结果提示 */}
-              <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5">
-                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-green-800 mb-1">
-                      ✅ 系统检测完成
-                    </h3>
-                    <p className="text-xs text-green-700">
-                      该空间符合注销条件，您可以继续进行注销操作
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 警告信息 */}
-              {deleteCheckResult.warnings &&
-                deleteCheckResult.warnings.length > 0 && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h3 className="text-sm font-bold text-red-800 mb-2">
-                          ⚠️ 注销后将产生以下影响：
-                        </h3>
-                        <ul className="space-y-1">
-                          {deleteCheckResult.warnings.map(
-                            (warning: string, index: number) => (
-                              <li
-                                key={index}
-                                className="text-sm text-red-700 flex items-start gap-1.5"
-                              >
-                                <span className="text-red-600 mt-0.5">•</span>
-                                <span>{warning}</span>
-                              </li>
-                            ),
-                          )}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              {/* 空间信息 */}
-              {deleteCheckResult.workspace && (
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Building2 className="w-5 h-5 text-slate-400" />
-                    <span className="text-sm font-bold text-slate-700">
-                      即将注销的空间：
-                    </span>
-                  </div>
-                  <div className="ml-8">
-                    <div className="text-base font-black text-slate-800 mb-1">
-                      {deleteCheckResult.workspace.name}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      成员数：{deleteCheckResult.workspace.memberCount || 0}人 |
-                      组件数： {deleteCheckResult.workspace.componentCount || 0}
-                      个
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 确认提示 */}
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-bold text-amber-800 mb-1">
-                      重要提示：
-                    </h3>
-                    <p className="text-sm text-amber-700">
-                      注销操作
-                      <span className="font-black">不可恢复</span>
-                      ，所有空间数据将被清空。请确保您已备份重要信息！
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 确认输入 */}
-              <div className="p-4 bg-white border-2 border-slate-200 rounded-xl">
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  请输入"确认注销"以继续：
-                </label>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="确认注销"
-                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none text-sm font-mono"
-                  autoComplete="off"
-                />
-                {deleteConfirmText && deleteConfirmText !== "确认注销" && (
-                  <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    <span>请输入正确的确认文字</span>
-                  </div>
-                )}
-                {deleteConfirmText === "确认注销" && (
-                  <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
-                    <svg
-                      className="w-3 h-3"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    <span>可以继续进行注销操作</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 底部按钮 - 固定在底部 */}
-            <div className="p-6 border-t border-slate-200 flex items-center gap-3 bg-slate-50 rounded-b-2xl flex-shrink-0">
-              <button
-                onClick={cancelDeleteWorkspace}
-                className="flex-1 px-4 py-3 bg-white border-2 border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-100 transition-all"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => confirmDeleteWorkspace()}
-                disabled={
-                  deletingWorkspaceId !== null ||
-                  deleteConfirmText !== "确认注销"
-                }
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {deletingWorkspaceId ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>注销中...</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle className="w-4 h-4" />
-                    <span>确认注销</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 注销已升级个人空间确认模态框 */}
-      {showDeleteConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-8 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-            {/* 头部 */}
-            <div className="p-6 border-b border-slate-200 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center">
-                  <AlertTriangle className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-800">
-                    注销个人空间确认
-                  </h2>
-                  <p className="text-xs text-slate-500">请仔细阅读以下信息</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 内容区域 - 可滚动 */}
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              {/* 警告信息 */}
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-bold text-red-800 mb-2">
-                      ⚠️ 注销后将产生以下影响：
-                    </h3>
-                    <ul className="space-y-1">
-                      <li className="text-sm text-red-700 flex items-start gap-1.5">
-                        <span className="text-red-600 mt-0.5">•</span>
-                        <span>个人空间将被永久注销，所有数据将无法恢复</span>
-                      </li>
-                      <li className="text-sm text-red-700 flex items-start gap-1.5">
-                        <span className="text-red-600 mt-0.5">•</span>
-                        <span>个人空间内的所有组件、项目等资源将被清空</span>
-                      </li>
-                      <li className="text-sm text-red-700 flex items-start gap-1.5">
-                        <span className="text-red-600 mt-0.5">•</span>
-                        <span>企业空间不会受到影响，可以继续使用</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* 空间信息 */}
-              {personalWorkspace && (
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="flex items-center gap-3 mb-2">
-                    <User className="w-5 h-5 text-slate-400" />
-                    <span className="text-sm font-bold text-slate-700">
-                      即将注销的个人空间：
-                    </span>
-                  </div>
-                  <div className="ml-8">
-                    <div className="text-base font-black text-slate-800 mb-1">
-                      {personalWorkspace.name}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      组件数：{personalWorkspace.componentCount || 0}个
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 确认提示 */}
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-bold text-amber-800 mb-1">
-                      重要提示：
-                    </h3>
-                    <p className="text-sm text-amber-700">
-                      注销操作
-                      <span className="font-black">不可恢复</span>
-                      ，所有个人空间数据将被清空。请确保您已备份重要信息！
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 确认输入 */}
-              <div className="p-4 bg-white border-2 border-slate-200 rounded-xl">
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  请输入"注销"以继续：
-                </label>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="注销"
-                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none text-sm font-mono"
-                  autoComplete="off"
-                />
-                {deleteConfirmText && deleteConfirmText !== "注销" && (
-                  <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    <span>请输入正确的确认文字</span>
-                  </div>
-                )}
-                {deleteConfirmText === "注销" && (
-                  <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
-                    <svg
-                      className="w-3 h-3"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    <span>可以继续进行注销操作</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 底部按钮 - 固定在底部 */}
-            <div className="p-6 border-t border-slate-200 flex items-center gap-3 bg-slate-50 rounded-b-2xl flex-shrink-0">
-              <button
-                onClick={() => {
-                  setShowDeleteConfirmModal(false);
-                  setDeleteConfirmText("");
-                }}
-                className="flex-1 px-4 py-3 bg-white border-2 border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-100 transition-all"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => confirmDeleteUpgradedPersonal()}
-                disabled={deleting || deleteConfirmText !== "注销"}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {deleting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>注销中...</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle className="w-4 h-4" />
-                    <span>确认注销</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 新增：高级组件拦截弹窗 */}
-      {showPremiumModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-[8px] shadow-lg shadow-slate-200/50 max-w-md w-full max-h-[90vh] overflow-y-auto p-6 relative">
-            {/* 关闭按钮 */}
-            <button
-              onClick={() => setShowPremiumModal(false)}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 transition-all"
-            >
-              <span className="text-slate-500 text-xl">×</span>
-            </button>
-
-            {/* 图标 */}
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 rounded-[8px] bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">🔒</span>
-              </div>
-              <h2 className="text-xl font-black text-slate-800 mb-2">
-                高级组件
-              </h2>
-              <p className="text-sm text-slate-600">
-                请升级至岗位专业版或联系管理员解锁
-              </p>
-            </div>
-
-            {/* 操作按钮 */}
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  setShowPremiumModal(false);
-                  // 可以在这里添加跳转到升级页面的逻辑
-                }}
-                className="w-full px-4 py-3 bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] text-white text-sm font-bold rounded-[4px] hover:shadow-lg transition-all"
-              >
-                立即升级
-              </button>
-              <button
-                onClick={() => setShowPremiumModal(false)}
-                className="w-full px-4 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-[4px] hover:bg-slate-50 transition-all"
-              >
-                稍后再说
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* 新增：二次验证弹窗 */}
+      {/* 9. 二次身份验证 Step-Up 弹窗 */}
       <StepUpAuthModal
         isOpen={showStepUpModal}
-        title="敏感操作验证"
-        message="此高危操作需要进行二次身份验证，以确认是您本人操作。"
+        title="注销空间安全验证"
+        message="物理注销或重置为高危操作，需要验证您的登录密码以确认身份。"
         action="delete_workspace"
         onConfirm={(token) => {
           setShowStepUpModal(false);
-          if (stepUpCallbackRef.current) {
-            stepUpCallbackRef.current(token);
-            stepUpCallbackRef.current = null;
+          if (stepUpPurpose === "delete_workspace") {
+            confirmDeleteWorkspace(token);
+          } else if (stepUpPurpose === "delete_upgraded_personal") {
+            confirmDeleteUpgradedPersonal(token);
+          } else if (stepUpPurpose as any === "reset_personal") {
+            handleConfirmResetPersonal(token);
           }
+          setStepUpPurpose(null);
         }}
         onCancel={() => {
           setShowStepUpModal(false);
-          stepUpCallbackRef.current = null;
+          setStepUpPurpose(null);
         }}
       />
     </div>

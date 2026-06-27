@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
         avatar: true,
         role: true,
         membershipLevel: true,
+        email: true,
       },
     });
 
@@ -67,7 +68,8 @@ export async function GET(request: NextRequest) {
       where: { id: membershipLevel },
     });
 
-    const maxEnterpriseWorkspaces = levelData ? Number(levelData.maxEnterpriseWorkspaces) : 1;
+    const isVip = membershipLevel !== "FREE" || isAdmin;
+    const maxEnterpriseWorkspaces = isVip ? 3 : 1;
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
@@ -122,13 +124,27 @@ export async function GET(request: NextRequest) {
       take: 3,
     });
 
+    // 查询最近 3 次安全登录历史记录
+    const loginHistoryPromise = prisma.loginhistory.findMany({
+      where: { userId },
+      orderBy: { loginAt: "desc" },
+      take: 3,
+      select: {
+        id: true,
+        ipAddress: true,
+        userAgent: true,
+        loginAt: true,
+      },
+    });
+
     // 并行运行基础用户数据查询
-    const [workspaceMembers, ownedWorkspaces, monthUsageCount, totalUsageCount, topComponentsData] = await Promise.all([
+    const [workspaceMembers, ownedWorkspaces, monthUsageCount, totalUsageCount, topComponentsData, loginHistory] = await Promise.all([
       workspaceMembersPromise,
       ownedWorkspacesPromise,
       monthUsagePromise,
       totalUsagePromise,
       topComponentsPromise,
+      loginHistoryPromise,
     ]);
 
     // 合并并去重工作空间
@@ -251,7 +267,7 @@ export async function GET(request: NextRequest) {
 
     // 会员特权与额度信息构建
     const enterpriseCount = enterpriseWorkspaces.length;
-    const availableEnterpriseSlots = maxEnterpriseWorkspaces === -1 ? -1 : Math.max(0, maxEnterpriseWorkspaces - enterpriseCount);
+    const availableEnterpriseSlots = Math.max(0, maxEnterpriseWorkspaces - enterpriseCount);
 
     const userQuota = {
       isVip: membershipLevel !== "FREE",
@@ -349,6 +365,7 @@ export async function GET(request: NextRequest) {
           avatar: dbUser.avatar,
           role: dbUser.role,
           membershipLevel,
+          email: dbUser.email,
         },
         personalWorkspace,
         enterpriseWorkspaces,
@@ -356,6 +373,7 @@ export async function GET(request: NextRequest) {
         systemStats,
         pendingApplicationsCount,
         topComponents,
+        loginHistory,
       },
     });
   } catch (error) {

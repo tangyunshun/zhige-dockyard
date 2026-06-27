@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -646,8 +646,8 @@ function CreateEnterpriseWorkspaceForm() {
                   {/* 第一行：空间名称 + 空间标识 */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        空间名称 <span className="text-red-500">*</span>
+                      <label className="block text-sm font-bold text-slate-700 mb-2 zg-required">
+                        空间名称
                       </label>
                       <input
                         type="text"
@@ -656,7 +656,7 @@ function CreateEnterpriseWorkspaceForm() {
                           setFormData({ ...formData, name: e.target.value })
                         }
                         placeholder="例如：知阁研发中心"
-                        className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                        className="zg-input bg-white/95"
                       />
                       <p className="text-xs text-slate-500 mt-1">
                         用于标识您的工作空间，后续可修改
@@ -664,19 +664,24 @@ function CreateEnterpriseWorkspaceForm() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        空间标识 <span className="text-red-500">*</span>
+                      <label className="block text-sm font-bold text-slate-700 mb-2 zg-required">
+                        空间标识
                       </label>
                       <div className="relative">
                         <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
                           type="text"
                           value={formData.slug}
-                          onChange={(e) =>
-                            setFormData({ ...formData, slug: e.target.value })
-                          }
+                          onChange={(e) => {
+                            // 自动格式化：转小写、空格转连字符、过滤非法字符
+                            const formatted = e.target.value
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")
+                              .replace(/[^a-z0-9-]/g, "");
+                            setFormData({ ...formData, slug: formatted });
+                          }}
                           placeholder="zhige-research"
-                          className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                          className="zg-input pl-9 bg-white/95"
                         />
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
@@ -688,15 +693,15 @@ function CreateEnterpriseWorkspaceForm() {
                   {/* 第二行：团队规模 + 所属行业 */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        团队规模 <span className="text-red-500">*</span>
+                      <label className="block text-sm font-bold text-slate-700 mb-2 zg-required">
+                        团队规模
                       </label>
                       <select
                         value={formData.teamSize}
                         onChange={(e) =>
                           setFormData({ ...formData, teamSize: e.target.value })
                         }
-                        className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                        className="zg-input bg-white/95"
                       >
                         <option value="">请选择团队规模</option>
                         {getAvailableTeamSizeOptions(membershipLevel).map(
@@ -735,15 +740,15 @@ function CreateEnterpriseWorkspaceForm() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        所属行业 <span className="text-red-500">*</span>
+                      <label className="block text-sm font-bold text-slate-700 mb-2 zg-required">
+                        所属行业
                       </label>
                       <select
                         value={formData.industry}
                         onChange={(e) =>
                           setFormData({ ...formData, industry: e.target.value })
                         }
-                        className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                        className="zg-input bg-white/95"
                       >
                         <option value="">请选择所属行业</option>
                         <option value="互联网/软件">互联网/软件</option>
@@ -779,13 +784,11 @@ function CreateEnterpriseWorkspaceForm() {
                               spaceType: e.target.value,
                             })
                           }
-                          className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                          className="zg-input pl-9 bg-white/95"
                         >
-                          <option value="STANDARD">标准空间（免费）</option>
-                          <option value="PRO">专业空间（¥299/月）</option>
-                          <option value="ENTERPRISE">
-                            企业空间（¥999/月）
-                          </option>
+                          <option value="STANDARD">标准空间（适合小型团队）</option>
+                          <option value="PRO">专业空间（适合成长型团队）</option>
+                          <option value="ENTERPRISE">旗舰企业空间（适合大型企业）</option>
                         </select>
                       </div>
                       {/* 空间类型说明 */}
@@ -883,7 +886,7 @@ function CreateEnterpriseWorkspaceForm() {
                         )}
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
-                        不同空间类型对应不同的配额和权益，创建后可升级
+                        不同空间类型对应不同的配额 and 权益，创建后可升级
                       </p>
                     </div>
 
@@ -901,7 +904,7 @@ function CreateEnterpriseWorkspaceForm() {
                               visibility: e.target.value,
                             })
                           }
-                          className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                          className="zg-input pl-9 bg-white/95"
                         >
                           <option value="PRIVATE">私有（仅成员可见）</option>
                           <option value="PUBLIC">公开（所有人可见）</option>
@@ -953,7 +956,7 @@ function CreateEnterpriseWorkspaceForm() {
                         }
                         placeholder="简要描述空间用途（选填）"
                         rows={3}
-                        className="w-full pl-9 pr-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95 resize-none"
+                        className="zg-input pl-9 bg-white/95 resize-none h-[80px] pt-2"
                       />
                     </div>
                   </div>
@@ -961,8 +964,8 @@ function CreateEnterpriseWorkspaceForm() {
                   {/* 联系信息 */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        联系邮箱 <span className="text-red-500">*</span>
+                      <label className="block text-sm font-bold text-slate-700 mb-2 zg-required">
+                        联系邮箱
                       </label>
                       <input
                         type="email"
@@ -974,7 +977,7 @@ function CreateEnterpriseWorkspaceForm() {
                           })
                         }
                         placeholder="name@company.com"
-                        className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                        className="zg-input bg-white/95"
                       />
                       <p className="text-xs text-slate-500 mt-1">
                         用于接收重要通知和系统更新
@@ -995,7 +998,7 @@ function CreateEnterpriseWorkspaceForm() {
                           })
                         }
                         placeholder="选填"
-                        className="w-full px-3 py-2.5 border border-[#e2e8f0] rounded-lg text-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white/95"
+                        className="zg-input bg-white/95"
                       />
                       <p className="text-xs text-slate-500 mt-1">
                         方便我们与您联系，提供技术支持
@@ -1007,7 +1010,7 @@ function CreateEnterpriseWorkspaceForm() {
                   <div className="flex justify-end gap-3 pt-4 border-t border-[#e2e8f0]/80 mt-2">
                     <button
                       onClick={() => router.back()}
-                      className="px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 rounded-lg transition-all cursor-pointer"
+                      className="zg-btn zg-btn-default"
                     >
                       取消
                     </button>
@@ -1021,7 +1024,7 @@ function CreateEnterpriseWorkspaceForm() {
                         (mode === "create" && !formData.industry) ||
                         !formData.contactEmail.trim()
                       }
-                      className="inline-flex items-center justify-center h-[40px] px-6 rounded-lg text-sm font-bold bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white border-t border-[#63b3ed] shadow-[0_2px_6px_-1px_rgba(49,130,206,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_4px_12px_-2px_rgba(49,130,206,0.4)] hover:-translate-y-[1px] hover:brightness-[1.05] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="zg-btn zg-btn-primary h-[40px] px-6"
                     >
                       {loading ? (
                         <>

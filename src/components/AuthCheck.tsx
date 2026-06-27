@@ -7,7 +7,7 @@ import { useToast } from "./Toast";
 // 不需要检查的公共路径 - 营销页面所有人都能访问
 const PUBLIC_PATHS = [
   "/",
-  "/capabilities",
+  "/studio",
   "/solutions",
   "/security",
   "/pricing",

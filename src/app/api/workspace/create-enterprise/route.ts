@@ -53,10 +53,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (enterpriseWorkspaces.length >= membershipConfig.maxEnterpriseWorkspaces && membershipConfig.maxEnterpriseWorkspaces !== -1) {
+    const isVip = userMembershipLevel !== "FREE";
+    const allowedLimit = isVip ? 3 : 1;
+
+    if (enterpriseWorkspaces.length >= allowedLimit) {
       return NextResponse.json(
         { 
-          error: `${membershipConfig.nameZh}最多可创建${membershipConfig.maxEnterpriseWorkspaces}个企业空间，已达到上限`,
+          error: `${membershipConfig.nameZh}最多可创建${allowedLimit}个企业空间，已达到上限`,
         },
         { status: 403 }
       );
