@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     // 验证用户身份
     const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
+    const authResult = await validateUser(authHeader, request);
     
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });
@@ -55,7 +55,7 @@ export async function PATCH(request: NextRequest) {
   try {
     // 验证用户身份
     const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
+    const authResult = await validateUser(authHeader, request);
     
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });

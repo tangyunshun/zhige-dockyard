@@ -1,8 +1,14 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requirePlatformPermission(request, "user:read");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
+    }
+
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");

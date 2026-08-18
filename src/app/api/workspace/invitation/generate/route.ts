@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   try {
     // 验证用户身份
     const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
+    const authResult = await validateUser(authHeader, request);
     
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const userId = authResult.user!.id;
 
     const body = await request.json();
-    const { workspaceId, email, expiresInDays } = body;
+    const { workspaceId, email, expiresInDays, role } = body;
 
     if (!workspaceId) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
@@ -58,12 +58,17 @@ export async function POST(request: NextRequest) {
       ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
       : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 默认 7 天有效期
 
+    // 仅允许 MEMBER / ADMIN，其余一律降级为普通成员
+    const invitationRole =
+      role === "ADMIN" || role === "OWNER" ? "ADMIN" : "MEMBER";
+
     // 保存邀请码到数据库
     const invitation = await prisma.workspaceinvitation.create({
       data: {
         id: crypto.randomUUID(),
         workspaceId,
-        email,
+        email: email || null,
+        role: invitationRole as any,
         code: invitationCode,
         expiresAt,
         createdBy: userId,

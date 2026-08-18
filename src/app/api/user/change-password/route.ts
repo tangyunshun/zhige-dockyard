@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -73,6 +73,18 @@ export async function POST(request: NextRequest) {
         refreshToken: null,           // 清除refresh token
         refreshTokenExpiresAt: null,  // 清除refresh token过期时间
         lastForcedLogoutAt: new Date(), // 标记被强制下线
+      },
+    });
+
+    // 写入审计日志
+    await prisma.operationlog.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId,
+        action: "Password:Change",
+        resource: "Password",
+        details: JSON.stringify({ reason: "user initiated password change" }),
+        createdAt: new Date(),
       },
     });
 

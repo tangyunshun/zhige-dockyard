@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 
@@ -72,6 +72,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const { getAdminPermissions } = require("@/lib/security");
+    const permissions = getAdminPermissions(user.id);
+
     // 返回用户信息 - 简单可靠
     return NextResponse.json({
       user: {
@@ -85,6 +88,7 @@ export async function GET(request: NextRequest) {
         membershipLevel: user.membershipLevel,
         deletionDaysRemaining,
       },
+      permissions,
     });
   } catch (error) {
     console.error("Auth me error:", error);

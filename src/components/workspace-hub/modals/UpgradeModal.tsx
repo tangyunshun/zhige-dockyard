@@ -40,11 +40,12 @@ export default function UpgradeModal({
         return;
       }
 
+      const token = localStorage.getItem("auth_token");
       const res = await fetch("/api/workspace/upgrade", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${token || ""}`,
         },
         body: JSON.stringify({
           workspaceId: personalWorkspace.id,

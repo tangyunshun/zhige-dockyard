@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, Bell } from "lucide-react";
+import { useToast } from "@/components/Toast";
 import { Logo } from "./Logo";
 import AvatarDropdown from "./AvatarDropdown";
 import DynamicCTA from "./DynamicCTA";
@@ -11,90 +12,325 @@ import { useAppContext } from "@/contexts/AppContext";
 export default function GlobalHeader() {
   const router = useRouter();
   const pathname = usePathname();
+  const toast = useToast();
   const { userState, isLoading } = useAppContext();
 
-  const isWorkspaceRoute = pathname.startsWith("/workspace/") && pathname !== "/workspace-hub";
-  
-  const isDevelopmentRoute = pathname && (
-    pathname.startsWith("/workspace-hub") || 
-    pathname.startsWith("/workspace") ||
-    pathname.startsWith("/admin") ||
-    pathname.startsWith("/user") ||
-    pathname.startsWith("/settings")
-  );
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // === 彻底解决 Next.js Hydration Mismatch 的水合屏障 ===
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch("/api/user/notifications/list");
+      if (res.ok) {
+        const json = await res.json();
+        setNotifications(json.data.list || []);
+        setUnreadCount(json.data.unreadCount || 0);
+      }
+    } catch (e) {
+      console.error("加载消息通知失败:", e);
+    }
+  };
+
+  const handleMarkAsRead = async (id?: string) => {
+    try {
+      const res = await fetch("/api/user/notifications/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(id ? { id } : { all: true })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setNotifications(json.data.list || []);
+        setUnreadCount(json.data.unreadCount || 0);
+        toast.success(id ? "已标记已读" : "已全部标记为已读");
+      }
+    } catch (e) {
+      console.error("标记已读失败:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (mounted && userState.isLoggedIn) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [mounted, userState.isLoggedIn]);
+
+  const isWorkspaceRoute = pathname && pathname.startsWith("/workspace/") && pathname !== "/workspace-hub";
+
+  // 工作空间信息计算
+  const currentWorkspaceId = userState.currentWorkspaceId || (userState.workspaces && userState.workspaces[0]?.id);
+  const currentWorkspace = userState.workspaces?.find(ws => ws.id === currentWorkspaceId);
+
+  // 未登录跳转拦截函数
+  const handleNavClick = (path: string, requireAuth: boolean = false) => {
+    if (requireAuth && (!userState.isLoggedIn || !mounted)) {
+      router.push(`/auth/login?redirect=${encodeURIComponent(path)}`);
+    } else {
+      router.push(path);
+    }
+  };
+
+  // 已登录状态：只由 userState.isLoggedIn 驱动
+  const showLoggedInNav = mounted && userState.isLoggedIn;
+  const showLoggedInRight = mounted && userState.isLoggedIn;
+  const isHeaderLoading = isLoading || !mounted;
+
+  // 路径高亮判定
+  const getTabClass = (key: string) => {
+    let isActive = false;
+    if (key === "workspace-hub") {
+      isActive = pathname === "/workspace-hub";
+    } else if (key === "studio") {
+      isActive = pathname === "/studio" || pathname === "/components";
+    } else if (key === "tasks") {
+      isActive = pathname === "/tasks" || pathname === "/user/tasks";
+    } else if (key === "knowledge") {
+      isActive = pathname === "/knowledge" || pathname === "/user/knowledge";
+    } else if (key === "docs") {
+      isActive = pathname ? (pathname.startsWith("/docs") || pathname.startsWith("/developers")) : false;
+    } else if (key === "solutions") {
+      isActive = pathname === "/solutions";
+    } else if (key === "security") {
+      isActive = pathname === "/security";
+    } else if (key === "pricing") {
+      isActive = pathname === "/pricing";
+    }
+
+    return `transition-all duration-200 cursor-pointer h-[60px] flex items-center relative text-xs sm:text-sm ${
+      isActive 
+        ? "text-[#3182ce] font-extrabold after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-[#3182ce]" 
+        : "text-slate-500 hover:text-[#3182ce] font-semibold"
+    }`;
+  };
 
   return (
-    <header className="h-[60px] fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-white/95 border-b border-slate-200/80 shadow-sm">
-      <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
+    <header className="h-[60px] fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-white/95 border-b border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-full flex items-center justify-between">
         {/* 左侧区：Logo */}
         <Logo
-          className="flex items-center cursor-pointer"
+          className="flex items-center cursor-pointer flex-shrink-0"
           variant="light"
-          onClick={() => router.push("/")}
+          onClick={() => {
+            if (userState.isLoggedIn && mounted) {
+              router.push("/workspace-hub");
+            } else {
+              router.push("/");
+            }
+          }}
         />
 
-        {/* 中间区：营销菜单 */}
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
-          <button 
-            onClick={() => router.push("/studio")} 
-            className={`transition-colors cursor-pointer ${pathname === "/studio" ? "text-[#2b6cb0] font-bold" : "hover:text-[#2b6cb0]"}`}
-          >
-            组件大厅
-          </button>
-          <button 
-            onClick={() => router.push("/solutions")} 
-            className={`transition-colors cursor-pointer ${pathname === "/solutions" ? "text-[#2b6cb0] font-bold" : "hover:text-[#2b6cb0]"}`}
-          >
-            解决方案
-          </button>
-          <button 
-            onClick={() => router.push("/security")} 
-            className={`transition-colors cursor-pointer ${pathname === "/security" ? "text-[#2b6cb0] font-bold" : "hover:text-[#2b6cb0]"}`}
-          >
-            私有化与安全
-          </button>
-          <button 
-            onClick={() => router.push("/pricing")} 
-            className={`transition-colors cursor-pointer ${pathname === "/pricing" ? "text-[#2b6cb0] font-bold" : "hover:text-[#2b6cb0]"}`}
-          >
-            价格方案
-          </button>
-          <button 
-            onClick={() => router.push("/developers")} 
-            className={`transition-colors cursor-pointer ${pathname === "/developers" ? "text-[#2b6cb0] font-bold" : "hover:text-[#2b6cb0]"}`}
-          >
-            开发者文档
-          </button>
+        {/* 中间区：自适应系统级导航 */}
+        <nav className="hidden md:flex items-center gap-6 lg:gap-8 h-full">
+          {showLoggedInNav ? (
+            // === 已登录：工作台导航 (对齐 V6.0 灰度命名) ===
+            <>
+              <button 
+                onClick={() => handleNavClick("/workspace-hub", true)} 
+                className={getTabClass("workspace-hub")}
+              >
+                空间中枢
+              </button>
+              <button 
+                onClick={() => handleNavClick("/studio", true)} 
+                className={getTabClass("studio")}
+              >
+                组件大厅
+              </button>
+              <button 
+                onClick={() => handleNavClick("/tasks", true)} 
+                className={getTabClass("tasks")}
+              >
+                任务中心
+              </button>
+              <button 
+                onClick={() => handleNavClick("/knowledge", true)} 
+                className={getTabClass("knowledge")}
+              >
+                知识库
+              </button>
+              <button 
+                onClick={() => handleNavClick("/docs")} 
+                className={getTabClass("docs")}
+              >
+                文档中心
+              </button>
+            </>
+          ) : (
+            // === 未登录：官网导航 ===
+            <>
+              <button 
+                onClick={() => handleNavClick("/studio")} 
+                className={getTabClass("studio")}
+              >
+                组件大厅
+              </button>
+              <button 
+                onClick={() => handleNavClick("/solutions")} 
+                className={getTabClass("solutions")}
+              >
+                解决方案
+              </button>
+              <button 
+                onClick={() => handleNavClick("/security")} 
+                className={getTabClass("security")}
+              >
+                私有化与安全
+              </button>
+              <button 
+                onClick={() => handleNavClick("/pricing")} 
+                className={getTabClass("pricing")}
+              >
+                价格方案
+              </button>
+              <button 
+                onClick={() => handleNavClick("/docs")} 
+                className={getTabClass("docs")}
+              >
+                文档中心
+              </button>
+            </>
+          )}
         </nav>
 
         {/* 右侧区：动态操作区 */}
-        <div className="flex items-center gap-3">
-          {isLoading ? (
+        <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+          {isHeaderLoading ? (
             <div className="flex items-center gap-3">
-              <div className="w-24 h-9 bg-slate-200 rounded-[4px] animate-pulse" />
-              <div className="w-32 h-9 bg-slate-200 rounded-[4px] animate-pulse" />
+              <div className="w-20 h-[38px] bg-slate-200 rounded-lg animate-pulse" />
+              <div className="w-28 h-[38px] bg-slate-200 rounded-lg animate-pulse" />
             </div>
-          ) : !userState.isLoggedIn ? (
+          ) : !showLoggedInRight ? (
             <>
               <button 
                 onClick={() => router.push("/auth/login")}
-                className="px-4 py-2 text-sm font-medium text-[#2b6cb0] hover:text-[#3182ce] transition-colors cursor-pointer"
+                className="px-3 h-[38px] text-xs sm:text-sm font-bold text-slate-650 hover:text-[#3182ce] transition-colors cursor-pointer"
               >
                 登录/注册
               </button>
-              {!isDevelopmentRoute && <DynamicCTA size="sm" />}
+              <button 
+                onClick={() => router.push("/auth/login?signup=true")}
+                className="h-9 px-4 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white text-xs font-bold shadow-sm hover:shadow hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center"
+              >
+                免费体验工作台
+              </button>
             </>
           ) : (
-            <>
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* 通知中心入口与真实 Popover 浮动面板 */}
+              <div className="relative">
+                <button 
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                  }}
+                  className="p-2 hover:bg-slate-100/80 rounded-lg transition-colors flex items-center justify-center w-9 h-9 text-slate-500 hover:text-[#3182ce] relative cursor-pointer z-50 animate-in fade-in"
+                >
+                  <Bell className="w-4.5 h-4.5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white" />
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <>
+                    {/* 点击背景拦截关闭 */}
+                    <div className="fixed inset-0 z-45 cursor-default" onClick={() => setShowNotifications(false)} />
+                    
+                    {/* 毛玻璃浮窗面板 */}
+                    <div className="absolute right-0 top-11 w-80 bg-white/95 backdrop-blur-xl rounded-[20px] shadow-2xl border border-slate-100/90 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                          <span>🔔</span> 通知中心 ({unreadCount})
+                        </h3>
+                        {unreadCount > 0 && (
+                          <button 
+                            onClick={() => handleMarkAsRead()}
+                            className="text-[10px] text-[#3182ce] font-bold hover:underline cursor-pointer"
+                          >
+                            全部已读
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="max-h-72 overflow-y-auto divide-y divide-slate-50">
+                        {notifications.length === 0 ? (
+                          <div className="py-12 text-center text-xs text-slate-400 font-semibold">
+                            🎉 暂无任何通知，工作台一切正常
+                          </div>
+                        ) : (
+                          notifications.map((notify) => {
+                            const typeLabels: Record<string, string> = {
+                              system: "系统",
+                              task: "任务",
+                              security: "安全"
+                            };
+                            const badgeColors: Record<string, string> = {
+                              system: "bg-blue-50 text-blue-600 border-blue-100",
+                              task: "bg-emerald-50 text-emerald-600 border-emerald-100",
+                              security: "bg-orange-50 text-orange-600 border-orange-100"
+                            };
+
+                            return (
+                              <div 
+                                key={notify.id}
+                                onClick={() => {
+                                  if (!notify.isRead) {
+                                    handleMarkAsRead(notify.id);
+                                  }
+                                }}
+                                className={`p-4 hover:bg-slate-50/60 transition-colors cursor-pointer text-left ${!notify.isRead ? 'bg-blue-500/[0.01]' : ''}`}
+                              >
+                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                  <span className={`px-2 py-0.5 border rounded-full text-[9px] font-black ${badgeColors[notify.type] || 'bg-slate-150 text-slate-600 border-slate-200'}`}>
+                                    {typeLabels[notify.type] || "通用"}
+                                  </span>
+                                  <span className="text-[9px] text-slate-400 font-bold">
+                                    {new Date(notify.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <h4 className={`text-xs mb-1 ${!notify.isRead ? 'font-black text-slate-800' : 'font-semibold text-slate-500'}`}>
+                                  {notify.title}
+                                </h4>
+                                <p className={`text-[10px] leading-relaxed ${!notify.isRead ? 'text-slate-650 font-bold' : 'text-slate-400 font-semibold'}`}>
+                                  {notify.content}
+                                </p>
+                                {!notify.isRead && (
+                                  <div className="mt-2 flex items-center justify-end">
+                                    <span className="w-1.5 h-1.5 bg-[#3182ce] rounded-full animate-pulse" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
               {/* 全局搜索图标 - 仅在工作空间内显示 */}
               {isWorkspaceRoute && (
-                <button className="p-2 hover:bg-slate-100 rounded-[8px] transition-colors duration-200 ease-out">
-                  <Search className="w-5 h-5 text-slate-500" />
+                <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors flex items-center justify-center w-9 h-9 cursor-pointer">
+                  <Search className="w-4.5 h-4.5 text-slate-500" />
                 </button>
               )}
-              {!isDevelopmentRoute && <DynamicCTA size="sm" />}
-              <AvatarDropdown />
-            </>
+
+              {/* 用户头像菜单 */}
+              <AvatarDropdown 
+                workspaceId={currentWorkspaceId}
+                workspaceType={currentWorkspace?.type}
+                userRole={currentWorkspace?.role}
+              />
+            </div>
           )}
         </div>
       </div>

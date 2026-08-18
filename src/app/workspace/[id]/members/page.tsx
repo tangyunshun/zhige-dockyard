@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayout";
+import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Users, KeyRound, Copy, Trash2, ArrowUpRight, RefreshCw, ShieldAlert } from "lucide-react";
 
 interface Member {
@@ -208,9 +208,9 @@ export default function WorkspaceMembersPage() {
                     <span className="truncate">邀请码: <strong className="text-indigo-600 font-black">{invitationCode}</strong> (有效期至 {invitationExpires})</span>
                     <button
                       onClick={() => handleCopyText(invitationCode, "邀请码已成功复制")}
-                      className="text-indigo-600 font-bold hover:underline shrink-0"
+                      className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg font-bold shrink-0 cursor-pointer"
                     >
-                      复制
+                      复制邀请码
                     </button>
                   </div>
                   
@@ -219,7 +219,7 @@ export default function WorkspaceMembersPage() {
                       const joinUrl = `${window.location.origin}/workspace-hub?inviteCode=${invitationCode}`;
                       handleCopyText(joinUrl, "邀请链接已复制到剪贴板");
                     }}
-                    className="px-3.5 py-2 h-10 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 flex items-center gap-1 shrink-0 cursor-pointer"
+                    className="bg-white px-3.5 py-2 h-10 text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 flex items-center gap-1 shrink-0 cursor-pointer"
                   >
                     <Copy className="w-3.5 h-3.5" />
                     <span>复制链接</span>

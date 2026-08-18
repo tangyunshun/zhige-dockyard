@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { getMembershipConfig, isTeamSizeExceeded, formatTeamSize } from "@/lib/membership";
+import { ensureDefaultComponents } from "@/lib/workspaceInit";
 
 export async function POST(request: NextRequest) {
   try {
@@ -103,7 +104,8 @@ export async function POST(request: NextRequest) {
     const planUpper = plan.toUpperCase();
     const tokenLimit = planUpper === "STANDARD" ? 20000 : planUpper === "PRO" ? 100000 : planUpper === "ENTERPRISE" ? 500000 : 1000000;
 
-    const workspaceId = crypto.randomUUID();
+    const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const workspaceId = generateId("ws");
 
     // 创建工作空间
     const workspace = await prisma.workspace.create({
@@ -125,14 +127,14 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
         workspacemember: {
           create: {
-            id: crypto.randomUUID(),
+            id: generateId("wsm"),
             userId,
             role: "OWNER",
           },
         },
         workspacequota: {
           create: {
-            id: crypto.randomUUID(),
+            id: generateId("wsq"),
             workspaceId: workspaceId,
             membershipLevelId: mlId,
             tokenBalance: BigInt(tokenLimit),
@@ -146,10 +148,13 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 物理载入并初始化默认组件
+    await ensureDefaultComponents(workspace.id, userId);
+
     // 记录操作日志
     await prisma.operationlog.create({
       data: {
-        id: crypto.randomUUID(),
+        id: generateId("op"),
         userId,
         workspaceId: workspace.id,
         action: "CREATE_ENTERPRISE_WORKSPACE",
@@ -163,10 +168,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 对含有 BigInt 字段的复杂对象进行安全转换，防止 JSON.stringify 崩溃
+    const serializedWorkspace = JSON.parse(
+      JSON.stringify(workspace, (key, value) => 
+        typeof value === "bigint" ? Number(value) : value
+      )
+    );
+
     return NextResponse.json({
       success: true,
       message: "企业空间创建成功",
-      workspace,
+      workspace: serializedWorkspace,
     });
   } catch (error) {
     console.error("Create enterprise workspace error:", error);

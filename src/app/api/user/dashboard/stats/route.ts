@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 // GET - 获取用户仪表板统计信息
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get("Authorization")?.replace("Bearer ", "");
+    const userId =
+      request.headers.get("x-user-id") ||
+      request.headers.get("Authorization")?.replace("Bearer ", "");
 
     if (!userId) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
@@ -24,10 +26,22 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取组件任务数量
-    const componentCount = await prisma.componenttask.count({
-      where: { userId },
+    // 获取组件数量：合并用户各工作空间（个人空间 + 企业空间）已绑定的组件，
+    // 按 componentId 去重只算一次。组件绑定关系记录在 componentusage 表，
+    // 每个新工作空间由 workspaceInit 默认绑定 C01/C02/C07 三个组件。
+    const userWorkspaces = await prisma.workspace.findMany({
+      where: {
+        OR: [{ ownerId: userId }, { workspacemember: { some: { userId } } }],
+      },
+      select: { id: true },
     });
+    const workspaceIds = userWorkspaces.map((w) => w.id);
+    const componentUsages = await prisma.componentusage.findMany({
+      where: { workspaceId: { in: workspaceIds } },
+      select: { componentId: true },
+      distinct: ["componentId"],
+    });
+    const componentCount = componentUsages.length;
 
     // 获取用户会员等级信息
     const user = await prisma.user.findUnique({

@@ -37,33 +37,12 @@ export async function GET(request: NextRequest) {
     }
 
     // 检查邀请码状态
-    if (invitation.status === "USED") {
-      return NextResponse.json(
-        { error: "邀请码已被使用" },
-        { status: 400 },
-      );
-    }
-
-    if (invitation.status === "EXPIRED") {
-      return NextResponse.json(
-        { error: "邀请码已过期" },
-        { status: 400 },
-      );
-    }
-
-    // 检查有效期
+    // 1. 检查有效期
     if (invitation.expiresAt && new Date() > invitation.expiresAt) {
-      await prisma.workspaceinvitation.update({
-        where: { id: invitation.id },
-        data: { status: "EXPIRED", updatedAt: new Date() },
-      });
-      return NextResponse.json(
-        { error: "邀请码已过期" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "邀请码已过期" }, { status: 400 });
     }
 
-    // 验证邮箱
+    // 2. 验证邮箱
     const userId = request.headers.get("authorization")?.replace("Bearer ", "");
     if (invitation.email && userId) {
       const user = await prisma.user.findUnique({
@@ -75,6 +54,29 @@ export async function GET(request: NextRequest) {
           { status: 403 },
         );
       }
+    }
+
+    // 检查工作空间当前的总协同人数配额 (安全配额卡关)
+    const currentMemberCount = await prisma.workspacemember.count({
+      where: { workspaceId: invitation.workspaceId }
+    });
+
+    const spaceOwner = await prisma.user.findUnique({
+      where: { id: invitation.workspace.ownerId }
+    });
+
+    const levelName = spaceOwner?.membershipLevel || "FREE";
+    const levelInfo = await prisma.membershiplevel.findUnique({
+      where: { name: levelName }
+    });
+
+    const maxTeamSize = levelInfo ? Number(levelInfo.maxTeamSize) : 5;
+
+    if (currentMemberCount >= maxTeamSize) {
+      return NextResponse.json(
+        { error: `该协作空间的团队协同配额已满（上限 ${maxTeamSize} 人），无法加入。请联系空间所有者升级套餐。` },
+        { status: 403 }
+      );
     }
 
     // 检查用户是否已是成员

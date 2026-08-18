@@ -65,9 +65,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 创建工作空间
+    const workspaceId = `ws_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     const workspace = await prisma.workspace.create({
       data: {
-        id: crypto.randomUUID(),
+        id: workspaceId,
         name,
         type,
         description: description || null,
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
         workspacemember: {
           create: {
-            id: crypto.randomUUID(),
+            id: `wsm_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
             userId,
             role: "OWNER",
             updatedAt: new Date(),
@@ -90,9 +91,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const serializedWorkspace = JSON.parse(
+      JSON.stringify(workspace, (key, value) =>
+        typeof value === "bigint" ? Number(value) : value
+      )
+    );
+
     return NextResponse.json({
       success: true,
-      workspace,
+      workspace: serializedWorkspace,
       message: "工作空间创建成功",
     });
   } catch (error) {

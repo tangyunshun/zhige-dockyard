@@ -3,56 +3,52 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
-    const { account } = await request.json();
+    const { account, accountType } = await request.json();
 
     if (!account) {
-      return NextResponse.json(
-        { message: "缺少账号信息" },
-        { status: 400 }
-      );
+      return NextResponse.json({ message: "账号不能为空" }, { status: 400 });
     }
 
-    // 查找用户
-    let user;
-    const isPhone = /^1[3-9]\d{9}$/.test(account);
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account);
-
-    if (isPhone) {
-      user = await prisma.user.findUnique({
-        where: { phone: account },
-      });
-    } else if (isEmail) {
-      user = await prisma.user.findUnique({
-        where: { email: account },
-      });
-    } else {
-      // 用户名
-      user = await prisma.user.findFirst({
-        where: { name: account },
-      });
-    }
+    // 查找用户（支持邮箱、手机号、用户名）
+    const users = (await prisma.$queryRaw`SELECT id, email, phone, name, status FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}`) as any[];
+    const user = users.length > 0 ? users[0] : null;
 
     if (!user) {
-      return NextResponse.json(
-        { message: "用户不存在" },
-        { status: 404 }
-      );
+      return NextResponse.json({ message: "该账号未注册" }, { status: 404 });
+    }
+
+    // 已注销 / 封禁 / 禁用 / 注销中 / 锁定 等状态复用 check-account 的语义
+    if (user.status === "deleted") {
+      return NextResponse.json({ message: "该账号未注册" }, { status: 404 });
+    }
+    if (user.status === "banned") {
+      return NextResponse.json({ message: "该账号已被永久封禁" }, { status: 403 });
+    }
+    if (user.status === "inactive") {
+      return NextResponse.json({ message: "账号已被禁用，请联系管理员" }, { status: 403 });
+    }
+
+    const hasPhone = !!user.phone;
+    const hasEmail = !!user.email;
+
+    if (!hasPhone && !hasEmail) {
+      return NextResponse.json({
+        bindInfo: { hasPhone: false, hasEmail: false },
+        message: "该账号未绑定手机号或邮箱",
+      });
     }
 
     return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        phone: user.phone,
-        email: user.email,
-        name: user.name,
+      bindInfo: {
+        hasPhone,
+        hasEmail,
+        phone: user.phone || undefined,
+        email: user.email || undefined,
       },
+      message: "ok",
     });
   } catch (error) {
-    console.error("Check account error:", error);
-    return NextResponse.json(
-      { message: "查询失败" },
-      { status: 500 }
-    );
+    console.error("Check account for reset error:", error);
+    return NextResponse.json({ message: "服务器错误" }, { status: 500 });
   }
 }

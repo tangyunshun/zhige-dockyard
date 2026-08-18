@@ -1,27 +1,23 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
-// GET: 获取用户列表（用于调试）
+// 统一的客户端角色清洗函数
+const getCleanRole = (role: string | null | undefined): string => {
+  if (!role) return "USER";
+  const r = role.toUpperCase().trim();
+  if (r === "SUPER_ADMIN" || r === "SUPERADMIN" || r === "SUPER_ADMIN_ROLE" || r === "SUPER") {
+    return "SUPER_ADMIN";
+  }
+  return "USER";
+};
+
+// GET: 获取单个用户会话状态调试 (需要 user:read 权限)
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-
-    const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    const authResult = await requirePlatformPermission(request, "user:read");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
 
     // 获取所有用户并显示详细的会话信息
@@ -103,41 +99,25 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH: 修改用户状态
+// PATCH: 修改用户状态/角色 (修改角色仅限 SuperAdmin, 封禁需要 user:ban, 修改状态需要 user:update)
 export async function PATCH(request: NextRequest, context: { params: Promise<{ userId: string }> }) {
   try {
     const params = await context.params;
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-
-    const adminId = authHeader.replace("Bearer ", "");
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-    });
-
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
-    }
-
     const { userId } = params;
-    const { status, bannedUntil } = await request.json();
 
-    // 验证必填字段
-    if (!status) {
-      return NextResponse.json({ error: "缺少状态字段" }, { status: 400 });
-    }
+    const body = await request.json();
+    const { status, bannedUntil, role } = body;
 
-    // 验证状态值
-    if (!["active", "inactive", "banned", "deleted"].includes(status)) {
-      return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
+    // 1. 判断是封禁操作还是普通属性编辑，以匹配不同的操作权限
+    const isBanAction = status === "banned";
+    const requiredPermission = isBanAction ? "user:ban" : "user:update";
+
+    const authResult = await requirePlatformPermission(request, requiredPermission);
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
+    const adminId = authResult.user!.id;
+    const adminRole = authResult.user!.role;
 
     // 获取目标用户
     const targetUser = await prisma.user.findUnique({
@@ -148,9 +128,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
     }
 
-    // 不能操作超级管理员
-    if (targetUser.role === "super_admin") {
-      return NextResponse.json({ error: "不能操作超级管理员" }, { status: 403 });
+    // 2. 超管越权保护：不能操作超级管理员
+    if (getCleanRole(targetUser.role) === "SUPER_ADMIN") {
+      return NextResponse.json({ error: "权限不足，不能对超级管理员执行编辑或限制操作" }, { status: 403 });
     }
 
     // 不能操作自己
@@ -158,41 +138,61 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
       return NextResponse.json({ error: "不能操作自己" }, { status: 403 });
     }
 
-    // 构建更新数据
-    const updateData: any = {
-      status,
-    };
+    // 3. 角色修改限制：修改用户平台角色仅 SuperAdmin 允许
+    if (role !== undefined && role !== targetUser.role) {
+      if (getCleanRole(adminRole) !== "SUPER_ADMIN") {
+        return NextResponse.json({ error: "越权警告：只有超级管理员允许变更用户的平台角色" }, { status: 403 });
+      }
+    }
 
-    // 如果是封禁状态，设置封禁时间
-    if (status === "banned") {
-      updateData.bannedUntil = bannedUntil || null;
-      // 清除会话（强制下线）
-      updateData.sessionToken = null;
-      updateData.sessionExpiresAt = null;
-    } else {
-      // 解封或激活时清除封禁时间
-      updateData.bannedUntil = null;
+    // 构建更新数据
+    const updateData: any = {};
+    if (status !== undefined) {
+      // 验证状态值
+      if (!["active", "inactive", "banned", "deleted"].includes(status)) {
+        return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
+      }
+      updateData.status = status;
+
+      // 如果是封禁状态，设置封禁时间并强制踢下线
+      if (status === "banned") {
+        updateData.bannedUntil = bannedUntil ? new Date(bannedUntil) : null;
+        updateData.sessionToken = null;
+        updateData.sessionExpiresAt = null;
+      } else {
+        updateData.bannedUntil = null;
+      }
+    }
+
+    if (role !== undefined) {
+      updateData.role = role;
     }
 
     // 更新用户状态
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: updateData,
     });
 
+    // 记录高危审计日志并持久化落库
+    const auditAction = isBanAction ? "user:ban" : "user:update";
+    await writeAuditLog(adminId, auditAction, { targetUserId: userId, updates: updateData });
+
     console.log(
-      `[修改用户状态] 管理员 ${adminId} 将用户 ${userId} 的状态修改为 ${status}`,
+      `[修改用户状态/角色] 管理员 ${adminId} 对用户 ${userId} 执行了 ${auditAction}。更新数据为:`,
+      updateData
     );
 
     return NextResponse.json({
       success: true,
-      message: "状态已更新",
+      message: "用户信息更新成功",
+      data: updatedUser
     });
   } catch (error) {
-    console.error("Update user status error:", error);
+    console.error("Update user error:", error);
     return NextResponse.json(
       {
-        error: "更新状态失败",
+        error: "更新用户信息失败",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

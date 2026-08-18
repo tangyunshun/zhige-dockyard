@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { getToken } from "next-auth/jwt";
@@ -98,6 +98,32 @@ export async function POST(req: NextRequest) {
     await prisma.user.update({
       where: { id: userId },
       data: updateData,
+    });
+
+    // 写入审计日志 (排除敏感的密码哈希等字段)
+    const logDetails: any = {};
+    if (updateData.password) {
+      logDetails.passwordUpdated = true;
+    }
+    if (updateData.phone !== undefined) {
+      logDetails.phone = updateData.phone;
+    }
+    if (updateData.email !== undefined) {
+      logDetails.email = updateData.email;
+    }
+    if (updateData.twoFactorEnabled !== undefined) {
+      logDetails.twoFactorEnabled = updateData.twoFactorEnabled;
+    }
+
+    await prisma.operationlog.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId,
+        action: "SecuritySetting:Update",
+        resource: "Security",
+        details: JSON.stringify(logDetails),
+        createdAt: new Date(),
+      },
     });
 
     return NextResponse.json({

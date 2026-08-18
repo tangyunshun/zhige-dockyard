@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 // GET - 获取用户活动记录
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get("Authorization")?.replace("Bearer ", "");
+    const userId =
+      request.headers.get("x-user-id") ||
+      request.headers.get("Authorization")?.replace("Bearer ", "");
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "10");
 

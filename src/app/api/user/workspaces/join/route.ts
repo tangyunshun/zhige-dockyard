@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -102,6 +102,37 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "您已经是该企业空间的成员" }, { status: 400 });
       }
 
+      // 检查工作空间当前的总协同人数配额 (安全配额卡关)
+      const currentMemberCount = await prisma.workspacemember.count({
+        where: { workspaceId: invitation.workspaceId }
+      });
+
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: invitation.workspaceId }
+      });
+
+      if (!workspace) {
+        return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
+      }
+
+      const spaceOwner = await prisma.user.findUnique({
+        where: { id: workspace.ownerId }
+      });
+
+      const levelName = spaceOwner?.membershipLevel || "FREE";
+      const levelInfo = await prisma.membershiplevel.findUnique({
+        where: { name: levelName }
+      });
+
+      const maxTeamSize = levelInfo ? Number(levelInfo.maxTeamSize) : 5;
+
+      if (currentMemberCount >= maxTeamSize) {
+        return NextResponse.json(
+          { error: `该协作空间的团队协同配额已满（上限 ${maxTeamSize} 人），无法加入。请联系空间所有者升级套餐。` },
+          { status: 403 }
+        );
+      }
+
       // 创建成员关系
       const member = await prisma.workspacemember.create({
         data: {
@@ -113,12 +144,11 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // 标记邀请为已使用
+      // 更新邀请码使用记录 (仅记录最近一次使用时间与使用者，不修改 status，保留共享多次可用)
       await prisma.workspaceinvitation.update({
         where: { id: invitationId },
         data: {
           usedAt: new Date(),
-          status: "USED",
           updatedAt: new Date(),
         },
       });

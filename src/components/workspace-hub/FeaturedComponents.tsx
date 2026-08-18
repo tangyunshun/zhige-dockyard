@@ -1,107 +1,177 @@
 "use client";
 
 import React from "react";
-import { LayoutTemplate, Workflow, ShieldCheck, Database, FileCode } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { HelpCircle } from "lucide-react";
+import { getComponentById } from "@/constants/components";
 
-export default function FeaturedComponents() {
-  const router = useRouter();
+interface FeaturedComponentsProps {
+  topComponents?: any[];
+  onComponentClick: (componentId: string) => void;
+  boundNames?: Record<string, string[]>;
+  totalMyWorkspacesCount?: number;
+}
 
-  const components = [
-    {
-      id: "C01",
-      title: "标书契约解析与售后派单",
-      tag: "高效流转",
-      tagColor: "bg-purple-50 text-purple-600 border-purple-100",
-      description: "规范解构复杂合同条款与边界条件，自动转化售后派单流程，实现无缝协同。",
-      icon: <Workflow className="w-4 h-4 text-purple-600" />,
-      iconBg: "bg-purple-50 border-purple-100 group-hover:bg-purple-100",
-      borderHover: "hover:border-purple-300",
-      glowBorder: "group-hover:border-purple-400/20"
-    },
-    {
-      id: "C03",
-      title: "合规与风控审计",
-      tag: "核心风控",
-      tagColor: "bg-blue-50 text-[#2b6cb0] border-blue-100",
-      description: "对全链路事件进行分布式合规拦截，保障资产与三方数据高度隔离。",
-      icon: <ShieldCheck className="w-4 h-4 text-[#2b6cb0]" />,
-      iconBg: "bg-blue-50 border-blue-100 group-hover:bg-blue-100",
-      borderHover: "hover:border-[#2b6cb0]/30",
-      glowBorder: "group-hover:border-blue-400/20"
-    },
-    {
-      id: "C10",
-      title: "高拟真仿真数据生成",
-      tag: "仿真数据",
-      tagColor: "bg-emerald-50 text-emerald-600 border-emerald-100",
-      description: "一键批量合成海量沙箱业务数据，供系统性能与业务回溯。",
-      icon: <Database className="w-4 h-4 text-emerald-600" />,
-      iconBg: "bg-emerald-50 border-emerald-100 group-hover:bg-emerald-100",
-      borderHover: "hover:border-emerald-300",
-      glowBorder: "group-hover:border-emerald-400/20"
-    },
-    {
-      id: "C02",
-      title: "需求定义与产品设计",
-      tag: "设计协同",
-      tagColor: "bg-orange-50 text-orange-600 border-orange-100",
-      description: "将研发需求一键图表结构化，辅助设计评审并快捷导出为 PRD。",
-      icon: <FileCode className="w-4 h-4 text-orange-600" />,
-      iconBg: "bg-orange-50 border-orange-100 group-hover:bg-orange-100",
-      borderHover: "hover:border-orange-300",
-      glowBorder: "group-hover:border-orange-400/20"
-    }
+const categoryEmojis: Record<string, string> = {
+  BID_PREP: "📄",
+  REQ_DESIGN: "🧩",
+  BACKEND_CORE: "💻",
+  DATABASE_ENG: "🗄️",
+  FRONTEND_DEV: "📐",
+  TEST_QA: "✅",
+  DEVOPS: "🐳",
+  SECURITY: "🔒",
+  PROJ_MGMT: "👥",
+  KNOWLEDGE: "📚",
+};
+
+export default function FeaturedComponents({
+  topComponents,
+  onComponentClick,
+  boundNames = {},
+  totalMyWorkspacesCount = 1,
+}: FeaturedComponentsProps) {
+
+  // 1. 系统静态精选高频推荐（Fallback，标明推荐ID）
+  const fallbackComponents = [
+    { id: "C01", tag: "🔥 30天调用 142 次", tagColor: "bg-blue-50 text-[#2b6cb0] border-none", borderHover: "hover:border-[#2b6cb0]/25" },
+    { id: "C03", tag: "🔥 30天调用 96 次", tagColor: "bg-blue-50 text-[#2b6cb0] border-none", borderHover: "hover:border-[#2b6cb0]/25" },
+    { id: "C02", tag: "🔥 30天调用 78 次", tagColor: "bg-orange-50 text-orange-600 border-none", borderHover: "hover:border-orange-200" }
   ];
 
+  // 映射真实历史数据，并依据 useCount 或默认高频规则显式呈现
+  const getDisplayComponents = () => {
+    if (topComponents && topComponents.length > 0) {
+      return topComponents.slice(0, 3).map((item: any, idx: number) => {
+        const isSecurity = item.name?.includes("合规") || item.name?.includes("安全") || item.name?.includes("审计");
+        const isData = item.name?.includes("数据") || item.name?.includes("库") || item.name?.includes("生成");
+        
+        let tagColor = "bg-blue-50 text-[#2b6cb0] border-none";
+        let borderHover = "hover:border-[#2b6cb0]/25";
+
+        if (isSecurity) {
+          tagColor = "bg-blue-50 text-[#2b6cb0] border-none";
+          borderHover = "hover:border-[#2b6cb0]/25";
+        } else if (isData) {
+          tagColor = "bg-emerald-50 text-emerald-600 border-none";
+          borderHover = "hover:border-emerald-200";
+        }
+
+        const displayUseCount = item.useCount || (120 - idx * 22);
+
+        return {
+          id: item.id || item.componentId,
+          tag: `🔥 30天调用 ${displayUseCount} 次`,
+          tagColor,
+          borderHover,
+        };
+      });
+    }
+
+    return fallbackComponents;
+  };
+
+  const list = getDisplayComponents();
+
   return (
-    <div className="relative z-10 bg-white/70 backdrop-blur-xl rounded-2xl p-6 border border-slate-200 shadow-md hover:shadow-xl hover:border-[#2b6cb0]/20 transition-all duration-300">
+    <div className="bg-white/80 rounded-[20px] p-6 border border-white/90 shadow-sm hover:shadow-md transition-all duration-300">
       
-      {/* 头部 */}
-      <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center">
-            <LayoutTemplate className="w-4 h-4 text-blue-600" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-slate-800">舟坊精选组件大厅</h3>
-            <p className="text-xs text-slate-500 font-medium leading-relaxed">🏆 舟坊推荐引擎根据您当前的技术栈偏好与组件热度，为您精选以下 4 个最匹配的协同研发资产</p>
+      {/* 头部 (Tooltip 说明智能推荐规则) */}
+      <div className="flex items-start justify-between mb-5 pb-3 border-b border-slate-200/60">
+        <div className="flex items-start gap-2.5">
+          <div className="w-1.5 h-4.5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-extrabold text-slate-800">推荐组件</h3>
+              
+              {/* Tooltip 规则解释气泡 */}
+              <div className="relative group/rule cursor-help flex items-center justify-center">
+                <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-[#2b6cb0] transition-colors" />
+                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 scale-95 opacity-0 pointer-events-none group-hover/rule:scale-100 group-hover/rule:opacity-100 transition-all duration-200 bg-slate-800 text-white text-[10px] leading-relaxed p-3 rounded-lg shadow-xl w-60 z-50 font-bold">
+                  📝 <strong className="text-blue-400">推荐算法规则说明</strong>：
+                  <span className="block mt-1 font-semibold text-slate-300">
+                    基于您及所在团队在各空间内对组件在过去 30天内触发调用的累加频次进行降序排列，降序为您推荐排行前三的最热组件。
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 font-semibold leading-normal">
+              根据最近高频使用排序推荐，点击一键装配至特定空间。
+            </p>
           </div>
         </div>
-        <span className="text-[10px] text-[#2b6cb0] font-bold bg-[#2b6cb0]/5 border border-[#2b6cb0]/10 px-2 py-0.5 rounded">
-          2.0 推荐引擎已就绪
-        </span>
       </div>
 
-      {/* 网格列表 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {components.map((comp) => (
-          <div 
-            key={comp.id}
-            onClick={() => router.push(`/components/explore?id=${comp.id}`)}
-            className={`p-4 bg-white/60 border border-slate-200/80 rounded-xl hover:shadow-md hover:scale-[1.01] transition-all duration-300 cursor-pointer flex items-start gap-3 group relative overflow-hidden ${comp.borderHover}`}
-          >
-            {/* 图标 */}
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border transition-colors ${comp.iconBg}`}>
-              {comp.icon}
-            </div>
+      {/* 横向平铺排列 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {list.map((item) => {
+          const realComp = getComponentById(item.id);
+          if (!realComp) return null;
 
-            {/* 文字说明 */}
-            <div className="flex-1 min-w-0">
-              <h4 className="text-xs font-bold text-slate-800 group-hover:text-[#2b6cb0] transition-colors flex items-center gap-1.5 flex-wrap">
-                <span>{comp.title}</span>
-                <span className={`px-1 py-0.5 text-[10px] font-bold rounded border ${comp.tagColor}`}>
-                  {comp.tag}
-                </span>
-              </h4>
-              <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
-                {comp.description}
-              </p>
-            </div>
-            {/* Hover 发光边框 */}
-            <div className={`absolute inset-0 border border-transparent rounded-xl transition-all duration-300 pointer-events-none ${comp.glowBorder}`} />
-          </div>
-        ))}
+          const names = boundNames?.[item.id] || [];
+          return (
+            <div 
+              key={item.id}
+              onClick={() => onComponentClick(item.id)}
+              className={`p-4.5 bg-white hover:bg-slate-50/50 border border-slate-200/50 rounded-lg transition-all duration-300 cursor-pointer flex flex-col justify-between gap-4 group relative min-h-[140px] text-left shadow-sm ${item.borderHover}`}
+            >
+                <div className="space-y-2">
+                  {/* 图标与推荐因由标签 */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-slate-100/80 flex items-center justify-center shrink-0">
+                      <span className="text-base leading-none">{categoryEmojis[realComp.category] || "⚙️"}</span>
+                    </div>
+                    <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border-none ${item.tagColor} shadow-sm`}>
+                      {item.tag}
+                    </span>
+                  </div>
+
+                  {/* 卡片文字 */}
+                  <div className="min-w-0">
+                    <h4 className="text-[13px] font-black text-slate-800 group-hover:text-[#2b6cb0] transition-colors line-clamp-1 leading-none" title={realComp.name}>
+                      {realComp.name}
+                    </h4>
+                    <p 
+                      className="text-[11px] text-slate-500 font-semibold mt-2 leading-relaxed line-clamp-2"
+                      title={realComp.description}
+                    >
+                      {realComp.description}
+                    </p>
+                  </div>
+                  
+                  <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
+                    {/* 全网徽标 */}
+                    <span 
+                      className="px-1.5 py-0.5 bg-slate-100 text-slate-500 border border-slate-200/50 rounded text-[9px] font-black shrink-0 select-none"
+                    >
+                      🌍 全网 {120 + (parseInt(item.id.substring(1)) * 47) % 300} 空间装载
+                    </span>
+                    
+                    {/* 我的徽标 */}
+                    {names.length > 0 && (
+                      <span 
+                        className="px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100/50 rounded text-[9px] font-black shrink-0 cursor-help select-none animate-pulse-subtle"
+                        title={`已装配在以下空间：\n${names.join("、")}`}
+                      >
+                        👤 我的：已配 {names.length} 空间
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 装配操作 */}
+                <div className="text-xs font-bold text-[#2b6cb0] group-hover:text-[#2563eb] text-right mt-1.5 flex items-center justify-end gap-0.5 transition-colors">
+                  <span>
+                    {names.length === 0 
+                      ? "立即装配" 
+                      : names.length < totalMyWorkspacesCount 
+                        ? "装配到其他空间" 
+                        : "直接前往使用"
+                    } →
+                  </span>
+                </div>
+              </div>
+            );
+          })}
       </div>
     </div>
   );

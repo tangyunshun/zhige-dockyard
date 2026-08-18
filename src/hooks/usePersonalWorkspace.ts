@@ -35,7 +35,6 @@ export function usePersonalWorkspace({ refresh }: UsePersonalWorkspaceProps) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
         },
       });
 
@@ -69,7 +68,6 @@ export function usePersonalWorkspace({ refresh }: UsePersonalWorkspaceProps) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
         },
       });
 

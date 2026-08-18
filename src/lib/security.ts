@@ -1,4 +1,12 @@
-﻿﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
+import fs from "fs";
+import path from "path";
+import { validateUser } from "@/lib/auth";
+import { jwtVerify } from "jose";
+
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "your-secret-key-change-in-production"
+);
 
 /**
  * API安全监控工具
@@ -205,4 +213,350 @@ export async function securityCheck(
   }
 
   return { allowed: true };
+}
+
+
+// ==========================================
+// ⚓ 三层角色、模块权限、空间鉴权与审计日志核心重构
+// ==========================================
+
+const PERMISSIONS_FILE = path.join(process.cwd(), "src/lib/admin-permissions.json");
+
+/**
+ * 平台角色归一化转换
+ * 兼容旧数据中各种拼写和大小写
+ */
+export function normalizePlatformRole(role: string | null | undefined): "USER" | "PLATFORM_ADMIN" | "SUPER_ADMIN" {
+  if (!role) return "USER";
+  const r = role.toUpperCase();
+  if (r === "SUPER_ADMIN" || r === "SUPERADMIN" || r === "SUPER_ADMIN_ROLE") return "SUPER_ADMIN";
+  if (r === "ADMIN" || r === "PLATFORM_ADMIN" || r === "PLATFORMADMIN") return "PLATFORM_ADMIN";
+  return "USER";
+}
+
+/**
+ * 读取普通管理员的权限包列表
+ */
+export function getAdminPermissions(userId: string): string[] {
+  try {
+    if (!fs.existsSync(PERMISSIONS_FILE)) {
+      // 自动创建空的权限配置文件
+      fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify({}, null, 2));
+      return [];
+    }
+    const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
+    const mapping = JSON.parse(data);
+    return mapping[userId] || [];
+  } catch (error) {
+    console.error("读取管理员权限包失败:", error);
+    return [];
+  }
+}
+
+/**
+ * 保存/更新普通管理员的权限包列表
+ */
+export function saveAdminPermissions(userId: string, permissions: string[]): boolean {
+  try {
+    let mapping: Record<string, string[]> = {};
+    if (fs.existsSync(PERMISSIONS_FILE)) {
+      const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
+      mapping = JSON.parse(data);
+    }
+    mapping[userId] = permissions;
+    fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify(mapping, null, 2));
+    return true;
+  } catch (error) {
+    console.error("保存管理员权限包失败:", error);
+    return false;
+  }
+}
+
+/**
+ * 服务端 API 统一平台角色与权限鉴权中继
+ */
+export async function requirePlatformAuth(
+  request: Request,
+  requiredPermission?: string
+): Promise<{
+  authorized: boolean;
+  user?: { id: string; email: string; name: string; role: string; status: string };
+  errorResponse?: Response;
+}> {
+  const authHeader = request.headers.get("authorization");
+  let authResult = await validateUser(authHeader);
+
+  // 双保险机制：如果 header 校验失败，尝试从 Request Cookie 中提取并解析 auth_token JWT
+  if (!authResult.valid) {
+    let token = "";
+    if ("cookies" in request) {
+      token = (request as any).cookies.get("auth_token")?.value || "";
+    } else {
+      const cookieHeader = request.headers.get("cookie") || "";
+      const match = cookieHeader.match(/auth_token=([^;]+)/);
+      if (match) token = match[1];
+    }
+
+    if (!token && authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    }
+
+    if (token) {
+      try {
+        const { payload } = await jwtVerify(token, JWT_SECRET);
+        const userId = payload.userId as string;
+        const dbUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, email: true, name: true, role: true, status: true }
+        });
+        if (dbUser && dbUser.status === "active") {
+          authResult = {
+            valid: true,
+            user: {
+              id: dbUser.id,
+              email: dbUser.email || "",
+              name: dbUser.name || "",
+              role: dbUser.role,
+              status: dbUser.status
+            }
+          };
+        }
+      } catch (jwtError) {
+        console.error("requirePlatformAuth JWT 兜底验证失败:", jwtError);
+      }
+    }
+  }
+
+  if (!authResult.valid || !authResult.user) {
+    return {
+      authorized: false,
+      errorResponse: new Response(
+        JSON.stringify({ error: authResult.error || "UNAUTHORIZED" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+
+  const user = authResult.user;
+  const platformRole = normalizePlatformRole(user.role);
+
+  // 1. SUPER_ADMIN 直接放行全部模块
+  if (platformRole === "SUPER_ADMIN") {
+    return { authorized: true, user };
+  }
+
+  // 2. PLATFORM_ADMIN 检查 PlatformAdminPermission
+  if (platformRole === "PLATFORM_ADMIN") {
+    if (!requiredPermission) {
+      return { authorized: true, user }; // 仅要求管理员权限
+    }
+    const permissions = getAdminPermissions(user.id);
+    if (permissions.includes(requiredPermission)) {
+      return { authorized: true, user };
+    }
+  }
+
+  // 3. 否则拒绝
+  return {
+    authorized: false,
+    errorResponse: new Response(
+      JSON.stringify({ error: "FORBIDDEN" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    ),
+  };
+}
+
+/**
+ * 在应用层结合 workspacemember 物理角色与岗位计算出逻辑角色
+ */
+export async function getLogicalWorkspaceRole(
+  userId: string,
+  workspaceId: string
+): Promise<"OWNER" | "ADMIN" | "COMPONENT_MANAGER" | "KNOWLEDGE_MANAGER" | "MEMBER" | "VIEWER" | null> {
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { ownerId: true }
+  });
+  if (!workspace) return null;
+  if (workspace.ownerId === userId) return "OWNER";
+
+  const member = await prisma.workspacemember.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } }
+  });
+  if (!member) return null;
+
+  // 查询岗位
+  const posts = await prisma.postmember.findMany({
+    where: { userId, workspaceId },
+    include: { post: true }
+  });
+
+  const postNames = posts.map(p => p.post.name.toUpperCase());
+
+  if (postNames.includes("COMPONENT_MANAGER") || postNames.includes("COMPONENT_ADMIN")) {
+    return "COMPONENT_MANAGER";
+  }
+  if (postNames.includes("KNOWLEDGE_MANAGER") || postNames.includes("KNOWLEDGE_ADMIN")) {
+    return "KNOWLEDGE_MANAGER";
+  }
+  if (postNames.includes("VIEWER") || postNames.includes("WORKSPACE_VIEWER")) {
+    return "VIEWER";
+  }
+
+  const physicalRole = member.role.toUpperCase();
+  if (physicalRole === "OWNER") return "OWNER";
+  if (physicalRole === "ADMIN") return "ADMIN";
+  return "MEMBER";
+}
+
+/**
+ * 校验用户是否具备特定的空间和组件权限
+ */
+export async function requireWorkspacePermission(
+  userId: string,
+  workspaceId: string,
+  permissionKey: string
+): Promise<boolean> {
+  const role = await getLogicalWorkspaceRole(userId, workspaceId);
+  if (!role) return false;
+
+  // 1. OWNER 拥有所有权限
+  if (role === "OWNER") return true;
+
+  // 2. ADMIN 拥有除 workspace:delete 之外的所有空间权限
+  if (role === "ADMIN") {
+    if (permissionKey === "workspace:delete") return false;
+    return true;
+  }
+
+  // 3. COMPONENT_MANAGER 拥有组件相关的配置/执行与基础查看权限
+  if (role === "COMPONENT_MANAGER") {
+    const componentKeys = [
+      "component:view",
+      "component:install",
+      "component:configure",
+      "component:execute",
+      "component:authorize",
+      "component:remove",
+      "task:view",
+      "workspace:view"
+    ];
+    return componentKeys.includes(permissionKey);
+  }
+
+  // 4. KNOWLEDGE_MANAGER 拥有知识库管理、资料查看等权限
+  if (role === "KNOWLEDGE_MANAGER") {
+    const knowledgeKeys = [
+      "knowledge:view",
+      "knowledge:create",
+      "knowledge:approve",
+      "knowledge:delete",
+      "result:view",
+      "asset:view",
+      "workspace:view"
+    ];
+    return knowledgeKeys.includes(permissionKey);
+  }
+
+  // 5. MEMBER 拥有被授权组件执行、任务创建查看、资料上传等权限
+  if (role === "MEMBER") {
+    const memberKeys = [
+      "workspace:view",
+      "component:view",
+      "component:execute",
+      "task:create",
+      "task:view",
+      "asset:upload",
+      "result:view",
+      "knowledge:create"
+    ];
+    return memberKeys.includes(permissionKey);
+  }
+
+  // 6. VIEWER 拥有基础只读权限
+  if (role === "VIEWER") {
+    const viewerKeys = [
+      "workspace:view",
+      "component:view",
+      "task:view",
+      "asset:view",
+      "result:view",
+      "knowledge:view"
+    ];
+    return viewerKeys.includes(permissionKey);
+  }
+
+  return false;
+}
+
+/**
+ * 记录统一的高危审计日志并持久化至 operationlog
+ */
+export async function writeAuditLog(
+  userId: string,
+  action: string,
+  details: any,
+  workspaceId?: string | null,
+  ipAddress?: string | null
+) {
+  try {
+    const randomId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    await prisma.operationlog.create({
+      data: {
+        id: randomId,
+        userId,
+        workspaceId: workspaceId || null,
+        action,
+        resource: action.split(":")[0] || "system",
+        details: details ? JSON.stringify(details) : null,
+        ipAddress: ipAddress || null,
+      },
+    });
+  } catch (error) {
+    console.error("持久化写入操作审计日志失败:", error);
+  }
+}
+
+/**
+ * 平台高级权限拦截哨兵 (与 API 鉴权分层契合)
+ */
+export async function requirePlatformPermission(
+  request: Request,
+  permissionKey: string
+): Promise<{
+  authorized: boolean;
+  user?: { id: string; email: string; name: string; role: string; status: string };
+  errorResponse?: Response;
+}> {
+  return requirePlatformAuth(request, permissionKey);
+}
+
+/**
+ * 强校验用户是否为指定工作空间的有效成员或 Owner
+ */
+export async function requireWorkspaceMembership(
+  userId: string,
+  workspaceId: string
+): Promise<boolean> {
+  // 1. 检查是否为空间 Owner
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { ownerId: true }
+  });
+  
+  if (workspace && workspace.ownerId === userId) {
+    return true;
+  }
+  
+  // 2. 检查是否在 workspacemember 表中存在记录
+  const member = await prisma.workspacemember.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId,
+        workspaceId
+      }
+    }
+  });
+  
+  return !!member;
 }

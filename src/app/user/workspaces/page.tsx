@@ -1,6 +1,7 @@
 ﻿﻿"use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   FolderOpen,
   Building2,
@@ -28,7 +29,7 @@ interface Workspace {
   description?: string | null;
   createdAt: string;
   updatedAt: string;
-  members?: Array<{
+  workspacemember?: Array<{
     user: { name: string | null; email: string | null };
   }>;
 }
@@ -43,6 +44,8 @@ export default function UserWorkspacesPage() {
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [editFormData, setEditFormData] = useState({ name: "", description: "" });
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     loadWorkspaces();
@@ -219,13 +222,6 @@ export default function UserWorkspacesPage() {
             <option value="PERSONAL">个人空间</option>
             <option value="ENTERPRISE">企业空间</option>
           </select>
-          <button
-            onClick={() => (window.location.href = "/workspace-hub")}
-            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
-          >
-            <Plus className="w-5 h-5" />
-            创建工作空间
-          </button>
         </div>
       </div>
 
@@ -295,6 +291,14 @@ export default function UserWorkspacesPage() {
             </span>
           </div>
 
+          {/* 点击空白处关闭操作菜单 */}
+          {openMenuId && (
+            <div
+              className="fixed inset-0 z-20"
+              onClick={() => setOpenMenuId(null)}
+            />
+          )}
+
           {filteredWorkspaces.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredWorkspaces.map((workspace) => (
@@ -326,27 +330,43 @@ export default function UserWorkspacesPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="relative group/menu">
-                      <button className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === workspace.id ? null : workspace.id);
+                        }}
+                        className={`p-2 rounded-lg transition-colors ${
+                          openMenuId === workspace.id ? "bg-slate-100" : "hover:bg-slate-100"
+                        }`}
+                      >
                         <MoreVertical className="w-5 h-5 text-slate-400" />
                       </button>
-                      {/* 操作菜单 */}
-                      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-lg border border-slate-200 py-2 hidden group-hover/menu:block z-10">
-                        <button
-                          onClick={() => handleEdit(workspace)}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                          编辑
-                        </button>
-                        <button
-                          onClick={() => handleDelete(workspace)}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          删除
-                        </button>
-                      </div>
+                      {/* 操作菜单（点击展开，点击外部关闭） */}
+                      {openMenuId === workspace.id && (
+                        <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-30">
+                          <button
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              handleEdit(workspace);
+                            }}
+                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                            编辑
+                          </button>
+                          <button
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              handleDelete(workspace);
+                            }}
+                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            删除
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -360,14 +380,17 @@ export default function UserWorkspacesPage() {
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1.5 text-xs text-slate-500">
                         <Users className="w-4 h-4" />
-                        <span>{workspace.members?.length || 1} 名成员</span>
+                        <span>{Math.max(workspace.workspacemember?.length || 0, 1)} 名成员</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500">
                         <Calendar className="w-4 h-4" />
                         <span>{formatTimeAgo(workspace.createdAt)}</span>
                       </div>
                     </div>
-                    <button className="flex items-center gap-1.5 text-sm text-[#3182ce] font-semibold hover:text-[#2563eb] transition-colors">
+                    <button
+                      onClick={() => router.push(`/workspace/${workspace.id}`)}
+                      className="flex items-center gap-1.5 text-sm text-[#3182ce] font-semibold hover:text-[#2563eb] transition-colors"
+                    >
                       管理
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </button>

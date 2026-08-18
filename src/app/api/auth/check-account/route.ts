@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -58,14 +58,16 @@ export async function POST(request: NextRequest) {
 
     // 检查是否被锁定
     if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+      const lockedDate = new Date(user.lockedUntil);
       const minutes = Math.ceil(
-        (user.lockedUntil.getTime() - Date.now()) / 60000,
+        (lockedDate.getTime() - Date.now()) / 60000,
       );
       return NextResponse.json({
         exists: true,
         status: "locked",
-        lockedUntil: user.lockedUntil.toISOString(),
+        lockedUntil: lockedDate.toISOString(),
         minutesRemaining: minutes,
+        identifiers: [user.name, user.email, user.phone].filter(Boolean),
         message: "账号已锁定，" + minutes + "分钟后再试",
       });
     }

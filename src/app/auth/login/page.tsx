@@ -76,11 +76,59 @@ function LoginForm() {
     minutesRemaining?: number;
     remainingAttempts?: number;
   }>({});
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [lockSeconds, setLockSeconds] = useState<number>(0);
+  // 同一账号关联的标识集合（账号名/邮箱/手机号）：任一被锁定则全部锁定
+  const [lockedIdentifiers, setLockedIdentifiers] = useState<string[]>([]);
+
+  // 判断某输入值是否属于已被锁定的账号（命中关联标识任一即锁定）
+  const isIdentifierLocked = (value: string): boolean => {
+    const v = value.trim().toLowerCase();
+    if (!v) return false;
+    return lockedIdentifiers.some(
+      (id) => id && id.trim().toLowerCase() === v,
+    );
+  };
+
+  // 账号是否处于锁定态（由锁定截止时间戳驱动）
+  const isLocked = lockUntil !== null && lockUntil > Date.now();
+
+  // 将剩余秒数格式化为 MM:SS
+  const formatLockTime = (total: number) => {
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  // 锁定倒计时：每秒刷新剩余秒数；归零后自动解除锁定
+  useEffect(() => {
+    if (lockUntil === null) {
+      setLockSeconds(0);
+      return;
+    }
+    const syncRemaining = () => {
+      const remain = Math.max(0, Math.floor((lockUntil - Date.now()) / 1000));
+      setLockSeconds(remain);
+      if (remain <= 0) setLockUntil(null);
+    };
+    syncRemaining();
+    const timer = setInterval(syncRemaining, 1000);
+    return () => clearInterval(timer);
+  }, [lockUntil]);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(
     null,
   );
+  const [timeoutNotice, setTimeoutNotice] = useState(false);
 
   // ========== 所有的 useEffect 在 useState 之后 ==========
+
+  // 监听超时退出指示
+  useEffect(() => {
+    const reason = searchParams.get("reason");
+    if (reason === "SESSION_TIMEOUT") {
+      setTimeoutNotice(true);
+    }
+  }, [searchParams]);
 
   // 获取回调参数（必须在 useEffect 之前定义）
   const errorMessage = searchParams.get("error");
@@ -174,10 +222,10 @@ function LoginForm() {
     if (redirectCountdown === null || redirectCountdown <= 0) return;
 
     if (redirectCountdown === 1) {
-      // 最后 1 秒，执行跳转，带账号参数
+      // 最后 1 秒，执行跳转，带账号与 redirect 参数
       const timer = setTimeout(() => {
         router.push(
-          `/auth/register?account=${encodeURIComponent(formData.account)}`,
+          `/auth/register?account=${encodeURIComponent(formData.account)}&redirect=${encodeURIComponent(redirectPath)}`,
         );
         setRedirectCountdown(null);
       }, 1000);
@@ -227,21 +275,39 @@ function LoginForm() {
       const data = await res.json();
 
       if (!data.exists) {
+        // 账号不存在：仅标记，引导手动点击注册，不自动跳转以免劫持登录
+        // 该标识不存在，不应保持之前的锁定界面
         setAccountCheckStatus({
           exists: false,
         });
-        // 设置倒计时，由 useEffect 处理跳转
-        setRedirectCountdown(5);
+        setLockUntil(null);
+        setLockedIdentifiers([]);
       } else if (data.status === "locked") {
         setAccountCheckStatus({
           exists: true,
           locked: true,
           minutesRemaining: data.minutesRemaining,
         });
-        // 实时检测到账号被锁定，立即显示错误在用户名输入框下方
-        setErrors({
-          account: `账号已锁定，请${data.minutesRemaining}分钟后再试`,
-        });
+        // 触发完整锁定界面（提示框+倒计时+切换账号）
+        const until = data.lockedUntil
+          ? new Date(data.lockedUntil).getTime()
+          : Date.now() + (data.minutesRemaining || 5) * 60 * 1000;
+        setLockUntil(until);
+        if (Array.isArray(data.identifiers) && data.identifiers.length) {
+          setLockedIdentifiers((prev) =>
+            Array.from(
+              new Set(
+                [account, ...prev, ...data.identifiers].map((x) =>
+                  String(x).trim().toLowerCase(),
+                ),
+              ),
+            ),
+          );
+        } else {
+          setLockedIdentifiers((prev) =>
+            Array.from(new Set([account.toLowerCase(), ...prev])),
+          );
+        }
       } else if (data.status === "disabled") {
         setAccountCheckStatus({
           exists: true,
@@ -274,7 +340,7 @@ function LoginForm() {
       setGlobalError(null);
     }
 
-    // 清空账号检测状态
+    // 清空账号检测状态（输入变化后，旧的不存在/锁定标记作废）
     if (accountCheckStatus.exists === false) {
       setAccountCheckStatus({});
       if (redirectCountdown !== null) {
@@ -282,15 +348,14 @@ function LoginForm() {
       }
     }
 
-    // 验证账号格式并检测类型
-    const validation = validateAccount(value);
-    if (!validation.valid && value.length > 0) {
-      setErrors({ ...errors, account: validation.message });
-    }
-
-    // 判断账号类型
+    // 输入时仅判断账号类型用于图标切换，不做格式报红（避免一输入就红框）
     const type = getAccountType(value);
     setAccountType(type);
+
+    // 若输入的标识命中已锁定账号的关联标识，立即拉取精确锁定状态并复锁
+    if (lockedIdentifiers.length > 0 && isIdentifierLocked(value)) {
+      checkAccount(value);
+    }
 
     // 邮箱自动补全建议
     if (value.includes("@")) {
@@ -312,9 +377,14 @@ function LoginForm() {
     }
     if (formData.account) {
       const validation = validateAccount(formData.account);
-      if (validation.valid) {
-        checkAccount(formData.account);
+      if (!validation.valid) {
+        setErrors({ ...errors, account: validation.message });
+        return;
       }
+      checkAccount(formData.account);
+    } else {
+      // 清空则移除账号错误
+      if (errors.account) setErrors({ ...errors, account: undefined });
     }
   };
 
@@ -459,7 +529,53 @@ function LoginForm() {
     setLoading(true);
     setErrors({});
 
-    // 检查账号是否被锁定
+    // 提交前统一检测锁定/禁用：无论用户名、手机、邮箱，只要该账号锁定都要拦截
+    const loginIdentifier =
+      loginMethod === "password" ? formData.account : formData.phone;
+
+    if (loginIdentifier) {
+      try {
+        const lockRes = await fetch("/api/auth/check-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account: loginIdentifier }),
+        });
+        const lockData = await lockRes.json();
+        if (lockData.exists && lockData.status === "locked") {
+          const until = lockData.lockedUntil
+            ? new Date(lockData.lockedUntil).getTime()
+            : Date.now() + (lockData.minutesRemaining || 5) * 60 * 1000;
+          setLockUntil(until);
+          if (Array.isArray(lockData.identifiers)) {
+            setLockedIdentifiers((prev) =>
+              Array.from(
+                new Set(
+                  [loginIdentifier, ...prev, ...lockData.identifiers].map((x) =>
+                    String(x).trim().toLowerCase()
+                  )
+                )
+              )
+            );
+          }
+          setLoading(false);
+          return;
+        }
+        if (lockData.exists && lockData.status === "disabled") {
+          setErrors({ account: "账号已被禁用，请联系管理员" });
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // 检测失败不阻断登录，继续走正常登录流程
+      }
+    }
+
+    // 清理不存在标记，避免干扰登录
+    if (accountCheckStatus.exists === false) {
+      setAccountCheckStatus({});
+    }
+
+    // 检查账号是否被锁定（失焦检测结果兜底）
     if (accountCheckStatus.locked) {
       setErrors({
         account: `账号已锁定，请${accountCheckStatus.minutesRemaining}分钟后再试`,
@@ -570,7 +686,6 @@ function LoginForm() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${data.user.id}`,
             },
           });
 
@@ -642,22 +757,41 @@ function LoginForm() {
       } else {
         // 处理各种错误情况，全部显示在输入框下方
         if (data.accountExists === false) {
-          // 账号不存在，显示提示并倒计时
-          setRedirectCountdown(5);
+          // 账号不存在：仅提示，引导手动点击注册，不自动跳转以免劫持登录
+          setErrors({ account: data.message || "账号不存在，请检查后重试" });
+        } else if (data.minutesRemaining) {
+          // 账号被锁定（含第5次密码错误触发）：立即触发完整锁定界面
+          const until = data.lockedUntil
+            ? new Date(data.lockedUntil).getTime()
+            : Date.now() + (data.minutesRemaining || 5) * 60 * 1000;
+          setLockUntil(until);
+          if (Array.isArray(data.identifiers) && data.identifiers.length) {
+            setLockedIdentifiers((prev) =>
+              Array.from(
+                new Set(
+                  [formData.account, ...prev, ...data.identifiers].map((x) =>
+                    String(x).trim().toLowerCase(),
+                  ),
+                ),
+              ),
+            );
+          } else if (formData.account) {
+            setLockedIdentifiers((prev) =>
+              Array.from(
+                new Set([formData.account.toLowerCase(), ...prev]),
+              ),
+            );
+          }
         } else if (data.remainingAttempts !== undefined) {
-          // 密码错误，显示剩余次数
+          // 密码错误（未达锁定阈值），显示剩余次数
+          const errMsg = data.message || "账号或密码错误，请重试";
           if (data.remainingAttempts > 0) {
             setErrors({
-              password: `${data.message}，剩余${data.remainingAttempts}次尝试机会`,
+              password: `${errMsg}，剩余${data.remainingAttempts}次尝试机会`,
             });
           } else {
-            setErrors({ password: data.message });
+            setErrors({ password: errMsg });
           }
-        } else if (data.minutesRemaining) {
-          // 账号被锁定（字段错误，显示在输入框下方）
-          setErrors({
-            account: `账号已锁定，请${data.minutesRemaining}分钟后再试`,
-          });
         } else if (data.field === "password") {
           // 密码错误
           setErrors({ password: data.message || "密码错误" });
@@ -743,38 +877,113 @@ function LoginForm() {
               <h2 className="text-xl font-bold text-slate-800 mb-1">欢迎回来</h2>
               <p className="text-slate-600 text-sm">请登录您的账号</p>
             </div>
-            {/* 切换登录方式按钮 */}
-            {!showSmsLogin ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSmsLogin(true);
-                  setLoginMethod("sms");
-                  setErrors({});
-                }}
-                className="text-[#3182ce] hover:text-[#2b6cb0] text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5 pb-0.5 border-b border-dashed border-[#3182ce] hover:border-[#2b6cb0]"
-              >
-                <Phone className="w-4 h-4" />
-                手机号快捷登录
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSmsLogin(false);
-                  setLoginMethod("password");
-                  setErrors({});
-                }}
-                className="text-[#3182ce] hover:text-[#2b6cb0] text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5 pb-0.5 border-b border-dashed border-[#3182ce] hover:border-[#2b6cb0]"
-              >
-                <Lock className="w-4 h-4" />
-                账号密码登录
-              </button>
+            {/* 切换登录方式按钮：锁定状态下隐藏 */}
+            {!isLocked && (
+              <>
+                {!showSmsLogin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSmsLogin(true);
+                      setLoginMethod("sms");
+                      setErrors({});
+                    }}
+                    className="text-[#3182ce] hover:text-[#2b6cb0] text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5 pb-0.5 border-b border-dashed border-[#3182ce] hover:border-[#2b6cb0]"
+                  >
+                    <Phone className="w-4 h-4" />
+                    手机号快捷登录
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSmsLogin(false);
+                      setLoginMethod("password");
+                      setErrors({});
+                    }}
+                    className="text-[#3182ce] hover:text-[#2b6cb0] text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5 pb-0.5 border-b border-dashed border-[#3182ce] hover:border-[#2b6cb0]"
+                  >
+                    <Lock className="w-4 h-4" />
+                    账号密码登录
+                  </button>
+                )}
+              </>
             )}
           </div>
 
-          {/* 根据 showSmsLogin 决定显示哪个表单 */}
-          {!showSmsLogin ? (
+          {timeoutNotice && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-xs text-amber-700 font-semibold mb-4 leading-normal animate-in fade-in slide-in-from-top-2 duration-200">
+              ⚠️ 因长时间未操作，您已自动退出登录
+            </div>
+          )}
+
+          {/* 账号冻结提示区域：密码错误超过 5 次时锁定整个账号，仅展示锁定信息 */}
+          {isLocked && (
+            <div className="p-4 bg-red-50 border border-red-300 rounded-xl mb-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-red-100 flex items-center justify-center">
+                  <Lock className="w-4 h-4 text-red-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-red-700">
+                    账号「{formData.account}」已锁定
+                  </p>
+                  <p className="text-xs text-red-600 mt-0.5 leading-relaxed">
+                    由于密码连续输入错误超过 5 次，系统已临时锁定该账号。锁定期间无法登录，请等待倒计时结束，或切换其他账号。
+                  </p>
+                  <div className="mt-2 inline-flex items-center gap-2 bg-white border border-red-200 rounded-lg px-3 py-1.5">
+                    <span className="text-base font-mono font-bold text-red-700 tabular-nums">
+                      {formatLockTime(lockSeconds)}
+                    </span>
+                    <span className="text-xs text-red-500 font-medium">后自动解锁</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 锁定状态下允许切换其他账号登录 */}
+              <form
+                className="mt-4 pt-3 border-t border-red-200"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const value = (e.currentTarget.elements.namedItem("otherAccount") as HTMLInputElement)?.value.trim();
+                  if (!value) return;
+                  // 切换到新账号：清空锁定与表单状态，重置为可登录态
+                  setLockUntil(null);
+                  setLockSeconds(0);
+                  setLockedIdentifiers([]);
+                  setFormData({ account: value, password: "", phone: "", smsCode: "", captcha: "" });
+                  setAccountCheckStatus({});
+                  setErrors({});
+                  setGlobalError(null);
+                  checkAccount(value);
+                }}
+              >
+                <label className="block text-xs font-medium text-red-700 mb-1.5">
+                  切换其他账号登录
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      name="otherAccount"
+                      type="text"
+                      className="w-full pl-9 pr-4 py-2.5 border border-red-200 rounded-lg text-sm bg-white outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 transition-all"
+                      placeholder="请输入其他账号/邮箱/手机号"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 bg-white border border-[#3182ce] text-[#3182ce] rounded-xl text-xs font-black hover:bg-[#3182ce] hover:text-white transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    切换账号
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* 根据 showSmsLogin 决定显示哪个表单：锁定状态下隐藏登录表单 */}
+          {!isLocked && !showSmsLogin ? (
             <>
               {/* 账号密码登录表单 */}
               <form onSubmit={handleLogin} className="space-y-4">
@@ -840,9 +1049,9 @@ function LoginForm() {
                         <button
                           onClick={() => {
                             setRedirectCountdown(null);
-                            // 带账号参数跳转到注册页面
+                            // 带账号与 redirect 参数跳转到注册页面
                             router.push(
-                              `/auth/register?account=${encodeURIComponent(formData.account)}`,
+                              `/auth/register?account=${encodeURIComponent(formData.account)}&redirect=${encodeURIComponent(redirectPath)}`,
                             );
                           }}
                           className="text-xs text-[#3182ce] hover:underline font-medium"
@@ -851,14 +1060,6 @@ function LoginForm() {
                         </button>
                       </div>
                     )}
-                  {accountCheckStatus.locked && (
-                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-xs text-red-700">
-                        🔒 账号已锁定，请{accountCheckStatus.minutesRemaining}
-                        分钟后再试
-                      </p>
-                    </div>
-                  )}
                   {accountCheckStatus.disabled && (
                     <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
                       <p className="text-xs text-red-700">
@@ -885,6 +1086,7 @@ function LoginForm() {
                     <input
                       type={showPassword ? "text" : "password"}
                       value={formData.password}
+                      disabled={isLocked}
                       onChange={(e) => {
                         setFormData({ ...formData, password: e.target.value });
                         if (errors.password)
@@ -912,32 +1114,15 @@ function LoginForm() {
                     </p>
                   )}
                   <div className="flex justify-between items-center mt-1.5">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setRememberMe(!rememberMe)}
-                        onKeyDown={(e) => {
-                          if (e.key === " " || e.key === "Enter") {
-                            e.preventDefault();
-                            setRememberMe(!rememberMe);
-                          }
-                        }}
-                        className={`w-4 h-4 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 ${rememberMe
-                            ? "bg-[#3182ce] border-[#3182ce]"
-                            : "border-[#e2e8f0]"
-                          }`}
-                      >
-                        {rememberMe && (
-                          <Check className="w-3 h-3 text-white" />
-                        )}
-                      </button>
-                      <label
-                        onClick={() => setRememberMe(!rememberMe)}
-                        className="text-xs text-slate-600 cursor-pointer select-none font-bold"
-                      >
-                        记住我
-                      </label>
-                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
+                      />
+                      <span className="text-xs text-slate-600 font-medium">7天内免登录</span>
+                    </label>
                     <Link
                       href={`/auth/forgot-password${formData.account ? `?account=${encodeURIComponent(formData.account)}` : ""}`}
                       className="text-xs text-[#3182ce] hover:underline font-bold"
@@ -974,7 +1159,7 @@ function LoginForm() {
 
 
             </>
-          ) : (
+          ) : !isLocked && (
             <>
               {/* 手机号验证码登录表单 */}
               <form onSubmit={handleLogin} className="space-y-4">
@@ -1031,9 +1216,9 @@ function LoginForm() {
                           <button
                             onClick={() => {
                               setRedirectCountdown(null);
-                              // 带手机号参数跳转到注册页面
+                              // 带手机号与 redirect 参数跳转到注册页面
                               router.push(
-                                `/auth/register?account=${encodeURIComponent(formData.phone)}`,
+                                `/auth/register?account=${encodeURIComponent(formData.phone)}&redirect=${encodeURIComponent(redirectPath)}`,
                               );
                             }}
                             className="text-xs text-[#3182ce] hover:underline font-medium"
@@ -1138,7 +1323,8 @@ function LoginForm() {
             </>
           )}
 
-          {/* 第三方登录 */}
+          {/* 第三方登录：锁定状态下隐藏 */}
+          {!isLocked && (
           <div className="mt-6 mb-4">
             <div className="relative mb-4">
               <div className="absolute inset-0 flex items-center">
@@ -1181,11 +1367,12 @@ function LoginForm() {
               </button>
             </div>
           </div>
+          )}
 
           <div className="text-center text-sm text-slate-600">
             还没有账号？{" "}
             <Link
-              href={`/auth/register${formData.account ? `?account=${encodeURIComponent(formData.account)}` : ""}`}
+              href={`/auth/register${formData.account ? `?account=${encodeURIComponent(formData.account)}` : ""}${formData.account ? "&" : "?"}redirect=${encodeURIComponent(redirectPath)}`}
               className="text-[#3182ce] font-medium hover:underline"
             >
               立即注册

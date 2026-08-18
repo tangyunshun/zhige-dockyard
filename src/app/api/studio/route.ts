@@ -1,6 +1,10 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
+import { requireWorkspaceMembership } from "@/lib/security";
+import { ensureDefaultComponents } from "@/lib/workspaceInit";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
@@ -66,15 +70,37 @@ export async function GET(request: NextRequest) {
         }, { status: 400 });
       }
       
+      // 执行兜底默认组件自愈初始化
+      await ensureDefaultComponents(workspaceId, userId);
+
       const usages = await prisma.componentusage.findMany({
         where: { workspaceId },
-        select: { componentId: true },
-        distinct: ['componentId'] // 去重
+        select: { componentId: true, metadata: true },
+      });
+      
+      const boundIds = Array.from(new Set(usages.map(u => u.componentId)));
+
+      // 提取启用状态映射，默认 enabled: true
+      const states: Record<string, { enabled: boolean }> = {};
+      usages.forEach(u => {
+        let enabled = true;
+        if (u.metadata) {
+          try {
+            const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : (u.metadata as any);
+            if (meta && meta.enabled === false) {
+              enabled = false;
+            }
+          } catch (e) {
+            console.error("解析组件 metadata 失败:", e);
+          }
+        }
+        states[u.componentId] = { enabled };
       });
       
       return NextResponse.json({
         success: true,
-        data: usages.map(u => u.componentId)
+        data: boundIds,
+        states
       });
     }
 
@@ -174,6 +200,68 @@ export async function GET(request: NextRequest) {
       });
 
       return NextResponse.json({ success: true, data: reviews });
+    }
+
+    // 获取指定工作空间下的任务日志
+    if (action === "tasks") {
+      const workspaceId = searchParams.get("workspaceId");
+      if (!workspaceId) {
+        return NextResponse.json({ 
+          success: false, 
+          error: "缺少 workspaceId 参数" 
+        }, { status: 400 });
+      }
+
+      const isMember = await requireWorkspaceMembership(userId, workspaceId);
+      if (!isMember) {
+        return NextResponse.json({
+          success: false,
+          error: "越权警告：您不属于该工作空间，无权查看任务日志"
+        }, { status: 403 });
+      }
+
+      const tasks = await prisma.componenttask.findMany({
+        where: { tenantId: workspaceId },
+        orderBy: { createdAt: "desc" },
+        take: 10
+      });
+
+      const formattedTasks = tasks.map(t => ({
+        ...t,
+        config: t.config ? JSON.parse(JSON.stringify(t.config)) : null,
+        result: t.result ? JSON.parse(JSON.stringify(t.result)) : null,
+      }));
+
+      return NextResponse.json({ success: true, data: formattedTasks });
+    }
+
+    // 获取指定工作空间下的文件资料
+    if (action === "documents") {
+      const workspaceId = searchParams.get("workspaceId");
+      if (!workspaceId) {
+        return NextResponse.json({ 
+          success: false, 
+          error: "缺少 workspaceId 参数" 
+        }, { status: 400 });
+      }
+
+      const isMember = await requireWorkspaceMembership(userId, workspaceId);
+      if (!isMember) {
+        return NextResponse.json({
+          success: false,
+          error: "越权警告：您不属于该工作空间，无权查看文件资料"
+        }, { status: 403 });
+      }
+
+      const documents = await prisma.document.findMany({
+        where: { 
+          workspaceId,
+          status: "active" 
+        },
+        orderBy: { createdAt: "desc" }
+      });
+
+      return NextResponse.json({ success: true, data: documents });
     }
 
     return NextResponse.json({ 
@@ -296,6 +384,28 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
+      // 验证空间归属与使用权限
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { type: true, ownerId: true }
+      });
+      if (!ws) {
+        return NextResponse.json({ success: false, error: "工作空间不存在" }, { status: 400 });
+      }
+
+      const member = await prisma.workspacemember.findUnique({
+        where: { userId_workspaceId: { userId, workspaceId } }
+      });
+      if (ws.ownerId !== userId && !member) {
+        return NextResponse.json({ success: false, error: "越权警告：您不属于该工作空间，无组件运行权限" }, { status: 403 });
+      }
+
+      const { requireWorkspacePermission, writeAuditLog } = require("@/lib/security");
+      const hasExecPermission = await requireWorkspacePermission(userId, workspaceId, "component:execute");
+      if (!hasExecPermission) {
+        return NextResponse.json({ success: false, error: "越权警告：您在当前空间下的岗位不支持此组件的执行" }, { status: 403 });
+      }
+
       // 企业空间权限验证 (安全防线)
       const restrictedIds = await getRestrictedComponentIds(workspaceId, userId);
       if (restrictedIds.includes(componentId)) {
@@ -345,15 +455,34 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // 向 componenttask 写入一条状态为 COMPLETED 的运行审计日志任务，确保数据链路闭环
+      // 从请求体结构化获取任务名称和材料等，写入真实任务历史
+      const taskName = body.taskName;
+      const inputMaterial = body.inputMaterial;
+      const outputData = body.outputData;
+      const taskStatus = body.status || "SUCCESS";
+
+      // 记录真实的使用率日志
+      await prisma.componentusage.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          componentId,
+          workspaceId,
+          usedAt: new Date()
+        }
+      });
+
+      // 向 componenttask 写入一条状态为 taskStatus 的运行审计日志任务，确保数据链路闭环
       await prisma.componenttask.create({
         data: {
           id: crypto.randomUUID(),
-          name: `${componentId} 模拟调试运行`,
-          description: `组件在工作空间中进行了模拟运行，消耗算力 ${deductTokens} 点`,
-          type: "simulate",
-          status: "COMPLETED",
-          progress: 100,
+          name: taskName || `${componentId} 运行任务`,
+          description: `使用组件在工作空间中运行任务。输入材料：${inputMaterial || "未上传"}`,
+          type: componentId, // 关联组件 ID，以作标识
+          status: taskStatus,
+          progress: taskStatus === "FAILED" ? 40 : 100,
+          config: { inputMaterial, tokenCost: deductTokens },
+          result: { outputData },
           userId,
           tenantId: workspaceId,
           completedAt: new Date(),
@@ -363,10 +492,38 @@ export async function POST(request: NextRequest) {
         }
       });
 
+      // 写入高危审计日志
+      await writeAuditLog(userId, "component:execute", { componentId, tokens: deductTokens }, workspaceId);
+
       return NextResponse.json({ 
         success: true, 
         tokenBalance: Number(updatedQuota.tokenBalance) 
       });
+    }
+
+    // 新增：上传文档/沉淀材料至知识库与原始文件库
+    if (action === "upload_doc") {
+      const { title, content, type } = body;
+      if (!workspaceId || !title) {
+        return NextResponse.json({ 
+          success: false, 
+          error: "缺少必要的 workspaceId 或 title 参数" 
+        }, { status: 400 });
+      }
+
+      const doc = await prisma.document.create({
+        data: {
+          id: crypto.randomUUID(),
+          workspaceId,
+          title,
+          content: content || "",
+          type: type || "doc",
+          status: "active",
+          updatedAt: new Date()
+        }
+      });
+
+      return NextResponse.json({ success: true, data: doc });
     }
 
     // 绑定组件至工作空间
@@ -394,6 +551,7 @@ export async function POST(request: NextRequest) {
           userId,
           componentId,
           workspaceId,
+          metadata: { enabled: true },
         },
       });
 
@@ -420,7 +578,16 @@ export async function POST(request: NextRequest) {
 
     // 解绑组件从工作空间
     if (action === "unbind") {
+      const fs = require("fs");
+      const logFile = "d:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\unbind_debug.log";
+      const debugLogs = [];
+      debugLogs.push(`=== [DEBUG] API UNBIND AT ${new Date().toISOString()} ===`);
+      debugLogs.push(`workspaceId: ${workspaceId}`);
+      debugLogs.push(`componentId: ${componentId}`);
+
       if (!workspaceId || !componentId) {
+        debugLogs.push("❌ unbind parameters missing");
+        fs.appendFileSync(logFile, debugLogs.join("\n") + "\n\n");
         return NextResponse.json({ 
           success: false, 
           error: "缺少必要的 workspaceId 或 componentId 参数" 
@@ -428,12 +595,28 @@ export async function POST(request: NextRequest) {
       }
 
       // 删除绑定记录
-      await prisma.componentusage.deleteMany({
+      const deleteResult = await prisma.componentusage.deleteMany({
         where: {
           workspaceId,
           componentId,
         },
       });
+      
+      // 同步物理删除当前工作空间下属于该组件的所有任务历史数据，做到彻底清除干净
+      await prisma.componenttask.deleteMany({
+        where: {
+          tenantId: workspaceId,
+          type: componentId,
+        },
+      });
+      debugLogs.push(`Prisma deleteResult: ${JSON.stringify(deleteResult)}`);
+
+      const remaining = await prisma.componentusage.findMany({
+        where: { workspaceId, componentId }
+      });
+      debugLogs.push(`Remaining componentusages in DB count: ${remaining.length}`);
+      debugLogs.push("=== [DEBUG] API UNBIND END ===");
+      fs.appendFileSync(logFile, debugLogs.join("\n") + "\n\n");
 
       // 写入空间操作审计日志
       await prisma.operationlog.create({
@@ -453,6 +636,66 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ 
         success: true, 
         message: `组件已从当前工作空间成功解绑` 
+      });
+    }
+
+    // 启用或禁用组件状态控制
+    if (action === "toggle-active") {
+      const { enabled } = body;
+      if (!workspaceId || !componentId || typeof enabled !== "boolean") {
+        return NextResponse.json({ 
+          success: false, 
+          error: "缺少必要的参数或参数格式错误" 
+        }, { status: 400 });
+      }
+
+      // 企业空间权限验证 (安全防线)
+      const restrictedIds = await getRestrictedComponentIds(workspaceId, userId);
+      if (restrictedIds.includes(componentId)) {
+        return NextResponse.json({
+          success: false,
+          error: "您当前的岗位在当前企业空间下无此组件的状态修改权限，请联系管理员"
+        }, { status: 403 });
+      }
+
+      // 检查绑定关系是否存在
+      const usage = await prisma.componentusage.findFirst({
+        where: { workspaceId, componentId }
+      });
+
+      if (!usage) {
+        return NextResponse.json({
+          success: false,
+          error: "该组件在此空间中尚未装配载入，无法修改状态"
+        }, { status: 400 });
+      }
+
+      // 更新启用禁用状态到 metadata
+      await prisma.componentusage.updateMany({
+        where: { workspaceId, componentId },
+        data: {
+          metadata: { enabled }
+        }
+      });
+
+      // 写入审计日志
+      await prisma.operationlog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          workspaceId,
+          action: enabled ? "ENABLE_COMPONENT" : "DISABLE_COMPONENT",
+          resource: componentId,
+          details: {
+            componentId,
+            updatedAt: new Date(),
+          },
+        },
+      });
+
+      return NextResponse.json({ 
+        success: true, 
+        message: enabled ? "组件已成功启用" : "组件已成功禁用" 
       });
     }
 

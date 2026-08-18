@@ -101,7 +101,6 @@ export function useWorkspaceHub() {
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>("");
   const [generating, setGenerating] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"MEMBER" | "ADMIN">("MEMBER");
   const [expiresInDays, setExpiresInDays] = useState<number>(7);
 
@@ -166,8 +165,7 @@ export function useWorkspaceHub() {
           localStorage.removeItem("personalWorkspaceDeleted");
           localStorage.removeItem("personalWorkspaceUpgraded");
           localStorage.removeItem("upgradeMode");
-
-          toast.error("会话已过期，请重新登录");
+          
           setTimeout(() => {
             router.push("/auth/login");
           }, 1000);
@@ -180,7 +178,7 @@ export function useWorkspaceHub() {
 
       const workspacesRes = await fetch("/api/workspace/list", {
         headers: {
-          Authorization: `Bearer ${data.user.id}`,
+          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         },
       });
 
@@ -781,11 +779,20 @@ export function useWorkspaceHub() {
       if (!res.ok) throw new Error("加载失败");
 
       const data = await res.json();
-      setWorkspaces(data.workspaces);
-      setInvitations(data.invitations);
+      const rawWorkspaceList = data.workspaces || data.data || [];
+      // 与工作台口径一致：将后端返回的 _count.workspacemember 映射到 memberCount，确保成员数量正确
+      const workspaceList = rawWorkspaceList.map((ws: any) => ({
+        ...ws,
+        memberCount:
+          ws.memberCount ?? (ws._count ? ws._count.workspacemember : 0) ?? 0,
+      }));
+      const invitationList = data.invitations || [];
+      
+      setWorkspaces(workspaceList);
+      setInvitations(invitationList);
 
-      if (data.workspaces.length > 0) {
-        setSelectedWorkspace(data.workspaces[0].id);
+      if (workspaceList.length > 0) {
+        setSelectedWorkspace(workspaceList[0].id);
       }
     } catch (error) {
       console.error("加载可分享空间失败:", error);
@@ -816,7 +823,7 @@ export function useWorkspaceHub() {
         },
         body: JSON.stringify({
           workspaceId: selectedWorkspace,
-          email: showAdvanced ? inviteEmail : null,
+          email: null,
           expiresInDays: showAdvanced ? expiresInDays : null,
         }),
       });
@@ -835,7 +842,8 @@ export function useWorkspaceHub() {
   };
 
   const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
+    const text = `【知阁·舟坊】项目协同邀请码：${code}\n(请在知阁·舟坊工作台输入以加入企业协作空间)`;
+    navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("邀请码已复制");
     setTimeout(() => setCopiedCode(null), 2000);
@@ -843,14 +851,15 @@ export function useWorkspaceHub() {
 
   const handleCopyLink = (code: string) => {
     const url = `${window.location.origin}/workspace-hub?invitationCode=${code}`;
-    navigator.clipboard.writeText(url);
+    const text = `【知阁·舟坊】项目协同快捷加入链接：${url}\n(点击链接即可一键加入企业协作空间)`;
+    navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("链接已复制");
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
   const handleCopyInvitation = (code: string, invitationUrl: string) => {
-    const text = `邀请您加入工作空间！\n\n邀请码：${code}\n\n点击链接加入：${invitationUrl}`;
+    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、智能的团队研发协同中枢，让开发化繁为简。`;
     navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("已复制到剪贴板");
@@ -929,8 +938,6 @@ export function useWorkspaceHub() {
     generating,
     showAdvanced,
     setShowAdvanced,
-    inviteEmail,
-    setInviteEmail,
     inviteRole,
     setInviteRole,
     expiresInDays,

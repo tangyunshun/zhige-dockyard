@@ -36,6 +36,32 @@ function RegisterContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
+  // 服务条款与隐私政策弹窗状态
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [documentModalCategory, setDocumentModalCategory] = useState<"terms" | "privacy" | null>(null);
+  const [documentContent, setDocumentContent] = useState<string | null>(null);
+  const [documentLoading, setDocumentLoading] = useState(false);
+
+  const openDocumentModal = async (category: "terms-of-service" | "privacy-policy") => {
+    setDocumentModalCategory(category === "terms-of-service" ? "terms" : "privacy");
+    setShowDocumentModal(true);
+    setDocumentContent(null);
+    setDocumentLoading(true);
+    try {
+      const res = await fetch(`/api/system-documents?category=${category}`);
+      const data = await res.json();
+      if (res.ok) {
+        setDocumentContent(data.data?.content || "暂无内容");
+      } else {
+        setDocumentContent(`加载文档失败: ${data.details || data.error || "未知原因"}`);
+      }
+    } catch (err: any) {
+      setDocumentContent(`网络请求错误: ${err.message || String(err)}`);
+    } finally {
+      setDocumentLoading(false);
+    }
+  };
+
   // 账号类型：phone | email | username
   const [accountType, setAccountType] = useState<
     "phone" | "email" | "username" | "unknown"
@@ -495,7 +521,12 @@ function RegisterContent() {
         const duration = Math.min(600 + message.length * 100, 1500);
         toast.success(message, duration);
         setTimeout(() => {
-          router.push(data.redirectUrl || "/auth/login");
+          // 如果有 redirect 参数（如协同邀请链路），透传给登录页
+          const redirectParam = searchParams.get("redirect");
+          const loginUrl = redirectParam
+            ? `/auth/login?redirect=${encodeURIComponent(redirectParam)}`
+            : "/auth/login";
+          router.push(data.redirectUrl || loginUrl);
         }, duration);
       } else {
         console.log("注册失败，错误数据:", data);
@@ -915,21 +946,25 @@ function RegisterContent() {
                 className="text-xs text-slate-600 cursor-pointer select-none font-bold"
               >
                 我已阅读并同意{" "}
-                <Link
-                  href="/terms"
-                  className="text-[#3182ce] hover:underline font-bold"
-                  onClick={(e) => e.stopPropagation()}
+                <span
+                  className="text-[#3182ce] hover:underline font-bold cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDocumentModal("terms-of-service");
+                  }}
                 >
                   服务条款
-                </Link>{" "}
+                </span>{" "}
                 和{" "}
-                <Link
-                  href="/privacy"
-                  className="text-[#3182ce] hover:underline font-bold"
-                  onClick={(e) => e.stopPropagation()}
+                <span
+                  className="text-[#3182ce] hover:underline font-bold cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDocumentModal("privacy-policy");
+                  }}
                 >
                   隐私政策
-                </Link>
+                </span>
               </label>
             </div>
 
@@ -955,7 +990,7 @@ function RegisterContent() {
           <div className="mt-6 text-center text-xs text-slate-600">
             已有账号？{" "}
             <Link
-              href="/auth/login"
+              href={`/auth/login${searchParams.get("redirect") ? `?redirect=${encodeURIComponent(searchParams.get("redirect")!)}` : ""}`}
               className="text-[#3182ce] font-medium hover:underline"
             >
               立即登录
@@ -963,6 +998,71 @@ function RegisterContent() {
           </div>
         </div>
       </div>
+
+      {/* 条款与政策弹窗 (SaaS大厂风范，无需离开注册页面) */}
+      {showDocumentModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-5xl w-full max-h-[85vh] flex flex-col animate-scaleUp overflow-hidden">
+            {/* 头部 */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#3182ce]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                {documentModalCategory === "terms" ? "服务条款" : "隐私政策"}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowDocumentModal(false);
+                  setDocumentModalCategory(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors w-8 h-8 rounded-lg hover:bg-slate-50 flex items-center justify-center cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* 内容区 */}
+            <div className="p-6 overflow-y-auto flex-1 leading-relaxed zg-scrollbar">
+              {documentLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                  <div className="w-10 h-10 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin"></div>
+                  <p className="text-xs text-slate-400 font-medium animate-pulse">正在加载条款内容...</p>
+                </div>
+              ) : (
+                <div className="prose prose-slate max-w-none">
+                  {(() => {
+                    if (!documentContent) return null;
+                    let rendered = documentContent;
+                    // 替换大标题
+                    rendered = rendered.replace(/^# (.*$)/gim, '<h1 class="text-base font-black text-slate-800 mb-4 pb-2 border-b border-slate-100">$1</h1>');
+                    // 替换二级标题
+                    rendered = rendered.replace(/^## (.*$)/gim, '<h2 class="text-xs font-black text-slate-800 mt-5 mb-2.5 flex items-center gap-1.5"><span class="w-1 h-3 bg-[#3182ce] rounded-full inline-block"></span>$1</h2>');
+                    // 替换段落 (非 h1/h2 且非列表开始)
+                    rendered = rendered.replace(/^(?!<h\d|<div|<p|<li|<ul)(.*$)/gim, '<p class="mb-3 text-slate-600 text-xs leading-relaxed font-semibold">$1</p>');
+                    return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="p-4 border-t border-slate-100 flex justify-end shrink-0 bg-slate-50/50">
+              <button
+                onClick={() => {
+                  setShowDocumentModal(false);
+                  setDocumentModalCategory(null);
+                }}
+                className="zg-btn px-6 py-2 text-xs font-black bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white hover:shadow-md hover:shadow-[#3182ce]/15 transition-all rounded-lg cursor-pointer"
+              >
+                我已阅读并关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

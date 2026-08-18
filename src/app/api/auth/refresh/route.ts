@@ -1,144 +1,102 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify, SignJWT } from "jose";
+import { SignJWT } from "jose";
+import crypto from "crypto";
+import { sessionCache } from "@/lib/session-cache";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
 );
 
-/**
- * Token刷新接口
- * 用于在Access Token过期前静默刷新，实现用户无感知的会话续期
- */
 export async function POST(request: NextRequest) {
   try {
-    // 从Cookie获取refresh token
-    const refreshToken = request.cookies.get("refresh_token")?.value;
-    
+    const { refreshToken } = await request.json();
+
     if (!refreshToken) {
       return NextResponse.json(
-        { error: "REFRESH_TOKEN_REQUIRED", message: "需要refresh token" },
-        { status: 400 }
-      );
-    }
-
-    // 验证refresh token
-    let userId: string;
-    try {
-      const { payload } = await jwtVerify(refreshToken, JWT_SECRET);
-      userId = payload.userId as string;
-    } catch (error) {
-      return NextResponse.json(
-        { error: "INVALID_REFRESH_TOKEN", message: "refresh token无效" },
+        { error: "REFRESH_TOKEN_INVALID", message: "refresh token 不能为空" },
         { status: 401 }
       );
     }
 
-    // 检查用户是否存在且状态正常
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        role: true,
-        status: true,
-        refreshToken: true,
-        refreshTokenExpiresAt: true,
-        lastForcedLogoutAt: true,
-        sessionToken: true,
-      },
+    const now = new Date();
+    // 查找用户
+    const user = await prisma.user.findFirst({
+      where: {
+        refreshToken,
+        refreshTokenExpiresAt: { gt: now }
+      }
     });
 
     if (!user) {
       return NextResponse.json(
-        { error: "USER_NOT_FOUND", message: "用户不存在" },
-        { status: 404 }
-      );
-    }
-
-    // ========== 最优先检查：账号状态 ==========
-    if (user.status === "deleted") {
-      return NextResponse.json(
-        { error: "ACCOUNT_DELETED", message: "您的账号已被注销" },
+        { error: "REFRESH_TOKEN_INVALID", message: "refresh token 无效或已过期" },
         { status: 401 }
       );
     }
 
-    if (user.status === "banned") {
+    // 账号状态校验
+    if (user.status !== "active") {
       return NextResponse.json(
-        { error: "ACCOUNT_DISABLED", message: "您的账号已被永久封禁" },
+        { error: "ACCOUNT_DISABLED", message: "账号已禁用" },
         { status: 403 }
       );
     }
 
-    if (user.status === "inactive") {
-      return NextResponse.json(
-        { error: "ACCOUNT_DISABLED", message: "您的账号已被禁用，请联系管理员" },
-        { status: 403 }
-      );
-    }
+    // 生成新 sessionToken
+    const sessionToken = crypto.randomUUID();
+    const sessionExpiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 续期默认 2 小时
 
-    // 检查用户是否被强制下线（2分钟宽限期）
-    if (user.lastForcedLogoutAt) {
-      const now = Date.now();
-      const forcedLogoutTime = new Date(user.lastForcedLogoutAt).getTime();
-      const timeSinceForcedLogout = (now - forcedLogoutTime) / 1000 / 60; // 分钟
+    // 生成新 refreshToken
+    const newRefreshToken = crypto.randomUUID();
+    const newRefreshTokenExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 默认 7 天
 
-      if (timeSinceForcedLogout >= 2) {
-        // 超过2分钟宽限期，拒绝刷新token
-        return NextResponse.json(
-          { error: "FORCED_LOGOUT", message: "您已被强制下线，请重新登录" },
-          { status: 401 }
-        );
+    // 更新 User 表
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        sessionToken,
+        sessionExpiresAt,
+        refreshToken: newRefreshToken,
+        refreshTokenExpiresAt: newRefreshTokenExpiresAt
+      }
+    });
+
+    // 内存同步
+    for (const [key, value] of sessionCache.entries()) {
+      if (value.userId === user.id) {
+        sessionCache.delete(key);
       }
     }
+    sessionCache.set(sessionToken, {
+      userId: user.id,
+      expiresAt: sessionExpiresAt,
+    });
 
-    // 检查refresh token是否匹配（防止token泄露后被滥用）
-    if (user.refreshToken !== refreshToken) {
-      return NextResponse.json(
-        { error: "TOKEN_MISMATCH", message: "refresh token不匹配" },
-        { status: 401 }
-      );
-    }
-
-    // 检查refresh token是否过期
-    if (user.refreshTokenExpiresAt && new Date(user.refreshTokenExpiresAt) < new Date()) {
-      return NextResponse.json(
-        { error: "REFRESH_TOKEN_EXPIRED", message: "refresh token已过期" },
-        { status: 401 }
-      );
-    }
-
-    // 生成新的access token（24小时有效期）
+    // 生成新 JWT
     const newAccessToken = await new SignJWT({
       userId: user.id,
+      email: user.email || "",
       role: user.role,
+      sessionToken,
+      issuedAt: now.toISOString(),
     })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime("24h")
       .sign(JWT_SECRET);
 
-    // 生成新的refresh token（30天有效期）
-    const newRefreshToken = await new SignJWT({ userId: user.id })
-      .setProtectedHeader({ alg: "HS256" })
-      .setExpirationTime("30d")
-      .sign(JWT_SECRET);
-
-    // 更新用户数据库中的refresh token
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        refreshToken: newRefreshToken,
-        refreshTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
-
-    // 创建响应
     const response = NextResponse.json({
       success: true,
-      accessToken: newAccessToken,
+      token: newAccessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user.id,
+        email: user.email || "",
+        role: user.role
+      }
     });
 
-    // 设置新的cookies
+    // 设置 cookies
     response.cookies.set("auth_token", newAccessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -152,7 +110,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 7 * 24 * 60 * 60,
     });
 
     return response;

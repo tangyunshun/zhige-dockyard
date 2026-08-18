@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
-import { X, Shield, ArrowRight, Layers, Database, FileText, CheckCircle2, ChevronRight, Activity, Star, TrendingUp, Code, FolderOpen, Layout, Server, Monitor, Users, ShieldCheck } from "lucide-react";
+import { X, Shield, ArrowRight, Layers, Database, FileText, CheckCircle2, ChevronRight, Activity, Star, TrendingUp, Code, FolderOpen, Layout, Server, Monitor, Users, ShieldCheck, FlaskConical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ComponentDefinition, COMPONENTS, COMPONENT_CATEGORIES } from "@/constants/components";
 
@@ -97,15 +97,25 @@ export default function ComponentDispatcherPanel({
   const activeWsId = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("workspaceId") || workspaces[0]?.id
     : workspaces[0]?.id;
-  const currentWorkspace = workspaces.find(w => w.id === activeWsId) || workspaces[0] || null;
-  const currentWorkspaceName = currentWorkspace ? currentWorkspace.name : "默认空间";
 
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>("");
   const [bindingStatusMap, setBindingStatusMap] = useState<Record<string, boolean>>({});
   const [loadingStatuses, setLoadingStatuses] = useState<Record<string, boolean>>({});
   const [workspaceQuotas, setWorkspaceQuotas] = useState<Record<string, number>>({});
   const [loadingConfig, setLoadingConfig] = useState(true);
 
-  const isBound = currentWorkspace ? (bindingStatusMap[currentWorkspace.id] || false) : false;
+  // 初始化 selectedWorkspaceId
+  useEffect(() => {
+    if (activeWsId) {
+      setSelectedWorkspaceId(activeWsId);
+    } else if (workspaces.length > 0) {
+      setSelectedWorkspaceId(workspaces[0].id);
+    }
+  }, [activeWsId, workspaces]);
+
+  const selectedWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces.find(w => w.id === activeWsId) || workspaces[0] || null;
+  const selectedWorkspaceName = selectedWorkspace ? selectedWorkspace.name : "默认空间";
+  const isBound = selectedWorkspace ? (bindingStatusMap[selectedWorkspace.id] || false) : false;
 
   // 立即装配/使用中枢函数 (支持登录拦截与一键秒级装配跳转)
   const handleQuickUse = async () => {
@@ -118,15 +128,18 @@ export default function ComponentDispatcherPanel({
       }, 800);
       return;
     }
-    if (!currentWorkspace) {
-      toast.warning("未检测到当前用户的可用工作空间，请先在个人空间页创建空间");
+    
+    const targetWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) || workspaces[0] || null;
+    if (!targetWorkspace) {
+      toast.warning("未检测到可用的工作空间，请先创建空间");
       return;
     }
     
-    const wsId = currentWorkspace.id;
-    const wsName = currentWorkspace.name;
+    const wsId = targetWorkspace.id;
+    const wsName = targetWorkspace.name;
+    const targetIsBound = bindingStatusMap[wsId] || false;
     
-    if (isBound) {
+    if (targetIsBound) {
       // 已经装配，直接进入空间研发页
       handleGoToWorkspace(wsId);
     } else {
@@ -257,64 +270,16 @@ export default function ComponentDispatcherPanel({
   const handleToggleBind = async (workspaceId: string, workspaceName: string) => {
     const wasBound = bindingStatusMap[workspaceId] || false;
     
-    // 设置局部加载菊花
-    setLoadingStatuses((prev) => ({ ...prev, [workspaceId]: true }));
-
-    try {
-      if (wasBound) {
-        const success = await unbindComponent(comp.id, workspaceId);
-        if (success) {
-          setBindingStatusMap((prev) => ({ ...prev, [workspaceId]: false }));
-          toast.success(`组件 ${comp.name} 已成功从空间 [${workspaceName}] 解除引进`);
-        } else {
-          toast.error("操作失败，请重试");
-        }
-      } else {
-        const success = await bindComponent(comp.id, workspaceId);
-        if (success) {
-          setBindingStatusMap((prev) => ({ ...prev, [workspaceId]: true }));
-          toast.success(`组件 ${comp.name} 已成功分发至空间 [${workspaceName}]`);
-        } else {
-          toast.error("操作失败，请重试");
-        }
-      }
-    } catch (e) {
-      console.error("切换组件绑定失败:", e);
-      toast.error("网络异常，请重试");
-    } finally {
-      setLoadingStatuses((prev) => ({ ...prev, [workspaceId]: false }));
-    }
-  };
-
-  const handleToggleFavorite = async () => {
-    if (!isLoggedIn) {
-      toast.error("请先登录系统以收藏组件");
-      return;
-    }
-    const success = await toggleFavorite(comp.id);
-    if (success) {
-      toast.success(isFav ? "已取消收藏" : "已添加到收藏");
-    } else {
-      toast.error("操作失败");
-    }
-  };
-
-  const handleGoToWorkspace = (workspaceId: string) => {
-    if (onNavigateToWorkspace) {
-      onNavigateToWorkspace(workspaceId, comp.id);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end overflow-hidden animate-in fade-in duration-200">
+    // �  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 overflow-hidden animate-in fade-in duration-200">
       {/* 背景遮罩 */}
       <div
         onClick={onClose}
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[3px] transition-opacity"
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[4px] transition-opacity"
       />
 
-      {/* 侧滑面板抽屉 */}
-      <div className="relative w-full max-w-xl bg-[#f0f8ff] h-full shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300">
+      {/* 居中大规格便当盒模态框 (ZhiGe Bento Spec Modal) */}
+      <div className="relative w-full max-w-4xl h-[85vh] max-h-[750px] bg-[#f0f8ff] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-250 border border-slate-200 z-10">
         
         {/* 顶部 Header */}
         <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between flex-shrink-0 z-10 shadow-sm">
@@ -356,129 +321,133 @@ export default function ComponentDispatcherPanel({
           </div>
         </header>
 
-        {/* 内容区 */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* 极客双列 Bento 内容区分栏 */}
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
           
-          {/* 1. 基本信息看板 */}
-          <section className="bg-white rounded-2xl p-5 border border-slate-200/60 shadow-sm space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span
-                className="px-2.5 py-0.5 rounded text-[10px] font-bold border"
-                style={{
-                  backgroundColor: `${categoryInfo?.color}10`,
-                  borderColor: `${categoryInfo?.color}20`,
-                  color: categoryInfo?.color,
-                }}
-              >
-                {categoryInfo?.name || "常规分类"}
-              </span>
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
-                <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
-                <span>估算消耗 {comp.estimatedTokens} Token/次</span>
-              </div>
-            </div>
+          {/* 左侧详情与沙箱仿真栏 (占 7 列) */}
+          <div className="lg:col-span-7 h-full overflow-y-auto p-5 md:p-6 space-y-6 border-r border-slate-200 scrollbar-thin">
             
-            <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              {comp.description}
-            </p>
-
-            {comp.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-2">
-                {comp.tags.map((tag, i) => (
-                  <span
-                    key={i}
-                    className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded"
-                  >
-                    #{tag}
-                  </span>
-                ))}
+            {/* 1. 基本信息看板 */}
+            <section className="bg-white rounded-2xl p-5 border border-slate-200/60 shadow-sm space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span
+                  className="px-2.5 py-0.5 rounded text-[10px] font-bold border"
+                  style={{
+                    backgroundColor: `${categoryInfo?.color}10`,
+                    borderColor: `${categoryInfo?.color}20`,
+                    color: categoryInfo?.color,
+                  }}
+                >
+                  {categoryInfo?.name || "常规分类"}
+                </span>
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
+                  <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
+                  <span>估算消耗 {comp.estimatedTokens} Token/次</span>
+                </div>
               </div>
-            )}
-          </section>
+              
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                {comp.description}
+              </p>
 
-          {/* 2. 技术数据契约流转拓扑 (Topology Data Contract) */}
-          <section className="space-y-4">
-            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-1">
-              <Database className="w-4 h-4 text-[#3182ce]" />
-              数据加工流转契约协议 (物理材料 ➜ 物理产出)
-            </h3>
-            
-            {/* 极客风深色流转拓扑图 */}
-            <div className="relative bg-slate-900 text-slate-100 rounded-2xl p-5 border border-slate-800 shadow-xl overflow-hidden">
-              <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-25"></div>
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
-
-              <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-4">
-                {/* 输入材料极 */}
-                <div className="flex-1 w-full bg-slate-950/80 rounded-xl p-4 border border-slate-800 shadow-inner flex flex-col justify-between min-h-[140px]">
-                  <div>
-                    <div className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                      输入材料规范 (Input Material)
-                    </div>
-                    <div className="font-mono text-[10.5px] text-slate-300 leading-relaxed bg-slate-900/50 p-2.5 rounded-lg border border-slate-850 min-h-[50px] flex items-center">
-                      {comp.previewData.inputMock}
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-2.5 border-t border-slate-850 flex items-center gap-1.5 text-[9px] font-bold text-slate-500">
-                    <span>物理载体:</span>
-                    <span className="text-blue-300 bg-blue-950/50 border border-blue-900/30 px-1.5 py-0.5 rounded truncate">
-                      {media.inputMedia}
+              {comp.tags?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  {comp.tags.map((tag, i) => (
+                    <span
+                      key={i}
+                      className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded"
+                    >
+                      #{tag}
                     </span>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* 2. 技术数据契约流转拓扑 (Topology Data Contract) */}
+            <section className="space-y-4">
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-1">
+                <Database className="w-4 h-4 text-[#3182ce]" />
+                数据加工流转契约协议 (物理材料 ➜ 物理产出)
+              </h3>
+              
+              {/* 极客风深色流转拓扑图 */}
+              <div className="relative bg-slate-900 text-slate-100 rounded-2xl p-5 border border-slate-800 shadow-xl overflow-hidden">
+                <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-25"></div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
+
+                <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-4">
+                  {/* 输入材料极 */}
+                  <div className="flex-1 w-full bg-slate-950/80 rounded-xl p-4 border border-slate-800 shadow-inner flex flex-col justify-between min-h-[140px]">
+                    <div>
+                      <div className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                        输入材料规范 (Input Material)
+                      </div>
+                      <div className="font-mono text-[10.5px] text-slate-300 leading-relaxed bg-slate-900/50 p-2.5 rounded-lg border border-slate-900 min-h-[50px] flex items-center">
+                        {comp.previewData.inputMock}
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-2.5 border-t border-slate-900 flex items-center gap-1.5 text-[9px] font-bold text-slate-500">
+                      <span>物理载体:</span>
+                      <span className="text-blue-300 bg-blue-950/50 border border-blue-900/30 px-1.5 py-0.5 rounded truncate">
+                        {media.inputMedia}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 流转引擎连接枢纽 */}
+                  <div className="flex flex-col items-center justify-center shrink-0 py-2 md:w-16">
+                    {/* 横向箭头与流光 */}
+                    <div className="hidden md:flex flex-col items-center gap-1">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center text-white text-[10px] font-black shadow-lg shadow-blue-500/20 border border-blue-400/25">
+                        中枢
+                      </div>
+                      <span className="text-[7.5px] font-black text-indigo-400 uppercase tracking-widest scale-75 mt-0.5 whitespace-nowrap">数据解构</span>
+                      <div className="w-12 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 rounded-full relative overflow-hidden mt-1 shadow-inner">
+                        <div className="absolute inset-0 bg-white/40 translate-x-[-100%] animate-[flow_2s_infinite_linear]"></div>
+                      </div>
+                    </div>
+
+                    {/* 移动端纵向箭头 */}
+                    <div className="flex md:hidden flex-col items-center">
+                      <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold shadow">
+                        ↓
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 输出成果极 */}
+                  <div className="flex-1 w-full bg-slate-950/80 rounded-xl p-4 border border-slate-800 shadow-inner flex flex-col justify-between min-h-[140px]">
+                    <div>
+                      <div className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        输出成果契约 (Output Artifact)
+                      </div>
+                      <div className="font-mono text-[10.5px] text-slate-300 leading-relaxed bg-slate-900/50 p-2.5 rounded-lg border border-slate-900 min-h-[50px] flex items-center">
+                        {comp.previewData.outputMock}
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-2.5 border-t border-slate-900 flex items-center gap-1.5 text-[9px] font-bold text-slate-500">
+                      <span>物理产出:</span>
+                      <span className="text-emerald-300 bg-emerald-950/50 border border-emerald-900/30 px-1.5 py-0.5 rounded truncate">
+                        {media.outputMedia}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* 流转引擎连接枢纽 */}
-                <div className="flex flex-col items-center justify-center shrink-0 py-2 md:w-16">
-                  {/* 横向箭头与流光 */}
-                  <div className="hidden md:flex flex-col items-center gap-1">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center text-white text-[10px] font-black shadow-lg shadow-blue-500/20 border border-blue-400/25">
-                      中枢
-                    </div>
-                    <span className="text-[7.5px] font-black text-indigo-400 uppercase tracking-widest scale-75 mt-0.5 whitespace-nowrap">数据解构</span>
-                    <div className="w-12 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 rounded-full relative overflow-hidden mt-1 shadow-inner">
-                      <div className="absolute inset-0 bg-white/40 translate-x-[-100%] animate-[flow_2s_infinite_linear]"></div>
-                    </div>
-                  </div>
-
-                  {/* 移动端纵向箭头 */}
-                  <div className="flex md:hidden flex-col items-center">
-                    <div className="w-7 h-7 rounded-full bg-indigo-650 flex items-center justify-center text-white text-[10px] font-bold shadow">
-                      ↓
-                    </div>
-                  </div>
-                </div>
-
-                {/* 输出成果极 */}
-                <div className="flex-1 w-full bg-slate-950/80 rounded-xl p-4 border border-slate-800 shadow-inner flex flex-col justify-between min-h-[140px]">
-                  <div>
-                    <div className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      输出成果契约 (Output Artifact)
-                    </div>
-                    <div className="font-mono text-[10.5px] text-slate-300 leading-relaxed bg-slate-900/50 p-2.5 rounded-lg border border-slate-850 min-h-[50px] flex items-center">
-                      {comp.previewData.outputMock}
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-2.5 border-t border-slate-850 flex items-center gap-1.5 text-[9px] font-bold text-slate-500">
-                    <span>物理产出:</span>
-                    <span className="text-emerald-300 bg-emerald-950/50 border border-emerald-900/30 px-1.5 py-0.5 rounded truncate">
-                      {media.outputMedia}
-                    </span>
-                  </div>
+                {/* 契约基本属性 */}
+                <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between flex-wrap gap-2 text-[9px] font-black text-slate-500">
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 全程沙箱校验</span>
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 数据隔离加密</span>
+                  <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 吞吐契合率 100%</span>
                 </div>
               </div>
+            </section>
 
-              {/* 契约基本属性 */}
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between flex-wrap gap-2 text-[9px] font-black text-slate-500">
-                <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 全程沙箱校验</span>
-                <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 数据隔离加密</span>
-                <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 吞吐契合率 100%</span>
-              </div>
-            </div>
-
-            {/* 🚀 新增：契约沙箱仿真模拟器 (Simulator Panel) */}
-            <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm space-y-3.5">
+            {/* 3. 契约沙箱仿真模拟器 (Simulator Panel) */}
+            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-black text-slate-800 flex items-center gap-1.5">
                   <FlaskConical className="w-4 h-4 text-[#38a169]" />
@@ -516,7 +485,7 @@ export default function ComponentDispatcherPanel({
               ) : (
                 /* 运行/仿真成功日志控制台 */
                 <div className="space-y-3">
-                  <div className="bg-slate-950 text-slate-350 rounded-xl p-3.5 border border-slate-800 shadow-inner font-mono text-[10px] leading-relaxed space-y-1.5 max-h-[160px] overflow-y-auto scrollbar-thin">
+                  <div className="bg-slate-950 text-slate-400 rounded-xl p-3.5 border border-slate-800 shadow-inner font-mono text-[10px] leading-relaxed space-y-1.5 max-h-[160px] overflow-y-auto scrollbar-thin">
                     {simLogs.map((log, index) => (
                       <div key={index} className="transition-all animate-[fadeIn_0.2s_ease-out]">
                         {log}
@@ -537,11 +506,11 @@ export default function ComponentDispatcherPanel({
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                         <span>仿真调试成果物验证完毕 (Artifact Checksum Validated)</span>
                       </div>
-                      <div className="bg-slate-900/5 rounded-lg p-2.5 text-[10.5px] font-bold text-slate-655 font-mono leading-relaxed border border-emerald-200/50">
+                      <div className="bg-slate-900/5 rounded-lg p-2.5 text-[10.5px] font-bold text-slate-600 font-mono leading-relaxed border border-emerald-200/50">
                         {comp.previewData.outputMock}
                       </div>
                       
-                      <div className="flex items-center justify-between text-[9px] text-slate-450 font-bold pt-1">
+                      <div className="flex items-center justify-between text-[9px] text-slate-400 font-bold pt-1">
                         <span>仿真环境: ZhiGe Sandboxed Cluster v1.2</span>
                         <button
                           onClick={() => setSimState("idle")}
@@ -563,7 +532,7 @@ export default function ComponentDispatcherPanel({
                   <TrendingUp className="w-4 h-4 text-emerald-600" />
                   <span>商业级投入产出比 (ROI Efficiency Matrix)</span>
                 </span>
-                <span className="text-[10px] text-slate-550 font-semibold block leading-relaxed">
+                <span className="text-[10px] text-slate-500 font-semibold block leading-relaxed">
                   {comp.previewData.roiText}
                 </span>
               </div>
@@ -582,97 +551,190 @@ export default function ComponentDispatcherPanel({
                 </div>
               </div>
             </div>
-          </section>
 
-          {/* 3. 跨空间分发与绑定矩阵 (Dispatch Matrix) */}
-          <section className="space-y-3">
-            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-1">
-              <Layers className="w-4 h-4 text-indigo-500" />
-              工作空间分发绑定矩阵
-            </h3>
+          </div>
 
-            {!isLoggedIn ? (
-              // 游客提示
-              <div className="bg-amber-50/30 border border-amber-100 rounded-2xl p-6 text-center shadow-sm space-y-4">
-                <div>
-                  <p className="text-xs text-amber-700 font-bold">您当前为游客模式，无法进行空间绑定。</p>
-                  <p className="text-[10px] text-slate-400 font-medium mt-1">请登录系统，以在企业协作或个人开发沙盒中装配此效能资产。</p>
-                </div>
-                <button
-                onClick={handleQuickUse}
-                className="w-full h-10 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-blue-700 text-white text-xs font-black rounded-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <ArrowRight className="w-4 h-4 text-white/40" />
-                <span>立即使用</span>
-              </button>
-              </div>
-            ) : loadingConfig ? (
-              // 加载中
-              <div className="bg-white rounded-2xl p-8 border border-slate-200/60 shadow-sm flex flex-col items-center justify-center">
-                <div className="w-8 h-8 border-3 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mb-2" />
-                <p className="text-[11px] text-slate-400 font-bold">读取各个空间部署矩阵...</p>
-              </div>
-            ) : workspaces.length === 0 ? (
-              // 空间为空
-              <div className="bg-white rounded-2xl p-6 border border-slate-200 border-dashed text-center">
-                <p className="text-xs text-slate-550 font-bold">您目前暂无可用工作空间</p>
-                <p className="text-[10px] text-slate-400 mt-1">请返回主台创建默认开发空间</p>
-              </div>
-            ) : (
-              // 空间部署 Checklist
-              <div className="space-y-3">
-                {/* 登录态一键提效行动条 */}
-                <div className="bg-[#f0f8ff] border border-blue-100 rounded-xl p-3.5 flex items-center justify-between gap-4">
-                  <div className="text-[11px] text-slate-650 font-bold min-w-0">
-                    目标空间: <strong className="text-[#3182ce]">{currentWorkspaceName}</strong>
+          {/* 右侧空间部署与路由栏 (占 5 列) */}
+          <div className="lg:col-span-5 h-full overflow-y-auto p-5 md:p-6 bg-slate-50/40 scrollbar-thin flex flex-col justify-between border-l border-slate-200">
+            <div className="space-y-5">
+              
+              {/* 🚀 智能路由中枢 (ZhiGe Dynamic Routing Hub) */}
+              <section className="bg-gradient-to-br from-[#3182ce]/5 to-indigo-50/30 border border-blue-200/80 rounded-2xl p-4 flex flex-col gap-3.5 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-[#3182ce]/10 to-indigo-500/5 rounded-full blur-xl pointer-events-none"></div>
+                <div className="space-y-1 min-w-0 relative z-10 flex-1">
+                  <span className="text-[9px] font-black text-[#3182ce] uppercase tracking-wider block">
+                    ZhiGe Routing Hub · 准备就绪的运行目标
+                  </span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs font-black text-slate-800 truncate">
+                      {selectedWorkspaceName}
+                    </span>
+                    {selectedWorkspace?.type === "PERSONAL" ? (
+                      <span className="text-[8px] px-1.5 py-0.2 bg-blue-50 text-[#3182ce] border border-blue-100 rounded font-semibold scale-90">个人</span>
+                    ) : selectedWorkspace ? (
+                      <span className="text-[8px] px-1.5 py-0.2 bg-amber-50 text-amber-600 border border-amber-100 rounded font-semibold scale-90">企业</span>
+                    ) : null}
                   </div>
-                  <button
-                    onClick={handleQuickUse}
-                    className="h-9 px-4 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-lg shadow transition-all flex items-center gap-1 cursor-pointer"
-                  >
-                    <Layers className="w-3.5 h-3.5 fill-current text-white/25" />
-                    <span>立即使用</span>
-                  </button>
+                  <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1 mt-1">
+                    <span>绑定状态:</span>
+                    {isBound ? (
+                      <span className="text-emerald-500 font-black flex items-center gap-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> 已装配引进
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-black flex items-center gap-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span> 未引进 (使用将自动静默装配)
+                      </span>
+                    )}
+                  </div>
                 </div>
+                
+                <button
+                  onClick={handleQuickUse}
+                  className="w-full h-9 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-[11px] font-black rounded-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1 cursor-pointer shrink-0 z-10"
+                >
+                  <Layers className="w-3.5 h-3.5 fill-current text-white/20" />
+                  <span>立即使用</span>
+                </button>
+              </section>
 
-                <div className="space-y-2">
-                  {workspaces.map((ws) => {
-                    const isBound = bindingStatusMap[ws.id] || false;
-                    const isProcessing = loadingStatuses[ws.id] || false;
-                    const tokenBalance = workspaceQuotas[ws.id] || 0;
+              {/* 3. 跨空间分发与绑定矩阵 (Dispatch Matrix) */}
+              <section className="space-y-3">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-1">
+                  <Layers className="w-4 h-4 text-indigo-500" />
+                  工作空间分发绑定矩阵
+                </h3>
 
-                    return (
-                      <div
-                        key={ws.id}
-                        className={`bg-white border rounded-2xl p-4 flex items-center justify-between transition-all shadow-sm ${
-                          isBound ? "border-[#3182ce]/40 ring-1 ring-[#3182ce]/5" : "border-slate-200"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          {/* 部署勾选框 */}
-                          <button
-                            disabled={isProcessing}
-                            onClick={() => handleToggleBind(ws.id, ws.name)}
-                            className={`w-5 h-5 rounded-[4px] border flex items-center justify-center transition-all cursor-pointer ${
-                              isBound
-                                ? "bg-[#3182ce] border-[#3182ce] text-white"
-                                : "border-slate-300 hover:border-[#3182ce] bg-slate-50/50"
+                {!isLoggedIn ? (
+                  // 游客提示
+                  <div className="bg-amber-50/30 border border-amber-100 rounded-2xl p-6 text-center shadow-sm space-y-4">
+                    <div>
+                      <p className="text-xs text-amber-700 font-bold">您当前为游客模式，无法进行空间绑定。</p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">请登录系统，以在企业协作或个人开发沙盒中装配此效能资产。</p>
+                    </div>
+                    <button
+                      onClick={handleQuickUse}
+                      className="w-full h-10 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-blue-700 text-white text-xs font-black rounded-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <ArrowRight className="w-4 h-4 text-white/40" />
+                      <span>立即使用</span>
+                    </button>
+                  </div>
+                ) : loadingConfig ? (
+                  // 加载中
+                  <div className="bg-white rounded-2xl p-8 border border-slate-200/60 shadow-sm flex flex-col items-center justify-center">
+                    <div className="w-8 h-8 border-3 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mb-2" />
+                    <p className="text-[11px] text-slate-400 font-bold">读取各个空间部署矩阵...</p>
+                  </div>
+                ) : workspaces.length === 0 ? (
+                  // 空间为空
+                  <div className="bg-white rounded-2xl p-6 border border-slate-200 border-dashed text-center">
+                    <p className="text-xs text-slate-500 font-bold">您目前暂无可用工作空间</p>
+                    <p className="text-[10px] text-slate-400 mt-1">请返回主台创建默认开发空间</p>
+                  </div>
+                ) : (
+                  // 空间部署 Checklist
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {workspaces.map((ws) => {
+                        const isWsBound = bindingStatusMap[ws.id] || false;
+                        const isSelected = selectedWorkspaceId === ws.id;
+                        const isProcessing = loadingStatuses[ws.id] || false;
+                        const tokenBalance = workspaceQuotas[ws.id] || 0;
+
+                        return (
+                          <div
+                            key={ws.id}
+                            onClick={() => setSelectedWorkspaceId(ws.id)}
+                            className={`border rounded-2xl p-3.5 flex items-center justify-between transition-all shadow-sm cursor-pointer relative group ${
+                              isSelected
+                                ? "border-[#3182ce] ring-2 ring-[#3182ce]/10 bg-[#f0f8ff]/35"
+                                : "border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50/20"
                             }`}
                           >
-                            {isProcessing ? (
-                              <span className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin"></span>
-                            ) : isBound ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
-                            ) : null}
-                          </button>
-                          
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="text-xs font-black text-slate-800 truncate">{ws.name}</span>
-                              {ws.type === "PERSONAL" ? (
-                                <span className="text-[9px] px-1 py-0.2 bg-slate-100 text-slate-400 rounded flex-shrink-0 font-semibold scale-90">个人</span>
+                            <div className="flex items-center gap-3 min-w-0">
+                              {/* 空间激活单选指示器 */}
+                              <div className={`w-4.5 h-4.5 rounded-full border flex items-center justify-center transition-all ${
+                                isSelected ? "border-[#3182ce] bg-[#3182ce]" : "border-slate-300"
+                              }`}>
+                                {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}
+                              </div>
+                              
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="text-xs font-black text-slate-800 truncate">{ws.name}</span>
+                                  {ws.type === "PERSONAL" ? (
+                                    <span className="text-[8px] px-1 py-0.2 bg-slate-100 text-slate-400 rounded flex-shrink-0 font-semibold scale-90">个人</span>
+                                  ) : (
+                                    <span className="text-[8px] px-1 py-0.2 bg-amber-50 text-amber-500 rounded border border-amber-100 flex-shrink-0 font-semibold scale-90">企业</span>
+                                  )}
+                                  
+                                  {/* 极其精致的装配状态小微标 */}
+                                  {isWsBound ? (
+                                    <span className="text-[8px] px-1.5 py-0.2 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 flex-shrink-0 font-black scale-90 flex items-center gap-0.5">
+                                      <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
+                                      已装配
+                                    </span>
+                                  ) : (
+                                    <span className="text-[8px] px-1.5 py-0.2 bg-slate-50 text-slate-400 rounded-full border border-slate-200/60 flex-shrink-0 font-semibold scale-90">
+                                      未引进
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-bold mt-0.5 flex items-center gap-1.5">
+                                  <span>算力余额:</span>
+                                  <span className={tokenBalance < 100 ? "text-red-500 font-black" : "text-slate-600 font-black"}>
+                                    {tokenBalance.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 右侧智能行动区 */}
+                            <div className="flex items-center gap-2">
+                              {isProcessing ? (
+                                <div className="w-6 h-6 border-2 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin"></div>
                               ) : (
-                                <span className="text-[9px] px-1 py-0.2 bg-amber-50 text-amber-500 rounded border border-amber-100 flex-shrink-0 font-semibold scale-90">企业</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedWorkspaceId(ws.id);
+                                    setTimeout(handleQuickUse, 50);
+                                  }}
+                                  className={`h-8 px-3 text-[10px] font-black rounded-lg transition-all flex items-center gap-0.5 cursor-pointer shadow-sm border ${
+                                    isSelected
+                                      ? "text-white bg-[#3182ce] border-[#3182ce] hover:bg-[#2b6cb0]"
+                                      : "text-slate-600 bg-white hover:bg-slate-50 border-slate-200"
+                                  }`}
+                                >
+                                  <span>{isWsBound ? "进入运行" : "装配并运行"}</span>
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+            </div>
+          </div>
+          
+        </div>
+
+      </div>
+    </div>
+  );00 rounded-full border border-emerald-100 flex-shrink-0 font-black scale-90 flex items-center gap-0.5">
+                                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  已装配
+                                </span>
+                              ) : (
+                                <span className="text-[8px] px-1.5 py-0.2 bg-slate-50 text-slate-400 rounded-full border border-slate-200/60 flex-shrink-0 font-semibold scale-90">
+                                  未引进
+                                </span>
                               )}
                             </div>
                             <div className="text-[10px] text-slate-400 font-bold mt-0.5 flex items-center gap-1.5">
@@ -684,16 +746,28 @@ export default function ComponentDispatcherPanel({
                           </div>
                         </div>
 
-                        {/* 立即进入运行研发快捷转场 */}
-                        {isBound && (
-                          <button
-                            onClick={() => handleGoToWorkspace(ws.id)}
-                            className="h-8 px-3 text-[10px] font-black text-[#3182ce] bg-[#3182ce]/5 hover:bg-[#3182ce]/15 rounded-lg border border-[#3182ce]/20 transition-all flex items-center gap-0.5 cursor-pointer shadow-sm"
-                          >
-                            <span>进入空间</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        {/* 右侧智能行动区 */}
+                        <div className="flex items-center gap-2">
+                          {isProcessing ? (
+                            <div className="w-6 h-6 border-2 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin"></div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedWorkspaceId(ws.id);
+                                setTimeout(handleQuickUse, 50);
+                              }}
+                              className={`h-8 px-3 text-[10px] font-black rounded-lg transition-all flex items-center gap-0.5 cursor-pointer shadow-sm border ${
+                                isSelected
+                                  ? "text-white bg-[#3182ce] border-[#3182ce] hover:bg-[#2b6cb0]"
+                                  : "text-slate-600 bg-white hover:bg-slate-50 border-slate-200"
+                              }`}
+                            >
+                              <span>{isWsBound ? "进入运行" : "装配并运行"}</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

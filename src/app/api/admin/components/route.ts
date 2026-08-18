@@ -1,26 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-
-    const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
+    // 验证管理员权限包
+    const authResult = await requirePlatformPermission(request, "component:read");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
 
     const { searchParams } = new URL(request.url);
@@ -120,24 +107,12 @@ export async function GET(request: NextRequest) {
 // POST - 创建组件
 export async function POST(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    // 验证管理员权限包
+    const authResult = await requirePlatformPermission(request, "component:create");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
-
-    const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
+    const userId = authResult.user!.id;
 
     const body = await request.json();
     const { name, description, type, icon, category, tags, config, isPublished } = body;
@@ -146,9 +121,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
     }
 
+    const componentId = `C-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const component = await prisma.componenttask.create({
       data: {
-        id: `C-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        id: componentId,
         name,
         description,
         type,
@@ -159,6 +135,9 @@ export async function POST(request: NextRequest) {
         userId,
       },
     });
+
+    // 记录高危操作审计日志
+    await writeAuditLog(userId, "component:create", { id: component.id, name: component.name });
 
     return NextResponse.json({
       success: true,
@@ -177,27 +156,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - 更新组件
+// PUT - 更新组件 (编辑需要 component:update, 上架/下架需要 component:publish)
 export async function PUT(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
+    const body = await request.json();
+    const { name, description, type, icon, category, tags, config, isPublished } = body;
 
-    const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    // 区分编辑还是发布状态变更
+    const isPublishAction = isPublished !== undefined;
+    const requiredPermission = isPublishAction ? "component:publish" : "component:update";
 
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
+    // 验证管理员权限包
+    const authResult = await requirePlatformPermission(request, requiredPermission);
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
+    const userId = authResult.user!.id;
 
     const { searchParams } = new URL(request.url);
     const componentId = searchParams.get("id");
@@ -205,9 +179,6 @@ export async function PUT(request: NextRequest) {
     if (!componentId) {
       return NextResponse.json({ error: "缺少组件 ID" }, { status: 400 });
     }
-
-    const body = await request.json();
-    const { name, description, type, icon, category, tags, config, isPublished } = body;
 
     const current = await prisma.componenttask.findUnique({ where: { id: componentId } });
     const currentConfig = (current?.config as any) || {};
@@ -227,6 +198,9 @@ export async function PUT(request: NextRequest) {
       },
     });
 
+    // 记录高危操作审计日志
+    await writeAuditLog(userId, requiredPermission, { id: componentId, name: component.name, updates: body });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -244,27 +218,15 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE - 删除组件
+// DELETE - 删除组件 (仅 SuperAdmin 或拥有 component:delete 权限)
 export async function DELETE(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    // 验证管理员权限包
+    const authResult = await requirePlatformPermission(request, "component:delete");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
-
-    const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
+    const userId = authResult.user!.id;
 
     const { searchParams } = new URL(request.url);
     const componentId = searchParams.get("id");
@@ -273,9 +235,18 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "缺少组件 ID" }, { status: 400 });
     }
 
+    // 获取组件名字用以审计
+    const current = await prisma.componenttask.findUnique({
+      where: { id: componentId },
+      select: { name: true }
+    });
+
     await prisma.componenttask.delete({
       where: { id: componentId },
     });
+
+    // 记录高危操作审计日志
+    await writeAuditLog(userId, "component:delete", { id: componentId, name: current?.name });
 
     return NextResponse.json({
       success: true,

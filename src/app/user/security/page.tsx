@@ -55,11 +55,13 @@ export default function UserSecurityPage() {
 
   const loadLoginHistory = async () => {
     try {
+      const authToken =
+        typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
 
       const res = await fetch("/api/user/login-history?limit=10", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken || userId}` },
       });
 
       if (res.ok) {
@@ -76,11 +78,13 @@ export default function UserSecurityPage() {
   const loadDevices = async () => {
     try {
       setDevicesLoading(true);
+      const authToken =
+        typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
 
       const res = await fetch("/api/user/devices", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken || userId}` },
       });
 
       if (res.ok) {

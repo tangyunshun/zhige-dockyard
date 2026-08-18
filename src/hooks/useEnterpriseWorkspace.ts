@@ -69,7 +69,7 @@ export function useEnterpriseWorkspace({ refresh }: UseEnterpriseWorkspaceProps)
 
       const data = await res.json();
       if (res.ok) {
-        toast.success("企业协作空间创建成功");
+        toast.success("企业协作空间创建成功", 1000);
         setNewEnterpriseName("");
         setNewEnterpriseEmail("");
         setNewEnterprisePhone("");
@@ -82,7 +82,7 @@ export function useEnterpriseWorkspace({ refresh }: UseEnterpriseWorkspaceProps)
           router.push(`/workspace/${data.workspace.id}`);
         }
       } else {
-        const errorMsg = data.error || data.message || "创建失败";
+        const errorMsg = data.details ? `创建失败: ${data.details}` : (data.error || data.message || "创建失败");
         toast.error(errorMsg);
       }
     } catch (error) {

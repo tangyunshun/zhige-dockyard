@@ -112,8 +112,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const userId = localStorage.getItem("userId") || userState.userInfo?.id;
     if (!userId) return;
     try {
-      const res = await fetch("/api/studio?action=favorites", {
-        headers: { Authorization: `Bearer ${userId}` }
+      const res = await fetch(`/api/studio?action=favorites&_t=${Date.now()}`, {
+        headers: { Authorization: `Bearer ${userId}` },
+        cache: "no-store"
       });
       if (res.ok) {
         const data = await res.json();
@@ -130,8 +131,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const userId = localStorage.getItem("userId") || userState.userInfo?.id;
     if (!userId) return;
     try {
-      const res = await fetch("/api/studio?action=recent", {
-        headers: { Authorization: `Bearer ${userId}` }
+      const res = await fetch(`/api/studio?action=recent&_t=${Date.now()}`, {
+        headers: { Authorization: `Bearer ${userId}` },
+        cache: "no-store"
       });
       if (res.ok) {
         const data = await res.json();
@@ -146,10 +148,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshBoundComponents = async (workspaceId: string) => {
     const userId = localStorage.getItem("userId") || userState.userInfo?.id;
-    if (!userId) return;
+    if (!workspaceId || !userId) return;
     try {
-      const res = await fetch(`/api/studio?action=bound&workspaceId=${workspaceId}`, {
-        headers: { Authorization: `Bearer ${userId}` }
+      const res = await fetch(`/api/studio?action=bound&workspaceId=${workspaceId}&_t=${Date.now()}`, {
+        headers: { Authorization: `Bearer ${userId}` },
+        cache: "no-store"
       });
       if (res.ok) {
         const data = await res.json();

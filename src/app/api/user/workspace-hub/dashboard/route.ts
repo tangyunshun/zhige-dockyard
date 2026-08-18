@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { ensureDefaultComponents } from "@/lib/workspaceInit";
 
 /**
  * 工作空间主控制台 Bento Dashboard 聚合数据 API 接口
@@ -9,32 +10,20 @@ import { validateUser } from "@/lib/auth";
 export async function GET(request: NextRequest) {
   try {
     // 1. 验证用户身份
-    let userId = request.headers.get("x-user-id");
+    let userId: string | null = null;
     let userRole = "user";
-    
-    const authHeader = request.headers.get("authorization");
+
+    // 优先从中间件注入的 x-user-id 获取
+    userId = request.headers.get("x-user-id");
+
+    // 如果没有 x-user-id，尝试从 Authorization header 获取
     if (!userId) {
+      const authHeader = request.headers.get("authorization");
       if (authHeader && authHeader !== "Bearer null" && authHeader !== "Bearer ") {
         const authResult = await validateUser(authHeader);
         if (authResult.valid) {
           userId = authResult.user!.id;
           userRole = authResult.user!.role || "user";
-        }
-      }
-      
-      // 双保险兜底逻辑：尝试从 Cookie 中直接读取未加密的 userId
-      if (!userId) {
-        const cookieUserId = request.cookies.get("userId")?.value;
-        if (cookieUserId) {
-          userId = cookieUserId;
-          // 读取数据库获取角色
-          const u = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { role: true },
-          });
-          userRole = u?.role || "user";
-        } else {
-          return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
         }
       }
     }
@@ -181,77 +170,30 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // 如果没有个人工作空间，为其自动静默创建（兜底）
+    // 如果没有个人空间，不再自动创建（符合 GET 无副作用原则），而是向前端返回需要创建的标记
     const hasPersonalWorkspace = Array.from(workspaceMap.values()).some(
       (ws) => ws.type === "PERSONAL" && ws.role === "OWNER"
     );
-
-    if (!hasPersonalWorkspace) {
-      const workspaceName = `个人空间 - ${dbUser.name || "极客"}`;
-      const workspaceId = `ws-personal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      const now = new Date();
-
-      const newWorkspace = await prisma.workspace.create({
-        data: {
-          id: workspaceId,
-          name: workspaceName,
-          type: "PERSONAL",
-          ownerId: userId,
-          description: `${dbUser.name || "极客"}的个人工作空间`,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-
-      await prisma.workspacemember.create({
-        data: {
-          id: `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-          userId,
-          workspaceId: newWorkspace.id,
-          role: "OWNER",
-          updatedAt: now,
-        },
-      });
-
-      await prisma.workspacequota.create({
-        data: {
-          id: crypto.randomUUID(),
-          workspaceId: newWorkspace.id,
-          membershipLevelId: membershipLevel,
-          tokenBalance: BigInt(tokenLimit),
-          updatedAt: now,
-        },
-      });
-
-      workspaceMap.set(newWorkspace.id, {
-        id: newWorkspace.id,
-        name: newWorkspace.name,
-        type: "PERSONAL",
-        ownerId: userId,
-        description: newWorkspace.description,
-        createdAt: newWorkspace.createdAt,
-        updatedAt: newWorkspace.updatedAt,
-        role: "OWNER",
-      });
-
-      // 异步顺便更新用户 lastWorkspaceId 属性
-      await prisma.user.update({
-        where: { id: userId },
-        data: { lastWorkspaceId: newWorkspace.id },
-      }).catch(err => console.error("Update lastWorkspaceId failed:", err));
-    }
+    const needsPersonalWorkspace = !hasPersonalWorkspace;
 
     // 联合计算每个工作空间的成员数与组件数
     const workspacesWithCounts = await Promise.all(
       Array.from(workspaceMap.values()).map(async (ws) => {
-        const [componentCount, memberCount] = await Promise.all([
-          prisma.componenttask.count({
-            where: { tenantId: ws.id },
+        // 自动完成兜底自愈初始化
+        await ensureDefaultComponents(ws.id, userId);
+
+        const [usages, memberCount] = await Promise.all([
+          prisma.componentusage.findMany({
+            where: { workspaceId: ws.id },
+            select: { componentId: true },
+            distinct: ['componentId'],
           }),
           prisma.workspacemember.count({
             where: { workspaceId: ws.id },
           }),
         ]);
+
+        const componentCount = usages.length;
 
         return {
           ...ws,
@@ -368,6 +310,7 @@ export async function GET(request: NextRequest) {
           email: dbUser.email,
         },
         personalWorkspace,
+        needsPersonalWorkspace,
         enterpriseWorkspaces,
         userQuota,
         systemStats,

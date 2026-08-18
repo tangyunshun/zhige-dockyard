@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
@@ -213,13 +213,10 @@ export default function AdminUsersPage() {
 
   const executeForceLogout = async (userId: string) => {
     try {
-      const currentUserId = localStorage.getItem("userId");
-
-      const res = await fetch("/api/admin/user/logout", {
+      const res = await fetch("/api/admin/users/force-logout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${currentUserId}`,
         },
         body: JSON.stringify({ userId }),
       });
@@ -1000,9 +997,8 @@ export default function AdminUsersPage() {
 
                               {showActionMenu === user.id && (
                                 <>
-                                  {/* 下拉菜单 - 使用 fixed 定位避免溢出 */}
                                   <div
-                                    className="fixed right-8 top-[calc(50%+20px)] w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
+                                    className="absolute right-0 mt-2 w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     {/* 强制下线 - 只对在线的活跃用户显示，超级管理员专属操作，不能操作超级管理员和自己 */}

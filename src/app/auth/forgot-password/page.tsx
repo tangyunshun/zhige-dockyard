@@ -462,10 +462,13 @@ function ForgotPasswordForm() {
         return;
       }
 
-      toast.success("密码重置成功，即将跳转到登录页");
+      const RESET_SUCCESS_DURATION = 2500;
+      toast.success("密码重置成功，即将跳转到登录页", RESET_SUCCESS_DURATION);
       setTimeout(() => {
+        // 跳转前清空本页 toast，确保登录页不再出现该提示语
+        toast.dismissAll();
         router.push("/auth/login");
-      }, 2000);
+      }, RESET_SUCCESS_DURATION);
     } catch (error) {
       console.error("Reset password error:", error);
       setErrors({ password: "网络错误，请稍后重试" });
@@ -492,28 +495,30 @@ function ForgotPasswordForm() {
     }
 
     return (
-      <div className="flex items-center justify-center mb-6 overflow-x-auto whitespace-nowrap scrollbar-none flex-nowrap py-1">
+      <div className="flex items-center justify-between mb-6 px-1 w-full flex-wrap gap-y-2">
         {steps.map((s, idx) => (
-          <div key={s.num} className="flex items-center shrink-0">
-            <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                step >= s.num
-                  ? "bg-[#3182ce] text-white shadow-sm"
-                  : "bg-[#e2e8f0] text-slate-500"
-              }`}
-            >
-              {s.num}
+          <div key={s.num} className="flex items-center flex-1 min-w-0 last:flex-none">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${
+                  step >= s.num
+                    ? "bg-[#3182ce] text-white shadow-sm"
+                    : "bg-[#e2e8f0] text-slate-500"
+                }`}
+              >
+                {s.num}
+              </div>
+              <span
+                className={`text-xs font-bold whitespace-nowrap ${
+                  step >= s.num ? "text-[#3182ce]" : "text-slate-400"
+                }`}
+              >
+                {s.label}
+              </span>
             </div>
-            <span
-              className={`ml-2 text-xs font-bold ${
-                step >= s.num ? "text-[#3182ce]" : "text-slate-400"
-              }`}
-            >
-              {s.label}
-            </span>
             {idx < steps.length - 1 && (
               <div
-                className={`w-8 h-0.5 mx-2 shrink-0 ${
+                className={`flex-1 h-0.5 mx-2 rounded-full ${
                   step > s.num ? "bg-[#3182ce]" : "bg-[#e2e8f0]"
                 }`}
               />
@@ -1013,7 +1018,7 @@ function ForgotPasswordForm() {
         </div>
 
         {/* 右侧表单区 */}
-        <div className="md:col-span-3 p-6 md:p-8">
+        <div className="md:col-span-3 p-6 md:p-8 min-w-0">
           <div className="mb-6 flex items-center justify-between">
             <button
               onClick={() => router.push("/")}

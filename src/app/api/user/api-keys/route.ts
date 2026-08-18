@@ -70,6 +70,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // 写入审计日志
+    await prisma.operationlog.create({
+      data: {
+        id: uuidv4(),
+        userId,
+        action: "APIKey:Create",
+        resource: "APIKey",
+        details: JSON.stringify({ id: newApiKey.id, name: newApiKey.name }),
+        createdAt: new Date(),
+      },
+    });
+
     // 只返回一次完整的 key
     return NextResponse.json({
       success: true,
@@ -115,6 +127,18 @@ export async function DELETE(req: NextRequest) {
 
     await prisma.apikey.delete({
       where: { id },
+    });
+
+    // 写入审计日志
+    await prisma.operationlog.create({
+      data: {
+        id: uuidv4(),
+        userId,
+        action: "APIKey:Delete",
+        resource: "APIKey",
+        details: JSON.stringify({ id, name: apiKey.name }),
+        createdAt: new Date(),
+      },
     });
 
     return NextResponse.json({

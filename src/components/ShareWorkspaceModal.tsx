@@ -1,4 +1,4 @@
-﻿﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
@@ -168,7 +168,7 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
   };
 
   const handleCopyInvitation = (code: string, invitationUrl: string) => {
-    const text = `邀请您加入工作空间！\n\n邀请码：${code}\n\n点击链接加入：${invitationUrl}`;
+    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、智能的团队研发协同中枢，让开发化繁为简。`;
     navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("已复制到剪贴板");
@@ -176,7 +176,8 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
   };
 
   const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
+    const text = `【知阁·舟坊】项目协同邀请码：${code}\n(请在知阁·舟坊工作台输入以加入企业协作空间)`;
+    navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("邀请码已复制");
     setTimeout(() => setCopiedCode(null), 2000);
@@ -184,7 +185,8 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
 
   const handleCopyLink = (code: string) => {
     const url = `${window.location.origin}/workspace-hub?invitationCode=${code}`;
-    navigator.clipboard.writeText(url);
+    const text = `【知阁·舟坊】项目协同快捷加入链接：${url}\n(点击链接即可一键加入企业协作空间)`;
+    navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("链接已复制");
     setTimeout(() => setCopiedCode(null), 2000);

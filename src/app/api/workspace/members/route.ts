@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import crypto from "crypto";
 
 // 1. GET: 获取工作空间下的所有成员列表
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
+    const authResult = await validateUser(authHeader, request);
 
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });
@@ -52,6 +53,55 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // 1.2 物理清理该空间下过期时间超过一月（30天）的废弃邀请码
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    await prisma.workspaceinvitation.deleteMany({
+      where: {
+        workspaceId,
+        expiresAt: {
+          lt: thirtyDaysAgo,
+        },
+      },
+    });
+
+    // 1.3 查询该空间下的所有邀请码记录（包括过期/未过期的全量数据以供中枢与控制台统一）
+    let activeInvitations: any[] = [];
+    if (currentMembership.role === "OWNER" || currentMembership.role === "ADMIN") {
+      const invitations = await prisma.workspaceinvitation.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // 查询该空间的加入成员操作日志以计算加入人数
+      const joinLogs = await prisma.operationlog.findMany({
+        where: {
+          workspaceId,
+          action: "JOIN_WORKSPACE",
+        },
+      });
+
+      const codeCounts: Record<string, number> = {};
+      joinLogs.forEach((log) => {
+        const details = log.details as any;
+        if (details && typeof details === "object" && details.invitationCode) {
+          const code = details.invitationCode;
+          codeCounts[code] = (codeCounts[code] || 0) + 1;
+        }
+      });
+
+      activeInvitations = invitations.map((inv) => ({
+        id: inv.id,
+        code: inv.code,
+        email: inv.email || null,
+        expiresAt: inv.expiresAt,
+        createdAt: inv.createdAt,
+        role: inv.role,
+        status: inv.status,
+        joinedCount: codeCounts[inv.code] || 0,
+      }));
+    }
+
     return NextResponse.json({
       success: true,
       members: members.map((m) => ({
@@ -62,6 +112,7 @@ export async function GET(request: NextRequest) {
         role: m.role,
         joinedAt: m.joinedAt,
       })),
+      activeInvitations,
     });
   } catch (error) {
     console.error("Get workspace members error:", error);
@@ -73,7 +124,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
+    const authResult = await validateUser(authHeader, request);
 
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });
@@ -129,7 +180,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
+    const authResult = await validateUser(authHeader, request);
 
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });
@@ -189,6 +240,18 @@ export async function DELETE(request: NextRequest) {
           workspaceId,
         },
       },
+    });
+
+    // 记录踢出审计日志
+    await prisma.operationlog.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId: userId,
+        workspaceId,
+        action: "WORKSPACE_KICK",
+        resource: "workspace/member",
+        details: JSON.stringify({ kickedUserId: targetUserId }),
+      }
     });
 
     return NextResponse.json({

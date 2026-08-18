@@ -1,5 +1,6 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 // 获取企业空间配额
 async function getEnterpriseQuota(userId: string) {
@@ -37,16 +38,15 @@ async function getEnterpriseQuota(userId: string) {
 // GET: 获取工作空间信息和配额
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    let userId = request.headers.get("x-user-id");
+    if (!userId) {
+      const authHeader = request.headers.get("authorization");
+      const authResult = await validateUser(authHeader);
+      if (!authResult.valid) {
+        return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      }
+      userId = authResult.user!.id;
     }
-
-    const userId = authHeader.replace("Bearer ", "");
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -98,16 +98,15 @@ export async function GET(request: NextRequest) {
 // POST: 执行升级操作
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+    let userId = request.headers.get("x-user-id");
+    if (!userId) {
+      const authHeader = request.headers.get("authorization");
+      const authResult = await validateUser(authHeader);
+      if (!authResult.valid) {
+        return NextResponse.json({ error: "未授权访问" }, { status: 401 });
+      }
+      userId = authResult.user!.id;
     }
-
-    const userId = authHeader.replace("Bearer ", "");
     const body = await request.json();
     const { workspaceId, option } = body;
 

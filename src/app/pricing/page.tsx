@@ -7,6 +7,7 @@ import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import Link from "next/link";
+import UpgradeRequestModal from "@/components/pricing/UpgradeRequestModal";
 
 interface PlanFeature {
   text: string;
@@ -135,6 +136,8 @@ export default function PricingPage() {
   const { userState } = useAppContext();
   const router = useRouter();
   const toast = useToast();
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<{ name: string; displayName: string } | null>(null);
 
   useEffect(() => {
     fetchMembershipLevels();
@@ -230,7 +233,10 @@ export default function PricingPage() {
       if (!userState.isLoggedIn) {
         return {
           text: "立即登录升级",
-          onClick: () => router.push("/auth/login?redirect=/pricing"),
+          onClick: () => {
+            setSelectedPlan({ name: "SILVER", displayName: "岗位专业版" });
+            setShowRequestModal(true);
+          },
           className: `${baseBtnStyle} bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-md hover:shadow-blue-500/10 hover:-translate-y-0.5`,
           showCheck: false,
         };
@@ -238,7 +244,8 @@ export default function PricingPage() {
         return {
           text: "立即支付升级",
           onClick: () => {
-            toast.success("正在跳转收银台支付通道，升级至岗位专业版...");
+            setSelectedPlan({ name: "SILVER", displayName: "岗位专业版" });
+            setShowRequestModal(true);
           },
           className: `${baseBtnStyle} bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-lg hover:shadow-blue-500/15 hover:-translate-y-0.5`,
           showCheck: false,
@@ -256,7 +263,8 @@ export default function PricingPage() {
         return {
           text: "提交大客户私有化评估",
           onClick: () => {
-            toast.success("已提交评估申请！我们的私有化架构专家将在1小时内联系您。");
+            setSelectedPlan({ name: "CROWN", displayName: "私有化尊享版" });
+            setShowRequestModal(true);
           },
           className: `${baseBtnStyle} bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md hover:-translate-y-0.5`,
           showCheck: false,
@@ -264,7 +272,10 @@ export default function PricingPage() {
       } else {
         return {
           text: "联系专属架构专家",
-          onClick: () => router.push("/solutions"),
+          onClick: () => {
+            setSelectedPlan({ name: "CROWN", displayName: "私有化尊享版" });
+            setShowRequestModal(true);
+          },
           className: `${baseBtnStyle} bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md hover:-translate-y-0.5`,
           showCheck: false,
         };
@@ -309,7 +320,7 @@ export default function PricingPage() {
                 <span className="text-xs text-slate-700 font-bold">
                   您当前的订阅方案为：
                   <span className="text-[#2b6cb0] font-black ml-1">
-                    {userState.userInfo?.membershipLevel === "SILVER" ? "岗位专业版 (L2 旗舰版)" : "社区尝鲜版 (L1 免费体验)"}
+                    {userState.userInfo?.membershipLevel === "SILVER" ? "岗位专业版 (L2 会员)" : "普通用户 (L1)"}
                   </span>
                 </span>
               </div>
@@ -486,6 +497,84 @@ export default function PricingPage() {
         </div>
       </section>
 
+      {/* 核心权益图解解读区段 */}
+      <section className="relative py-12 z-10 border-t border-slate-200/30 bg-slate-50/20">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">
+              升级企业空间额度享有的特权
+            </h2>
+            <p className="text-slate-500 text-sm mt-2 font-medium">清晰解答为什么需要升级额度以及升级后拥有的具体特权</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* 卡片 1 */}
+            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4 text-[#2b6cb0]">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-800 mb-2">企业空间数量</h3>
+              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
+                可同时创建并管理最多 3 个企业工作空间。免费体验版仅限 1 个个人开发沙盒空间。
+              </p>
+              <div className="bg-[#f0f8ff] rounded-lg p-3 border border-blue-100/50">
+                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">空间数量变化</span>
+                <span className="text-xs text-slate-700 font-bold">1 个个人空间 ➔ <span className="text-[#2b6cb0] font-black">3 个企业空间</span></span>
+              </div>
+            </div>
+
+            {/* 卡片 2 */}
+            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center mb-4 text-[#dd6b20]">
+                <Server className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-800 mb-2">每月 Token 额度</h3>
+              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
+                提供更多的 AI 算力 Token 额度，避免在开发或调用大算力组件时额度不足。
+              </p>
+              <div className="bg-orange-50/30 rounded-lg p-3 border border-orange-100/50">
+                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">每月 Token 额度</span>
+                <span className="text-xs text-slate-700 font-bold">1,000 Token ➔ <span className="text-[#dd6b20] font-black">100,000 Token</span></span>
+              </div>
+            </div>
+
+            {/* 卡片 3 */}
+            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mb-4 text-purple-600">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <h3 className="text-base font-black text-slate-800 mb-2">团队协作与岗位</h3>
+              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
+                支持邀请团队成员共同研发，并可为岗位分配不同的管理权限与逻辑角色。
+              </p>
+              <div className="bg-purple-50/30 rounded-lg p-3 border border-purple-100/50">
+                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">团队协同机制</span>
+                <span className="text-xs text-slate-700 font-bold">单人孤立沙盒 ➔ <span className="text-purple-600 font-black">支持多人协作与分权</span></span>
+              </div>
+            </div>
+
+            {/* 卡片 4 */}
+            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-4 text-[#38a169]">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <h3 className="text-base font-black text-slate-800 mb-2">解锁高级组件</h3>
+              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
+                全量解锁全部 53 个高级组件。免费版本限制仅能使用 6 个基础体验组件。
+              </p>
+              <div className="bg-emerald-50/30 rounded-lg p-3 border border-emerald-100/50">
+                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">高级组件支持</span>
+                <span className="text-xs text-slate-700 font-bold">6 个体验组件 ➔ <span className="text-[#38a169] font-black">解锁全部 53 个高级组件</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Feature Matrix comparison table */}
       <section className="relative py-16 z-10">
         <div className="max-w-5xl mx-auto px-6">
@@ -606,6 +695,15 @@ export default function PricingPage() {
       </section>
 
       <Footer />
+
+      <UpgradeRequestModal
+        open={showRequestModal}
+        onClose={() => setShowRequestModal(false)}
+        planName={selectedPlan?.name || ""}
+        planDisplayName={selectedPlan?.displayName || ""}
+        isLoggedIn={userState.isLoggedIn}
+        userInfo={userState.userInfo}
+      />
     </div>
   );
 }

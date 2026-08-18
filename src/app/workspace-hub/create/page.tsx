@@ -222,13 +222,13 @@ function CreateEnterpriseWorkspaceForm() {
 
       if (workspaceId) {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken =
+            typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
           const res = await fetch(
             `/api/workspace/info?workspaceId=${workspaceId}`,
             {
               headers: {
-                Authorization: `Bearer ${userId}`,
+                Authorization: `Bearer ${authToken}`,
               },
             },
           );

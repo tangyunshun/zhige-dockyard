@@ -1,82 +1,72 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
-/**
- * 封禁用户API
- * 支持永久封禁和临时封禁
- */
+const getCleanRole = (role: string | null | undefined): string => {
+  if (!role) return "USER";
+  const r = role.toUpperCase().trim();
+  if (r === "SUPER_ADMIN" || r === "SUPERADMIN" || r === "SUPER_ADMIN_ROLE" || r === "SUPER") {
+    return "SUPER_ADMIN";
+  }
+  return "USER";
+};
+
+// POST: 封禁用户 API (需要 user:ban 权限)
 export async function POST(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const authResult = await requirePlatformPermission(request, "user:ban");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
+    const adminId = authResult.user!.id;
 
-    const adminId = authHeader.replace("Bearer ", "");
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-    });
-
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
-
-    const { userId, duration, reason } = await request.json();
+    const body = await request.json();
+    const { userId, bannedUntil, reason } = body;
 
     if (!userId) {
-      return NextResponse.json({ error: "缺少用户ID" }, { status: 400 });
+      return NextResponse.json({ error: "缺少用户 ID" }, { status: 400 });
     }
 
-    // 不能封禁超级管理员
     const targetUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true },
     });
 
     if (!targetUser) {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
     }
 
-    if (targetUser.role === "SUPER_ADMIN") {
-      return NextResponse.json({ error: "不能封禁超级管理员" }, { status: 403 });
+    // 越权保护：不能封禁超级管理员
+    if (getCleanRole(targetUser.role) === "SUPER_ADMIN") {
+      return NextResponse.json({ error: "权限不足，不能封禁平台超级管理员" }, { status: 403 });
     }
 
-    // 计算封禁截止时间
-    let bannedUntil: Date | null = null;
-    if (duration && duration > 0) {
-      bannedUntil = new Date(Date.now() + duration * 24 * 60 * 60 * 1000);
+    // 不能操作自己
+    if (userId === adminId) {
+      return NextResponse.json({ error: "不能封禁自己" }, { status: 403 });
     }
 
-    // 更新用户状态
+    // 封禁更新：状态设为 banned，强制踢出登录态并清除 session
     await prisma.user.update({
       where: { id: userId },
       data: {
         status: "banned",
-        bannedUntil,
+        bannedUntil: bannedUntil ? new Date(bannedUntil) : null,
         sessionToken: null,
         sessionExpiresAt: null,
       },
     });
 
-    console.log(`[封禁用户] 管理员 ${adminId} 封禁用户 ${userId}，时长: ${duration ? `${duration}天` : '永久'}，原因: ${reason || '未说明'}`);
+    // 写入操作审计日志
+    await writeAuditLog(adminId, "user:ban", { targetUserId: userId, bannedUntil, reason });
 
     return NextResponse.json({
       success: true,
-      message: bannedUntil 
-        ? `用户已被临时封禁 ${duration} 天` 
-        : "用户已被永久封禁",
-      bannedUntil: bannedUntil?.toISOString(),
+      message: "用户已成功封禁并强制下线",
     });
   } catch (error) {
-    console.error("Ban user error:", error);
+    console.error("Ban user API error:", error);
     return NextResponse.json(
-      { error: "封禁用户失败" },
+      { error: "封禁用户失败", details: error instanceof Error ? error.message : error },
       { status: 500 }
     );
   }

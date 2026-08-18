@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayout";
+import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { LayoutGrid, RefreshCw, Layers, ArrowUpRight, Search } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
 import {

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth";
 import { SignJWT } from "jose";
 import { checkIPRisk, recordLoginIP, getClientIP } from "@/lib/ip-risk";
+import crypto from "crypto";
+import { sessionCache } from "@/lib/session-cache";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
@@ -154,6 +156,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 锁定已到期但失败次数未清零：自动解除锁定并重置计数，避免"过期后错一次又锁"
+    if (user.lockedUntil && new Date(user.lockedUntil) <= new Date() && (user.loginAttempts || 0) > 0) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { loginAttempts: 0, lockedUntil: null },
+      });
+      user.loginAttempts = 0;
+      user.lockedUntil = null;
+    }
+
     // 验证密码
     const isValid = await verifyPassword(password, user.password);
 
@@ -172,12 +184,13 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        const minutes = Math.ceil((lockedUntil.getTime() - Date.now()) / 60000);
         return NextResponse.json(
           {
             message: "密码错误次数过多，账号已锁定 5 分钟",
             accountExists: true,
             lockedUntil: lockedUntil.toISOString(),
-            remainingAttempts: 0,
+            minutesRemaining: minutes,
           },
           { status: 423 },
         );
@@ -258,14 +271,49 @@ export async function POST(request: NextRequest) {
     await recordLoginIP(user.id, clientIP, request.headers.get("user-agent") || undefined);
 
     // 生成会话令牌（用于强制下线检查）
-    const sessionToken = "sess_" + user.id + "_" + Date.now() + "_" + Math.random().toString(36).substring(2, 15);
+    const sessionToken = crypto.randomUUID();
     const sessionExpiresAt = rememberMe
-      ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // 7 天
-      : new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 小时
+      ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30天
+      : new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2小时
 
-    // 检查是否存在旧会话（挤线检测）
-    const existingSessionToken = user.sessionToken;
-    const hasExistingSession = existingSessionToken && existingSessionToken !== "";
+    // 检查是否存在旧会话且未过期（挤线检测）
+    const hasExistingSession = user.sessionToken && user.sessionExpiresAt && new Date(user.sessionExpiresAt) > now;
+
+    // 记录审计日志
+    if (hasExistingSession) {
+      await prisma.operationlog.create({
+        data: {
+          id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+          userId: user.id,
+          action: "SESSION_CONFLICT_LOGOUT",
+          resource: "auth/session",
+          ipAddress: clientIP,
+          details: {
+            message: "检测到账号异地登录，执行挤线强制下线",
+            oldSessionToken: user.sessionToken,
+            newSessionToken: sessionToken,
+            ipAddress: clientIP,
+          },
+        },
+      });
+      console.log(`[挤线检测] 用户 ${user.id} 的旧会话已被挤掉`);
+    }
+
+    // 内存清除该用户的旧 session 并注册新 session
+    for (const [key, value] of sessionCache.entries()) {
+      if (value.userId === user.id) {
+        sessionCache.delete(key);
+      }
+    }
+    sessionCache.set(sessionToken, {
+      userId: user.id,
+      expiresAt: sessionExpiresAt,
+    });
+
+    const refreshToken = crypto.randomUUID();
+    const refreshTokenExpiresAt = rememberMe
+      ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 记住我 30 天
+      : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 不记住 7 天
 
     // 关键修复：确保 lastLoginAt 设置为当前时间，避免立即判定为超时
     await prisma.user.update({
@@ -277,13 +325,10 @@ export async function POST(request: NextRequest) {
         lastForcedLogoutAt: hasExistingSession ? now : null, // 如果有旧会话，标记为强制下线
         sessionToken,
         sessionExpiresAt,
+        refreshToken,
+        refreshTokenExpiresAt,
       },
     });
-
-    // 如果存在旧会话，记录挤线日志
-    if (hasExistingSession) {
-      console.log(`[挤线检测] 用户 ${user.id} 在新设备登录，旧会话已被挤掉`);
-    }
 
     // 记录登录历史
     const loginHistoryId = "lh_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
@@ -319,42 +364,55 @@ export async function POST(request: NextRequest) {
       (member) => member.workspace.type === "PERSONAL",
     );
 
-    // 如果没有个人空间，调用 create-personal API 创建
+    // 如果没有个人空间，直接在本地 Prisma 创建，免去 HTTP 环回网络请求和中间件鉴权拦截
     if (!personalWorkspace) {
       try {
-        // 使用 fetch 调用内部的 create-personal API
-        const createWorkspaceUrl = new URL('/api/workspace/create-personal', request.url).toString();
-        const createResponse = await fetch(createWorkspaceUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${user.id}`,
+        const workspaceName = `个人空间 - ${user.name || user.phone || user.email || '用户'}`;
+        const workspaceId = `ws-personal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+        const nowTime = new Date();
+
+        await prisma.workspace.create({
+          data: {
+            id: workspaceId,
+            name: workspaceName,
+            type: 'PERSONAL',
+            ownerId: user.id,
+            description: `${user.name || '用户'}的个人工作空间`,
+            createdAt: nowTime,
+            updatedAt: nowTime,
           },
         });
 
-        if (createResponse.ok) {
-          // 重新查询 workspaceMembers
-          workspaceMembers = await prisma.workspacemember.findMany({
-            where: { userId: user.id },
-            include: {
-              workspace: {
-                select: {
-                  id: true,
-                  name: true,
-                  type: true,
-                  ownerId: true,
-                  description: true,
-                  logo: true,
-                },
+        await prisma.workspacemember.create({
+          data: {
+            id: `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            userId: user.id,
+            workspaceId,
+            role: 'OWNER',
+            updatedAt: nowTime,
+          },
+        });
+
+        // 重新获取该用户的 workspaces，以便放入响应返回
+        workspaceMembers = await prisma.workspacemember.findMany({
+          where: { userId: user.id },
+          include: {
+            workspace: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                ownerId: true,
+                description: true,
+                logo: true,
               },
             },
-          });
-        } else {
-          console.error('创建个人空间失败:', await createResponse.text());
-        }
+          },
+        });
+        
+        console.log(`[登录成功] 已成功为用户 ${user.id} 自动开通默认个人工作空间: ${workspaceId}`);
       } catch (error) {
-        console.error('创建个人空间异常:', error);
-        // 创建失败不影响登录，继续
+        console.error('登录中开通默认工作空间异常:', error);
       }
     }
 
@@ -366,19 +424,10 @@ export async function POST(request: NextRequest) {
       workspace: member.workspace,
     }));
 
-    // 获取用户的 lastWorkspaceId
     const lastWorkspaceId = user.lastWorkspaceId;
 
-    // 计算建议的重定向 URL
-    let redirectUrl = "/workspace-hub";
-    if (
-      lastWorkspaceId &&
-      workspaceMembers.some((m) => m.workspaceId === lastWorkspaceId)
-    ) {
-      redirectUrl = "/dashboard?wid=" + lastWorkspaceId;
-    } else if (workspaceMembers.length > 0) {
-      redirectUrl = "/workspace-hub";
-    }
+    // 计算建议的重定向 URL，登录成功后首屏必须是 /workspace-hub
+    const redirectUrl = "/workspace-hub";
 
     // 生成 JWT Token
     const expiresIn = rememberMe ? "7d" : "24h";
@@ -386,29 +435,14 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       email: user.email,
       role: user.role,
+      sessionToken,
+      issuedAt: now.toISOString(),
     })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime(expiresIn)
       .sign(JWT_SECRET);
 
-    // 生成 Refresh Token（仅当记住我时）
-    let refreshToken = null;
-    if (rememberMe) {
-      refreshToken = await new SignJWT({ userId: user.id })
-        .setProtectedHeader({ alg: "HS256" })
-        .setExpirationTime("30d")
-        .sign(JWT_SECRET);
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          refreshToken,
-          refreshTokenExpiresAt: new Date(
-            Date.now() + 30 * 24 * 60 * 60 * 1000,
-          ),
-        },
-      });
-    }
 
     // 设置 Cookie
     // 设置 auth_token cookie
@@ -550,7 +584,7 @@ export async function POST(request: NextRequest) {
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        maxAge: 30 * 24 * 60 * 60,
+        maxAge: rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60,
       });
     }
 

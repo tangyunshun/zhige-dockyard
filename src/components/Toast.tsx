@@ -17,6 +17,7 @@ interface ToastContextType {
   error: (message: string, duration?: number) => void;
   warning: (message: string, duration?: number) => void;
   info: (message: string, duration?: number) => void;
+  dismissAll: () => void;
 }
 
 const ToastContext = React.createContext<ToastContextType | undefined>(
@@ -111,8 +112,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const info = (message: string, duration?: number) =>
     showToast("info", message, duration);
 
+  const dismissAll = () => setToasts([]);
+
   return (
-    <ToastContext.Provider value={{ showToast, success, error, warning, info }}>
+    <ToastContext.Provider value={{ showToast, success, error, warning, info, dismissAll }}>
       {children}
       {/* 所有 Toast - 中间顶部（严格遵循设计系统规范） */}
       <div

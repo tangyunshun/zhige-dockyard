@@ -6,7 +6,7 @@ import { validateUser } from "@/lib/auth";
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
+    const authResult = await validateUser(authHeader, request);
 
     if (!authResult.valid) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });

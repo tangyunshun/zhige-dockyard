@@ -86,6 +86,19 @@ const iconMap: Record<string, React.ComponentType<any>> = {
   "award": Award,
 };
 
+const categoryEmojis: Record<string, string> = {
+  BID_PREP: "📄",
+  REQ_DESIGN: "🧩",
+  BACKEND_CORE: "💻",
+  DATABASE_ENG: "🗄️",
+  FRONTEND_DEV: "📐",
+  TEST_QA: "✅",
+  DEVOPS: "🐳",
+  SECURITY: "🔒",
+  PROJ_MGMT: "👥",
+  KNOWLEDGE: "📚",
+};
+
 interface ComponentShowcaseProps {
   workspaceId?: string;
 }
@@ -142,20 +155,18 @@ export default function ComponentShowcase({ workspaceId }: ComponentShowcaseProp
                       {component.id}
                     </div>
 
+                    {/* 精致小方盒包裹组件 Emoji 图标 */}
                     <div 
-                      className="w-10 h-10 rounded-lg mb-3 flex items-center justify-center animate-pulse-subtle"
-                      style={{
-                        background: `linear-gradient(135deg, ${catInfo.color}20, ${catInfo.color}10)`,
-                      }}
+                      className="w-10 h-10 rounded-lg mb-3 flex items-center justify-center animate-pulse-subtle bg-slate-200/60"
                     >
-                      <IconComponent className="w-5 h-5" style={{ color: catInfo.color }} />
+                      <span className="text-xl leading-none">{categoryEmojis[component.category] || "⚙️"}</span>
                     </div>
 
                     <h4 className="text-sm font-bold text-slate-800 mb-1">
                       {component.name}
                     </h4>
 
-                    <p className="text-xs text-slate-650 leading-relaxed mb-2 min-h-[32px]">
+                    <p className="text-xs text-slate-655 leading-relaxed mb-2 min-h-[32px]" title={component.description}>
                       {component.description}
                     </p>
 

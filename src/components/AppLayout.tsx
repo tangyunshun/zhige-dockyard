@@ -25,8 +25,7 @@ export default function AppLayout({
     pathname.startsWith("/platform-admin") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/workspace/") ||
-    pathname.startsWith("/user/") ||
-    pathname.startsWith("/docs");
+    pathname.startsWith("/user/");
 
   useEffect(() => {
     if (shouldHideGlobalHeader) return;

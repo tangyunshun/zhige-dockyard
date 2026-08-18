@@ -31,12 +31,7 @@ export async function POST(request: NextRequest) {
       const authHeader = request.headers.get("authorization");
       const authResult = await validateUser(authHeader);
       if (!authResult.valid) {
-        const cookieUserId = request.cookies.get("userId")?.value;
-        if (cookieUserId) {
-          userId = cookieUserId;
-        } else {
-          return NextResponse.json({ message: authResult.error || "未授权访问" }, { status: 401 });
-        }
+        return NextResponse.json({ message: authResult.error || "未授权访问" }, { status: 401 });
       } else {
         userId = authResult.user!.id;
       }
@@ -71,14 +66,14 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
         workspacemember: {
           create: {
-            id: crypto.randomUUID(),
+            id: `wsm_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
             userId,
             role: 'OWNER',
           },
         },
         workspacequota: {
           create: {
-            id: crypto.randomUUID(),
+            id: `wsq_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
             workspaceId: workspaceId,
             membershipLevelId: mlId,
             tokenBalance: BigInt(tokenLimit),
@@ -102,9 +97,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const serializedWorkspace = JSON.parse(
+      JSON.stringify(workspace, (key, value) =>
+        typeof value === "bigint" ? Number(value) : value
+      )
+    );
+
     return NextResponse.json({
       success: true,
-      workspace,
+      workspace: serializedWorkspace,
     });
   } catch (error) {
     console.error('Create workspace error:', error);

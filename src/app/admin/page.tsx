@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -104,9 +104,11 @@ export default function AdminDashboard() {
       console.log("Cookie auth_token:", hasValidToken ? "存在" : "不存在");
       console.log("================");
 
+      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || userId;
+
       const res = await fetch("/api/admin/dashboard", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 

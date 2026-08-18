@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿"use client";
+﻿﻿﻿"use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -62,9 +62,9 @@ function UpgradeWorkspaceForm() {
         return;
       }
 
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      if (!userId) {
+      const authToken =
+        typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
+      if (!authToken) {
         toast.error("未授权访问");
         router.push("/auth/login");
         return;
@@ -73,13 +73,13 @@ function UpgradeWorkspaceForm() {
       // 先验证用户会话是否有效
       const authRes = await fetch("/api/auth/me", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
       if (!authRes.ok) {
         toast.error("会话已过期，请重新登录");
-        localStorage.removeItem("userId");
+        localStorage.removeItem("auth_token");
         router.push("/auth/login");
         return;
       }
@@ -88,7 +88,7 @@ function UpgradeWorkspaceForm() {
         `/api/workspace/upgrade?workspaceId=${workspaceId}`,
         {
           headers: {
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
         },
       );
@@ -231,13 +231,12 @@ function UpgradeWorkspaceForm() {
     try {
       setLoading(true);
 
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
 
       // 验证用户会话是否有效
       const authRes = await fetch("/api/auth/me", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -252,7 +251,7 @@ function UpgradeWorkspaceForm() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           workspaceId: personalWorkspace.id,

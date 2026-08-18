@@ -36,8 +36,8 @@ function OAuthCallbackContent() {
         // 设置 sessionStorage 标记，表示当前浏览器会话是活跃的
         sessionStorage.setItem("hasActiveSession", "true");
 
-        // 直接跳转到首页
-        router.push("/");
+        // 登录成功，重定向到 /workspace-hub
+        router.push("/workspace-hub");
       } catch (error) {
         console.error("OAuth 回调处理失败:", error);
         toast.error("登录失败，请重试");

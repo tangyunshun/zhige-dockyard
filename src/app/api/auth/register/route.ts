@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
+import crypto from "crypto";
 
 export async function POST(request: NextRequest) {
   try {

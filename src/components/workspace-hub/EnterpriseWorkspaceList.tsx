@@ -22,6 +22,8 @@ interface EnterpriseWorkspaceListProps {
   onViewStats: (id: string) => void;
   onDelete: (id: string) => void;
   onUpgrade?: () => void;
+  onJoinClick: () => void;
+  onLeave?: (id: string) => void;
 }
 
 export default function EnterpriseWorkspaceList({
@@ -39,6 +41,8 @@ export default function EnterpriseWorkspaceList({
   onViewStats,
   onDelete,
   onUpgrade,
+  onJoinClick,
+  onLeave,
 }: EnterpriseWorkspaceListProps) {
   const router = useRouter();
   const toast = useToast();
@@ -56,71 +60,98 @@ export default function EnterpriseWorkspaceList({
   const isOverQuota = quota ? quota.enterpriseCount >= quota.maxEnterprise : false;
 
   return (
-    <div className="relative z-20 group bg-white/70 backdrop-blur-xl rounded-2xl p-6 border border-slate-200 shadow-md hover:shadow-xl hover:border-[#2b6cb0]/20 transition-all duration-300 flex flex-col justify-between min-h-[300px]">
+    <div className="bg-white/95 rounded-[20px] p-6 border border-white/90 shadow-sm hover:shadow-md transition-all duration-350 flex flex-col justify-between min-h-[300px] overflow-visible">
       
       {/* 区块标题 + 新建按钮 */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200/60">
-        <div className="flex items-center gap-2.5">
-          <div className="w-1.5 h-4 bg-gradient-to-b from-[#f59e0b] to-[#dd6b20] rounded-full" />
-          <h3 className="text-sm font-black text-slate-800">企业协作空间</h3>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5 pb-3 border-b border-slate-200/60">
+        <div className="flex items-start gap-2.5">
+          <div className="w-1.5 h-4.5 bg-gradient-to-b from-[#f59e0b] to-[#dd6b20] rounded-full shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <h3 className="text-base font-extrabold text-slate-800">企业空间</h3>
+            <p className="text-xs text-slate-400 font-semibold leading-normal sm:whitespace-nowrap">团队共享空间，成员、组件权限和企业知识库在这里管理。</p>
+          </div>
         </div>
 
-        {/* 状态与配额 */}
-        <div className="flex items-center gap-3">
-          <div className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200/80 flex items-center gap-1.5">
-            <span>
-              容量配额：{quota?.enterpriseCount || 0} / {quota?.maxEnterprise || 0}
-            </span>
-            <div className="relative group/tooltip cursor-help">
-              <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
-              <div className="absolute bottom-full mb-1.5 right-0 transform translate-x-1/4 scale-95 opacity-0 pointer-events-none group-hover/tooltip:scale-100 group-hover/tooltip:opacity-100 transition-all duration-200 bg-slate-800 text-white text-[10px] py-1 px-2 rounded shadow-lg whitespace-nowrap z-50 font-bold">
-                免费版限 1 个，升级 VIP 会员起步拥有 3 个及以上
+        {/* 状态与配额 (升级为只读型高胶囊 Badges，加指示点，打消用户点击按钮的错觉) */}
+        {(() => {
+          const myCreatedCount = workspaces.filter(ws => ws.role === "OWNER" || ws.isOwner).length;
+          const myJoinedCount = workspaces.filter(ws => ws.role !== "OWNER" && !ws.isOwner).length;
+          return (
+            <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto flex-wrap">
+              {/* 1. 创建配额胶囊 */}
+              <div className="text-[11px] font-bold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 border-none shadow-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                <span>
+                  创建配额：{myCreatedCount} / {quota?.maxEnterprise || 0}
+                </span>
+                <div className="relative group/tooltip cursor-help flex items-center">
+                  <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-slate-500 transition-colors" />
+                  <div className="absolute bottom-full mb-1.5 right-0 transform translate-x-1/4 scale-95 opacity-0 pointer-events-none group-hover/tooltip:scale-100 group-hover/tooltip:opacity-100 transition-all duration-200 bg-slate-800 text-white text-[10px] py-1 px-2 rounded shadow-lg whitespace-nowrap z-50 font-bold">
+                    普通用户限创 1 个，升级 VIP 账户可创建至多 3 个
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. 协同配额胶囊 */}
+              <div className="text-[11px] font-bold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 border-none shadow-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                <span>
+                  协同配额：{myJoinedCount} / 5
+                </span>
+                <div className="relative group/tooltip cursor-help flex items-center">
+                  <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-slate-500 transition-colors" />
+                  <div className="absolute bottom-full mb-1.5 right-0 transform translate-x-1/4 scale-95 opacity-0 pointer-events-none group-hover/tooltip:scale-100 group-hover/tooltip:opacity-100 transition-all duration-200 bg-slate-800 text-white text-[10px] py-1 px-2 rounded shadow-lg whitespace-nowrap z-50 font-bold">
+                    所有账户最多可受邀协同加入 5 个企业空间
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          );
+        })()}
 
-          {workspaces.length > 0 && (
-            <button
-              onClick={() => {
-                if (isOverQuota) {
-                  onUpgrade?.();
-                  return;
-                }
-                onCreateClick();
-              }}
-              className={`zg-btn px-3 py-1.5 h-8 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-all ${
-                isOverQuota
-                  ? "bg-[#fef2f2] text-red-600 border border-red-200 hover:bg-red-50 hover:-translate-y-0.5"
-                  : "zg-btn-primary bg-[#2b6cb0] hover:bg-[#2563eb] text-white border-none shadow-sm hover:-translate-y-0.5"
-              }`}
-              title={isOverQuota ? "企业空间数量已达上限，点击升级 VIP" : "新建企业协作空间"}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{isOverQuota ? "升级VIP解锁" : "新建企业空间"}</span>
-            </button>
+        {workspaces.length > 0 && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  if (isOverQuota) {
+                    onUpgrade?.();
+                    return;
+                  }
+                  onCreateClick();
+                }}
+                className={`zg-btn px-4.5 h-[38px] text-sm font-semibold rounded-lg flex items-center gap-1 cursor-pointer transition-all shadow-sm hover:-translate-y-0.5 ${
+                  isOverQuota
+                    ? "bg-[#fef2f2] text-red-600 border border-red-200 hover:bg-red-50"
+                    : "zg-btn-primary bg-gradient-to-b from-[#4299e1] to-[#3182ce] hover:brightness-105 border-t border-[#63b3ed] text-white"
+                }`}
+                title={isOverQuota ? "企业空间数量已达上限，点击升级会员" : "新建企业空间"}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{isOverQuota ? "提升空间配额" : "新建企业空间"}</span>
+              </button>
+            </div>
           )}
-        </div>
       </div>
 
       {/* 搜索过滤框 */}
       {workspaces.length > 0 && (
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+          <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="搜索企业协作空间..."
+            placeholder="输入企业空间名称进行过滤..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 text-xs bg-white/80 border border-slate-200 rounded-lg focus:outline-none focus:border-[#2b6cb0] focus:ring-1 focus:ring-[#2b6cb0]/20 transition-all"
+            className="w-full h-[38px] pl-9 pr-4 text-sm bg-white/80 border border-slate-200/60 rounded-lg focus:outline-none focus:border-[#2b6cb0] focus:ring-1 focus:ring-[#2b6cb0]/10 transition-all font-medium"
           />
         </div>
       )}
 
       {/* 内容区域：网格列表或空状态 */}
-      <div className="flex-1">
+      <div className="flex-1 overflow-visible">
         {workspaces.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 px-4 text-center bg-white/40 rounded-xl border border-dashed border-slate-200/80">
-            <p className="text-xs text-slate-500 mb-4 font-bold">暂无激活的协作空间，建议开辟团队协同或加入项目</p>
+          <div className="flex flex-col items-center justify-center py-8 px-4 text-center bg-orange-50/10 rounded-lg border border-dashed border-orange-200/50">
+            <p className="text-xs text-slate-500 mb-4 font-semibold">暂无已加入的企业协作空间，您可以自主创建或通过邀请码加入</p>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => {
@@ -133,31 +164,22 @@ export default function EnterpriseWorkspaceList({
                   }
                   onCreateClick();
                 }}
-                className="zg-btn zg-btn-primary px-4 py-1.5 h-8 text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1 hover:shadow-md transition-all"
+                className="zg-btn zg-btn-primary px-4.5 h-[38px] text-sm font-semibold rounded-lg cursor-pointer flex items-center gap-1.5 hover:shadow-md transition-all bg-gradient-to-b from-[#4299e1] to-[#3182ce] hover:brightness-105 border-t border-[#63b3ed] text-white"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>新建企业协作空间</span>
+                <span>新建企业空间</span>
               </button>
               <button
-                onClick={() => {
-                  // 通过向外冒泡触发协作邀请码加入
-                  const joinBtn = document.querySelector('[data-action="join-invitation"]') as HTMLButtonElement;
-                  if (joinBtn) {
-                    joinBtn.click();
-                  } else {
-                    // 备用触发
-                    (window as any).__toggleJoinModal?.();
-                  }
-                }}
-                className="zg-btn zg-btn-default px-4 py-1.5 h-8 text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1 hover:bg-slate-50 transition-all"
+                onClick={onJoinClick}
+                className="zg-btn px-4.5 h-[38px] text-sm font-semibold text-[#dd6b20] bg-white hover:bg-orange-50/20 border border-orange-200/80 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
               >
                 <span>🧩 输入邀请码加入</span>
               </button>
             </div>
           </div>
         ) : filteredWorkspaces.length === 0 ? (
-          <div className="py-10 text-center text-xs text-slate-400">
-            未找到匹配 "{searchQuery}" 的企业工作空间
+          <div className="py-10 text-center text-sm text-slate-400 font-semibold">
+            未找到匹配 "{searchQuery}" 的企业协作空间
           </div>
         ) : (
           <div className="space-y-2.5 overflow-visible pr-1">
@@ -173,6 +195,8 @@ export default function EnterpriseWorkspaceList({
                 onUpgradePackage={onUpgradePackage}
                 onViewStats={onViewStats}
                 onDelete={onDelete}
+                onLeave={onLeave}
+                onJoinClick={onJoinClick}
               />
             ))}
           </div>

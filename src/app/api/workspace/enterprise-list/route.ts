@@ -1,6 +1,7 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { ensureDefaultComponents } from "@/lib/workspaceInit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,17 +63,33 @@ export async function GET(request: NextRequest) {
       ).length || 0);
     }, 0);
 
+    // 执行默认组件自愈并计算组件数量
+    const workspacesWithComponents = await Promise.all(
+      enterpriseWorkspaces.map(async (ws: any) => {
+        // 自动完成兜底自愈初始化
+        await ensureDefaultComponents(ws.id, userId);
+
+        const usages = await prisma.componentusage.findMany({
+          where: { workspaceId: ws.id },
+          select: { componentId: true },
+          distinct: ['componentId'],
+        });
+
+        return {
+          id: ws.id,
+          name: ws.name,
+          description: ws.description,
+          createdAt: ws.createdAt,
+          memberCount: ws.workspacemember?.length || 0,
+          componentCount: usages.length,
+          activeTasks: 0,
+          completedTasks: 0,
+        };
+      })
+    );
+
     return NextResponse.json({
-      workspaces: enterpriseWorkspaces.map((ws: any) => ({
-        id: ws.id,
-        name: ws.name,
-        description: ws.description,
-        createdAt: ws.createdAt,
-        memberCount: ws.workspacemember?.length || 0,
-        componentCount: 0,
-        activeTasks: 0,
-        completedTasks: 0,
-      })),
+      workspaces: workspacesWithComponents,
       statistics: {
         totalWorkspaces: enterpriseWorkspaces.length,
         totalComponents,

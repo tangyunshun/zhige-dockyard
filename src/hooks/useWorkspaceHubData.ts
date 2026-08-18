@@ -52,6 +52,7 @@ export function useWorkspaceHubData() {
   const [quota, setQuota] = useState<EnterpriseQuota | null>(null);
   const [usageStats, setUsageStats] = useState<any>(null);
   const [dashboardData, setDashboardData] = useState<any>(null);
+  const [needsPersonalWorkspace, setNeedsPersonalWorkspace] = useState<boolean>(false);
 
   const [personalWorkspaceDeleted, setPersonalWorkspaceDeleted] = useState(false);
   const [upgradeMode, setUpgradeMode] = useState<"parallel" | "replace" | "migrate" | null>(null);
@@ -60,7 +61,10 @@ export function useWorkspaceHubData() {
 
   const loadUserInfo = async () => {
     try {
-      const res = await fetch("/api/auth/me");
+      const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const res = await fetch("/api/auth/me", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
 
       if (!res.ok) {
         if (res.status === 404 || res.status === 401) {
@@ -72,8 +76,7 @@ export function useWorkspaceHubData() {
           localStorage.removeItem("personalWorkspaceDeleted");
           localStorage.removeItem("personalWorkspaceUpgraded");
           localStorage.removeItem("upgradeMode");
-
-          toast.error("会话已过期，请重新登录");
+          
           setTimeout(() => {
             // 保留当前 URL 参数（如 invitationCode），登录后可回到原页面
             const currentPath = window.location.pathname + window.location.search;
@@ -89,9 +92,7 @@ export function useWorkspaceHubData() {
 
       // 加载所有的工作空间列表
       const workspacesRes = await fetch("/api/workspace/list", {
-        headers: {
-          Authorization: `Bearer ${data.user.id}`,
-        },
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
 
       if (workspacesRes.ok) {
@@ -116,11 +117,8 @@ export function useWorkspaceHubData() {
       }
 
       // 获取用户主工作区看板聚合数据
-      const userId = localStorage.getItem("userId") || data.user.id;
       const dashboardRes = await fetch("/api/user/workspace-hub/dashboard", {
-        headers: {
-          Authorization: `Bearer ${userId}`,
-        },
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
 
       if (dashboardRes.ok) {
@@ -128,6 +126,7 @@ export function useWorkspaceHubData() {
         if (resData.success && resData.data) {
           const bentoData = resData.data;
           setDashboardData(bentoData);
+          setNeedsPersonalWorkspace(!!bentoData.needsPersonalWorkspace);
 
           if (bentoData.user) {
             setUser(bentoData.user);
@@ -136,9 +135,6 @@ export function useWorkspaceHubData() {
             setPersonalWorkspace(bentoData.personalWorkspace);
             setPersonalWorkspaceDeleted(false);
             localStorage.setItem("personalWorkspaceDeleted", "false");
-          } else {
-            // 没有个人空间，如果本地没有删除记录，则置空
-            setPersonalWorkspace(null);
           }
           if (bentoData.enterpriseWorkspaces) {
             setEnterpriseWorkspace(bentoData.enterpriseWorkspaces);
@@ -226,6 +222,7 @@ export function useWorkspaceHubData() {
     personalWorkspaceDeleted,
     upgradeMode,
     isLoading,
+    needsPersonalWorkspace,
     redirecting,
     refresh: loadUserInfo,
   };

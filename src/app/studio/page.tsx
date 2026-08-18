@@ -124,11 +124,12 @@ function StudioContent() {
           workspaceName={currentWorkspace?.name || ""}
           workspaceToken={workspaceToken}
           restrictedComponentIds={restrictedComponentIds}
-          onSelectComponent={(compId) => {
+          onSelectComponent={(compId, targetWsId) => {
             if (userState?.isLoggedIn) {
-              if (currentWorkspace?.id) {
-                console.log(`[Studio] Selected component ${compId}, routing to workspace`);
-                router.push(`/workspace/${currentWorkspace.id}?componentId=${compId}`);
+              const routeWsId = targetWsId || currentWorkspace?.id;
+              if (routeWsId) {
+                console.log(`[Studio] Selected component ${compId}, routing to workspace ${routeWsId}`);
+                router.push(`/workspace/${routeWsId}?componentId=${compId}`);
               } else {
                 toast.error("您尚未创建工作空间，请先创建空间");
                 router.push("/workspace-hub");

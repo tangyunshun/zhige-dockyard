@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -78,8 +78,9 @@ export default function UserDashboardPage() {
 
   const fetchUserRole = async (userId: string) => {
     try {
+      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || userId;
       const res = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -94,16 +95,18 @@ export default function UserDashboardPage() {
     try {
       const userId =
         typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || userId;
 
+      // middleware 会校验 JWT 并把真实 userId 注入 x-user-id，前端只需传 auth_token(JWT)
       const [userRes, statsRes, activitiesRes] = await Promise.all([
         fetch("/api/user/profile", {
-          headers: { Authorization: `Bearer ${userId}` },
+          headers: { Authorization: `Bearer ${token}` },
         }),
         fetch("/api/user/dashboard/stats", {
-          headers: { Authorization: `Bearer ${userId}` },
+          headers: { Authorization: `Bearer ${token}` },
         }),
         fetch("/api/user/activities?limit=5", {
-          headers: { Authorization: `Bearer ${userId}` },
+          headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
 

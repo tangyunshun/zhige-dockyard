@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 // GET - 获取用户信息
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get("Authorization")?.replace("Bearer ", "");
+    const userId =
+      request.headers.get("x-user-id") ||
+      request.headers.get("Authorization")?.replace("Bearer ", "");
 
     if (!userId) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
@@ -69,7 +71,9 @@ export async function GET(request: NextRequest) {
 // PUT - 更新用户信息
 export async function PUT(request: NextRequest) {
   try {
-    const userId = request.headers.get("Authorization")?.replace("Bearer ", "");
+    const userId =
+      request.headers.get("x-user-id") ||
+      request.headers.get("Authorization")?.replace("Bearer ", "");
 
     if (!userId) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });

@@ -1,18 +1,19 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { getToken } from "next-auth/jwt";
 
 const prisma = new PrismaClient();
 
 // 获取用户登录历史
 export async function GET(req: NextRequest) {
   try {
-    const token = await getToken({ req });
-    if (!token?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    // middleware 已校验 JWT 并把真实 userId 注入 x-user-id
+    const userId =
+      req.headers.get("x-user-id") ||
+      req.headers.get("Authorization")?.replace("Bearer ", "");
+    if (!userId) {
+      return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
 
-    const userId = token.id as string;
     const limit = parseInt(req.nextUrl.searchParams.get("limit") || "10");
 
     // 获取用户登录历史
@@ -33,14 +34,16 @@ export async function GET(req: NextRequest) {
 }
 
 // 记录登录历史
-export async function POST(req: NextRequest) {
-  try {
-    const token = await getToken({ req });
-    if (!token?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  export async function POST(req: NextRequest) {
+    try {
+      // middleware 已校验 JWT 并把真实 userId 注入 x-user-id
+      const userId =
+        req.headers.get("x-user-id") ||
+        req.headers.get("Authorization")?.replace("Bearer ", "");
+    if (!userId) {
+      return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
 
-    const userId = token.id as string;
     const { ipAddress, userAgent, location, device } = await req.json();
 
     // 创建登录历史记录

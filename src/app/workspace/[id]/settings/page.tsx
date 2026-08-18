@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayout";
+import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Settings, Shield, Users, Save, RefreshCw, AlertTriangle, Upload, ArrowLeft, Copy } from "lucide-react";
 
 export default function WorkspaceSettingsPage() {
@@ -73,10 +73,10 @@ export default function WorkspaceSettingsPage() {
   const loadWorkspaceInfo = async () => {
     try {
       setLoading(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = localStorage.getItem("auth_token");
       const res = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
       if (res.ok) {
@@ -591,7 +591,7 @@ export default function WorkspaceSettingsPage() {
         {/* 危险操作区 Danger Zone */}
         {!loading && (
           <div className="bg-red-50/20 border border-red-200/60 rounded-2xl p-6 shadow-sm text-left space-y-4">
-            <h3 className="text-sm font-extrabold text-red-650 flex items-center gap-1.5">
+            <h3 className="text-sm font-extrabold text-red-600 flex items-center gap-1.5">
               <AlertTriangle className="w-4.5 h-4.5 text-red-600" />
               <span>高危风险管理区域 (Danger Zone)</span>
             </h3>
@@ -672,7 +672,7 @@ export default function WorkspaceSettingsPage() {
               <button
                 onClick={handleClearData}
                 disabled={clearing}
-                className="px-4 py-2 text-xs text-white bg-red-500 hover:bg-red-650 rounded-lg font-bold cursor-pointer shadow-sm"
+                className="px-4 py-2 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg font-bold cursor-pointer shadow-sm"
               >
                 {clearing ? "正在重置..." : "确认清空"}
               </button>

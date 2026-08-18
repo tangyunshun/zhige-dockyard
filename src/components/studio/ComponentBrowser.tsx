@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
@@ -54,7 +54,7 @@ import {
 } from "lucide-react";
 
 // 引入统一侧滑分发控制面板
-import ComponentDispatcherPanel from "./ComponentDispatcherPanel";
+import ComponentDispatcherPanel from "./ComponentDispatcherPanelNew";
 
 // 建立 Category 到 1-10 阶段的转换关系
 const categoryToStageId: Record<ComponentCategory, number> = {
@@ -139,12 +139,25 @@ const getComponentExtra = (id: string) => {
   return { calls, successRate, sparkPoints, contract };
 };
 
+const categoryEmojis: Record<string, string> = {
+  BID_PREP: "📄",
+  REQ_DESIGN: "🧩",
+  BACKEND_CORE: "💻",
+  DATABASE_ENG: "🗄️",
+  FRONTEND_DEV: "📐",
+  TEST_QA: "✅",
+  DEVOPS: "🐳",
+  SECURITY: "🔒",
+  PROJ_MGMT: "👥",
+  KNOWLEDGE: "📚",
+};
+
 interface ComponentBrowserProps {
   workspaceId: string | null;
   workspaceName: string;
   workspaceToken: number;
   restrictedComponentIds: string[];
-  onSelectComponent: (componentId: string) => void;
+  onSelectComponent: (componentId: string, workspaceId?: string) => void;
   onTokenUpdate: (newToken: number) => void;
 }
 
@@ -197,6 +210,48 @@ export default function ComponentBrowser({
     matchScore: number;
     reason: string;
   }>>([]);
+
+  const recommendedRef = useRef<HTMLDivElement>(null);
+
+  // 监听推荐组件数据变化，自动平滑滚动定位到推荐卡片区域
+  useEffect(() => {
+    if (recommendedComponents.length > 0 && recommendedRef.current) {
+      const timer = setTimeout(() => {
+        recommendedRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [recommendedComponents]);
+
+  // 智能需求描述润色引擎状态组与专业扩增算法
+  const [originalSmartPrompt, setOriginalSmartPrompt] = useState("");
+  const [refinedSmartPrompt, setRefinedSmartPrompt] = useState("");
+  const [isRefiningSmart, setIsRefiningSmart] = useState(false);
+  const [showRefineSmartPanel, setShowRefineSmartPanel] = useState(false);
+
+  const getRefinedText = (text: string): string => {
+    const trimmed = text.trim();
+    if (!trimmed) return "";
+    
+    const lower = trimmed.toLowerCase();
+    if (lower.includes("标书") || lower.includes("rfp") || lower.includes("投标") || lower.includes("合同")) {
+      return "我需要对上传的 RFP 招标 PDF 材料及技术偏离文件进行格式自检，通过深度文本适配自动提取偏离差异条款，并快速生成规范的可视化风险比对报告。";
+    }
+    if (lower.includes("api") || lower.includes("接口") || lower.includes("后端") || lower.includes("swagger")) {
+      return "我需要对给定的 RESTful API 协议契约进行分析，逆向生成对应的 Spring Boot/Next.js 后端接口模板与业务控制器框架，并自动对齐契约定义。";
+    }
+    if (lower.includes("测试") || lower.includes("单测") || lower.includes("jest") || lower.includes("junit")) {
+      return "我需要对项目核心业务代码自动生成覆盖率达标的单元测试用例，并配套构建 Docker 自动化部署镜像及流水线配置文件。";
+    }
+    if (lower.includes("react") || lower.includes("vue") || lower.includes("前端") || lower.includes("页面")) {
+      return "我希望将手写或导出的交互原型 schema 自动转换生成为符合现代化设计系统规范的响应式 React 大前端组件代码。";
+    }
+    if (lower.includes("数据库") || lower.includes("er") || lower.includes("sql") || lower.includes("建表")) {
+      return "我需要对现有的 DDL 建表 SQL 脚本进行实体逆向映射，生成直观清晰的 ER 拓扑图模型，并导出为标准数据字典。";
+    }
+    
+    return `我需要在当前工作空间中，基于“${trimmed}”的具体研发场景，通过配置化效能组件进行数据流自适应处理，自动生成规范成果，并沉淀为团队 SOP 避坑规约。`;
+  };
 
   const [promptError, setPromptError] = useState<string | null>(null);
 
@@ -649,7 +704,7 @@ export default function ComponentBrowser({
           <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight text-slate-800">
             以标准化“数据契约组件”一键装配软件工程全流程
           </h2>
-          <p className="text-xs text-slate-655 leading-relaxed font-semibold">
+          <p className="text-xs text-slate-600 leading-relaxed font-semibold">
             专为个人和企业级用户研发提供 10 大应用阶段的效能资产包。直接查阅下方货架组件的输入/输出数据契约协议，一键装配引进，实现极速开发。系统支持数据契约流转，可根据上下游接口协议自动适配组件。
           </p>
 
@@ -749,7 +804,7 @@ export default function ComponentBrowser({
                   已装配应用资产
                 </label>
                 <div className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between shadow-inner">
-                  <span className="text-xs font-extrabold text-slate-750 flex items-center gap-1.5 truncate pr-2">
+                  <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 truncate pr-2">
                     <FolderClosed className="w-4 h-4 text-[#3182ce] shrink-0" />
                     已装入 <span className="font-mono text-[#3182ce] font-black">{boundComponentIds.length}</span> 项组件
                   </span>
@@ -784,7 +839,7 @@ export default function ComponentBrowser({
                       <button
                         onClick={() => {
                           if (workspaceId) {
-                            router.push(`/workspace/${workspaceId}`);
+                            router.push(`/workspace/${workspaceId}?tab=components`);
                           }
                         }}
                         className="text-xs font-black text-[#3182ce] hover:text-[#2b6cb0] flex items-center gap-1 transition-colors cursor-pointer"
@@ -797,7 +852,7 @@ export default function ComponentBrowser({
                   {boundComponentIds.length === 0 ? (
                     <div className="py-8 text-center bg-[#f8fafc]/60 rounded-xl border border-slate-200/60 flex flex-col items-center justify-center">
                       <p className="text-xs text-slate-400 font-semibold">该空间尚未绑定任何组件</p>
-                      <p className="text-xs text-slate-455 mt-1">您可以从下方货架区选择需要引进的效能资产</p>
+                      <p className="text-xs text-slate-400 mt-1">您可以从下方货架区选择需要引进的效能资产</p>
                       <button
                         onClick={() => {
                           const target = document.getElementById("dispatch-engines");
@@ -888,14 +943,14 @@ export default function ComponentBrowser({
                                   e.stopPropagation();
                                   await handleQuickBind(e, c.id, c.name, true);
                                 }}
-                                className="px-3 py-1.5 rounded-[4px] text-[11px] font-black bg-red-50 text-red-650 hover:bg-red-100 hover:text-red-700 transition-all cursor-pointer border border-red-150/40"
+                               className="px-3 py-1.5 rounded-[4px] text-[11px] font-black bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all cursor-pointer border border-red-150/40"
                               >
                                 解除装配
                               </button>
                               <button
                                 onClick={() => {
                                   if (workspaceId) {
-                                    router.push(`/workspace/${workspaceId}?componentId=${c.id}`);
+                                    router.push(`/workspace/${workspaceId}?tab=tasks`);
                                   }
                                 }}
                                 className="px-3 py-1.5 rounded-[4px] text-[11px] font-black bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white transition-all flex items-center gap-1 cursor-pointer shadow-sm border border-blue-150/40"
@@ -924,7 +979,7 @@ export default function ComponentBrowser({
               <div className="inline-flex items-center gap-1 bg-blue-50 text-[#3182ce] px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide border border-blue-150 uppercase">
                 🔍 检索与装配双引擎
               </div>
-              <h2 className="text-sm font-black text-slate-850 tracking-tight mt-2 flex items-center gap-1.5">
+              <h2 className="text-sm font-black text-slate-900 tracking-tight mt-2 flex items-center gap-1.5">
                 如何寻找最适合您的效能资产组件？
               </h2>
               <p className="text-xs text-slate-400 font-bold mt-1 leading-normal">
@@ -941,7 +996,7 @@ export default function ComponentBrowser({
                 }}
                 className={`group relative rounded-xl p-4 border transition-all duration-300 cursor-pointer flex flex-col justify-between hover:shadow-md hover:-translate-y-0.5 ${workMode === "smart"
                   ? "border-[#3182ce] bg-blue-50/15 ring-2 ring-blue-500/5 shadow-sm"
-                  : "border-slate-200/90 bg-slate-55/30 hover:bg-white hover:border-slate-300"
+                  : "border-slate-200/90 bg-slate-100/30 hover:bg-white hover:border-slate-300"
                   }`}
               >
                 {/* 装饰微光 */}
@@ -961,7 +1016,7 @@ export default function ComponentBrowser({
                       推荐
                     </span>
                   </div>
-                  <p className="text-xs text-slate-550 font-semibold leading-relaxed">
+                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
                     根据上传的资源文件，或者是简单的需求描述，系统自动与组件大厅的资源比对，输出最契合的推荐装配方案。
                   </p>
                 </div>
@@ -985,7 +1040,7 @@ export default function ComponentBrowser({
                 }}
                 className={`group relative rounded-xl p-4 border transition-all duration-300 cursor-pointer flex flex-col justify-between hover:shadow-md hover:-translate-y-0.5 ${workMode === "active"
                   ? "border-[#3182ce] bg-blue-50/15 ring-2 ring-blue-500/5 shadow-sm"
-                  : "border-slate-200/90 bg-slate-55/30 hover:bg-white hover:border-slate-300"
+                  : "border-slate-200/90 bg-slate-100/30 hover:bg-white hover:border-slate-300"
                   }`}
               >
                 {/* 装饰微光 */}
@@ -1001,7 +1056,7 @@ export default function ComponentBrowser({
                     </div>
                     <span className="text-xs font-black text-slate-800">方式二：自主精细化筛选</span>
                   </div>
-                  <p className="text-xs text-slate-550 font-semibold leading-relaxed">
+                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
                     按 10 大研发阶段可视化查看、一键收藏和装配 53 个精品效能组件，适合有明确目标、需自主挑选和快捷装配的应用场景。
                   </p>
                 </div>
@@ -1039,7 +1094,7 @@ export default function ComponentBrowser({
                     </p>
                   </div>
 
-                  <form onSubmit={handleTaskMatchSearch} className="relative z-10 flex items-center bg-slate-55/30 border border-slate-200 p-1 rounded-xl transition-all focus-within:border-[#3182ce]/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/5 shadow-inner w-full md:max-w-md shrink-0">
+                  <form onSubmit={handleTaskMatchSearch} className="relative z-10 flex items-center bg-slate-100/30 border border-slate-200 p-1 rounded-xl transition-all focus-within:border-[#3182ce]/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/5 shadow-inner w-full md:max-w-md shrink-0">
                     <input
                       type="text"
                       placeholder="例如：我想要逆向数据库生成API单测和Dockerfile..."
@@ -1095,10 +1150,10 @@ export default function ComponentBrowser({
                           </button>
 
                           {/* 阶段名称与组件计数 */}
-                          <span className={`text-xs font-black transition-colors ${isSelected ? "text-slate-800 font-extrabold" : "text-slate-550 group-hover:text-slate-800 font-semibold"}`}>
+                          <span className={`text-xs font-black transition-colors ${isSelected ? "text-slate-800 font-extrabold" : "text-slate-500 group-hover:text-slate-800 font-semibold"}`}>
                             {stage.name}
                           </span>
-                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded font-mono ${isSelected ? "bg-blue-50 text-[#3182ce] border border-blue-100" : "bg-slate-100 text-slate-455"}`}>
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded font-mono ${isSelected ? "bg-blue-50 text-[#3182ce] border border-blue-100" : "bg-slate-100 text-slate-400"}`}>
                             {stage.components.length} 组件
                           </span>
 
@@ -1132,7 +1187,7 @@ export default function ComponentBrowser({
                     <div className="absolute top-full left-0 mt-2 w-full bg-white rounded-xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in duration-150">
                       {!searchQuery.trim() && searchHistory.length > 0 && (
                         <div>
-                          <div className="text-xs font-black text-slate-455 uppercase tracking-wider mb-2 flex items-center justify-between">
+                          <div className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
                             <span className="flex items-center gap-1">
                               <Search className="w-3.5 h-3.5" />
                               搜索历史
@@ -1253,7 +1308,7 @@ export default function ComponentBrowser({
                 if (comps.length === 0) {
                   return (
                     <div className="bg-white border border-[#e2e8f0]/80 rounded-2xl p-10 text-center shadow-sm">
-                      <Search className="w-8 h-8 text-slate-350 block mx-auto mb-3" />
+                      <Search className="w-8 h-8 text-slate-400 block mx-auto mb-3" />
                       <p className="text-xs font-black text-slate-700">当前阶段货架未检索到符合条件的组件</p>
                       <p className="text-xs text-slate-400 mt-1">您可以更换检索词或切换流水线其他步骤</p>
                     </div>
@@ -1263,7 +1318,7 @@ export default function ComponentBrowser({
                 return (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2.5 pb-2 border-b border-[#e2e8f0]/60">
-                      <h3 className="text-xs sm:text-sm font-black text-slate-850 flex items-center gap-1.5">
+                      <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                         <FolderOpen className="w-4 h-4 text-[#3182ce]" />
                         <span>{currentStage.name} 研发阶段精品货架</span>
                       </h3>
@@ -1315,7 +1370,7 @@ export default function ComponentBrowser({
                                   </span>
 
                                   {/* 数据流向契约微标 */}
-                                  <span className="text-xs font-bold text-slate-550 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-sm font-mono truncate">
+                                  <span className="text-xs font-bold text-slate-500 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-sm font-mono truncate">
                                     <ArrowRightLeft className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                                     <span className="truncate">{extra.contract}</span>
                                   </span>
@@ -1330,7 +1385,7 @@ export default function ComponentBrowser({
                                     {isLoggedIn ? (
                                       <>
                                         {isRestricted ? (
-                                          <span className="px-1.5 py-0.5 bg-red-55 text-red-500 rounded text-xs font-bold border border-red-200">受限</span>
+                                          <span className="px-1.5 py-0.5 bg-red-50 text-red-500 rounded text-xs font-bold border border-red-200">受限</span>
                                         ) : isBound ? (
                                           <span className="px-1.5 py-0.5 bg-blue-50 text-[#3182ce] rounded text-xs font-bold border border-blue-200">已装配</span>
                                         ) : null}
@@ -1340,21 +1395,27 @@ export default function ComponentBrowser({
                                 </div>
 
                                 {/* 标题 */}
-                                <h4 className="text-xs font-black text-slate-800 mb-1.5 flex items-center gap-1.5">
-                                  {getStageIcon(categoryToStageId[comp.category], "w-4 h-4 shrink-0 transition-colors")}
-                                  <span className="group-hover:text-[#3182ce] transition-colors">{comp.name}</span>
+                                <h4 className="text-[13px] font-black text-slate-800 mb-1.5 flex items-center gap-2" title={comp.name}>
+                                  {/* 用精致小方盒包裹组件 Emoji 图标 */}
+                                  <div className="w-6 h-6 rounded bg-slate-100/80 flex items-center justify-center shrink-0">
+                                    <span className="text-xs leading-none">{categoryEmojis[comp.category] || "⚙️"}</span>
+                                  </div>
+                                  <span className="group-hover:text-[#3182ce] transition-colors truncate">{comp.name}</span>
                                 </h4>
 
                                 {/* 描述 */}
-                                <p className="text-xs text-slate-500 font-semibold leading-relaxed line-clamp-2 min-h-[32px] mb-4">
+                                <p 
+                                  className="text-xs text-slate-500 font-semibold leading-relaxed line-clamp-2 min-h-[32px] mb-4 select-none"
+                                  title={comp.description}
+                                >
                                   {comp.description}
                                 </p>
 
                                 {/* 折线图与成功率环 */}
-                                <div className="flex items-center justify-between text-xs text-slate-450 font-bold mb-4 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                                <div className="flex items-center justify-between text-xs text-slate-400 font-bold mb-4 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
                                   <div className="flex items-center gap-2">
                                     <div className="flex flex-col">
-                                      <span className="text-xs text-slate-455 font-bold">热度走势</span>
+                                      <span className="text-xs text-slate-400 font-bold">热度走势</span>
                                       <span className="text-slate-700 font-black font-mono">{extra.calls.toLocaleString()} 次</span>
                                     </div>
                                     <svg className="w-14 h-5 overflow-visible" viewBox="0 0 60 20">
@@ -1387,8 +1448,8 @@ export default function ComponentBrowser({
                                       </svg>
                                     </div>
                                     <div className="flex flex-col">
-                                      <span className="text-xs text-slate-455 font-bold">测试率</span>
-                                      <span className="text-emerald-650 font-black font-mono">{extra.successRate.toFixed(1)}%</span>
+                                      <span className="text-xs text-slate-400 font-bold">测试率</span>
+                                      <span className="text-emerald-600 font-black font-mono">{extra.successRate.toFixed(1)}%</span>
                                     </div>
                                   </div>
                                 </div>
@@ -1403,7 +1464,7 @@ export default function ComponentBrowser({
                                       <button
                                         onClick={(e) => handleQuickBind(e, comp.id, comp.name, isBound)}
                                         className={`w-[38%] h-8 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer shadow-sm border ${isBound
-                                          ? "bg-red-55/60 text-red-600 border-red-200 hover:bg-red-100/50"
+                                          ? "bg-red-50/60 text-red-600 border-red-200 hover:bg-red-100/50"
                                           : "bg-white text-[#3182ce] border-[#3182ce]/20 hover:bg-blue-50/50"
                                           }`}
                                       >
@@ -1455,7 +1516,7 @@ export default function ComponentBrowser({
                                             router.push(`/auth/login?redirect=/studio`);
                                           }, 1200);
                                         }}
-                                        className="w-8 h-8 border border-slate-200 text-slate-450 hover:border-blue-500 hover:text-blue-500 bg-slate-50/50 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                                        className="w-8 h-8 border border-slate-200 text-slate-400 hover:border-blue-500 hover:text-blue-500 bg-slate-50/50 rounded-lg flex items-center justify-center cursor-pointer transition-all"
                                         title="登录装配"
                                       >
                                         <Star className="w-4 h-4" />
@@ -1501,7 +1562,10 @@ export default function ComponentBrowser({
                                       className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
                                     />
                                   )}
-                                  {getStageIcon(categoryToStageId[comp.category], "w-4.5 h-4.5 flex-shrink-0")}
+                                  {/* 用精致小方盒包裹组件 Emoji 图标 */}
+                                  <div className="w-8 h-8 rounded-lg bg-slate-100/80 flex items-center justify-center shrink-0">
+                                    <span className="text-base leading-none">{categoryEmojis[comp.category] || "⚙️"}</span>
+                                  </div>
                                   <div className="min-w-0 flex-1 pr-4">
                                     <div className="flex items-center gap-2 mb-0.5">
                                       <span className="text-xs font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono">{comp.id}</span>
@@ -1519,7 +1583,7 @@ export default function ComponentBrowser({
                                         </>
                                       ) : null}
                                     </div>
-                                    <p className="text-xs text-slate-500 truncate font-semibold leading-normal">{comp.description}</p>
+                                    <p className="text-xs text-slate-500 truncate font-semibold leading-normal" title={comp.description}>{comp.description}</p>
                                   </div>
                                 </div>
 
@@ -1536,7 +1600,7 @@ export default function ComponentBrowser({
                                           <button
                                             onClick={(e) => handleQuickBind(e, comp.id, comp.name, isBound)}
                                             className={`h-7 px-2.5 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer shadow-sm border ${isBound
-                                              ? "bg-red-55/60 text-red-600 border-red-200 hover:bg-red-100/50"
+                                              ? "bg-red-50/60 text-red-600 border-red-200 hover:bg-red-100/50"
                                               : "bg-white text-[#3182ce] border-[#3182ce]/20 hover:bg-blue-50/50"
                                               }`}
                                           >
@@ -1587,7 +1651,7 @@ export default function ComponentBrowser({
                                                 router.push(`/auth/login?redirect=/studio`);
                                               }, 1200);
                                             }}
-                                            className="w-7 h-7 border border-slate-200 text-slate-450 hover:border-blue-500 hover:text-blue-500 bg-slate-50/50 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                                            className="w-7 h-7 border border-slate-200 text-slate-400 hover:border-blue-500 hover:text-blue-500 bg-slate-50/50 rounded-lg flex items-center justify-center cursor-pointer transition-all"
                                             title="收藏组件"
                                           >
                                             <Star className="w-3.5 h-3.5" />
@@ -1686,21 +1750,73 @@ export default function ComponentBrowser({
                         <span className="zg-required text-red-500">*</span>
                         匹配需求描述
                       </label>
-                      <textarea
-                        rows={4}
-                        placeholder="例如：我需要将这份 API 规格文档，自动生成对应的 RESTful 接口代码以及单测试用例..."
-                        value={smartPrompt}
-                        onChange={(e) => {
-                          setSmartPrompt(e.target.value);
-                          if (e.target.value.trim()) {
-                            setPromptError(null);
-                          }
-                        }}
-                        className={`w-full p-3 rounded-xl border text-xs text-slate-800 focus:outline-none transition-all font-extrabold ${promptError
-                          ? "border-red-500 border-2 bg-red-50/10 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-                          : "border-slate-200 bg-slate-55/30 focus:border-[#3182ce] focus:bg-white"
-                          }`}
-                      />
+                      <div className="relative">
+                        <textarea
+                          rows={4}
+                          placeholder="例如：我需要将这份 API 规格文档，自动生成对应的 RESTful 接口代码以及单测试用例..."
+                          value={smartPrompt}
+                          onChange={(e) => {
+                            setSmartPrompt(e.target.value);
+                            if (e.target.value.trim()) {
+                              setPromptError(null);
+                            }
+                          }}
+                          className={`w-full p-3 pr-20 pb-10 rounded-xl border text-xs text-slate-805 focus:outline-none transition-all font-extrabold ${promptError
+                            ? "border-red-500 border-2 bg-red-50/10 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                            : "border-slate-200 bg-slate-100/30 focus:border-[#3182ce] focus:bg-white"
+                            }`}
+                        />
+                        
+                        {/* 智能润色悬浮按钮面板 */}
+                        <div className="absolute right-3 bottom-3 flex items-center gap-1.5 z-10">
+                          {showRefineSmartPanel ? (
+                            <div className="flex gap-1.5 bg-white/95 backdrop-blur-sm p-1 rounded-lg border border-slate-200/80 shadow-md animate-in zoom-in-95 duration-150">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSmartPrompt(refinedSmartPrompt);
+                                  setShowRefineSmartPanel(false);
+                                }}
+                                className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black rounded cursor-pointer transition-colors shadow-sm"
+                              >
+                                ✔ 采纳
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSmartPrompt(originalSmartPrompt);
+                                  setShowRefineSmartPanel(false);
+                                }}
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black rounded cursor-pointer transition-colors"
+                              >
+                                ✕ 撤销
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isRefiningSmart || !smartPrompt.trim()}
+                              onClick={async () => {
+                                setIsRefiningSmart(true);
+                                setOriginalSmartPrompt(smartPrompt);
+                                await new Promise(resolve => setTimeout(resolve, 600)); // 智能润色模拟运算微延迟
+                                const resText = getRefinedText(smartPrompt);
+                                setRefinedSmartPrompt(resText);
+                                setSmartPrompt(resText);
+                                setIsRefiningSmart(false);
+                                setShowRefineSmartPanel(true);
+                              }}
+                              className="px-2.5 py-1 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:from-slate-100 disabled:to-slate-100 text-white disabled:text-slate-400 text-[10px] font-black rounded shadow-sm hover:shadow hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center gap-0.5"
+                            >
+                              {isRefiningSmart ? (
+                                <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <span>✨ 智能润色</span>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
                       {/* 规范输入示例一键填入 */}
                       <div className="flex flex-wrap gap-2 pt-1 pb-1">
@@ -1759,7 +1875,7 @@ export default function ComponentBrowser({
                     <div className="absolute right-0 bottom-0 w-32 h-32 bg-blue-500/5 rounded-full filter blur-xl pointer-events-none" />
 
                     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                      <div className="text-xs text-slate-550 border-b border-slate-800/80 pb-2 flex items-center justify-between">
+                      <div className="text-xs text-slate-500 border-b border-slate-800/80 pb-2 flex items-center justify-between">
                         <span>推荐匹配进度终端</span>
                         <span className="animate-pulse">● 已就绪</span>
                       </div>
@@ -1788,7 +1904,7 @@ export default function ComponentBrowser({
                       )}
                     </div>
 
-                    <div className="text-[10px] text-slate-655 border-t border-slate-800/80 pt-2 text-right">
+                    <div className="text-[10px] text-slate-600 border-t border-slate-800/80 pt-2 text-right">
                       算力状态: 100% 畅通
                     </div>
                   </div>
@@ -1797,9 +1913,9 @@ export default function ComponentBrowser({
 
               {/* 推荐匹配结果列表 */}
               {recommendedComponents.length > 0 && (
-                <div className="space-y-4">
+                <div ref={recommendedRef} className="space-y-4">
                   <div className="flex items-center gap-2 pb-2 border-b border-slate-200/60">
-                    <h3 className="text-xs sm:text-sm font-black text-slate-850 flex items-center gap-1.5">
+                    <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                       <Compass className="w-4 h-4 text-[#3182ce]" />
                       <span>为您匹配的推荐组件方案 ({recommendedComponents.length} 个推荐)</span>
                     </h3>
@@ -1839,7 +1955,7 @@ export default function ComponentBrowser({
                                   </span>
                                 )}
                                 {isRestricted ? (
-                                  <span className="px-1.5 py-0.5 bg-red-55 text-red-500 rounded text-xs font-bold border border-red-200">受限</span>
+                                  <span className="px-1.5 py-0.5 bg-red-50 text-red-500 rounded text-xs font-bold border border-red-200">受限</span>
                                 ) : isBound ? (
                                   <span className="px-1.5 py-0.5 bg-blue-50 text-[#3182ce] rounded text-xs font-bold border border-blue-200">已装配</span>
                                 ) : null}
@@ -1869,7 +1985,7 @@ export default function ComponentBrowser({
                             <button
                               onClick={(e) => handleQuickBind(e, comp.id, comp.name, isBound)}
                               className={`w-[38%] h-8 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer shadow-sm border ${isBound
-                                ? "bg-red-55/60 text-red-600 border-red-200 hover:bg-red-100/50"
+                                ? "bg-red-50/60 text-red-600 border-red-200 hover:bg-red-100/50"
                                 : "bg-white text-[#3182ce] border-[#3182ce]/20 hover:bg-blue-50/50"
                                 }`}
                             >
@@ -1917,7 +2033,7 @@ export default function ComponentBrowser({
         componentId={dispatcherCompId}
         onNavigateToWorkspace={(wsId, compId) => {
           setIsDispatcherOpen(false);
-          onSelectComponent(compId); // 触发 Studio 主路由转场重定向
+          onSelectComponent(compId, wsId); // 触发 Studio 主路由转场重定向
         }}
       />
     </div>

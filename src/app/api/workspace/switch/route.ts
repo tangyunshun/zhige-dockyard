@@ -12,16 +12,10 @@ export async function POST(request: NextRequest) {
       const authHeader = request.headers.get("authorization");
       const authResult = await validateUser(authHeader);
       if (!authResult.valid) {
-        // 双保险：若 Header 鉴权失败，则尝试从 Cookie 中直接读取未加密的 userId
-        const cookieUserId = request.cookies.get("userId")?.value;
-        if (cookieUserId) {
-          userId = cookieUserId;
-        } else {
-          return NextResponse.json(
-            { message: 'UNAUTHORIZED' },
-            { status: 401 }
-          );
-        }
+        return NextResponse.json(
+          { message: 'UNAUTHORIZED' },
+          { status: 401 }
+        );
       } else {
         userId = authResult.user!.id;
       }

@@ -1,0 +1,40 @@
+{
+  "cmozzykov0000ftoffakantog": [
+    "user:read",
+    "component:read",
+    "document:read",
+    "order:read",
+    "announcement:read",
+    "system:health_read"
+  ],
+  "cmqy33i1k000011xcs4wiqtzi": [
+    "audit:read",
+    "membership:manage",
+    "system:health_read",
+    "user:read",
+    "user:update",
+    "user:ban",
+    "user:reset_session",
+    "workspace:read",
+    "order:read",
+    "component:read",
+    "content:read",
+    "content:update",
+    "document:read",
+    "content:publish",
+    "announcement:read"
+  ],
+  "cmr7eh5ol0002uuhbalqbsovr": [
+    "user:read",
+    "user:reset_session",
+    "workspace:read",
+    "order:read",
+    "component:read",
+    "component:publish",
+    "content:read",
+    "announcement:read",
+    "audit:read",
+    "membership:manage",
+    "system:health_read"
+  ]
+}
