@@ -323,7 +323,7 @@ export default function WorkspaceSettingsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(workspaceId);
+                    navigator.clipboard.writeText(workspaceId ?? "");
                     toast.success("空间 ID 已复制到剪贴板");
                   }}
                   className="p-1 hover:bg-slate-200/60 rounded text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"

@@ -17,6 +17,7 @@ export default function CancelDeletionPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  const [cooldownDays, setCooldownDays] = useState<number>(7);
   const [checkComplete, setCheckComplete] = useState(false);
 
   useEffect(() => {
@@ -38,7 +39,8 @@ export default function CancelDeletionPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.user?.status === "deleting") {
-          setDaysRemaining(data.user.deletionDaysRemaining || 7);
+          setDaysRemaining(data.user.deletionDaysRemaining ?? 0);
+          setCooldownDays(data.user.deletionCooldownDays || 7);
           setCheckComplete(true);
         } else {
           router.push("/");
@@ -50,6 +52,11 @@ export default function CancelDeletionPage() {
       console.error("Check status error:", error);
       router.push("/auth/login");
     }
+  };
+
+  // 冷静期内的账号不能离开本页进入正式系统，点击“返回首页”仅提示
+  const handleBackHome = () => {
+    toast.warning("账号正在注销中，请先撤销注销后再操作");
   };
 
   const handleCancelDeletion = async () => {
@@ -72,8 +79,9 @@ export default function CancelDeletionPage() {
       if (res.ok) {
         toast.success("撤销成功，您的账号已恢复正常");
         setTimeout(() => {
-          router.push("/");
-        }, 1500);
+          // 撤销成功保持登录态，直接进入工作台继续操作
+          router.replace("/workspace-hub");
+        }, 1000);
       } else {
         const data = await res.json();
         toast.error(data.error || "撤销失败");
@@ -102,13 +110,15 @@ export default function CancelDeletionPage() {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8">
         <div className="text-center mb-6">
           <button
-            onClick={() => router.push("/")}
+            onClick={handleBackHome}
             className="group flex items-center gap-1.5 text-slate-600 hover:text-[#3182ce] transition-colors text-sm mb-4 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
             返回首页
           </button>
-          <Logo variant="dark" />
+          <div onClick={handleBackHome}>
+            <Logo variant="dark" />
+          </div>
         </div>
 
         <div className="text-center mb-6">
@@ -130,9 +140,8 @@ export default function CancelDeletionPage() {
             <div className="text-sm text-orange-700">
               <p className="font-medium mb-1">冷静期说明：</p>
               <ul className="space-y-1 text-orange-600">
-                <li>• 普通用户：7天冷静期</li>
-                <li>• 付费会员：30天冷静期</li>
-                <li>• 冷静期内账号数据保留，可随时撤销</li>
+                <li>• 冷静期为 {cooldownDays} 天，期间可随时撤销</li>
+                <li>• 冷静期内账号数据完整保留</li>
                 <li>• 冷静期结束后，账号将被永久删除</li>
               </ul>
             </div>

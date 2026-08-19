@@ -1,17 +1,26 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
+import { requireStepUp } from "@/lib/step-up";
+import { assertCSRF } from "@/lib/csrf";
+import { getDeletionCooldownDays, getDeletionCooldownMs } from "@/lib/account-deletion";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
 );
 
 /**
- * 用户申请注销账号API
- * 设置冷静期（7天），期间可撤销
+ * 用户申请注销账号API（D-02）
+ * 设置冷静期（默认 7 天，可通过 systemconfig 配置），期间可撤销
  */
 export async function POST(request: NextRequest) {
   try {
+    // I-04 CSRF 防护
+    const csrf = assertCSRF(request);
+    if (!csrf.ok) {
+      return NextResponse.json({ error: "CSRF_INVALID", message: "请求来源校验失败" }, { status: 403 });
+    }
+
     // 获取用户ID
     const token = request.cookies.get("auth_token")?.value;
     if (!token) {
@@ -23,18 +32,19 @@ export async function POST(request: NextRequest) {
 
     const { verifyToken } = await request.json().catch(() => ({}));
 
-    // 验证二次鉴权令牌 (SCENARIO_033)
-    if (!verifyToken) {
-      return NextResponse.json({ error: "SEC_AUTH_REQUIRED", message: "此高危操作需要进行二次身份验证" }, { status: 403 });
-    }
-
-    try {
-      const { payload: verifyPayload } = await jwtVerify(verifyToken, JWT_SECRET);
-      if (!verifyPayload.verified || verifyPayload.userId !== userId || verifyPayload.action !== "cancel_account") {
-        return NextResponse.json({ error: "SEC_AUTH_INVALID", message: "验证令牌不匹配，请重新验证" }, { status: 403 });
-      }
-    } catch (err) {
-      return NextResponse.json({ error: "SEC_AUTH_EXPIRED", message: "验证令牌已过期，请重新验证" }, { status: 403 });
+    // 验证二次鉴权令牌 (SCENARIO_033 / PRD E-04，DB 化一次性令牌)
+    const stepUp = await requireStepUp(request, "cancel_account", userId, { verifyToken });
+    if (!stepUp.ok) {
+      return NextResponse.json(
+        {
+          error: stepUp.error,
+          message:
+            stepUp.error === "SEC_AUTH_REQUIRED"
+              ? "此高危操作需要进行二次身份验证"
+              : "验证令牌无效或已过期，请重新验证",
+        },
+        { status: stepUp.status }
+      );
     }
 
     // 检查用户是否存在
@@ -56,8 +66,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "账号正在注销中" }, { status: 400 });
     }
 
-    // 设置冷静期（7天）- 使用 deletionRequestedAt 字段
-    const deletionRequestedAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    // 设置冷静期（PRD D-02：默认 7 天，可通过 systemconfig 配置 account_deletion_cooldown_days）
+    const cooldownDays = await getDeletionCooldownDays();
+    const deletionRequestedAt = new Date(Date.now() + await getDeletionCooldownMs());
 
     // 更新用户状态为"正在注销"
     await prisma.user.update({
@@ -72,13 +83,33 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 记录审计日志（D-02：注销申请）
+    await prisma.operationlog.create({
+      data: {
+        id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+        userId,
+        action: "ACCOUNT_DELETION_REQUESTED",
+        resource: "user/account",
+        ipAddress:
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+          request.headers.get("x-real-ip") ||
+          "unknown",
+        details: {
+          message: "用户提交注销申请，进入冷静期",
+          cooldownDays,
+          deletionDeadline: deletionRequestedAt.toISOString(),
+        },
+      },
+    });
+
     console.log(`[账号注销申请] 用户 ${userId} 申请注销，冷静期至 ${deletionRequestedAt}`);
 
     // 清除Cookie
     const response = NextResponse.json({
       success: true,
-      message: "注销申请已提交，7天后正式生效，期间可撤销",
+      message: `注销申请已提交，${cooldownDays} 天后正式生效，期间可撤销`,
       deletionRequestedAt: deletionRequestedAt.toISOString(),
+      daysRemaining: cooldownDays,
     });
 
     response.cookies.set("auth_token", "", {

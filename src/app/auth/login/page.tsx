@@ -620,6 +620,20 @@ function LoginForm() {
 
       if (res.ok) {
         console.log("登录成功，检查返回数据...");
+
+        // D-02：账号处于注销冷静期（可撤销），跳转到撤销注销页面
+        if (data.canCancelDeletion) {
+          console.log(
+            "账号正在注销冷静期，跳转到撤销页面，剩余天数:",
+            data.deletionDaysRemaining,
+          );
+          if (data.user?.id) {
+            localStorage.setItem("userId", data.user.id);
+          }
+          window.location.href = "/auth/cancel-deletion";
+          return;
+        }
+
         // 注意：token 是通过 Cookie 设置的，不需要从 response body 获取
         // 只需要检查 user 数据是否存在
         if (!data.user) {
@@ -756,6 +770,21 @@ function LoginForm() {
         }, 500);
       } else {
         // 处理各种错误情况，全部显示在输入框下方
+        if (data.error === "IP_ABNORMAL" && data.verifyToken) {
+          // 异地/异常IP登录：跳转二次验证页完成验证并挤线（场景20/21）
+          sessionStorage.setItem(
+            "crossRegionVerify",
+            JSON.stringify({
+              verifyToken: data.verifyToken,
+              rememberMe,
+              message: data.message,
+              redirect: redirectPath === "/" ? "/workspace-hub" : redirectPath,
+            }),
+          );
+          window.location.href = "/auth/verify-crossregion";
+          return;
+        }
+
         if (data.accountExists === false) {
           // 账号不存在：仅提示，引导手动点击注册，不自动跳转以免劫持登录
           setErrors({ account: data.message || "账号不存在，请检查后重试" });

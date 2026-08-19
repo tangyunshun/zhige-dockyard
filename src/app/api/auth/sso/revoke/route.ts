@@ -154,6 +154,23 @@ export async function POST(request: NextRequest) {
 
     console.log(`[SSO撤销] 已清除用户 ${user.id} (${user.email}) 的${provider}授权，并强制下线`);
 
+    // E-05：写入审计日志（SSO 解绑为安全敏感事件）
+    const { writeAuditLog } = await import("@/lib/security");
+    await writeAuditLog(user.id, "sso:revoke", { provider, openid: openid || unionid }, null, null, request);
+
+    // I-02：安全通知用户
+    try {
+      const { addNotification } = await import("@/lib/notifications-store");
+      await addNotification(
+        user.id,
+        "SSO 授权已解除",
+        `您的${provider}企业账号授权已被解除，如有疑问请尽快修改密码。`,
+        "security"
+      );
+    } catch (err) {
+      console.error("[SSO撤销] 写入安全通知失败:", err);
+    }
+
     return NextResponse.json({
       success: true,
       message: `已撤销用户 ${user.email} 的${provider}授权`,

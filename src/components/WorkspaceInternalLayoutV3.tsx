@@ -27,6 +27,7 @@ interface ZhiGeComponent {
   stageId: number;
   path: string;
   icon: string;
+  isPremium?: boolean;
 }
 
 interface CurrentAuth {
@@ -484,8 +485,8 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
         const myUserId = localStorage.getItem("userId") || "usr_owner";
         setMembersList([{
           userId: myUserId,
-          name: userState?.user?.name || "空间所有者",
-          email: userState?.user?.email || "owner@zhige.com",
+          name: userState?.userInfo?.name || "空间所有者",
+          email: userState?.userInfo?.email || "owner@zhige.com",
           avatar: null,
           role: "OWNER",
           joinedAt: new Date().toISOString()
@@ -516,8 +517,8 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
         if (!hasMe && myUserId) {
           list.push({
             userId: myUserId,
-            name: userState?.user?.name || "管理员",
-            email: userState?.user?.email || "未绑定邮箱",
+            name: userState?.userInfo?.name || "管理员",
+            email: userState?.userInfo?.email || "未绑定邮箱",
             avatar: null,
             role: currentMemberRole || "MEMBER",
             joinedAt: new Date().toISOString()
@@ -936,7 +937,9 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
           setWorkspaceName(workspace.name);
           setWorkspaceType(workspace.type);
           // 对角色进行格式归一化处理，兼容后端返回的全大写 (如 OWNER, ADMIN, COMPONENT_MANAGER)
-          const getNormalizedRole = (role: string): string => {
+          const getNormalizedRole = (
+            role: string
+          ): "Owner" | "Admin" | "ComponentManager" | "KnowledgeManager" | "Member" => {
             if (!role) return "Owner";
             const upper = role.toUpperCase().replace(/_/g, "");
             if (upper === "OWNER") return "Owner";
@@ -2850,7 +2853,21 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
           <AvatarDropdown 
             workspaceId={workspaceId}
             workspaceType={workspaceType}
-            userRole={userRole}
+            userRole={
+              userRole === "ADMIN"
+                ? "Admin"
+                : userRole === "OWNER"
+                  ? "Owner"
+                  : userRole === "COMPONENT_MANAGER" || userRole === "ComponentManager"
+                    ? "ComponentAdmin"
+                    : userRole === "KNOWLEDGE_MANAGER" || userRole === "KnowledgeManager"
+                      ? "KnowledgeAdmin"
+                      : userRole === "MEMBER"
+                        ? "Member"
+                        : userRole === "VIEWER"
+                          ? "Viewer"
+                          : userRole
+            }
             onUpgradeClick={() => setShowUpgradeModal(true)}
           />
         </div>

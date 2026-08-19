@@ -370,6 +370,43 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleBatchKick = () => {
+    if (selectedUsers.size === 0) return;
+
+    // 高风险操作：二次确认
+    setConfirmMessage(
+      `确定要强制选中的 ${selectedUsers.size} 个用户下线吗？他们当前的所有操作将会中断。`,
+    );
+    setConfirmAction(async () => {
+      try {
+        const res = await fetch("/api/admin/users/batch-kick", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userIds: [...selectedUsers] }),
+        });
+
+        if (await handleUnauthorized(res)) {
+          return;
+        }
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error || "批量强制下线失败");
+        }
+
+        const data = await res.json();
+        showToast(data.message || "批量强制下线成功", "success");
+        setSelectedUsers(new Set());
+        setShowBatchActions(false);
+        loadUsers(currentPage);
+      } catch (error) {
+        console.error("Batch kick error:", error);
+        showToast(error instanceof Error ? error.message : "批量强制下线失败", "error");
+      }
+    });
+    setShowConfirmModal(true);
+  };
+
   const handleEdit = (user: User) => {
     setEditingUser(user);
     setEditForm({ role: user.role, status: user.status });
@@ -808,6 +845,13 @@ export default function AdminUsersPage() {
               </button>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={handleBatchKick}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
+              >
+                <LogOut className="w-4 h-4" />
+                批量踢出
+              </button>
               <button
                 onClick={handleBatchActivate}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"

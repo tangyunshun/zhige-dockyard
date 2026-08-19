@@ -59,17 +59,31 @@ export async function DELETE(request: NextRequest) {
     // 检查设备是否属于当前用户
     const device = await prisma.userdevice.findUnique({
       where: { id: deviceId },
-      select: { userId: true },
+      select: { userId: true, isCurrent: true },
     });
 
     if (!device || device.userId !== userId) {
       return NextResponse.json({ error: "设备不存在或无权操作" }, { status: 403 });
     }
 
-    // 删除设备记录
+    // 删除设备记录（B-05 远程下线指定设备）
     await prisma.userdevice.delete({
       where: { id: deviceId },
     });
+
+    // 若被下线的是当前设备，则懒失效其会话（D-04 机制：下次请求被拦截）
+    // 非当前设备的记录已被后续登录的 sessionToken 覆盖，其 JWT 早已失效。
+    if (device.isCurrent) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          lastForcedLogoutAt: new Date(),
+          sessionToken: null,
+          refreshToken: null,
+          refreshTokenExpiresAt: null,
+        },
+      });
+    }
 
     console.log(`[踢出设备] 用户 ${userId} 踢出设备 ${deviceId}`);
 

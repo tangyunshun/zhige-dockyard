@@ -228,7 +228,7 @@ export default function WorkspaceHub() {
         workspaces.map(async (ws) => {
           // 个人空间拥有所有权限，默认接入所有推荐组件
           if (ws.type === "PERSONAL") {
-            targetComponentIds.forEach(cId => {
+            targetComponentIds.forEach((cId: string) => {
               if (!bindingNames[cId]) bindingNames[cId] = [];
               bindingNames[cId].push(ws.name);
             });

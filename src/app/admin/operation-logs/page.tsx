@@ -36,22 +36,43 @@ interface OperationLog {
 
 // 操作类型（真实 action 值）→ 中文文案 / 配色（简洁 Badge，与主系统一致）
 const ACTION_META: Record<string, { label: string; color: string }> = {
+  // 用户相关
   "user:create": { label: "创建用户", color: "bg-emerald-100 text-emerald-700" },
   "user:update": { label: "更新用户", color: "bg-blue-100 text-blue-700" },
   "user:delete": { label: "删除用户", color: "bg-red-100 text-red-700" },
   "user:ban": { label: "封禁用户", color: "bg-red-100 text-red-700" },
   "user:unban": { label: "解封用户", color: "bg-emerald-100 text-emerald-700" },
   "user:reset_session": { label: "重置会话", color: "bg-orange-100 text-orange-700" },
+  // 组件相关
   "component:create": { label: "创建组件", color: "bg-emerald-100 text-emerald-700" },
   "component:update": { label: "更新组件", color: "bg-blue-100 text-blue-700" },
   "component:delete": { label: "删除组件", color: "bg-red-100 text-red-700" },
   "component:execute": { label: "执行组件", color: "bg-purple-100 text-purple-700" },
+  "BIND_COMPONENT": { label: "绑定组件", color: "bg-blue-100 text-blue-700" },
+  "UNBIND_COMPONENT": { label: "解绑组件", color: "bg-orange-100 text-orange-700" },
+  // 工作空间相关
   "workspace:create": { label: "创建空间", color: "bg-emerald-100 text-emerald-700" },
   "workspace:update": { label: "更新空间", color: "bg-blue-100 text-blue-700" },
   "workspace:delete": { label: "删除空间", color: "bg-red-100 text-red-700" },
+  "JOIN_WORKSPACE": { label: "加入空间", color: "bg-emerald-100 text-emerald-700" },
+  "CREATE_ENTERPRISE_WORKSPACE": { label: "创建企业空间", color: "bg-indigo-100 text-indigo-700" },
+  "LEAVE_WORKSPACE": { label: "退出空间", color: "bg-orange-100 text-orange-700" },
+  // 系统 / 认证
   "system:settings": { label: "系统设置", color: "bg-indigo-100 text-indigo-700" },
   "auth:login": { label: "登录", color: "bg-purple-100 text-purple-700" },
   "auth:logout": { label: "登出", color: "bg-slate-100 text-slate-700" },
+};
+
+// 未知英文 action 的兜底翻译（避免直接暴露原始英文串）
+const ACTION_FALLBACK_LABELS: Record<string, string> = {
+  BIND_COMPONENT: "绑定组件",
+  UNBIND_COMPONENT: "解绑组件",
+  JOIN_WORKSPACE: "加入空间",
+  LEAVE_WORKSPACE: "退出空间",
+  CREATE_ENTERPRISE_WORKSPACE: "创建企业空间",
+  CREATE_WORKSPACE: "创建空间",
+  INVITE_MEMBER: "邀请成员",
+  REMOVE_MEMBER: "移除成员",
 };
 
 // 筛选下拉与真实 action 值一一对应
@@ -61,14 +82,23 @@ const ACTION_OPTIONS = [
   { value: "user:update", label: "更新用户" },
   { value: "user:delete", label: "删除用户" },
   { value: "user:ban", label: "封禁用户" },
+  { value: "user:unban", label: "解封用户" },
   { value: "user:reset_session", label: "重置会话" },
   { value: "component:create", label: "创建组件" },
   { value: "component:update", label: "更新组件" },
   { value: "component:delete", label: "删除组件" },
   { value: "component:execute", label: "执行组件" },
+  { value: "BIND_COMPONENT", label: "绑定组件" },
+  { value: "UNBIND_COMPONENT", label: "解绑组件" },
+  { value: "JOIN_WORKSPACE", label: "加入空间" },
+  { value: "CREATE_ENTERPRISE_WORKSPACE", label: "创建企业空间" },
+  { value: "LEAVE_WORKSPACE", label: "退出空间" },
   { value: "workspace:create", label: "创建空间" },
+  { value: "workspace:update", label: "更新空间" },
   { value: "workspace:delete", label: "删除空间" },
   { value: "system:settings", label: "系统设置" },
+  { value: "auth:login", label: "登录" },
+  { value: "auth:logout", label: "登出" },
 ];
 
 const RESOURCE_OPTIONS = [
@@ -79,28 +109,11 @@ const RESOURCE_OPTIONS = [
   { value: "system", label: "系统" },
 ];
 
-// details 字段 → 中文标签（避免暴露无意义的技术字段）
-const DETAIL_KEY_LABELS: Record<string, string> = {
-  targetUserId: "目标用户 ID",
-  id: "ID",
-  name: "名称",
-  updates: "变更内容",
-  reason: "封禁原因",
-  bannedUntil: "封禁截止",
-  componentId: "组件 ID",
-  tokens: "消耗额度",
-  updateData: "变更内容",
-  status: "状态",
-  role: "角色",
-};
-
 function actionMeta(action: string) {
-  return (
-    ACTION_META[action] || {
-      label: action || "未知操作",
-      color: "bg-slate-100 text-slate-700",
-    }
-  );
+  if (ACTION_META[action]) return ACTION_META[action];
+  // 未收录的英文 action 一律给出中文兜底，绝不原样显示英文
+  const label = ACTION_FALLBACK_LABELS[action] || "其他操作";
+  return { label, color: "bg-slate-100 text-slate-700" };
 }
 
 function resourceIcon(resource: string | null) {
@@ -121,22 +134,82 @@ const RESOURCE_LABELS: Record<string, string> = {
 
 function resourceLabel(resource: string | null) {
   const r = (resource || "").toLowerCase();
-  return RESOURCE_LABELS[r] || resource || "—";
+  if (RESOURCE_LABELS[r]) return RESOURCE_LABELS[r];
+  // resource 可能是原始 ID（如 BIND_COMPONENT 存的是 componentId），按前缀/格式判断归类
+  if (r.includes("workspace")) return "工作空间";
+  if (r.includes("user")) return "用户";
+  if (r.includes("component") || /^[0-9a-f]{8}-/.test(r)) return "组件";
+  if (r.includes("system")) return "系统";
+  return "其他";
 }
 
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+// 枚举值 → 中文（状态 / 角色 / 系统动作等）
+const STATUS_LABELS: Record<string, string> = {
+  active: "正常",
+  banned: "已封禁",
+  suspended: "已停用",
+  inactive: "未激活",
+  deleted: "已删除",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  user: "普通用户",
+  admin: "运营管理员",
+  super_admin: "超级管理员",
+  // 工作空间成员角色（含大小写变体）
+  member: "成员",
+  owner: "拥有者",
+  viewer: "访客",
+  component_manager: "组件管理员",
+  knowledge_manager: "知识库管理员",
+  componentmanager: "组件管理员",
+  knowledgemanager: "知识库管理员",
+};
+
+const SYSTEM_ACTION_LABELS: Record<string, string> = {
+  CONFIGURE_ADMIN_PERMISSIONS: "配置管理员权限",
+};
+
+const PLAN_LABELS: Record<string, string> = {
+  STANDARD: "标准版",
+  ENTERPRISE: "企业版",
+  PRO: "专业版",
+  FREE: "免费版",
+};
+
+const VISIBILITY_LABELS: Record<string, string> = {
+  PRIVATE: "私有",
+  PUBLIC: "公开",
+  INTERNAL: "内部可见",
+};
+
+const WORKSPACE_TYPE_LABELS: Record<string, string> = {
+  ENTERPRISE: "企业型",
+  STANDARD: "标准型",
+};
+
+function transStatus(v: any) {
+  if (v === null || v === undefined) return "—";
+  return STATUS_LABELS[String(v).toLowerCase()] || String(v);
+}
+function transRole(v: any) {
+  if (v === null || v === undefined) return "—";
+  return ROLE_LABELS[String(v).toLowerCase()] || String(v);
+}
+function transPlan(v: any) {
+  if (v === null || v === undefined) return "—";
+  return PLAN_LABELS[String(v).toUpperCase()] || String(v);
+}
+function transVisibility(v: any) {
+  if (v === null || v === undefined) return "—";
+  return VISIBILITY_LABELS[String(v).toUpperCase()] || String(v);
+}
+function transWorkspaceType(v: any) {
+  if (v === null || v === undefined) return "—";
+  return WORKSPACE_TYPE_LABELS[String(v).toUpperCase()] || String(v);
 }
 
-// 将 details 解析为可读的 [中文标签, 值] 列表，隐藏无意义的技术字段
+// 把 details 解析为可读的 [中文标签, 值] 列表（隐藏无意义 ID，翻译枚举值）
 function parseDetails(details: any): { label: string; value: string }[] {
   let obj: any = details;
   if (typeof details === "string") {
@@ -152,33 +225,137 @@ function parseDetails(details: any): { label: string; value: string }[] {
 
   const rows: { label: string; value: string }[] = [];
   for (const [key, val] of Object.entries(obj)) {
-    const label = DETAIL_KEY_LABELS[key] || key;
+    let label: string;
     let value: string;
-    if (val === null || val === undefined) {
-      value = "—";
-    } else if (typeof val === "object") {
-      // 对象（如 updates）展开为子项，便于直接看懂变更
-      try {
-        value = Object.entries(val as Record<string, any>)
-          .map(([k, v]) => `${DETAIL_KEY_LABELS[k] || k}：${formatScalar(v)}`)
-          .join("，");
-      } catch {
-        value = JSON.stringify(val);
+
+    switch (key) {
+      case "targetUserId":
+        label = "目标用户 ID"; value = String(val);
+        break;
+      case "bannedUntil":
+        label = "封禁截止"; value = formatTime(String(val));
+        break;
+      case "reason":
+        label = "封禁原因"; value = String(val || "—");
+        break;
+      case "name":
+        label = "名称"; value = String(val);
+        break;
+      case "tokens":
+        label = "消耗额度"; value = `${val} 点`;
+        break;
+      case "componentId":
+        label = "组件 ID"; value = String(val);
+        break;
+      case "action":
+        label = "系统动作"; value = SYSTEM_ACTION_LABELS[val as string] || String(val);
+        break;
+      case "workspaceName":
+        label = "工作空间"; value = String(val);
+        break;
+      case "workspacePlan":
+        label = "套餐"; value = transPlan(val);
+        break;
+      case "workspaceType":
+        label = "空间类型"; value = transWorkspaceType(val);
+        break;
+      case "workspaceVisibility":
+        label = "可见性"; value = transVisibility(val);
+        break;
+      case "invitationCode":
+        label = "邀请码"; value = String(val);
+        break;
+      case "role":
+        label = "角色"; value = transRole(val);
+        break;
+      case "boundAt":
+        label = "绑定时间"; value = formatTime(String(val));
+        break;
+      case "updates": {
+        label = "变更内容";
+        if (val && typeof val === "object") {
+          value = Object.entries(val as Record<string, any>)
+            .map(([k, v]) => {
+              const kl = k === "status" ? "状态" : k === "role" ? "角色" : k;
+              const vl = k === "status" ? transStatus(v) : k === "role" ? transRole(v) : String(v);
+              return `${kl}：${vl}`;
+            })
+            .join("，");
+        } else {
+          value = String(val);
+        }
+        break;
       }
-    } else {
-      value = formatScalar(val);
+      default:
+        // 未知字段（如原始 id）直接忽略，避免暴露无意义技术串
+        continue;
     }
     rows.push({ label, value });
   }
   return rows;
 }
 
-// 标量值格式化（布尔/日期等）
-function formatScalar(val: any): string {
-  if (val === null || val === undefined) return "—";
-  if (typeof val === "boolean") return val ? "是" : "否";
-  if (val instanceof Date) return formatTime(val.toISOString());
-  return String(val);
+// 列表行内的一句话可读摘要（让管理员无需展开即看懂）
+function describeLog(log: OperationLog): string {
+  const d = parseDetails(log.details);
+  const get = (k: string) => d.find((r) => r.label === k)?.value || "";
+
+  switch (log.action) {
+    case "user:ban":
+      return `封禁用户${get("封禁原因") ? `（原因：${get("封禁原因")}）` : ""}`;
+    case "user:unban":
+      return "解封用户";
+    case "user:update":
+      return `更新用户${get("变更内容") ? `（${get("变更内容")}）` : ""}`;
+    case "user:delete":
+      return "删除用户";
+    case "user:reset_session":
+      return "重置该用户登录会话";
+    case "component:create":
+      return `创建组件「${get("名称")}」`;
+    case "component:update":
+      return `更新组件${get("名称") ? `「${get("名称")}」` : ""}${get("变更内容") ? `（${get("变更内容")}）` : ""}`;
+    case "component:delete":
+      return `删除组件${get("名称") ? `「${get("名称")}」` : ""}`;
+    case "component:execute":
+      return `执行组件（消耗额度 ${get("消耗额度") || "—"}）`;
+    case "workspace:create":
+      return `创建工作空间${get("工作空间") ? `「${get("工作空间")}」` : ""}`;
+    case "workspace:update":
+      return `更新工作空间${get("工作空间") ? `「${get("工作空间")}」` : ""}`;
+    case "workspace:delete":
+      return `删除工作空间${get("工作空间") ? `「${get("工作空间")}」` : ""}`;
+    case "JOIN_WORKSPACE":
+      return `加入工作空间「${get("工作空间")}」${get("角色") ? `（角色：${get("角色")}）` : ""}`;
+    case "LEAVE_WORKSPACE":
+      return `退出工作空间${get("工作空间") ? `「${get("工作空间")}」` : ""}`;
+    case "CREATE_ENTERPRISE_WORKSPACE":
+      return `创建企业工作空间「${get("工作空间")}」${get("套餐") ? `（套餐：${get("套餐")}）` : ""}`;
+    case "BIND_COMPONENT":
+      return `将组件绑定到工作空间${get("工作空间") ? `「${get("工作空间")}」` : ""}`;
+    case "UNBIND_COMPONENT":
+      return `将组件从工作空间解绑${get("工作空间") ? `「${get("工作空间")}」` : ""}`;
+    case "system:settings":
+      return get("系统动作") || "系统设置变更";
+    case "auth:login":
+      return "管理员登录";
+    case "auth:logout":
+      return "管理员登出";
+    default:
+      return resourceLabel(log.resource) + "相关操作";
+  }
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export default function OperationLogsPage() {
@@ -461,6 +638,9 @@ export default function OperationLogsPage() {
                   资源
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                  操作描述
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                   IP 地址
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
@@ -474,14 +654,14 @@ export default function OperationLogsPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
                     <p className="text-slate-600 font-medium">加载中...</p>
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                       <FileText className="w-8 h-8 text-slate-400" />
                     </div>
@@ -540,6 +720,11 @@ export default function OperationLogsPage() {
                             </span>
                           </div>
                         </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 font-medium max-w-xs">
+                          <span className="truncate block" title={describeLog(log)}>
+                            {describeLog(log)}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap">
                           {log.ipAddress || "—"}
                         </td>
@@ -563,7 +748,7 @@ export default function OperationLogsPage() {
 
                       {isExpanded && (
                         <tr className="bg-slate-50/60">
-                          <td colSpan={6} className="px-6 py-5">
+                          <td colSpan={7} className="px-6 py-5">
                             <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm">
                               <span className="text-slate-400">
                                 操作人：

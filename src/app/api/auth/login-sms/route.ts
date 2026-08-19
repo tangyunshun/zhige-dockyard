@@ -4,6 +4,7 @@ import { SignJWT } from "jose";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 import crypto from "crypto";
 import { sessionCache } from "@/lib/session-cache";
+import { maybeFinalizeDeletionIfDue } from "@/lib/account-deletion";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
@@ -67,6 +68,80 @@ export async function POST(request: NextRequest) {
         data: { status: "active" },
       });
       user.status = "active";
+    }
+
+    // D-02：账号注销冷静期——允许重新登录以便撤销注销（与密码登录行为一致）
+    if (user.status === "deleting") {
+      // 冷静期已过则执行最终注销，不再允许撤销
+      const deletionFinalized = await maybeFinalizeDeletionIfDue(user.id);
+      if (deletionFinalized) {
+        return NextResponse.json(
+          { error: "账号注销冷静期已过，账号已被永久注销", status: "deleted" },
+          { status: 403 },
+        );
+      }
+
+      const now = new Date();
+      // 刷新活跃时间，避免撤销流程中的 /api/auth/me 被空闲超时拦截
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: now, lastActivityAt: now },
+      });
+
+      // 消耗验证码，防止重复使用
+      deleteSmsCode(phone);
+
+      const deletionEnd = user.deletionRequestedAt
+        ? new Date(user.deletionRequestedAt).getTime()
+        : Date.now();
+      const remainingDays = Math.max(
+        0,
+        Math.ceil((deletionEnd - Date.now()) / (1000 * 60 * 60 * 24)),
+      );
+
+      // 生成临时 token，仅允许撤销注销（不授予业务会话）
+      const token = await new SignJWT({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        deletionStatus: "cancelling",
+        issuedAt: now.toISOString(),
+      })
+        .setProtectedHeader({ alg: "HS256" })
+        .setExpirationTime("1h")
+        .sign(JWT_SECRET);
+
+      const response = NextResponse.json({
+        success: true,
+        message: `账号正在注销中，${remainingDays}天后正式生效，可撤销注销`,
+        status: user.status,
+        deletionDaysRemaining: remainingDays,
+        canCancelDeletion: true,
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+      });
+
+      response.cookies.set("auth_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60,
+        path: "/",
+      });
+      response.cookies.set("userId", user.id, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60,
+        path: "/",
+      });
+
+      return response;
     }
 
     // 检查用户状态
@@ -145,6 +220,7 @@ export async function POST(request: NextRequest) {
       where: { id: user.id },
       data: {
         lastLoginAt: now,
+        lastActivityAt: now,
         loginAttempts: 0,
         lockedUntil: null,
         lastForcedLogoutAt: hasExistingSession ? now : null,

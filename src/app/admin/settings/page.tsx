@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Settings,
   Mail,
@@ -8,10 +8,75 @@ import {
   Globe,
   Shield,
   Database,
+  AlertTriangle,
 } from "lucide-react";
 
 export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState("basic");
+  // 注销冷静期配置（D-02：可配置）
+  const [cooldownDays, setCooldownDays] = useState(7);
+  const [cooldownLoading, setCooldownLoading] = useState(false);
+  const [cooldownSaving, setCooldownSaving] = useState(false);
+  const [cooldownMessage, setCooldownMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  const loadCooldownConfig = useCallback(async () => {
+    try {
+      setCooldownLoading(true);
+      const userId = localStorage.getItem("userId");
+      const res = await fetch("/api/admin/account-deletion-config", {
+        headers: userId ? { Authorization: `Bearer ${userId}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCooldownDays(data.configuredValue ?? data.cooldownDays ?? 7);
+      }
+    } catch (e) {
+      console.warn("加载注销冷静期配置失败:", e);
+    } finally {
+      setCooldownLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "security") {
+      loadCooldownConfig();
+    }
+  }, [activeTab, loadCooldownConfig]);
+
+  const handleSaveCooldown = async () => {
+    const days = Number(cooldownDays);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      setCooldownMessage({ type: "error", text: "天数必须是 1~90 之间的整数" });
+      return;
+    }
+    setCooldownSaving(true);
+    setCooldownMessage(null);
+    try {
+      const userId = localStorage.getItem("userId");
+      const res = await fetch("/api/admin/account-deletion-config", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userId ? { Authorization: `Bearer ${userId}` } : {}),
+        },
+        body: JSON.stringify({ cooldownDays: days }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCooldownDays(days);
+        setCooldownMessage({ type: "success", text: data.message || "已保存" });
+      } else {
+        setCooldownMessage({ type: "error", text: data.error || "保存失败" });
+      }
+    } catch (e) {
+      setCooldownMessage({ type: "error", text: "保存失败，请稍后重试" });
+    } finally {
+      setCooldownSaving(false);
+    }
+  };
 
   const settings = {
     basic: {
@@ -316,11 +381,73 @@ export default function AdminSettingsPage() {
           )}
 
           {activeTab === "security" && (
-            <div className="space-y-4">
-              <div className="text-center py-12 text-slate-400">
-                <Shield className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p>安全设置开发中</p>
-                <p className="text-sm mt-2">包含 IP 白名单、访问频率限制等</p>
+            <div className="space-y-4 max-w-2xl">
+              <div className="relative bg-gradient-to-br from-[#3182ce]/5 to-blue-500/5 rounded-2xl border border-[#3182ce]/10 p-5">
+                <p className="text-sm text-slate-600 font-medium">
+                  配置账号注销安全策略，控制用户注销后进入冷静期的时长。
+                </p>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                <div className="flex items-start gap-3 p-3 bg-orange-50 border border-orange-100 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-orange-600 font-medium leading-relaxed">
+                    冷静期结束后，账号将被永久注销（逻辑删除 + 匿名化邮箱/手机号 +
+                    清空个人配置 + 销毁全部会话），该操作不可恢复。
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    注销冷静期天数
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      value={cooldownDays}
+                      disabled={cooldownLoading || cooldownSaving}
+                      onChange={(e) => setCooldownDays(Number(e.target.value))}
+                      className="w-40 px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all disabled:opacity-50"
+                    />
+                    <span className="text-sm text-slate-500 font-medium">天</span>
+                    {cooldownLoading && (
+                      <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-500 rounded-full animate-spin"></div>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 font-medium mt-2">
+                    范围 1~90 天，默认 7 天。修改后对之后新提交的注销申请生效。
+                  </p>
+                </div>
+
+                {cooldownMessage && (
+                  <p
+                    className={`text-sm font-semibold ${
+                      cooldownMessage.type === "success"
+                        ? "text-emerald-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {cooldownMessage.text}
+                  </p>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    onClick={handleSaveCooldown}
+                    disabled={cooldownSaving || cooldownLoading}
+                    className="px-6 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {cooldownSaving ? "保存中..." : "保存设置"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <p className="text-sm text-slate-500 font-medium">
+                  更多安全策略（IP 白名单、访问频率限制等）开发中
+                </p>
               </div>
             </div>
           )}

@@ -122,6 +122,21 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
   // 企业版：overview, quick, components, tasks, assets, results, knowledge, members, permissions, stats, settings
   const [activeTab, setActiveTab] = useState<string>("overview");
 
+  // 功能标签页定义（个人/企业空间通用）
+  const tabsList = [
+    { key: "overview", label: "总览" },
+    { key: "quick", label: "快速任务" },
+    { key: "components", label: "组件" },
+    { key: "tasks", label: "任务" },
+    { key: "assets", label: "资料" },
+    { key: "results", label: "成果" },
+    { key: "knowledge", label: "知识库" },
+    { key: "members", label: "成员" },
+    { key: "permissions", label: "权限" },
+    { key: "stats", label: "统计" },
+    { key: "settings", label: "设置" },
+  ];
+
   // 数据实体
   const [recentTasks, setRecentTasks] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
@@ -711,17 +726,17 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
 
     const conclusionMatch = output.match(/## \[关键结论\]\n([\s\S]*?)(?=\n##|$)/);
     if (conclusionMatch) {
-      conclusions = conclusionMatch[1].split("\n").map(l => l.replace(/^[-\*\d\.\s]+/, "").trim()).filter(Boolean);
+      conclusions = conclusionMatch[1].split("\n").map((l: string) => l.replace(/^[-\*\d\.\s]+/, "").trim()).filter(Boolean);
     }
 
     const riskMatch = output.match(/## \[风险\/问题清单\]\n([\s\S]*?)(?=\n##|$)/);
     if (riskMatch) {
-      risks = riskMatch[1].split("\n").map(l => l.replace(/^[-\*\d\.\s]+/, "").trim()).filter(Boolean);
+      risks = riskMatch[1].split("\n").map((l: string) => l.replace(/^[-\*\d\.\s]+/, "").trim()).filter(Boolean);
     }
 
     const suggestionMatch = output.match(/## \[后续整改建议\]\n([\s\S]*?)(?=\n##|$)/);
     if (suggestionMatch) {
-      suggestions = suggestionMatch[1].split("\n").map(l => l.replace(/^[-\*\d\.\s]+/, "").trim()).filter(Boolean);
+      suggestions = suggestionMatch[1].split("\n").map((l: string) => l.replace(/^[-\*\d\.\s]+/, "").trim()).filter(Boolean);
     }
 
     if (!summary) summary = `任务成果物概要说明。关联组件 ID: ${task.type}`;
@@ -1707,7 +1722,17 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
               </button>
             </div>
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-650">
-              企业空间专属功能。此处控制各个岗位等级对特定高密仿真�  return (
+              企业空间专属功能。此处控制各个岗位等级对特定高密仿真组件的授权可见范围与安装白名单，实现更精细的权限管控。
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
     <div className="min-h-screen w-full bg-[#f1f5f9] flex flex-col font-sans relative overflow-hidden">
       {/* 背景效果 (恢复唯一真理系统 V6.0 灰白粒子纹理底图)，对齐 workspace-hub 风格 */}
       <div className="absolute inset-0 bg-[#f1f5f9] pointer-events-none overflow-hidden z-0">
@@ -1782,7 +1807,13 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
           <AvatarDropdown 
             workspaceId={workspaceId}
             workspaceType={workspaceType}
-            userRole={userRole}
+            userRole={
+              userRole === "ComponentManager"
+                ? "ComponentAdmin"
+                : userRole === "KnowledgeManager"
+                  ? "KnowledgeAdmin"
+                  : userRole
+            }
             onUpgradeClick={() => setShowUpgradeModal(true)}
           />
         </div>
@@ -1854,129 +1885,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
         </div>
       </div>
 
-      {/* 主工作区 + 动态右侧上下文辅助栏 */}
-      <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 overflow-visible relative z-10">  </button>
-          <div className="h-6 w-px bg-slate-300 flex-shrink-0" />
-          
-          <div className="flex items-center gap-2 min-w-0 text-left">
-            <span className="w-8 h-8 rounded-[8px] bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white shadow-md font-bold">🏢</span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-slate-800 text-sm sm:text-base truncate">{workspaceName}</span>
-                <span className="text-xs text-slate-400 font-bold">/</span>
-                <span className="text-xs text-slate-550 font-bold">执行控制台</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-          <div className="relative" ref={spaceManagementDropdownRef}>
-            <button
-              onClick={() => setShowSpaceManagementDropdown(!showSpaceManagementDropdown)}
-              className="inline-flex items-center gap-2 h-9 px-3.5 rounded-[4px] bg-gradient-to-b from-white to-slate-50 border border-slate-205 text-slate-700 hover:text-[#3182ce] text-xs font-extrabold shadow-sm hover:shadow"
-            >
-              <span>快速切换空间</span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-            {showSpaceManagementDropdown && (
-              <div className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-slate-100 py-1.5 z-50 overflow-hidden text-left">
-                {userState?.workspaces && userState.workspaces.length > 0 && (
-                  <div className="px-3.5 py-2">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">切换至其他工作空间</p>
-                    <div className="space-y-1 max-h-[160px] overflow-y-auto">
-                      {userState.workspaces.map((workspace) => (
-                        <button
-                          key={workspace.id}
-                          onClick={() => handleSwitchWorkspace(workspace.id)}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-[4px] border transition-all text-left cursor-pointer ${
-                            workspace.id === workspaceId ? "bg-blue-50/60 border-blue-100/50" : "bg-white border-transparent"
-                          }`}
-                        >
-                          <span className={`text-xs truncate font-bold ${workspace.id === workspaceId ? 'text-[#3182ce]' : 'text-slate-750'}`}>{workspace.name}</span>
-                          {workspace.id === workspaceId && <Check className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          <AvatarDropdown 
-            workspaceId={workspaceId}
-            workspaceType={workspaceType}
-            userRole={userRole}
-            onUpgradeClick={() => setShowUpgradeModal(true)}
-          />
-        </div>
-      </header>
-
-      {/* 空间名片摘要固定区 */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-5 text-left shadow-sm">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg font-black text-slate-800 tracking-tight">{workspaceName}</h1>
-              {workspaceType === "PERSONAL" ? (
-                <span className="text-[10px] px-2 py-0.5 bg-blue-50 text-[#3182ce] rounded border border-blue-100 font-extrabold">👤 个人空间</span>
-              ) : (
-                <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-[#d97706] rounded border border-amber-100 font-extrabold">🏢 企业协同空间</span>
-              )}
-              <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200 font-extrabold">
-                岗位角色: {userRole === "Owner" ? "👑 所有者" : userRole === "Admin" ? "🔧 管理员" : userRole === "ComponentManager" ? "🧩 组件管理员" : userRole === "KnowledgeManager" ? "📚 知识库管理员" : "👤 协作成员"}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium max-w-2xl leading-relaxed">
-              {workspaceType === "PERSONAL" 
-                ? "个人空间专门用于个人组件的安全运行、私有开发资料的分类归档以及成果物的快速个人知识沉淀。"
-                : "企业空间主要支持团队研发协作、组件安全授权、企业敏感资料共享、知识库沉淀及成员执行日志审计。"}
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
-            <button
-              onClick={() => {
-                setActiveTab("quick");
-                setQuickSubStep("select");
-              }}
-              className="flex-1 md:flex-none h-8.5 px-3.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-black rounded shadow cursor-pointer transition-all flex items-center justify-center gap-1"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              <span>开始新任务</span>
-            </button>
-            <button
-              onClick={() => router.push(`/studio?workspaceId=${workspaceId}`)}
-              className="flex-1 md:flex-none h-8.5 px-3 bg-white border border-slate-250 hover:border-[#3182ce] text-slate-700 hover:text-[#3182ce] text-xs font-extrabold rounded shadow-sm cursor-pointer"
-            >
-              挑选装配大厅
-            </button>
-            <button
-              onClick={() => router.push("/workspace-hub")}
-              className="h-8.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-650 text-xs font-extrabold rounded cursor-pointer"
-            >
-              空间中枢
-            </button>
-          </div>
-        </div>
-
-        {/* 横向功能标签页 (Tabs) 切换区 */}
-        <div className="max-w-6xl mx-auto mt-4 pt-1 flex gap-1.5 overflow-x-auto scrollbar-none border-t border-slate-100">
-          {tabsList.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-3 py-1.5 text-xs font-black border-b-2 shrink-0 cursor-pointer transition-all ${
-                activeTab === tab.key
-                  ? "border-[#3182ce] text-[#3182ce]"
-                  : "border-transparent text-slate-500 hover:text-[#3182ce]"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* 主工作区 + 动态右侧上下文辅助栏 */}
       <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 overflow-visible">

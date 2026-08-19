@@ -17,6 +17,8 @@ import {
 export default function UserSettingsPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [allowMultiDevice, setAllowMultiDevice] = useState(true);
+  const [savingSession, setSavingSession] = useState(false);
   const [settings, setSettings] = useState({
     language: "zh-CN",
     theme: "light",
@@ -30,7 +32,38 @@ export default function UserSettingsPage() {
 
   useEffect(() => {
     loadSettings();
+    loadSessionSettings();
   }, []);
+
+  const loadSessionSettings = async () => {
+    try {
+      const res = await fetch("/api/user/session-settings", { method: "GET" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) setAllowMultiDevice(data.data.allowMultiDevice);
+      }
+    } catch (error) {
+      console.error("Load session settings error:", error);
+    }
+  };
+
+  const saveSessionSettings = async () => {
+    setSavingSession(true);
+    try {
+      const res = await fetch("/api/user/session-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowMultiDevice }),
+      });
+      if (res.ok) toast.success("登录策略已保存");
+      else toast.error("保存失败，请重试");
+    } catch (error) {
+      console.error("Save session settings error:", error);
+      toast.error("保存失败，请重试");
+    } finally {
+      setSavingSession(false);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -328,6 +361,52 @@ export default function UserSettingsPage() {
               <p className="text-sm font-bold text-slate-800">宽松</p>
               <p className="text-xs text-slate-500 mt-1">更大间距</p>
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 登录与设备 */}
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
+        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#10b981]/10 to-[#059669]/10 opacity-50 blur-3xl"></div>
+        <div className="relative">
+          <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+            <div className="w-1 h-6 bg-gradient-to-b from-[#10b981] to-[#059669] rounded-full"></div>
+            <Smartphone className="w-5 h-5 text-[#10b981]" />
+            登录与设备
+          </h2>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50">
+              <div>
+                <p className="text-sm font-bold text-slate-800">允许多设备同时登录</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  开启后可在多台设备同时在线；关闭后仅允许单设备登录，新登录会顶掉其他设备
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAllowMultiDevice((v) => !v)}
+                className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${
+                  allowMultiDevice ? "bg-[#10b981]" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-transform ${
+                    allowMultiDevice ? "translate-x-5" : ""
+                  }`}
+                />
+              </button>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={saveSessionSettings}
+                disabled={savingSession}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#10b981] to-[#059669] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#10b981]/30 transition-all disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {savingSession ? "保存中..." : "保存登录策略"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

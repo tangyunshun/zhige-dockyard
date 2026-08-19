@@ -172,13 +172,14 @@ export async function PUT(request: NextRequest) {
     }
 
     if (action === "disable") {
-      // 禁用子账号
+      // 禁用子账号：同时标记强制下线时间，使其已签发的 token 立即失效（场景28）
       await prisma.user.update({
         where: { id: subAccountId },
         data: {
           status: "inactive",
           sessionToken: null,
           sessionExpiresAt: null,
+          lastForcedLogoutAt: new Date(),
         },
       });
       console.log(`[子账号] 主账号 ${adminId} 禁用了子账号 ${subAccountId}`);

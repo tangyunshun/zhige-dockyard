@@ -5,7 +5,7 @@ import { isInMaintenance } from "../maintenance/route";
  * 检查系统是否处于维护模式
  */
 export async function GET(request: NextRequest) {
-  const check = isInMaintenance();
+  const check = await isInMaintenance();
 
   return NextResponse.json({
     inMaintenance: check.inMaintenance,

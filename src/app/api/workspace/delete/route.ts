@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { jwtVerify } from "jose";
+import { requireStepUp } from "@/lib/step-up";
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -53,21 +53,19 @@ export async function DELETE(request: NextRequest) {
 
     // 根据 action 执行不同的操作
     if (action === "DELETE") {
-      // 验证二次鉴权令牌 (SCENARIO_033)
-      if (!verifyToken) {
-        return NextResponse.json({ error: "SEC_AUTH_REQUIRED", message: "此高危操作需要进行二次身份验证" }, { status: 403 });
-      }
-
-      try {
-        const JWT_SECRET = new TextEncoder().encode(
-          process.env.JWT_SECRET || "your-secret-key-change-in-production",
+      // 验证二次鉴权令牌 (SCENARIO_033 / PRD E-04，DB 化一次性令牌)
+      const stepUp = await requireStepUp(request, "delete_workspace", userId, { verifyToken });
+      if (!stepUp.ok) {
+        return NextResponse.json(
+          {
+            error: stepUp.error,
+            message:
+              stepUp.error === "SEC_AUTH_REQUIRED"
+                ? "此高危操作需要进行二次身份验证"
+                : "验证令牌无效或已过期，请重新验证",
+          },
+          { status: stepUp.status }
         );
-        const { payload } = await jwtVerify(verifyToken, JWT_SECRET);
-        if (!payload.verified || payload.userId !== userId || payload.action !== "delete_workspace") {
-          return NextResponse.json({ error: "SEC_AUTH_INVALID", message: "验证令牌不匹配，请重新验证" }, { status: 403 });
-        }
-      } catch (err) {
-        return NextResponse.json({ error: "SEC_AUTH_EXPIRED", message: "验证令牌已过期，请重新验证" }, { status: 403 });
       }
 
       // 删除工作空间

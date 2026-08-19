@@ -5,6 +5,10 @@ import { Sparkles } from "lucide-react";
 
 interface UserGreetingProps {
   user: any;
+  personalWorkspace?: any;
+  needsPersonalWorkspace?: boolean;
+  onEnterPersonal?: () => void;
+  onCreatePersonal?: () => void;
 }
 
 export default function UserGreeting({

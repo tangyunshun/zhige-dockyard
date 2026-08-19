@@ -21,6 +21,7 @@ interface Workspace {
   name: string;
   type: "PERSONAL" | "ENTERPRISE";
   isCurrent: boolean;
+  role?: string;
 }
 
 interface AppContextType {

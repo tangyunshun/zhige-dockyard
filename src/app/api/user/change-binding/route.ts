@@ -1,6 +1,8 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
+import { addNotification } from "@/lib/notifications-store";
+import { assertCSRF } from "@/lib/csrf";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
@@ -12,6 +14,12 @@ const JWT_SECRET = new TextEncoder().encode(
  */
 export async function POST(request: NextRequest) {
   try {
+    // I-04 CSRF 防护
+    const csrf = assertCSRF(request);
+    if (!csrf.ok) {
+      return NextResponse.json({ error: "CSRF_INVALID", message: "请求来源校验失败" }, { status: 403 });
+    }
+
     const token = request.cookies.get("auth_token")?.value;
     if (!token) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
@@ -78,6 +86,18 @@ export async function POST(request: NextRequest) {
     });
 
     console.log(`[绑定变更] 用户 ${userId} 变更了${type === "phone" ? "手机号" : "邮箱"}，当前会话已下线`);
+
+    // I-02：绑定变更实时通知用户（防黑客静默攻击）
+    try {
+      addNotification(
+        userId,
+        `${type === "phone" ? "手机号" : "邮箱"}已变更`,
+        `您的${type === "phone" ? "手机号" : "邮箱"}绑定已被修改，所有设备已强制下线。若非本人操作，请立即联系客服。`,
+        "security",
+      );
+    } catch {
+      /* 通知失败不影响主流程 */
+    }
 
     // 清除Cookie
     const response = NextResponse.json({

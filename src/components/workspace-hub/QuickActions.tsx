@@ -7,7 +7,11 @@ import {
   HelpCircle
 } from "lucide-react";
 
-export default function QuickActions() {
+interface QuickActionsProps {
+  onJoinClick?: () => void;
+}
+
+export default function QuickActions(_props: QuickActionsProps) {
   return (
     <div className="bg-white/80 border border-white/90 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col gap-3.5 text-left">
       

@@ -328,7 +328,28 @@ export default function GlobalHeader() {
               <AvatarDropdown 
                 workspaceId={currentWorkspaceId}
                 workspaceType={currentWorkspace?.type}
-                userRole={currentWorkspace?.role}
+                userRole={
+                  (currentWorkspace?.role === "OWNER"
+                    ? "Owner"
+                    : currentWorkspace?.role === "ADMIN"
+                      ? "Admin"
+                      : currentWorkspace?.role === "COMPONENT_MANAGER"
+                        ? "ComponentAdmin"
+                        : currentWorkspace?.role === "KNOWLEDGE_MANAGER"
+                          ? "KnowledgeAdmin"
+                          : currentWorkspace?.role === "VIEWER"
+                            ? "Viewer"
+                            : currentWorkspace?.role === "MEMBER"
+                              ? "Member"
+                              : undefined) as
+                    | "Owner"
+                    | "Admin"
+                    | "ComponentAdmin"
+                    | "KnowledgeAdmin"
+                    | "Viewer"
+                    | "Member"
+                    | undefined
+                }
               />
             </div>
           )}

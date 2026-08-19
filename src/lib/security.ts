@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import fs from "fs";
 import path from "path";
+import { NextRequest } from "next/server";
 import { validateUser } from "@/lib/auth";
 import { jwtVerify } from "jose";
+import { getClientIP } from "@/lib/ip-risk";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production"
@@ -64,9 +66,10 @@ export async function isUserBanned(userId: string): Promise<{ banned: boolean; r
     select: { status: true, bannedUntil: true },
   });
 
-  if (user && user.status === "banned" && user.bannedUntil) {
-    if (user.bannedUntil > new Date()) {
-      return { banned: true, until: user.bannedUntil };
+  if (user && user.status === "banned") {
+    // status 为 banned：临时封禁（bannedUntil 在未来）或永久封禁（bannedUntil 为 null）
+    if (!user.bannedUntil || user.bannedUntil > new Date()) {
+      return { banned: true, until: user.bannedUntil ?? undefined };
     }
   }
 
@@ -497,9 +500,16 @@ export async function writeAuditLog(
   action: string,
   details: any,
   workspaceId?: string | null,
-  ipAddress?: string | null
+  ipAddress?: string | null,
+  request?: NextRequest
 ) {
   try {
+    // 若调用方未显式传入 IP，则尝试从请求头自动提取，保证审计日志记录操作者真实 IP
+    let finalIp = ipAddress || null;
+    if (!finalIp && request) {
+      finalIp = getClientIP(request);
+    }
+
     const randomId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     await prisma.operationlog.create({
       data: {
@@ -508,8 +518,8 @@ export async function writeAuditLog(
         workspaceId: workspaceId || null,
         action,
         resource: action.split(":")[0] || "system",
-        details: details ? JSON.stringify(details) : null,
-        ipAddress: ipAddress || null,
+        details: details ? JSON.stringify(details) : undefined,
+        ipAddress: finalIp || null,
       },
     });
   } catch (error) {

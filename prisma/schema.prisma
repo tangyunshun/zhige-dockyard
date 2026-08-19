@@ -68,6 +68,7 @@ model user {
   phone                                                    String?               @unique(map: "User_phone_key")
   qqUnionId                                                String?               @unique(map: "User_qqUnionId_key")
   refreshToken                                             String?
+  refreshTokenPrev                                         String?               @map("refresh_token_prev")
   refreshTokenExpiresAt                                    DateTime?
   status                                                   UserStatus            @default(active)
   wechatUnionId                                            String?               @unique(map: "User_wechatUnionId_key")
@@ -80,8 +81,12 @@ model user {
   bannedUntil                                              DateTime?             @map("banned_until")
   passwordChangedAt                                        DateTime?             @default(now()) @map("password_changed_at")
   deviceLimit                                              Int                   @default(3) @map("device_limit")
+  allowMultiDevice                                         Boolean               @default(true) @map("allow_multi_device")
+  lastActivityAt                                           DateTime?             @map("last_activity_at")
   lastLoginIp                                              String?               @map("last_login_ip")
+  lastLoginRegion                                          String?               @map("last_login_region")
   lastLoginDevice                                          String?               @map("last_login_device")
+  passwordExpireDate                                       DateTime?             @map("password_expire_date")
   ssoProvider                                              String?               @map("sso_provider")
   ssoOpenid                                                String?               @map("sso_openid")
   apikey                                                   apikey[]
@@ -99,9 +104,12 @@ model user {
   userdevice                                               userdevice[]
   workspacekickhistory                                     workspacekickhistory[]
   accountappeal                                            accountappeal[]
+  userfeedback                                             userfeedback[]
   tenant                                                   tenant?               @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
   usernotification                                         usernotification?
   userpreference                                           userpreference?
+  usersession                                              usersession[]
+  stepuptoken                                              stepuptoken[]
   workspacemember                                          workspacemember[]
 
   @@index([email], map: "User_email_idx")
@@ -406,7 +414,7 @@ model smscode {
 model systemdocument {
   id          String   @id
   title       String
-  content     String?
+  content     String?   @db.Text
   category    String
   tags        String?
   isPublished Boolean  @default(false)
@@ -475,6 +483,24 @@ model userpreference {
   user             user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserPreference_userId_fkey")
 
   @@index([userId], map: "UserPreference_userId_idx")
+}
+
+// 用户帮助反馈表：记录用户从"帮助与反馈"页面提交的意见反馈（含匿名提交）
+model userfeedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  type      String   @default("suggestion") // suggestion | bug | experience | other
+  title     String
+  content   String   @db.Text
+  contact   String?
+  status    String   @default("pending") // pending | processing | resolved | closed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      user?    @relation(fields: [userId], references: [id], onDelete: SetNull, map: "UserFeedback_userId_fkey")
+
+  @@index([userId], map: "UserFeedback_userId_idx")
+  @@index([status], map: "UserFeedback_status_idx")
+  @@index([createdAt], map: "UserFeedback_createdAt_idx")
 }
 
 model workspace {
@@ -678,6 +704,7 @@ model userdevice {
   os            String?
   ipAddress     String?
   lastActiveAt  DateTime  @default(now())
+  lastAccessTime DateTime @default(now()) @map("last_access_time")
   createdAt     DateTime  @default(now())
   isCurrent     Boolean   @default(false)
   user          user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserDevice_userId_fkey")
@@ -726,4 +753,62 @@ model accountappeal {
   @@index([status], map: "idx_status")
   @@index([createdAt], map: "idx_createdAt")
   @@map("AccountAppeal")
+}
+
+// ============ PRD v2.0 新增表 ============
+
+// I-03 数据库会话兜底表：即使 Redis 丢失，登录拦截器也能查此表拒绝过期 Token
+model usersession {
+  id                String   @id @default(cuid())
+  userId            String
+  deviceId          String
+  sessionToken      String   @unique @map("session_token")
+  refreshTokenHash  String   @map("refresh_token_hash")
+  absoluteExpireAt  DateTime @map("absolute_expire_at")
+  idleExpireAt      DateTime @map("idle_expire_at")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserSession_userId_fkey")
+
+  @@index([userId], map: "UserSession_userId_idx")
+  @@index([sessionToken], map: "UserSession_sessionToken_idx")
+  @@index([absoluteExpireAt], map: "UserSession_absoluteExpireAt_idx")
+  @@map("user_session")
+}
+
+// E-03 网关黑名单（IP/User）数据库兜底：PRD 原意用 Redis，本仓库以 MySQL 等价实现
+model gatewayblacklist {
+  id        String   @id @default(cuid())
+  type      String // "ip" | "user"
+  target    String // IP 地址 或 userId
+  reason    String?
+  expireAt  DateTime @map("expire_at")
+  createdAt DateTime @default(now())
+
+  @@index([type, target], map: "GatewayBlacklist_type_target_idx")
+  @@index([expireAt], map: "GatewayBlacklist_expireAt_idx")
+  @@map("gateway_blacklist")
+}
+
+// E-04 Step-up 二次鉴权临时令牌：PRD 原意存 Redis(3min)，本仓库以 MySQL 等价实现
+model stepuptoken {
+  id        String   @id @default(cuid())
+  userId    String
+  operation String
+  code      String
+  expireAt  DateTime @map("expire_at")
+  createdAt DateTime @default(now())
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "StepUpToken_userId_fkey")
+
+  @@index([userId, operation], map: "StepUpToken_userId_operation_idx")
+  @@index([expireAt], map: "StepUpToken_expireAt_idx")
+  @@map("stepup_token")
+}
+
+// G-02 系统维护模式持久化（替代进程内存变量，确保多实例一致）
+model systemconfig {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @updatedAt
+  @@map("system_config")
 }

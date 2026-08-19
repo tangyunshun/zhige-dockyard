@@ -1,9 +1,17 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { addNotification } from "@/lib/notifications-store";
+import { assertCSRF } from "@/lib/csrf";
 
 export async function POST(request: NextRequest) {
   try {
+    // I-04 CSRF 防护
+    const csrf = assertCSRF(request);
+    if (!csrf.ok) {
+      return NextResponse.json({ error: "CSRF_INVALID", message: "请求来源校验失败" }, { status: 403 });
+    }
+
     const userId = request.headers.get("Authorization")?.replace("Bearer ", "");
 
     if (!userId) {
@@ -89,6 +97,18 @@ export async function POST(request: NextRequest) {
     });
 
     console.log(`[密码修改] 用户 ${userId} 修改密码，所有终端已被强制下线`);
+
+    // I-02：密码被改实时通知用户（防黑客静默攻击）
+    try {
+      addNotification(
+        userId,
+        "密码已修改",
+        "您的账号密码已被修改，所有设备已强制下线。若非本人操作，请立即联系客服。",
+        "security",
+      );
+    } catch {
+      /* 通知失败不影响主流程 */
+    }
 
     // 清除Cookie
     const response = NextResponse.json({

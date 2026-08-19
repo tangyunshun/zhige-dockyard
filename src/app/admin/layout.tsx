@@ -27,6 +27,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
+import { UserInfo } from "@/contexts/UserContext";
 
 interface AdminMenuItem {
   icon: any;
@@ -150,7 +151,7 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const handleLogout = useLogout();
+  const { logout: handleLogout, confirmDialog } = useLogout();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -557,6 +558,9 @@ export default function AdminLayout({
         {/* 内容区 - 局部滚动 */}
         <div className="flex-1 overflow-y-auto p-6 min-h-0">{children}</div>
       </main>
+
+      {/* 退出登录二次确认弹窗 */}
+      {confirmDialog}
     </div>
   );
 }

@@ -50,7 +50,7 @@ export default function EnterpriseWorkspaceCard({
   const role = workspace.role || "MEMBER";
   const isOwner = role === "OWNER" || workspace.isOwner;
   const isAdmin = role === "ADMIN";
-  const isComponentAdmin = role === "COMPONENT_ADMIN" || role === "组件管理员";
+  const isComponentAdmin = false;
   const isMember = !isOwner && !isAdmin && !isComponentAdmin;
 
   // 点击外部关闭下拉菜单

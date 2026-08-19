@@ -166,6 +166,15 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
 
     if (role !== undefined) {
       updateData.role = role;
+      // E-02：角色变更（普通<->管理员）立即删除该用户所有设备的 RT，
+      // 下次请求时跳转登录以刷新 RBAC 权限缓存。
+      if (role !== targetUser.role) {
+        updateData.sessionToken = null;
+        updateData.sessionExpiresAt = null;
+        updateData.refreshToken = null;
+        updateData.refreshTokenExpiresAt = null;
+        updateData.lastForcedLogoutAt = new Date();
+      }
     }
 
     // 更新用户状态
@@ -176,7 +185,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
 
     // 记录高危审计日志并持久化落库
     const auditAction = isBanAction ? "user:ban" : "user:update";
-    await writeAuditLog(adminId, auditAction, { targetUserId: userId, updates: updateData });
+    await writeAuditLog(adminId, auditAction, { targetUserId: userId, updates: updateData }, null, null, request);
 
     console.log(
       `[修改用户状态/角色] 管理员 ${adminId} 对用户 ${userId} 执行了 ${auditAction}。更新数据为:`,

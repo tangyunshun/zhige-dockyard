@@ -4,11 +4,12 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { ArrowUp } from "lucide-react";
 import { AppProvider } from "@/contexts/AppContext";
+import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import RouterGuards from "@/components/RouterGuards";
 import GlobalHeader from "@/components/GlobalHeader";
 import { ToastProvider } from "@/components/Toast";
 import AuthCheck from "@/components/AuthCheck";
-import { ActivityMonitor } from "@/components/ActivityMonitor";
+import ActivityMonitor from "@/components/ActivityMonitor";
 import { ResponsiveProvider } from "@/contexts/ResponsiveContext";
 
 export default function AppLayout({
@@ -48,6 +49,8 @@ export default function AppLayout({
   return (
     <ResponsiveProvider>
       <AppProvider>
+        {/* 全局工作空间上下文：WorkspaceKickoutGuard 等组件依赖 useWorkspace，必须提供 Provider */}
+        <WorkspaceProvider>
         <ToastProvider>
           <AuthCheck>
             <RouterGuards>
@@ -90,6 +93,7 @@ export default function AppLayout({
           </AuthCheck>
           <ActivityMonitor />
         </ToastProvider>
+        </WorkspaceProvider>
       </AppProvider>
     </ResponsiveProvider>
   );

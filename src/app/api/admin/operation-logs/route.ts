@@ -84,11 +84,11 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // 高危操作数（删除类）
+      // 高危操作数（删除类 / 封禁类）
       prisma.operationlog.count({
         where: {
           ...where,
-          action: { in: ["DELETE", "DELETE_USER", "DELETE_COMPONENT", "DELETE_WORKSPACE"] },
+          action: { in: ["user:delete", "component:delete", "workspace:delete", "user:ban"] },
         },
       }),
     ]);

@@ -33,6 +33,7 @@ export default function UserProfilePage() {
   const [checkResults, setCheckResults] = useState<
     { item: string; status: string }[]
   >([]); // 检测结果
+  const [deletionCooldownDays, setDeletionCooldownDays] = useState(7); // 冷静期总天数（可配置）
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -62,6 +63,7 @@ export default function UserProfilePage() {
       if (res.ok) {
         const data = await res.json();
         setUserInfo(data.data);
+        setDeletionCooldownDays(data.deletionCooldownDays || 7);
         setFormData({
           name: data.data.name || "",
           email: data.data.email || "",
@@ -100,7 +102,7 @@ export default function UserProfilePage() {
 
       if (res.ok) {
         const data = await res.json();
-        const daysRemaining = data.daysRemaining || 7;
+        const daysRemaining = data.daysRemaining || deletionCooldownDays || 7;
         localStorage.removeItem("userId");
         document.cookie = "auth_token=; path=/; max-age=0";
         window.location.href = `/?deletion_pending=true&daysRemaining=${daysRemaining}`;
@@ -509,7 +511,8 @@ export default function UserProfilePage() {
                   </span>
                 </div>
                 <p className="text-blue-600 text-sm">
-                  注销后有 <span className="font-bold">7天冷静期</span>
+                  注销后有{" "}
+                  <span className="font-bold">{deletionCooldownDays}天冷静期</span>
                   ，期间可随时撤销注销申请恢复正常
                 </p>
               </div>

@@ -6,125 +6,105 @@ interface TokenRefreshState {
   isRefreshing: boolean;
   lastRefreshTime: number | null;
   retryCount: number;
+  /** 下次 AT 过期时间，用于提前静默刷新（A-06） */
+  accessTokenExpireAt: number | null;
 }
 
-const REFRESH_INTERVAL = 50 * 60 * 1000; // 50分钟
+// A-06：AT 有效期 5 分钟（来自后端 /refresh 的 expiresIn），提前 60 秒静默续期
+const AT_TTL_SECONDS = 5 * 60;
+const REFRESH_AHEAD_MS = 60 * 1000;
 const MAX_RETRY = 3;
 const RETRY_DELAY = 5000;
 
+function hasValidLocalSession(): boolean {
+  if (typeof window === "undefined") return false;
+  const hasUserId = localStorage.getItem("userId");
+  const cookies = document.cookie.split(";");
+  const hasToken = cookies.some((c) => {
+    const [name, value] = c.trim().split("=");
+    return name === "auth_token" && value && value.length > 0;
+  });
+  return !!hasUserId && hasToken;
+}
+
+function clearLocalSession() {
+  localStorage.removeItem("userId");
+  localStorage.removeItem("userRole");
+  localStorage.removeItem("auth_token");
+  localStorage.removeItem("userEmail");
+  localStorage.removeItem("userName");
+  sessionStorage.clear();
+  document.cookie = "auth_token=; path=/; max-age=0";
+  document.cookie = "session_token=; path=/; max-age=0";
+  document.cookie = "refresh_token=; path=/; max-age=0";
+}
+
 /**
- * Token无感刷新Hook
- *
- * 场景32：Token无感刷新
- *
- * 功能：
- * - 每50分钟自动刷新token
- * - 失败时自动重试（最多3次）
- * - 多标签页同步（通过BroadcastChannel）
+ * Token 无感刷新 Hook（A-06）
+ * - 基于后端返回的 expiresIn 提前 60s 静默续期，用户无感知
+ * - 失败时自动重试（最多 3 次）
+ * - 多标签页通过 BroadcastChannel 同步新 token
  */
 export function useTokenRefresh() {
   const stateRef = useRef<TokenRefreshState>({
     isRefreshing: false,
     lastRefreshTime: null,
     retryCount: 0,
+    accessTokenExpireAt: null,
   });
 
-  const refreshToken = useCallback(async () => {
+  const refreshToken = useCallback(async (): Promise<boolean> => {
     const { isRefreshing, retryCount } = stateRef.current;
 
     if (isRefreshing) {
-      console.log("[TokenRefresh] 正在刷新中，跳过本次请求");
       return false;
     }
-
-    const hasUserId =
-      typeof window !== "undefined" && localStorage.getItem("userId");
-    
-    // 检查有效的 cookie token（排除空值情况）
-    let hasValidToken = false;
-    if (typeof window !== "undefined") {
-      const cookies = document.cookie.split(";");
-      for (const cookie of cookies) {
-        const [name, value] = cookie.trim().split("=");
-        if (name === "auth_token" && value && value.length > 0) {
-          hasValidToken = true;
-          break;
-        }
-      }
-    }
-
-    if (!hasUserId || !hasValidToken) {
-      console.log("[TokenRefresh] 用户未登录，跳过刷新");
+    if (!hasValidLocalSession()) {
       return false;
     }
 
     stateRef.current.isRefreshing = true;
-    console.log("[TokenRefresh] 开始刷新token");
 
     try {
       const res = await fetch("/api/auth/refresh", {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
 
       if (res.ok) {
         const data = await res.json();
         if (data.token) {
-          // 更新本地存储的token
           localStorage.setItem("auth_token", data.token);
+          const expSeconds = data.expiresIn ?? AT_TTL_SECONDS;
+          stateRef.current.accessTokenExpireAt = Date.now() + expSeconds * 1000;
           stateRef.current.lastRefreshTime = Date.now();
           stateRef.current.retryCount = 0;
-          console.log("[TokenRefresh] token刷新成功");
 
-          // 广播到其他标签页（如果支持）
+          // 广播到其他标签页
           try {
             const channel = new BroadcastChannel("zhige-session-channel");
-            channel.postMessage({
-              type: "REFRESH_TOKEN",
-              payload: { token: data.token },
-            });
+            channel.postMessage({ type: "REFRESH_TOKEN", payload: { token: data.token } });
             channel.close();
-          } catch (e) {
-            console.log("[TokenRefresh] 无需同步其他标签页");
+          } catch {
+            /* 不支持 BroadcastChannel 时忽略 */
           }
-
           return true;
         }
       } else if (res.status === 401) {
-        console.log("[TokenRefresh] token无效，需要重新登录");
-        // 清除本地存储，让AuthCheck处理跳转
-        localStorage.removeItem("userId");
-        localStorage.removeItem("userRole");
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("userEmail");
-        localStorage.removeItem("userName");
-        sessionStorage.clear();
-        document.cookie = "auth_token=; path=/; max-age=0";
-        document.cookie = "session_token=; path=/; max-age=0";
-        document.cookie = "refresh_token=; path=/; max-age=0";
+        // RT 失效：清除本地，交由 AuthCheck 跳转登录（A-06 失败分支）
+        clearLocalSession();
         return false;
       } else {
         throw new Error(`Refresh failed with status ${res.status}`);
       }
     } catch (error) {
-      console.error("[TokenRefresh] 刷新token失败:", error);
-      
-      // 失败重试逻辑
+      console.error("[TokenRefresh] 刷新失败:", error);
       if (retryCount < MAX_RETRY) {
         stateRef.current.retryCount++;
-        console.log(
-          `[TokenRefresh] 将在 ${RETRY_DELAY / 1000}秒后重试 (${retryCount + 1}/${MAX_RETRY})`
-        );
         setTimeout(() => {
           refreshToken();
         }, RETRY_DELAY);
-      } else {
-        console.log(
-          "[TokenRefresh] 重试次数达到上限，停止刷新"
-        );
       }
     } finally {
       stateRef.current.isRefreshing = false;
@@ -133,33 +113,41 @@ export function useTokenRefresh() {
     return false;
   }, []);
 
+  // 监听其他标签页刷新结果，同步本地 token
   useEffect(() => {
-    // 立即尝试刷新一次，更新lastRefreshTime
-    const initialize = () => {
-      stateRef.current.lastRefreshTime = Date.now();
-    };
-    initialize();
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("zhige-session-channel");
+      channel.onmessage = (e) => {
+        if (e.data?.type === "REFRESH_TOKEN" && e.data?.payload?.token) {
+          localStorage.setItem("auth_token", e.data.payload.token);
+          const exp = (e.data?.payload?.expiresIn ?? AT_TTL_SECONDS) * 1000;
+          stateRef.current.accessTokenExpireAt = Date.now() + exp;
+        }
+      };
+    } catch {
+      /* 不支持时忽略 */
+    }
 
-    // 设置定时器，每50分钟刷新一次
+    // A-06：每 30s 检查一次，AT 即将过期（<60s）则静默续期
     const interval = setInterval(() => {
-      const { lastRefreshTime, isRefreshing } = stateRef.current;
+      const { accessTokenExpireAt, isRefreshing } = stateRef.current;
+      if (isRefreshing) return;
+      if (!hasValidLocalSession()) return;
       const now = Date.now();
-      
-      if (!isRefreshing && lastRefreshTime && now - lastRefreshTime >= REFRESH_INTERVAL) {
-        console.log("[TokenRefresh] 定时触发token刷新");
+      if (!accessTokenExpireAt || now >= accessTokenExpireAt - REFRESH_AHEAD_MS) {
         refreshToken();
       }
-    }, 60000); // 每分钟检查一次是否需要刷新
+    }, 30 * 1000);
 
     return () => {
       clearInterval(interval);
+      channel?.close();
     };
   }, [refreshToken]);
 
-  // 暴露手动刷新方法
-  return {
-    refreshToken,
-  };
+  return { refreshToken };
 }
 
 export default useTokenRefresh;
+

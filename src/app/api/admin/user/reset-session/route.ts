@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 写入操作审计日志
-    await writeAuditLog(adminId, "user:reset_session", { targetUserId: userId });
+    await writeAuditLog(adminId, "user:reset_session", { targetUserId: userId }, null, null, request);
 
     return NextResponse.json({
       success: true,

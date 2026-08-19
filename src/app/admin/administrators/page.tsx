@@ -402,7 +402,7 @@ export default function AdministratorsPage() {
         message={confirmDialog.message}
         type={confirmDialog.type}
         onConfirm={confirmDialog.onConfirm}
-        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+        onCancel={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
       />
     </div>
   );

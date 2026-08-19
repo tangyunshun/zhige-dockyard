@@ -54,7 +54,7 @@ interface User {
 
 export default function DocsPage() {
   const router = useRouter();
-  const handleLogout = useLogout();
+  const { logout, confirmDialog } = useLogout();
   const toast = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -98,7 +98,7 @@ export default function DocsPage() {
   // 精准拦截敏感操作
   const handleProtectedAction = (targetPath: string) => {
     if (!user) {
-      toast.info("登录后可查看和配置你的开发者资源", { id: "auth-guard" });
+      toast.info("登录后可查看和配置你的开发者资源");
       router.push(`/auth/login?redirect=${encodeURIComponent(targetPath)}`);
     } else {
       router.push(targetPath);
@@ -360,7 +360,8 @@ export default function DocsPage() {
         id: doc.id,
         title: doc.title,
         summary: doc.content || "暂无详情",
-        category: doc.tags || "动态归档"
+        category: doc.tags || "动态归档",
+        contentCode: doc.contentCode
       }));
 
     return {
@@ -662,6 +663,9 @@ export default function DocsPage() {
       </main>
       
       <Footer />
+
+      {/* 退出登录二次确认弹窗 */}
+      {confirmDialog}
     </div>
   );
 }

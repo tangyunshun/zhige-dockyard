@@ -46,7 +46,7 @@ export const derivePersonalState = (
 export function useWorkspaceHub() {
   const router = useRouter();
   const toast = useToast();
-  const handleLogoutHook = useLogout();
+  const { logout: handleLogoutHook } = useLogout();
 
   // 核心数据状态
   const [user, setUser] = useState<any>(null);

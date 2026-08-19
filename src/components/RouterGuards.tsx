@@ -66,7 +66,14 @@ export default function RouterGuards({
     // 认证页面：允许访问（登录和未登录用户都可以访问）
     if (isAuthRoute) {
       // 已登录用户访问登录/注册页，重定向到工作空间
-      if (userState.isLoggedIn && !pathname.startsWith("/auth/oauth-callback")) {
+      // 例外：/auth/cancel-deletion（D-02 注销冷静期撤销页）必须保持可访问。
+      // 若把注销中用户重定向到工作台，AuthCheck 会再次弹回撤销页，形成无限循环：
+      // 撤销页 → 工作台 → toast"请先撤销注销" → 撤销页 → …
+      if (
+        userState.isLoggedIn &&
+        pathname !== "/auth/cancel-deletion" &&
+        !pathname.startsWith("/auth/oauth-callback")
+      ) {
         router.replace("/workspace-hub");
       }
       return;

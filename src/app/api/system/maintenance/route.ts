@@ -1,27 +1,21 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
+import { setMaintenanceMode, isMaintenanceMode, getMaintenanceMessage } from "@/lib/maintenance";
 
 /**
- * 系统维护模式API
- * 用于查询和设置系统维护状态
+ * 系统维护模式API（PRD G-02：持久化到 DB，重启后仍生效）
  */
-
-// 缓存维护模式状态（实际应该用Redis或数据库）
-let maintenanceMode = false;
-let maintenanceStart: Date | null = null;
-let maintenanceEnd: Date | null = null;
-let maintenanceMessage = "系统正在维护中，请稍后再试";
 
 /**
  * 获取系统维护状态
  */
 export async function GET() {
+  const inMaintenance = await isMaintenanceMode();
+  const message = await getMaintenanceMessage();
   return NextResponse.json({
-    maintenanceMode,
-    maintenanceStart,
-    maintenanceEnd,
-    maintenanceMessage,
+    maintenanceMode: inMaintenance,
+    maintenanceMessage: message,
     currentTime: new Date().toISOString(),
   });
 }
@@ -45,27 +39,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "需要管理员权限" }, { status: 403 });
     }
 
-    const { enabled, start, end, message } = await request.json();
+    const { enabled, message } = await request.json();
+    const target = enabled ?? true;
 
-    maintenanceMode = enabled ?? true;
-    maintenanceStart = start ? new Date(start) : null;
-    maintenanceEnd = end ? new Date(end) : null;
-    maintenanceMessage = message || "系统正在维护中，请稍后再试";
+    await setMaintenanceMode(target);
+    if (message) {
+      await prisma.systemconfig.upsert({
+        where: { key: "maintenance_message" },
+        create: { key: "maintenance_message", value: message },
+        update: { value: message },
+      });
+    }
 
-    console.log(
-      `[系统维护] 管理员 ${adminId} 设置维护模式: ${maintenanceMode}, 结束时间: ${maintenanceEnd}`
-    );
+    console.log(`[系统维护] 管理员 ${adminId} 设置维护模式: ${target}`);
 
-    // 如果启用了维护模式，则强制断开所有非管理员用户的连接
-    if (maintenanceMode) {
+    // G-02：开启维护时，全局清空非管理员用户的会话（强制下线）
+    if (target) {
       const result = await prisma.user.updateMany({
         where: {
           role: {
             notIn: ["ADMIN", "SUPERADMIN", "SUPER_ADMIN", "admin", "superadmin", "super_admin"],
           },
-          sessionToken: {
-            not: null,
-          },
+          sessionToken: { not: null },
         },
         data: {
           sessionToken: null,
@@ -75,15 +70,13 @@ export async function POST(request: NextRequest) {
           lastForcedLogoutAt: new Date(),
         },
       });
-      console.log(`[系统维护] 维护开启，已强制清除 ${result.count} 个在线普通用户的会话 Token`);
+      console.log(`[系统维护] 维护开启，已强制清除 ${result.count} 个在线普通用户的会话`);
     }
 
     return NextResponse.json({
       success: true,
-      maintenanceMode,
-      maintenanceStart,
-      maintenanceEnd,
-      maintenanceMessage,
+      maintenanceMode: target,
+      maintenanceMessage: message || (await getMaintenanceMessage()),
     });
   } catch (error) {
     console.error("设置维护模式失败:", error);
@@ -110,16 +103,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "需要管理员权限" }, { status: 403 });
     }
 
-    maintenanceMode = false;
-    maintenanceStart = null;
-    maintenanceEnd = null;
-
+    await setMaintenanceMode(false);
     console.log(`[系统维护] 管理员 ${adminId} 关闭维护模式`);
 
-    return NextResponse.json({
-      success: true,
-      message: "维护模式已关闭",
-    });
+    return NextResponse.json({ success: true, message: "维护模式已关闭" });
   } catch (error) {
     console.error("关闭维护模式失败:", error);
     return NextResponse.json({ error: "操作失败" }, { status: 500 });
@@ -127,24 +114,10 @@ export async function DELETE(request: NextRequest) {
 }
 
 /**
- * 检查当前是否处于维护模式
+ * 供 check-maintenance 路由使用的同步检查
  */
-export function isInMaintenance(): { inMaintenance: boolean; message?: string } {
-  if (!maintenanceMode) {
-    return { inMaintenance: false };
-  }
-
-  // 检查是否在维护时间段内
-  const now = new Date();
-  if (maintenanceStart && now < maintenanceStart) {
-    return { inMaintenance: false };
-  }
-  if (maintenanceEnd && now > maintenanceEnd) {
-    return { inMaintenance: false };
-  }
-
-  return {
-    inMaintenance: true,
-    message: maintenanceMessage,
-  };
+export async function isInMaintenance(): Promise<{ inMaintenance: boolean; message?: string }> {
+  const inMaintenance = await isMaintenanceMode();
+  if (!inMaintenance) return { inMaintenance: false };
+  return { inMaintenance: true, message: await getMaintenanceMessage() };
 }

@@ -133,7 +133,7 @@ export async function PATCH(request: NextRequest) {
     });
 
     // 记录高危操作审计日志并持久化
-    await writeAuditLog(adminId, "user:update", { targetUserId: userId, updates: updateData });
+    await writeAuditLog(adminId, "user:update", { targetUserId: userId, updates: updateData }, null, null, request);
 
     console.log(
       `[更新用户状态/角色] 管理员 ${adminId} 对用户 ${userId} 执行了更新。数据为:`,
@@ -184,7 +184,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     // 记录审计
-    await writeAuditLog(adminId, "user:delete", { targetUserId });
+    await writeAuditLog(adminId, "user:delete", { targetUserId }, null, null, request);
 
     return NextResponse.json({
       success: true,

@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 记录高危操作审计日志
-    await writeAuditLog(userId, "component:create", { id: component.id, name: component.name });
+    await writeAuditLog(userId, "component:create", { id: component.id, name: component.name }, null, null, request);
 
     return NextResponse.json({
       success: true,
@@ -199,7 +199,7 @@ export async function PUT(request: NextRequest) {
     });
 
     // 记录高危操作审计日志
-    await writeAuditLog(userId, requiredPermission, { id: componentId, name: component.name, updates: body });
+    await writeAuditLog(userId, requiredPermission, { id: componentId, name: component.name, updates: body }, null, null, request);
 
     return NextResponse.json({
       success: true,
@@ -246,7 +246,7 @@ export async function DELETE(request: NextRequest) {
     });
 
     // 记录高危操作审计日志
-    await writeAuditLog(userId, "component:delete", { id: componentId, name: current?.name });
+    await writeAuditLog(userId, "component:delete", { id: componentId, name: current?.name }, null, null, request);
 
     return NextResponse.json({
       success: true,

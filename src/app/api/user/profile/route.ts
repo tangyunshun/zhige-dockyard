@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getDeletionCooldownDays } from "@/lib/account-deletion";
 
 // GET - 获取用户信息
 export async function GET(request: NextRequest) {
@@ -35,13 +36,12 @@ export async function GET(request: NextRequest) {
     let isPendingDeletion = false;
     let deletionDeadline: string | null = null;
     let daysRemaining: number | null = null;
+    let deletionCooldownDays: number | null = null;
 
+    // deletionRequestedAt 存的是冷静期截止日（申请时间 + 冷静期天数），直接与当前时间比较
     if (user.deletionRequestedAt) {
-      const deletionDate = new Date(user.deletionRequestedAt);
+      const deletionDeadlineDate = new Date(user.deletionRequestedAt);
       const now = new Date();
-      const deletionDeadlineDate = new Date(
-        deletionDate.getTime() + 7 * 24 * 60 * 60 * 1000,
-      );
 
       if (now < deletionDeadlineDate) {
         isPendingDeletion = true;
@@ -51,11 +51,15 @@ export async function GET(request: NextRequest) {
             (24 * 60 * 60 * 1000),
         );
       }
+
+      // 冷静期总天数（可配置，用于前端文案展示）
+      deletionCooldownDays = await getDeletionCooldownDays();
     }
 
     return NextResponse.json({
       success: true,
       data: user,
+      deletionCooldownDays,
       user: {
         isPendingDeletion,
         deletionDeadline,

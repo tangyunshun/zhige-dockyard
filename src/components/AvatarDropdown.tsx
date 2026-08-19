@@ -33,7 +33,7 @@ export default function AvatarDropdown({
   const { userState, setUserState } = useAppContext();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const handleLogout = useLogout();
+  const { logout: handleLogout, confirmDialog } = useLogout();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -239,6 +239,9 @@ export default function AvatarDropdown({
 
         </div>
       )}
+
+      {/* 退出登录二次确认弹窗 */}
+      {confirmDialog}
     </div>
   );
 }

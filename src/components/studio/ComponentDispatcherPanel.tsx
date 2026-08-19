@@ -117,6 +117,11 @@ export default function ComponentDispatcherPanel({
   const selectedWorkspaceName = selectedWorkspace ? selectedWorkspace.name : "默认空间";
   const isBound = selectedWorkspace ? (bindingStatusMap[selectedWorkspace.id] || false) : false;
 
+  // 进入目标工作空间研发页
+  const handleGoToWorkspace = (wsId: string) => {
+    router.push(`/workspace/${wsId}`);
+  };
+
   // 立即装配/使用中枢函数 (支持登录拦截与一键秒级装配跳转)
   const handleQuickUse = async () => {
     if (!comp) return;
@@ -266,11 +271,7 @@ export default function ComponentDispatcherPanel({
   const isFav = favorites.includes(comp.id);
   const media = getPhysicalDataMedia(comp.category);
 
-  // 2. 处理绑定/解绑切换动作
-  const handleToggleBind = async (workspaceId: string, workspaceName: string) => {
-    const wasBound = bindingStatusMap[workspaceId] || false;
-    
-    // �  return (
+    return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 overflow-hidden animate-in fade-in duration-200">
       {/* 背景遮罩 */}
       <div
@@ -303,7 +304,7 @@ export default function ComponentDispatcherPanel({
           <div className="flex items-center gap-2">
             {isLoggedIn && (
               <button
-                onClick={handleToggleFavorite}
+                onClick={() => toggleFavorite(comp.id)}
                 className={`w-8 h-8 rounded-full border flex items-center justify-center cursor-pointer transition-colors shadow-sm ${
                   isFav ? "border-amber-300 bg-amber-50 text-amber-500" : "border-slate-200 bg-white text-slate-400 hover:border-amber-500 hover:text-amber-500"
                 }`}
@@ -723,58 +724,6 @@ export default function ComponentDispatcherPanel({
             </div>
           </div>
           
-        </div>
-
-      </div>
-    </div>
-  );00 rounded-full border border-emerald-100 flex-shrink-0 font-black scale-90 flex items-center gap-0.5">
-                                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
-                                  已装配
-                                </span>
-                              ) : (
-                                <span className="text-[8px] px-1.5 py-0.2 bg-slate-50 text-slate-400 rounded-full border border-slate-200/60 flex-shrink-0 font-semibold scale-90">
-                                  未引进
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-bold mt-0.5 flex items-center gap-1.5">
-                              <span>算力余额:</span>
-                              <span className={tokenBalance < 100 ? "text-red-500 font-black" : "text-slate-600 font-black"}>
-                                {tokenBalance.toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 右侧智能行动区 */}
-                        <div className="flex items-center gap-2">
-                          {isProcessing ? (
-                            <div className="w-6 h-6 border-2 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin"></div>
-                          ) : (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedWorkspaceId(ws.id);
-                                setTimeout(handleQuickUse, 50);
-                              }}
-                              className={`h-8 px-3 text-[10px] font-black rounded-lg transition-all flex items-center gap-0.5 cursor-pointer shadow-sm border ${
-                                isSelected
-                                  ? "text-white bg-[#3182ce] border-[#3182ce] hover:bg-[#2b6cb0]"
-                                  : "text-slate-600 bg-white hover:bg-slate-50 border-slate-200"
-                              }`}
-                            >
-                              <span>{isWsBound ? "进入运行" : "装配并运行"}</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
         </div>
 
       </div>

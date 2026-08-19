@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 写入操作审计日志
-    await writeAuditLog(adminId, "user:ban", { targetUserId: userId, bannedUntil, reason });
+    await writeAuditLog(adminId, "user:ban", { targetUserId: userId, bannedUntil, reason }, null, null, request);
 
     return NextResponse.json({
       success: true,

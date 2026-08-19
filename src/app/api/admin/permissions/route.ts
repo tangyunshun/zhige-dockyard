@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       targetUserId,
       targetUserName: targetUser.name,
       grantedPermissions: permissions
-    });
+    }, null, null, request);
 
     return NextResponse.json({
       success: true,

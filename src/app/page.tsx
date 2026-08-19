@@ -11,6 +11,7 @@ import EnterpriseSecurity from "@/components/EnterpriseSecurity";
 import CTA from "@/components/CTA";
 import Footer from "@/components/Footer";
 import DemoRequestModal from "@/components/DemoRequestModal";
+import LogoutConfirmDialog from "@/components/LogoutConfirmDialog";
 import {
   Clock,
   AlertTriangle,
@@ -27,6 +28,7 @@ export default function Home() {
   const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number>(0);
   const [countdown, setCountdown] = useState<number>(0);
   const [cancelling, setCancelling] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const cancellingRef = useRef(false);
 
   useEffect(() => {
@@ -155,12 +157,15 @@ export default function Home() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // 清除所有数据
-        localStorage.clear();
-        sessionStorage.clear();
-        document.cookie = "auth_token=; path=/; max-age=0";
-        // 跳转到首页（未登录状态）
-        window.location.href = "/";
+        // 撤销成功：保持登录态，直接进入工作台继续操作（不再清除登录状态）
+        toast.success("撤销成功，您的账号已恢复正常");
+        router.replace("/workspace-hub");
+      } else if (res.status === 401) {
+        // 会话已失效（如注销申请提交后 cookie 已被清除），引导重新登录，
+        // 登录成功后会自动进入撤销注销流程
+        cancellingRef.current = false;
+        setCancelling(false);
+        window.location.href = "/auth/login";
       } else {
         // 失败，重置状态
         cancellingRef.current = false;
@@ -287,7 +292,7 @@ export default function Home() {
                 )}
               </button>
               <button
-                onClick={handleLogout}
+                onClick={() => setShowLogoutConfirm(true)}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-medium hover:bg-slate-50 transition-all text-sm"
               >
                 <LogOut className="w-4 h-4" />
@@ -301,6 +306,13 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* 退出登录二次确认弹窗 */}
+      <LogoutConfirmDialog
+        isOpen={showLogoutConfirm}
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={handleLogout}
+      />
     </main>
   );
 }
