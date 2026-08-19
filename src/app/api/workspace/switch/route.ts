@@ -39,10 +39,19 @@ export async function POST(request: NextRequest) {
     });
 
     if (!membership) {
-      return NextResponse.json(
-        { message: '无权访问该工作空间' },
-        { status: 403 }
-      );
+      // 兜底：owner 即使缺失 workspacemember 记录也视为有效成员
+      //（与 /api/workspace/list、/api/workspace/[id]/my-membership 的 owner 兜底逻辑保持一致），
+      // 避免 owner 因成员记录缺失被误判为无权访问
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { ownerId: true },
+      });
+      if (!workspace || workspace.ownerId !== userId) {
+        return NextResponse.json(
+          { message: '无权访问该工作空间' },
+          { status: 403 }
+        );
+      }
     }
 
     // 更新用户的 lastWorkspaceId
