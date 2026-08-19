@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { getAdminPermissions } = require("@/lib/security");
-    const permissions = getAdminPermissions(user.id);
+    const permissions = await getAdminPermissions(user.id);
 
     // 密码过期检测：企业安全策略要求每 90 天修改密码
     const PASSWORD_EXPIRY_DAYS = 90;

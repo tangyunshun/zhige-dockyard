@@ -44,6 +44,8 @@ function ForgotPasswordForm() {
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // P0-1 修复：保存验证码校验通过后下发的一次性 resetToken
+  const [resetToken, setResetToken] = useState<string>("");
 
   const [formData, setFormData] = useState({
     account: "",
@@ -404,6 +406,11 @@ function ForgotPasswordForm() {
         return;
       }
 
+      // P0-1 修复：保存后端下发的一次性 resetToken，供后续改密使用
+      if (data.resetToken) {
+        setResetToken(data.resetToken);
+      }
+
       setStep(3 as Step);
     } catch (error) {
       console.error("Verify code error:", error);
@@ -451,6 +458,7 @@ function ForgotPasswordForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           account: formData.account,
+          resetToken,
           newPassword: formData.password,
         }),
       });

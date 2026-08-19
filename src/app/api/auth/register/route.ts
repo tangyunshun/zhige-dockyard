@@ -2,7 +2,74 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
+import { SignJWT } from "jose";
 import crypto from "crypto";
+
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "your-secret-key-change-in-production"
+);
+
+/**
+ * P2-2 优化：注册成功后自动签发会话，免去用户二次登录
+ * 复用登录接口的会话签发模式（sessionToken + JWT + Cookie）
+ */
+async function issueSessionAndRespond(userId: string, email?: string | null, role = "user") {
+  const now = new Date();
+  const sessionToken = crypto.randomUUID();
+  const sessionExpiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000); // 8 小时
+  const refreshToken = crypto.randomUUID();
+  const refreshTokenExpiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+
+  // 更新会话字段
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      sessionToken,
+      sessionExpiresAt,
+      refreshToken,
+      lastLoginAt: now,
+      lastActivityAt: now,
+    },
+  });
+
+  // 签发 JWT（8 小时）
+  const token = await new SignJWT({
+    userId,
+    email: email || undefined,
+    role,
+    sessionToken,
+    issuedAt: now.toISOString(),
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("8h")
+    .sign(JWT_SECRET);
+
+  const response = NextResponse.json({
+    success: true,
+    message: "注册成功，已自动登录",
+    token,
+    refreshToken,
+    user: { id: userId, email: email || undefined, role },
+    redirectUrl: "/workspace-hub",
+  });
+
+  response.cookies.set("auth_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 8 * 60 * 60,
+  });
+  response.cookies.set("userId", userId, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 8 * 60 * 60,
+  });
+
+  return response;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,16 +147,8 @@ export async function POST(request: NextRequest) {
       // 删除验证码
       deleteSmsCode(phone);
 
-      return NextResponse.json({
-        success: true,
-        message: "注册成功，请登录",
-        user: {
-          id: user.id,
-          phone: user.phone,
-          name: user.name,
-        },
-        redirectUrl: "/auth/login",
-      });
+      // P2-2 优化：注册成功后自动签发会话，免去二次登录
+      return await issueSessionAndRespond(user.id, user.email, user.role);
     } else if (accountType === "username") {
       // 用户名注册
       if (!username || !/^[a-zA-Z0-9_@#\-]{3,20}$/.test(username)) {
@@ -180,16 +239,8 @@ export async function POST(request: NextRequest) {
       // 删除验证码
       deleteSmsCode(phone);
 
-      return NextResponse.json({
-        success: true,
-        message: "注册成功，请登录",
-        user: {
-          id: user.id,
-          phone: user.phone,
-          name: user.name,
-        },
-        redirectUrl: "/auth/login",
-      });
+      // P2-2 优化：注册成功后自动签发会话，免去二次登录
+      return await issueSessionAndRespond(user.id, user.email, user.role);
     } else if (accountType === "email") {
       // 邮箱注册
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -275,17 +326,8 @@ export async function POST(request: NextRequest) {
       // 删除验证码
       deleteSmsCode(phone);
 
-      return NextResponse.json({
-        success: true,
-        message: "注册成功，请登录",
-        user: {
-          id: user.id,
-          phone: user.phone,
-          name: user.name,
-          email: user.email,
-        },
-        redirectUrl: "/auth/login",
-      });
+      // P2-2 优化：注册成功后自动签发会话，免去二次登录
+      return await issueSessionAndRespond(user.id, user.email, user.role);
     } else {
       return NextResponse.json(
         { message: "不支持的注册方式" },

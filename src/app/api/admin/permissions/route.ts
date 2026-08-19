@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // 1. 如果传入了 userId，返回该特定管理员的权限包
     if (userId) {
-      const permissions = getAdminPermissions(userId);
+      const permissions = await getAdminPermissions(userId);
       return NextResponse.json({ success: true, data: permissions });
     }
 
@@ -52,13 +52,16 @@ export async function GET(request: NextRequest) {
     });
 
 
-    const formattedAdmins = admins.map(admin => ({
-      ...admin,
-      permissions: getAdminPermissions(admin.id),
-      isSuper: getCleanRole(admin.role) === "SUPER_ADMIN"
-    }));
+    // 2. 批量获取每个管理员的权限包（P2-3：已改为入库+缓存，但仍需 await）
+    const adminsWithPerms = await Promise.all(
+      admins.map(async (admin) => ({
+        ...admin,
+        permissions: await getAdminPermissions(admin.id),
+        isSuper: getCleanRole(admin.role) === "SUPER_ADMIN"
+      }))
+    );
 
-    return NextResponse.json({ success: true, data: formattedAdmins });
+    return NextResponse.json({ success: true, data: adminsWithPerms });
   } catch (error) {
     console.error("Get admin permissions error:", error);
     return NextResponse.json(
@@ -104,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 执行保存
-    const success = saveAdminPermissions(targetUserId, permissions);
+    const success = await saveAdminPermissions(targetUserId, permissions);
     if (!success) {
       return NextResponse.json({ error: "保存权限包持久化配置文件失败" }, { status: 500 });
     }

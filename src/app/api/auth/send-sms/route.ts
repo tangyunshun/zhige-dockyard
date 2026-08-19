@@ -15,10 +15,16 @@ export async function POST(request: NextRequest) {
     // 生成验证码
     const code = generateSmsCode();
 
-    // 存储验证码
-    storeSmsCode(phone, code);
+    // 存储验证码（含发送频率与每日上限限流）
+    const result = storeSmsCode(phone, code);
+    if (!result.ok) {
+      return NextResponse.json(
+        { message: result.error || "发送失败" },
+        { status: 429 }
+      );
+    }
 
-    // TODO: 发送短信
+    // TODO: 接入真实短信服务商
     console.log(`发送短信验证码到 ${phone}: ${code}`);
 
     return NextResponse.json({

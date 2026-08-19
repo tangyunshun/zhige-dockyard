@@ -226,6 +226,72 @@ export async function securityCheck(
 const PERMISSIONS_FILE = path.join(process.cwd(), "src/lib/admin-permissions.json");
 
 /**
+ * P2-3 优化：平台管理员权限包入库（systemconfig）+ 5min 内存缓存
+ * 兼容策略：DB 为准，JSON 文件作为一次性迁移源与兜底
+ */
+const ADMIN_PERMISSIONS_CONFIG_KEY = "platform_admin_permissions";
+const ADMIN_PERMISSIONS_CACHE_MS = 5 * 60 * 1000;
+
+interface PermissionsCache {
+  mapping: Record<string, string[]>;
+  fetchedAt: number;
+}
+
+const globalForPerms = globalThis as unknown as {
+  adminPermissionsCache: PermissionsCache | null;
+};
+
+async function loadPermissionsMapping(): Promise<Record<string, string[]>> {
+  const now = Date.now();
+  const cache = globalForPerms.adminPermissionsCache;
+  if (cache && now - cache.fetchedAt < ADMIN_PERMISSIONS_CACHE_MS) {
+    return cache.mapping;
+  }
+
+  let mapping: Record<string, string[]> = {};
+  try {
+    const row = await prisma.systemconfig.findUnique({
+      where: { key: ADMIN_PERMISSIONS_CONFIG_KEY },
+    });
+    if (row?.value) {
+      mapping = JSON.parse(row.value);
+    } else if (fs.existsSync(PERMISSIONS_FILE)) {
+      // DB 无记录时，从 JSON 文件一次性迁移
+      const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
+      mapping = JSON.parse(data);
+      await prisma.systemconfig.upsert({
+        where: { key: ADMIN_PERMISSIONS_CONFIG_KEY },
+        create: {
+          key: ADMIN_PERMISSIONS_CONFIG_KEY,
+          value: JSON.stringify(mapping),
+        },
+        update: {
+          value: JSON.stringify(mapping),
+        },
+      });
+      console.log("[权限] 已将 admin-permissions.json 迁移至 systemconfig 表");
+    }
+  } catch (error) {
+    console.error("读取管理员权限包失败:", error);
+    try {
+      if (fs.existsSync(PERMISSIONS_FILE)) {
+        const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
+        mapping = JSON.parse(data);
+      }
+    } catch {
+      // 忽略
+    }
+  }
+
+  globalForPerms.adminPermissionsCache = { mapping, fetchedAt: now };
+  return mapping;
+}
+
+function invalidatePermissionsCache(): void {
+  globalForPerms.adminPermissionsCache = null;
+}
+
+/**
  * 平台角色归一化转换
  * 兼容旧数据中各种拼写和大小写
  */
@@ -238,36 +304,34 @@ export function normalizePlatformRole(role: string | null | undefined): "USER" |
 }
 
 /**
- * 读取普通管理员的权限包列表
+ * 读取普通管理员的权限包列表（P2-3：入库 + 缓存）
  */
-export function getAdminPermissions(userId: string): string[] {
-  try {
-    if (!fs.existsSync(PERMISSIONS_FILE)) {
-      // 自动创建空的权限配置文件
-      fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify({}, null, 2));
-      return [];
-    }
-    const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
-    const mapping = JSON.parse(data);
-    return mapping[userId] || [];
-  } catch (error) {
-    console.error("读取管理员权限包失败:", error);
-    return [];
-  }
+export async function getAdminPermissions(userId: string): Promise<string[]> {
+  const mapping = await loadPermissionsMapping();
+  return mapping[userId] || [];
 }
 
 /**
- * 保存/更新普通管理员的权限包列表
+ * 保存/更新普通管理员的权限包列表（P2-3：写入 DB）
  */
-export function saveAdminPermissions(userId: string, permissions: string[]): boolean {
+export async function saveAdminPermissions(
+  userId: string,
+  permissions: string[]
+): Promise<boolean> {
   try {
-    let mapping: Record<string, string[]> = {};
-    if (fs.existsSync(PERMISSIONS_FILE)) {
-      const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
-      mapping = JSON.parse(data);
-    }
+    const mapping = await loadPermissionsMapping();
     mapping[userId] = permissions;
-    fs.writeFileSync(PERMISSIONS_FILE, JSON.stringify(mapping, null, 2));
+    await prisma.systemconfig.upsert({
+      where: { key: ADMIN_PERMISSIONS_CONFIG_KEY },
+      create: {
+        key: ADMIN_PERMISSIONS_CONFIG_KEY,
+        value: JSON.stringify(mapping),
+      },
+      update: {
+        value: JSON.stringify(mapping),
+      },
+    });
+    invalidatePermissionsCache();
     return true;
   } catch (error) {
     console.error("保存管理员权限包失败:", error);
@@ -353,7 +417,7 @@ export async function requirePlatformAuth(
     if (!requiredPermission) {
       return { authorized: true, user }; // 仅要求管理员权限
     }
-    const permissions = getAdminPermissions(user.id);
+    const permissions = await getAdminPermissions(user.id);
     if (permissions.includes(requiredPermission)) {
       return { authorized: true, user };
     }
@@ -410,6 +474,83 @@ export async function getLogicalWorkspaceRole(
   if (physicalRole === "OWNER") return "OWNER";
   if (physicalRole === "ADMIN") return "ADMIN";
   return "MEMBER";
+}
+
+/**
+ * P1-3 优化：批量计算用户在多个工作空间的逻辑角色
+ * 替代在循环里逐个调用 getLogicalWorkspaceRole 造成的 N+1 查询
+ *
+ * @param userId 用户 ID
+ * @param workspaceIds 工作空间 ID 列表
+ * @returns Map<workspaceId, logicalRole>
+ */
+export async function getLogicalWorkspaceRolesBatch(
+  userId: string,
+  workspaceIds: string[]
+): Promise<Map<string, "OWNER" | "ADMIN" | "COMPONENT_MANAGER" | "KNOWLEDGE_MANAGER" | "MEMBER" | "VIEWER" | null>> {
+  const result = new Map<string, "OWNER" | "ADMIN" | "COMPONENT_MANAGER" | "KNOWLEDGE_MANAGER" | "MEMBER" | "VIEWER" | null>();
+  if (workspaceIds.length === 0) return result;
+
+  // 1. 一次性查询所有工作空间的 ownerId
+  const workspaces = await prisma.workspace.findMany({
+    where: { id: { in: workspaceIds } },
+    select: { id: true, ownerId: true },
+  });
+  const workspaceMap = new Map(workspaces.map(w => [w.id, w.ownerId]));
+
+  // 2. 一次性查询用户在这些空间的成员记录
+  const members = await prisma.workspacemember.findMany({
+    where: { userId, workspaceId: { in: workspaceIds } },
+  });
+  const memberMap = new Map(members.map(m => [m.workspaceId, m]));
+
+  // 3. 一次性查询用户在这些空间的岗位记录
+  const posts = await prisma.postmember.findMany({
+    where: { userId, workspaceId: { in: workspaceIds } },
+    include: { post: true },
+  });
+  // 按 workspaceId 分组
+  const postsByWorkspace = new Map<string, string[]>();
+  for (const p of posts) {
+    const arr = postsByWorkspace.get(p.workspaceId) || [];
+    arr.push(p.post.name.toUpperCase());
+    postsByWorkspace.set(p.workspaceId, arr);
+  }
+
+  for (const wsId of workspaceIds) {
+    const ownerId = workspaceMap.get(wsId);
+    if (ownerId === userId) {
+      result.set(wsId, "OWNER");
+      continue;
+    }
+
+    const member = memberMap.get(wsId);
+    if (!member) {
+      result.set(wsId, null);
+      continue;
+    }
+
+    const postNames = postsByWorkspace.get(wsId) || [];
+    if (postNames.includes("COMPONENT_MANAGER") || postNames.includes("COMPONENT_ADMIN")) {
+      result.set(wsId, "COMPONENT_MANAGER");
+      continue;
+    }
+    if (postNames.includes("KNOWLEDGE_MANAGER") || postNames.includes("KNOWLEDGE_ADMIN")) {
+      result.set(wsId, "KNOWLEDGE_MANAGER");
+      continue;
+    }
+    if (postNames.includes("VIEWER") || postNames.includes("WORKSPACE_VIEWER")) {
+      result.set(wsId, "VIEWER");
+      continue;
+    }
+
+    const physicalRole = member.role.toUpperCase();
+    if (physicalRole === "OWNER") result.set(wsId, "OWNER");
+    else if (physicalRole === "ADMIN") result.set(wsId, "ADMIN");
+    else result.set(wsId, "MEMBER");
+  }
+
+  return result;
 }
 
 /**

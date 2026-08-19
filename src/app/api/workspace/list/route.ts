@@ -4,6 +4,26 @@ import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 
+// P1-2 优化：自愈逻辑节流缓存，避免每次 list 都触发大量写操作
+// 同一用户 5 分钟内只跑一次自愈
+const SELF_HEAL_THROTTLE_MS = 5 * 60 * 1000;
+const globalForHeal = globalThis as unknown as {
+  workspaceSelfHealCache: Map<string, number>;
+};
+const selfHealCache: Map<string, number> =
+  globalForHeal.workspaceSelfHealCache || new Map();
+if (!globalForHeal.workspaceSelfHealCache) {
+  globalForHeal.workspaceSelfHealCache = selfHealCache;
+}
+
+function shouldRunSelfHeal(userId: string): boolean {
+  const now = Date.now();
+  const last = selfHealCache.get(userId) || 0;
+  if (now - last < SELF_HEAL_THROTTLE_MS) return false;
+  selfHealCache.set(userId, now);
+  return true;
+}
+
 export async function GET(request: NextRequest) {
   try {
     // 验证用户身份
@@ -60,16 +80,18 @@ export async function GET(request: NextRequest) {
     // 合并两个结果集，去重
     const workspaceMap = new Map<string, any>();
     
-    // 添加通过 workspacemember 查询到的工作空间
-    const { getLogicalWorkspaceRole } = require("@/lib/security");
+    // P1-3 优化：批量预取逻辑角色，替代循环内逐个查询造成的 N+1
+    const { getLogicalWorkspaceRolesBatch } = require("@/lib/security");
+    const memberWorkspaceIds = workspaceMembers.map((m: any) => m.workspace.id);
+    const roleMap = await getLogicalWorkspaceRolesBatch(userId, memberWorkspaceIds);
     
     for (const member of workspaceMembers) {
-      const logicalRole = await getLogicalWorkspaceRole(userId, member.workspace.id);
+      const logicalRole = roleMap.get(member.workspace.id) || member.role;
       workspaceMap.set(member.workspace.id, {
         id: member.workspace.id,
         name: member.workspace.name,
         type: member.workspace.type as "PERSONAL" | "ENTERPRISE",
-        role: logicalRole || member.role,
+        role: logicalRole,
         logo: member.workspace.logo,
         description: member.workspace.description,
         createdAt: member.workspace.createdAt,
@@ -93,6 +115,8 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    // P1-2 优化：自愈与自动创建逻辑加 5 分钟节流，避免每次 list 都触发大量写操作
+    if (shouldRunSelfHeal(userId)) {
     // 检测并修复多重个人工作空间脏数据漏洞 (自愈哨兵)
     const allPersonalWorkspaces = Array.from(workspaceMap.values()).filter(
       (ws: any) => ws.type === "PERSONAL" && ws.role === "OWNER"
@@ -268,6 +292,7 @@ export async function GET(request: NextRequest) {
         });
       }
     }
+    } // end P1-2 自愈节流
 
     // 获取每个工作空间的组件数量
     const workspacesWithComponents = await Promise.all(
