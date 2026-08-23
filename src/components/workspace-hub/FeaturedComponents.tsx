@@ -2,7 +2,7 @@
 
 import React from "react";
 import { HelpCircle } from "lucide-react";
-import { getComponentById } from "@/constants/components";
+import { useAppContext } from "@/contexts/AppContext";
 
 interface FeaturedComponentsProps {
   topComponents?: any[];
@@ -31,14 +31,7 @@ export default function FeaturedComponents({
   totalMyWorkspacesCount = 1,
 }: FeaturedComponentsProps) {
 
-  // 1. 系统静态精选高频推荐（Fallback，标明推荐ID）
-  const fallbackComponents = [
-    { id: "C01", tag: "🔥 30天调用 142 次", tagColor: "bg-blue-50 text-[#2b6cb0] border-none", borderHover: "hover:border-[#2b6cb0]/25" },
-    { id: "C03", tag: "🔥 30天调用 96 次", tagColor: "bg-blue-50 text-[#2b6cb0] border-none", borderHover: "hover:border-[#2b6cb0]/25" },
-    { id: "C02", tag: "🔥 30天调用 78 次", tagColor: "bg-orange-50 text-orange-600 border-none", borderHover: "hover:border-orange-200" }
-  ];
-
-  // 映射真实历史数据，并依据 useCount 或默认高频规则显式呈现
+  // 映射真实历史数据（30 天调用频次与全网装载数均来自数据库聚合）
   const getDisplayComponents = () => {
     if (topComponents && topComponents.length > 0) {
       return topComponents.slice(0, 3).map((item: any, idx: number) => {
@@ -56,19 +49,28 @@ export default function FeaturedComponents({
           borderHover = "hover:border-emerald-200";
         }
 
-        const displayUseCount = item.useCount || (120 - idx * 22);
+        const displayUseCount = item.callCount || 0;
 
         return {
           id: item.id || item.componentId,
-          tag: `🔥 30天调用 ${displayUseCount} 次`,
+          tag: item.isFallback
+            ? displayUseCount > 0
+              ? `🔥 全网热门 · 30天 ${displayUseCount} 次`
+              : "🔥 全网热门推荐"
+            : displayUseCount > 0
+              ? `🔥 30天调用 ${displayUseCount} 次`
+              : "📊 30天暂无调用",
           tagColor,
           borderHover,
+          globalWorkspaceCount: item.globalWorkspaceCount || 0,
         };
       });
     }
 
-    return fallbackComponents;
+    return [];
   };
+
+  const { componentCatalog } = useAppContext();
 
   const list = getDisplayComponents();
 
@@ -87,7 +89,7 @@ export default function FeaturedComponents({
               <div className="relative group/rule cursor-help flex items-center justify-center">
                 <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-[#2b6cb0] transition-colors" />
                 <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 scale-95 opacity-0 pointer-events-none group-hover/rule:scale-100 group-hover/rule:opacity-100 transition-all duration-200 bg-slate-800 text-white text-[10px] leading-relaxed p-3 rounded-lg shadow-xl w-60 z-50 font-bold">
-                  📝 <strong className="text-blue-400">推荐算法规则说明</strong>：
+                  📝 <strong className="text-[#63b3ed]">推荐算法规则说明</strong>：
                   <span className="block mt-1 font-semibold text-slate-300">
                     基于您及所在团队在各空间内对组件在过去 30天内触发调用的累加频次进行降序排列，降序为您推荐排行前三的最热组件。
                   </span>
@@ -102,9 +104,14 @@ export default function FeaturedComponents({
       </div>
 
       {/* 横向平铺排列 */}
+      {list.length === 0 && (
+        <div className="text-xs text-slate-400 font-semibold text-center py-8 bg-slate-50/50 rounded-xl border border-slate-200/60">
+          暂无 30 天组件调用数据，快去空间里使用组件吧
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {list.map((item) => {
-          const realComp = getComponentById(item.id);
+          const realComp = componentCatalog.find((c) => c.id === item.id);
           if (!realComp) return null;
 
           const names = boundNames?.[item.id] || [];
@@ -127,7 +134,8 @@ export default function FeaturedComponents({
 
                   {/* 卡片文字 */}
                   <div className="min-w-0">
-                    <h4 className="text-[13px] font-black text-slate-800 group-hover:text-[#2b6cb0] transition-colors line-clamp-1 leading-none" title={realComp.name}>
+                    <h4 className="text-[13px] font-black text-slate-800 group-hover:text-[#2b6cb0] transition-colors line-clamp-1 leading-none" title={`${realComp.id} ${realComp.name}`}>
+                      <span className="font-mono text-[10px] text-slate-400 font-bold mr-1.5">{realComp.id}</span>
                       {realComp.name}
                     </h4>
                     <p 
@@ -139,11 +147,11 @@ export default function FeaturedComponents({
                   </div>
                   
                   <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
-                    {/* 全网徽标 */}
+                    {/* 全网徽标（真实统计：全平台有多少个不同空间使用过该组件） */}
                     <span 
                       className="px-1.5 py-0.5 bg-slate-100 text-slate-500 border border-slate-200/50 rounded text-[9px] font-black shrink-0 select-none"
                     >
-                      🌍 全网 {120 + (parseInt(item.id.substring(1)) * 47) % 300} 空间装载
+                      🌍 全网 {item.globalWorkspaceCount} 空间装载
                     </span>
                     
                     {/* 我的徽标 */}
@@ -159,7 +167,7 @@ export default function FeaturedComponents({
                 </div>
 
                 {/* 装配操作 */}
-                <div className="text-xs font-bold text-[#2b6cb0] group-hover:text-[#2563eb] text-right mt-1.5 flex items-center justify-end gap-0.5 transition-colors">
+                <div className="text-xs font-bold text-[#2b6cb0] group-hover:text-[#3182ce] text-right mt-1.5 flex items-center justify-end gap-0.5 transition-colors">
                   <span>
                     {names.length === 0 
                       ? "立即装配" 

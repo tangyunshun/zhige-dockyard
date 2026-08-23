@@ -170,16 +170,16 @@ export default function SpaceCards({
                   引擎配置
                 </span>
               </div>
-              <p className="text-[9px] text-slate-500">模型选择</p>
+              <p className="text-[9px] text-slate-500">引擎选择</p>
             </div>
             <div className="p-2 bg-white rounded-lg border border-slate-200">
               <div className="flex items-center gap-1.5 mb-1">
                 <Shield className="w-2.5 h-2.5 text-[#10b981]" />
                 <span className="text-[10px] font-bold text-slate-700">
-                  System Prompt
+                  系统指令
                 </span>
               </div>
-              <p className="text-[9px] text-slate-500">提示词调优</p>
+              <p className="text-[9px] text-slate-500">参数调优</p>
             </div>
           </div>
 

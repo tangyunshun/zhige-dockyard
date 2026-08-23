@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 /**
  * 获取协同成员在指定工作空间下的真实研发数据盘点统计
  */
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const userId = authHeader.replace("Bearer ", "");
+    const userId = auth.user.id;
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 

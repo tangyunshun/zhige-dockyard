@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,8 +43,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "邀请码已过期" }, { status: 400 });
     }
 
-    // 2. 验证邮箱
-    const userId = request.headers.get("authorization")?.replace("Bearer ", "");
+    // 2. 验证邮箱（身份可选：已登录时用合法 JWT 校验出的真实 userId，未登录时为 null）
+    const authResult = await validateUser(request.headers.get("Authorization"), request);
+    const userId = authResult.valid && authResult.user ? authResult.user.id : null;
     if (invitation.email && userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },

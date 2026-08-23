@@ -24,6 +24,7 @@ import {
   Award,
   Lightbulb,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 import {
   getAvailableTeamSizeOptions,
   TEAM_SIZE_OPTIONS,
@@ -74,9 +75,8 @@ function CreateEnterpriseWorkspaceForm() {
   });
 
   useEffect(() => {
-    // 首先检查用户是否已登录
-    const userId = localStorage.getItem("userId");
-    if (!userId) {
+    // 首先检查用户是否已登录（以真实 JWT 凭证为准）
+    if (!getAuthToken()) {
       console.warn("用户未登录，即将重定向到登录页面...");
       router.push("/auth/login");
       return;
@@ -92,10 +92,9 @@ function CreateEnterpriseWorkspaceForm() {
 
   const loadQuota = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
-      if (!userId) {
+      if (!authToken) {
         console.warn("User ID not found, redirecting to login...");
         router.push("/auth/login");
         return;
@@ -103,8 +102,9 @@ function CreateEnterpriseWorkspaceForm() {
 
       const res = await fetch("/api/user/workspace-hub/quota", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (res.ok) {
@@ -156,10 +156,9 @@ function CreateEnterpriseWorkspaceForm() {
 
     setUploadingIcon(true);
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
-      if (!userId) {
+      if (!authToken) {
         return;
       }
 
@@ -169,8 +168,9 @@ function CreateEnterpriseWorkspaceForm() {
       const res = await fetch("/api/workspace/upload-icon", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
         body: formDataUpload,
       });
 
@@ -194,7 +194,11 @@ function CreateEnterpriseWorkspaceForm() {
 
   const loadUserInfo = async () => {
     try {
-      const res = await fetch("/api/auth/me");
+      const authToken = getAuthToken();
+      const res = await fetch("/api/auth/me", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         // 自动填充用户的邮箱和手机号
@@ -222,8 +226,7 @@ function CreateEnterpriseWorkspaceForm() {
 
       if (workspaceId) {
         try {
-          const authToken =
-            typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
+          const authToken = getAuthToken();
           const res = await fetch(
             `/api/workspace/info?workspaceId=${workspaceId}`,
             {
@@ -312,8 +315,7 @@ function CreateEnterpriseWorkspaceForm() {
 
     setLoading(true);
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       if (mode === "create") {
         // 创建新空间
@@ -321,8 +323,9 @@ function CreateEnterpriseWorkspaceForm() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
+          credentials: "include",
           body: JSON.stringify({
             name: formData.name.trim(),
             description: formData.description.trim() || null,
@@ -359,8 +362,9 @@ function CreateEnterpriseWorkspaceForm() {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
+            credentials: "include",
             body: JSON.stringify({
               name: formData.name.trim(),
               description: formData.description.trim() || null,
@@ -406,7 +410,7 @@ function CreateEnterpriseWorkspaceForm() {
   return (
     <div className="min-h-screen w-full relative bg-[#f0f8ff]">
       {/* 背景 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+      <div className="absolute inset-0 bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -503,7 +507,7 @@ function CreateEnterpriseWorkspaceForm() {
               </div>
 
               <div className="bg-white/80 backdrop-blur-xl rounded-xl p-4 border border-[#3182ce]/20">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center mb-3 shadow-lg shadow-[#3182ce]/30">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center mb-3 shadow-lg shadow-[#3182ce]/30">
                   <Zap className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="text-sm font-black text-slate-800 mb-2">
@@ -528,7 +532,7 @@ function CreateEnterpriseWorkspaceForm() {
               </div>
 
               {/* 提示信息 */}
-              <div className="bg-gradient-to-br from-[#3182ce]/10 to-[#2563eb]/10 backdrop-blur-xl rounded-xl p-4 border border-[#3182ce]/20">
+              <div className="bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 backdrop-blur-xl rounded-xl p-4 border border-[#3182ce]/20">
                 <h3 className="text-sm font-black text-[#3182ce] mb-2">
                   温馨提示
                 </h3>
@@ -874,7 +878,7 @@ function CreateEnterpriseWorkspaceForm() {
                                 </p>
                                 <button
                                   onClick={() => router.push("/pricing")}
-                                  className="text-xs font-bold text-[#3182ce] hover:text-[#2563eb] flex items-center gap-1 transition-colors w-full justify-center"
+                                  className="text-xs font-bold text-[#3182ce] hover:text-[#3182ce] flex items-center gap-1 transition-colors w-full justify-center"
                                 >
                                   <Award className="w-3 h-3" />
                                   <span>查看皇冠会员</span>

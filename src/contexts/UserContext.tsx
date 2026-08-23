@@ -1,6 +1,7 @@
-﻿﻿"use client";
+"use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { getAuthToken } from "@/utils/auth";
 
 export interface UserInfo {
   id: string;
@@ -38,14 +39,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setError(null);
     
     try {
+      const authToken = getAuthToken();
       const res = await fetch("/api/auth/me", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
         cache: "no-store", // 强制不缓存，每次从数据库查询最新数据
       });
       
       if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          setUser(data.user);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json().catch(() => null);
+          if (data && data.user) {
+            setUser(data.user);
+          }
         }
       } else if (res.status === 401 || res.status === 403) {
         setUser(null);

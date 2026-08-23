@@ -15,6 +15,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(5),
     maxStorage: BigInt(1073741824), // 1GB
     maxApiCalls: BigInt(1000),
+    tokenLimit: BigInt(10000), // 每月 10000 Token 配额
     features: [
       "基础组件库访问",
       "标准技术支持",
@@ -39,6 +40,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(20),
     maxStorage: BigInt(5368709120), // 5GB
     maxApiCalls: BigInt(5000),
+    tokenLimit: BigInt(20000), // 每月 20000 Token 配额
     features: [
       "基础组件库访问",
       "优先技术支持",
@@ -63,6 +65,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(50),
     maxStorage: BigInt(10737418240), // 10GB
     maxApiCalls: BigInt(10000),
+    tokenLimit: BigInt(100000), // 每月 100000 Token 配额
     features: [
       "全量组件库访问",
       "优先技术支持",
@@ -88,6 +91,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(100),
     maxStorage: BigInt(53687091200), // 50GB
     maxApiCalls: BigInt(50000),
+    tokenLimit: BigInt(500000), // 每月 500000 Token 配额
     features: [
       "全量组件库访问",
       "VIP 专属技术支持",
@@ -114,6 +118,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(200),
     maxStorage: BigInt(107374182400), // 100GB
     maxApiCalls: BigInt(100000),
+    tokenLimit: BigInt(1000000), // 每月 1000000 Token 配额
     features: [
       "所有功能无限制",
       "专属客户经理",
@@ -140,6 +145,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(-1),
     maxStorage: BigInt(536870912000), // 500GB
     maxApiCalls: BigInt(500000),
+    tokenLimit: BigInt(-1), // -1 表示无限制 Token 配额
     features: [
       "所有功能无限制",
       "专属客户经理 24/7",

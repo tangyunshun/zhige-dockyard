@@ -95,7 +95,7 @@ export default function AssetDashboard({ userId }: AssetDashboardProps) {
       value: stats.totalDiagrams,
       icon: Image,
       color: "#8b5cf6",
-      bgColor: "from-[#8b5cf6]/10 to-[#7c3aed]/10",
+      bgColor: "from-[#8b5cf6]/10 to-[#805ad5]/10",
       description: "系统架构、流程图、ER 图",
     },
     {
@@ -119,8 +119,8 @@ export default function AssetDashboard({ userId }: AssetDashboardProps) {
       title: "组件调用",
       value: "1,234",
       icon: TrendingUp,
-      color: "#06b6d4",
-      bgColor: "from-[#06b6d4]/10 to-[#0891b2]/10",
+      color: "#3182ce",
+      bgColor: "from-[#3182ce]/10 to-[#2b6cb0]/10",
       description: "本月累计调用次数",
     },
   ];

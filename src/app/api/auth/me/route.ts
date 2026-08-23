@@ -83,8 +83,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { getAdminPermissions } = require("@/lib/security");
-    const permissions = await getAdminPermissions(user.id);
+    // 平台管理员权限包读取失败（如 systemconfig 列容量 P2000）不得阻断认证：
+    // 仅记录 warning 并按空权限包返回，绝不导致 /api/auth/me 失败。
+    let permissions: string[] = [];
+    try {
+      const { getAdminPermissions } = require("@/lib/security");
+      permissions = await getAdminPermissions(user.id);
+    } catch (permError) {
+      console.warn("[权限] /api/auth/me 读取管理员权限包失败，按空权限包返回:", permError);
+    }
 
     // 密码过期检测：企业安全策略要求每 90 天修改密码
     const PASSWORD_EXPIRY_DAYS = 90;

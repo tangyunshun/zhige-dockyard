@@ -54,16 +54,16 @@ export default function DeleteConfirmModal({
         <div className="p-6 space-y-4 overflow-y-auto flex-1 text-left">
           {/* 检测完成标识（注销空间特有，或通用） */}
           {confirmWord === "确认注销" && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
               <div className="flex items-start gap-2">
-                <div className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5">
+                <div className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5">
                   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-green-800">✅ 系统安全检测完成</h3>
-                  <p className="text-xs text-green-700 mt-0.5">该协作空间符合注销安全标准，资产关联校验无冲突。</p>
+                  <h3 className="text-xs font-bold text-[#059669]">✅ 系统安全检测完成</h3>
+                  <p className="text-xs text-emerald-600 mt-0.5">该协作空间符合注销安全标准，资产关联校验无冲突。</p>
                 </div>
               </div>
             </div>
@@ -78,7 +78,7 @@ export default function DeleteConfirmModal({
                   <h3 className="text-xs font-bold text-red-800 mb-2">⚠️ 操作后将产生以下永久性影响：</h3>
                   <ul className="space-y-1">
                     {warnings.map((warning, index) => (
-                      <li key={index} className="text-xs text-red-700 flex items-start gap-1.5">
+                      <li key={index} className="text-xs text-red-600 flex items-start gap-1.5">
                         <span className="text-red-500 mt-0.5">•</span>
                         <span>{warning}</span>
                       </li>
@@ -113,7 +113,7 @@ export default function DeleteConfirmModal({
               <AlertTriangle className="w-4.5 h-4.5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
                 <h3 className="text-xs font-bold text-amber-800">重要提示：</h3>
-                <p className="text-xs text-amber-700 mt-0.5">
+                <p className="text-xs text-amber-600 mt-0.5">
                   重置或注销操作<span className="font-black text-red-600">不可逆</span>。该空间下所有的组件资产、技术归档与算力历史将全部清空。
                 </p>
               </div>
@@ -140,8 +140,8 @@ export default function DeleteConfirmModal({
               </div>
             )}
             {isMatched && (
-              <div className="mt-1.5 text-[10px] text-green-600 flex items-center gap-1">
-                <svg className="w-3.5 h-3.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="mt-1.5 text-[10px] text-emerald-600 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span>验证通过，您可以继续操作</span>

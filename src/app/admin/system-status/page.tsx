@@ -12,7 +12,7 @@ export default function SystemStatusPage() {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-            <HeartPulse className="w-8 h-8 text-[#e53e3e]" />
+            <HeartPulse className="w-8 h-8 text-[#dc2626]" />
             系统运行状态
           </h1>
           <p className="text-sm text-slate-400 font-semibold mt-1">

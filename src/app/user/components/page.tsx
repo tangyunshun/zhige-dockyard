@@ -21,6 +21,7 @@ import {
   Layers,
   Zap,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface Component {
   id: string;
@@ -51,11 +52,10 @@ export default function UserComponentsPage() {
 
   const loadComponents = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/components", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -110,10 +110,10 @@ export default function UserComponentsPage() {
     if (!selectedComponent) return;
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const res = await fetch(`/api/user/components?id=${selectedComponent.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -137,12 +137,12 @@ export default function UserComponentsPage() {
     if (!selectedComponent) return;
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const res = await fetch(`/api/user/components?id=${selectedComponent.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(editFormData),
       });
@@ -217,8 +217,8 @@ export default function UserComponentsPage() {
         <div
           className={`p-4 rounded-xl flex items-center gap-3 shrink-0 ${
             message.type === "success"
-              ? "bg-green-50 text-green-700 border border-green-200"
-              : "bg-red-50 text-red-700 border border-red-200"
+              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+              : "bg-red-50 text-red-600 border border-red-200"
           }`}
         >
           {message.type === "success" ? (
@@ -255,7 +255,7 @@ export default function UserComponentsPage() {
           </select>
           <button
             onClick={() => (window.location.href = "/studio")}
-            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
+            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
           >
             <Plus className="w-5 h-5" />
             创建组件
@@ -272,7 +272,7 @@ export default function UserComponentsPage() {
               <div className="w-14 h-14 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
                 <Box className="w-7 h-7 text-[#3182ce]" />
               </div>
-              <TrendingUp className="w-5 h-5 text-green-500" />
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
             </div>
             <div className="text-3xl font-black text-slate-800 mb-1">
               {components.length}
@@ -334,7 +334,7 @@ export default function UserComponentsPage() {
               {filteredComponents.map((component) => (
                 <div
                   key={component.id}
-                  className="group flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2563eb]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-x-1"
+                  className="group flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-x-1"
                 >
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 flex items-center justify-center flex-shrink-0">
@@ -383,20 +383,6 @@ export default function UserComponentsPage() {
                           <Eye className="w-4 h-4" />
                           查看
                         </button>
-                        <button
-                          onClick={() => handleEdit(component)}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                          编辑
-                        </button>
-                        <button
-                          onClick={() => handleDelete(component)}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          删除
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -412,7 +398,7 @@ export default function UserComponentsPage() {
               <p className="text-slate-500 mb-6">创建您的第一个组件开始使用</p>
               <button
                 onClick={() => (window.location.href = "/studio")}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
               >
                 <Plus className="w-5 h-5" />
                 创建组件
@@ -485,7 +471,7 @@ export default function UserComponentsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
                 >
                   保存修改
                 </button>
@@ -611,7 +597,7 @@ export default function UserComponentsPage() {
                     setShowDetailModal(false);
                     handleEdit(selectedComponent);
                   }}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
+                  className="w-full px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
                 >
                   编辑此组件
                 </button>

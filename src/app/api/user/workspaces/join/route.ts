@@ -8,17 +8,11 @@ import { validateUser } from "@/lib/auth";
  */
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const authResult = await validateUser(request.headers.get("Authorization"), request);
+    if (!authResult.valid || !authResult.user) {
+      return NextResponse.json({ error: authResult.error || "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const userId = authHeader.replace("Bearer ", "");
-    const authResult = await validateUser(authHeader);
-    
-    if (!authResult.valid) {
-      return NextResponse.json({ error: authResult.error }, { status: 401 });
-    }
+    const userId = authResult.user.id;
 
     const body = await request.json();
     const { inviteCode, invitationId } = body;
@@ -61,7 +55,7 @@ export async function POST(request: NextRequest) {
           userId,
           workspaceId: workspace.id,
           role: "MEMBER",
-          updatedAt: new Date(),
+          joinedAt: new Date(),
         },
       });
 
@@ -140,7 +134,7 @@ export async function POST(request: NextRequest) {
           userId,
           workspaceId: invitation.workspaceId,
           role: invitation.role || "MEMBER",
-          updatedAt: new Date(),
+          joinedAt: new Date(),
         },
       });
 

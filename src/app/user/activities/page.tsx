@@ -17,6 +17,7 @@ import {
   Eye,
   Info,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface UserActivity {
   id: string;
@@ -42,11 +43,10 @@ export default function UserActivitiesPage() {
 
   const loadActivities = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/activities?limit=100", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -176,7 +176,7 @@ export default function UserActivitiesPage() {
               <div className="w-14 h-14 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
                 <Activity className="w-7 h-7 text-[#3182ce]" />
               </div>
-              <Clock className="w-5 h-5 text-green-500" />
+              <Clock className="w-5 h-5 text-emerald-500" />
             </div>
             <div className="text-3xl font-black text-slate-800 mb-1">
               {activities.length}
@@ -368,7 +368,7 @@ export default function UserActivitiesPage() {
               <div className="pt-4 border-t border-slate-200">
                 <button
                   onClick={() => setShowDetailModal(false)}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
+                  className="w-full px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
                 >
                   关闭
                 </button>

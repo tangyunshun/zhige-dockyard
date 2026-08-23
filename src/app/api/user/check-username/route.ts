@@ -1,21 +1,21 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUsername } from "@/lib/validators";
+import { validateUser } from "@/lib/auth";
 
 /**
  * 检查用户名是否可用
  */
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json(
         { error: "未授权" },
         { status: 401 }
       );
     }
-
-    const userId = authHeader.replace("Bearer ", "");
+    const userId = auth.user.id;
     const body = await request.json();
     const { username } = body;
 

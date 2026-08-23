@@ -52,7 +52,7 @@
 ```tsx
 <td className="px-6 py-4">
   <div className="flex items-center gap-3">
-    <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center">
+    <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center">
       <Icon className="w-5 h-5 text-white" />
     </div>
     <div className="min-w-0">
@@ -99,14 +99,14 @@
 
 #### 3.1 状态 Badge
 ```tsx
-<span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full whitespace-nowrap">
+<span className="px-2 py-1 bg-emerald-50 text-[#059669] text-xs font-bold rounded-full whitespace-nowrap">
   状态文本
 </span>
 ```
 
 #### 3.2 类型 Badge
 ```tsx
-<span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full whitespace-nowrap">
+<span className="px-2 py-1 bg-blue-50 text-[#3182ce] text-xs font-bold rounded-full whitespace-nowrap">
   类型文本
 </span>
 ```

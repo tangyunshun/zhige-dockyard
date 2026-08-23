@@ -57,7 +57,7 @@ const inline = (text: string) =>
     )
     .replace(
       /`(.+?)`/g,
-      '<code class="px-1.5 py-0.5 rounded-md bg-slate-100 text-[#c53030] text-[0.9em]">$1</code>'
+      '<code class="px-1.5 py-0.5 rounded-md bg-slate-100 text-[#dc2626] text-[0.9em]">$1</code>'
     )
     .replace(
       /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
@@ -285,7 +285,7 @@ export default function LegalDocumentPage({
                 </div>
               ) : error ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-400 flex items-center justify-center mb-4">
+                  <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-400 flex items-center justify-center mb-4">
                     <AlertCircle className="w-8 h-8" />
                   </div>
                   <p className="text-slate-600 font-semibold">{error}</p>

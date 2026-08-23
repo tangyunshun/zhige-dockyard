@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { isAdminRole, validateUser } from "@/lib/auth";
 import { setMaintenanceMode, isMaintenanceMode, getMaintenanceMessage } from "@/lib/maintenance";
 
 /**
@@ -25,12 +25,11 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
-
-    const adminId = authHeader.replace("Bearer ", "");
+    const adminId = auth.user.id;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });
@@ -89,12 +88,11 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
-
-    const adminId = authHeader.replace("Bearer ", "");
+    const adminId = auth.user.id;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });

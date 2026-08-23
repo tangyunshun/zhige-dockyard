@@ -250,7 +250,7 @@ export default function UpgradeRequestModal({
             <button 
               type="submit"
               disabled={submitting}
-              className="px-5 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:bg-blue-300 text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              className="px-5 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:bg-[#63b3ed] text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer flex items-center justify-center gap-1.5"
             >
               {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               <span>确认提交申请</span>

@@ -16,6 +16,7 @@ import {
   Shield,
   CheckCircle,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface Workspace {
   id: string;
@@ -68,8 +69,12 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
 
   const loadShareableWorkspaces = async () => {
     try {
+      const authToken = getAuthToken();
       // 先获取用户信息
-      const res = await fetch("/api/auth/me");
+      const res = await fetch("/api/auth/me", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
+      });
       if (!res.ok) {
         toast.error("请先登录");
         return;
@@ -80,8 +85,9 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
       
       const workspacesRes = await fetch("/api/workspace/shareable-list", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (!workspacesRes.ok) {
@@ -130,21 +136,16 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
     try {
       setGenerating(true);
       
-      // 获取用户 ID
-      const res = await fetch("/api/auth/me");
-      if (!res.ok) {
-        toast.error("请先登录");
-        return;
-      }
-      const userData = await res.json();
-      const userId = userData.user.id;
+      // 使用真实 JWT 凭证，无需再次请求用户信息
+      const authToken = getAuthToken();
 
       const generateRes = await fetch("/api/workspace/invitation/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           workspaceId: selectedWorkspace,
           email: showAdvanced ? inviteEmail : null,
@@ -168,7 +169,7 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
   };
 
   const handleCopyInvitation = (code: string, invitationUrl: string) => {
-    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、智能的团队研发协同中枢，让开发化繁为简。`;
+    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、自动化的团队研发协同中枢，让开发化繁为简。`;
     navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("已复制到剪贴板");
@@ -253,7 +254,7 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center">
                             <Building2 className="w-5 h-5 text-white" />
                           </div>
                           <div>
@@ -281,7 +282,7 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
                 <div className="mt-4">
                   <button
                     onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="text-sm font-bold text-[#3182ce] hover:text-[#2563eb] flex items-center gap-1"
+                    className="text-sm font-bold text-[#3182ce] hover:text-[#3182ce] flex items-center gap-1"
                   >
                     <Shield className="w-4 h-4" />
                     <span>{showAdvanced ? "隐藏" : "显示"}高级选项</span>
@@ -368,7 +369,7 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
                 <button
                   onClick={handleGenerateInvitation}
                   disabled={generating}
-                  className="w-full mt-4 px-4 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full mt-4 px-4 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-sm font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {generating ? (
                     <>

@@ -41,7 +41,7 @@ export default function QuickActions(_props: QuickActionsProps) {
               <Terminal className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <span className="text-sm font-bold text-slate-700 group-hover:text-blue-700 transition-colors block truncate leading-none">开发者 API 文档</span>
+              <span className="text-sm font-bold text-slate-700 group-hover:text-[#2b6cb0] transition-colors block truncate leading-none">开发者 API 文档</span>
               <span className="text-xs text-slate-400 font-semibold block truncate mt-1.5 leading-none">查询 Open API 与鉴权流程</span>
             </div>
           </div>
@@ -62,7 +62,7 @@ export default function QuickActions(_props: QuickActionsProps) {
               <span className="text-xs text-slate-400 font-semibold block truncate mt-1.5 leading-none">实现组件研发状态实时同步</span>
             </div>
           </div>
-          <ExternalLink className="w-3.5 h-3.5 text-slate-350 group-hover:text-indigo-500 transition-colors shrink-0 ml-2" />
+          <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0 ml-2" />
         </a>
       </div>
     </div>

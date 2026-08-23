@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 /**
  * 协同成员主动退出工作空间 (退群) 接口
  */
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const userId = authHeader.replace("Bearer ", "");
+    const userId = auth.user.id;
     const { workspaceId } = await request.json();
 
     if (!workspaceId) {

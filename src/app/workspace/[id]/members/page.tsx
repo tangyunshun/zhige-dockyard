@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Users, KeyRound, Copy, Trash2, ArrowUpRight, RefreshCw, ShieldAlert } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface Member {
   userId: string;
@@ -37,10 +38,10 @@ export default function WorkspaceMembersPage() {
   const loadMembers = async () => {
     try {
       setLoading(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch(`/api/workspace/members?workspaceId=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -48,8 +49,8 @@ export default function WorkspaceMembersPage() {
         const data = await res.json();
         setMembers(data.members || []);
         
-        // 找出当前用户的角色
-        const me = data.members.find((m: Member) => m.userId === userId);
+        // 找出当前用户的角色（身份比较，保留真实的用户 ID）
+        const me = data.members.find((m: Member) => m.userId === localStorage.getItem("userId"));
         if (me) {
           setCurrentUserRole(me.role);
         }
@@ -69,12 +70,12 @@ export default function WorkspaceMembersPage() {
   const handleGenerateCode = async () => {
     try {
       setGeneratingCode(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/workspace/invitation/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           workspaceId,
@@ -109,42 +110,41 @@ export default function WorkspaceMembersPage() {
 
   // 移出成员
   const handleRemoveMember = async (targetUserId: string, targetName: string) => {
-    if (confirm(`确认要将成员 "${targetName}" 移出当前协作工作空间吗？`)) {
-      try {
-        const userId = localStorage.getItem("userId");
-        const res = await fetch(
-          `/api/workspace/members?workspaceId=${workspaceId}&targetUserId=${targetUserId}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${userId}`,
-            },
-          }
-        );
-
-        if (res.ok) {
-          toast.success("已成功将该成员移出工作空间");
-          loadMembers(); // 重新加载
-        } else {
-          const err = await res.json();
-          throw new Error(err.error || "移出失败");
+    toast.info(`正在请求将成员 "${targetName}" 移出当前工作空间...`, 1500);
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch(
+        `/api/workspace/members?workspaceId=${workspaceId}&targetUserId=${targetUserId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
         }
-      } catch (error: any) {
-        console.error("移出成员失败:", error);
-        toast.error(error.message || "操作失败");
+      );
+
+      if (res.ok) {
+        toast.success("已成功将该成员移出工作空间");
+        loadMembers(); // 重新加载
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || "移出失败");
       }
+    } catch (error: any) {
+      console.error("移出成员失败:", error);
+      toast.error(error.message || "操作失败");
     }
   };
 
   // 角色变更
   const handleChangeRole = async (targetUserId: string, newRole: string) => {
     try {
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/workspace/members", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           workspaceId,
@@ -176,7 +176,7 @@ export default function WorkspaceMembersPage() {
         
         {/* 顶部标题栏 */}
         <div className="flex items-center gap-2.5 pb-4 border-b border-slate-200">
-          <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
             <Users className="w-4.5 h-4.5" />
           </div>
           <div>
@@ -272,7 +272,7 @@ export default function WorkspaceMembersPage() {
                         <div className="text-xs font-black text-slate-800 flex items-center gap-1.5 flex-wrap">
                           <span>{m.name}</span>
                           {isTargetOwner ? (
-                            <span className="px-1.5 py-0.2 bg-orange-50 text-orange-600 border border-orange-100 text-[9px] rounded font-bold">Owner</span>
+                            <span className="px-1.5 py-0.2 bg-amber-50 text-amber-600 border border-amber-100 text-[9px] rounded font-bold">Owner</span>
                           ) : isTargetAdmin ? (
                             <span className="px-1.5 py-0.2 bg-purple-50 text-purple-600 border border-purple-100 text-[9px] rounded font-bold">Admin</span>
                           ) : (

@@ -71,7 +71,7 @@ export default function CoreFeatures() {
               <button
                 onClick={handleViewComponents}
                 disabled={loading}
-                className={`text-sm font-semibold text-[#2b6cb0] inline-flex items-center gap-1 hover:text-[#2c5282] transition-colors group cursor-pointer bg-transparent border-none p-0 ${
+                className={`text-sm font-semibold text-[#2b6cb0] inline-flex items-center gap-1 hover:text-[#1a365d] transition-colors group cursor-pointer bg-transparent border-none p-0 ${
                   loading ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
@@ -173,7 +173,7 @@ export default function CoreFeatures() {
               </div>
 
               <div className="bento-card rounded-12 p-6 flex flex-col">
-                <div className="mb-4 text-rose-500">
+                <div className="mb-4 text-red-500">
                   <Layers className="w-6 h-6" />
                 </div>
                 <h3 className="font-bold mb-1 text-slate-900">

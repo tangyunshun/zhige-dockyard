@@ -92,26 +92,26 @@ export default function EnterpriseWorkspaceCard({
     return (
       <button
         onClick={() => onJoinClick?.()}
-        className="zg-btn zg-btn-default px-4 h-[38px] text-sm font-semibold rounded-lg border border-orange-200/80 bg-white hover:bg-orange-50/20 text-[#dd6b20] hover:-translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0 font-bold"
+        className="zg-btn zg-btn-default px-4 h-[38px] text-sm font-semibold rounded-lg border border-amber-200/80 bg-white hover:bg-amber-50/20 text-[#d97706] hover:-translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0 font-bold"
       >
-        <Users className="w-4 h-4 text-[#dd6b20]" />
+        <Users className="w-4 h-4 text-[#d97706]" />
         <span>使用邀请码加入</span>
       </button>
     );
   };
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white/60 border border-slate-200/50 rounded-lg hover:border-[#dd6b20]/25 transition-all duration-300 gap-3 group relative overflow-visible">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white/60 border border-slate-200/50 rounded-lg hover:border-[#d97706]/25 transition-all duration-300 gap-3 group relative overflow-visible">
       <div className="flex items-center gap-3.5 min-w-0">
         {/* 企业专属橙色背景图标框 (去除 border) */}
-        <div className="w-9 h-9 rounded bg-orange-50 text-[#dd6b20] border-none flex items-center justify-center flex-shrink-0 shadow-sm transition-transform duration-300 group-hover:scale-105">
+        <div className="w-9 h-9 rounded bg-amber-50 text-[#d97706] border-none flex items-center justify-center flex-shrink-0 shadow-sm transition-transform duration-300 group-hover:scale-105">
           <Building2 className="w-4.5 h-4.5" />
         </div>
         <div className="flex-1 min-w-0 text-left">
           <div className="text-sm font-bold text-slate-800 truncate flex items-center gap-1.5 flex-wrap leading-none">
             <span>{workspace.name}</span>
             {isOwner ? (
-              <span className="px-2.5 py-0.5 bg-orange-50 text-orange-600 text-xs font-bold rounded border-none">👑 所有者</span>
+              <span className="px-2.5 py-0.5 bg-amber-50 text-amber-600 text-xs font-bold rounded border-none">👑 所有者</span>
             ) : isAdmin ? (
               <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 text-xs font-bold rounded border-none">🔧 管理员</span>
             ) : isComponentAdmin ? (
@@ -177,7 +177,7 @@ export default function EnterpriseWorkspaceCard({
                         setMenuOpen(false);
                         onUpgradePackage(workspace.id);
                       }}
-                      className="w-full text-left px-3.5 py-2 text-sm font-semibold text-[#2b6cb0] hover:text-[#2563eb] hover:bg-blue-50/20 flex items-center gap-2.5"
+                      className="w-full text-left px-3.5 py-2 text-sm font-semibold text-[#2b6cb0] hover:text-[#3182ce] hover:bg-blue-50/20 flex items-center gap-2.5"
                     >
                       <ArrowUpRight className="w-4 h-4 text-[#2b6cb0]" />
                       <span>升级套餐</span>
@@ -190,7 +190,7 @@ export default function EnterpriseWorkspaceCard({
                         setMenuOpen(false);
                         onDelete(workspace.id);
                       }}
-                      className="w-full text-left px-3.5 py-2 text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-red-50/50 flex items-center gap-2.5"
+                      className="w-full text-left px-3.5 py-2 text-sm font-semibold text-red-600 hover:text-red-600 hover:bg-red-50/50 flex items-center gap-2.5"
                     >
                       <Trash2 className="w-4 h-4 text-red-600" />
                       <span>解散企业空间</span>

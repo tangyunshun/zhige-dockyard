@@ -296,7 +296,7 @@ export default function AdminLayout({
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-center font-sans">
         <div className="max-w-md w-full bg-white border border-slate-200/80 rounded-2xl shadow-xl p-8 space-y-6">
-          <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center mx-auto text-rose-500 shadow-inner">
+          <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto text-red-500 shadow-inner">
             <Shield className="w-8 h-8" />
           </div>
           <div className="space-y-2">
@@ -309,7 +309,7 @@ export default function AdminLayout({
           <div className="pt-2">
             <button
               onClick={() => router.replace("/workspace-hub")}
-              className="w-full h-10 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white text-xs font-bold shadow-sm hover:shadow hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center"
+              className="w-full h-10 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold shadow-sm hover:shadow hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center"
             >
               返回前台空间中枢
             </button>
@@ -331,7 +331,7 @@ export default function AdminLayout({
         <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
           <button
             onClick={() => router.push("/")}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all w-full"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="font-bold text-sm">返回首页</span>
@@ -339,7 +339,7 @@ export default function AdminLayout({
         </div>
 
         {/* 管理员标识 */}
-        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200 shrink-0">
+        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-2">
             {isSuperAdmin ? (
               <>
@@ -367,7 +367,7 @@ export default function AdminLayout({
                 onClick={() => router.push(item.href)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                   isActive
-                    ? "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white shadow-lg shadow-[#3182ce]/30"
+                    ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -388,7 +388,7 @@ export default function AdminLayout({
         {/* 用户信息 */}
         <div className="p-4 border-t border-slate-200 shrink-0">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+            <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
               {user?.name?.charAt(0).toUpperCase() || "A"}
             </div>
             <div className="flex-1 min-w-0 text-left">
@@ -442,14 +442,14 @@ export default function AdminLayout({
             <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
               <button
                 onClick={() => router.push("/")}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all w-full"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span className="font-bold text-sm">返回首页</span>
               </button>
             </div>
 
-            <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200 shrink-0">
+            <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
               <div className="flex items-center gap-2">
                 {isSuperAdmin ? (
                   <>
@@ -479,7 +479,7 @@ export default function AdminLayout({
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                       isActive
-                        ? "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white shadow-lg shadow-[#3182ce]/30"
+                        ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
                         : "text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -501,7 +501,7 @@ export default function AdminLayout({
 
             <div className="p-4 border-t border-slate-200 shrink-0 bg-white">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+                <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
                   {user?.name?.charAt(0).toUpperCase() || "A"}
                 </div>
                 <div className="flex-1 min-w-0 text-left">

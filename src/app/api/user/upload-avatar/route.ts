@@ -4,17 +4,18 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 import crypto from "crypto";
+import { validateUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json(
         { error: "未授权" },
         { status: 401 }
       );
     }
+    const userId = auth.user.id;
 
     // 获取表单数据
     const formData = await request.formData();

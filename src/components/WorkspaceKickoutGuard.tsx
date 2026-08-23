@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAppContext } from "@/contexts/AppContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { SESSION_ERROR_CODES } from "@/lib/session-constants";
+import { getAuthToken } from "@/utils/auth";
 
 // 空间级别踢出（Workspace Kickout，PRD F-03）：
 // 当用户在某个工作空间内被移除成员身份时，不踢出整个系统，
@@ -38,8 +39,11 @@ export default function WorkspaceKickoutGuard() {
 
     const check = async () => {
       try {
+        const authToken = getAuthToken();
         const res = await fetch(`/api/workspace/${workspaceId}/my-membership`, {
           method: "GET",
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          credentials: "include",
         });
         // API 约定：仍为成员返回 200 + isMember:true；
         // 已被移出空间返回 403 + { isMember:false, code:"W-001" }，必须解析 body 判断，不能只看 res.ok。

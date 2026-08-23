@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     // I-02：绑定变更实时通知用户（防黑客静默攻击）
     try {
-      addNotification(
+      await addNotification(
         userId,
         `${type === "phone" ? "手机号" : "邮箱"}已变更`,
         `您的${type === "phone" ? "手机号" : "邮箱"}绑定已被修改，所有设备已强制下线。若非本人操作，请立即联系客服。`,

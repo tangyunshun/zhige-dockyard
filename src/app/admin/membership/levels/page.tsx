@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { getAuthToken } from "@/utils/auth";
 import {
   Plus,
   Edit,
@@ -124,10 +125,9 @@ export default function AdminMembershipLevelsPage() {
   const loadLevels = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
-      console.log("Loading levels with userId:", userId);
+      console.log("Loading levels with authToken:", authToken);
 
       const params = new URLSearchParams({
         ...(searchQuery && { search: searchQuery }),
@@ -137,8 +137,9 @@ export default function AdminMembershipLevelsPage() {
 
       const res = await fetch(`/api/admin/membership/levels?${params}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       console.log("Response status:", res.status, res.ok);
@@ -181,13 +182,13 @@ export default function AdminMembershipLevelsPage() {
       type: "warning",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
           const res = await fetch(`/api/admin/membership/levels/${name}`, {
             method: "DELETE",
             headers: {
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
+            credentials: "include",
           });
 
           if (res.ok) {
@@ -207,14 +208,14 @@ export default function AdminMembershipLevelsPage() {
 
   const handleToggleActive = async (name: string, isActive: boolean) => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const res = await fetch(`/api/admin/membership/levels/${name}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           isActive: !isActive,
         }),
@@ -395,8 +396,7 @@ export default function AdminMembershipLevelsPage() {
 
     setSubmitting(true);
 
-    const userId =
-      typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+    const authToken = getAuthToken();
     const url = editingLevel
       ? `/api/admin/membership/levels/${formData.name}`
       : "/api/admin/membership/levels";
@@ -434,7 +434,7 @@ export default function AdminMembershipLevelsPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(requestBody),
       });
@@ -483,7 +483,7 @@ export default function AdminMembershipLevelsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
       {/* 顶部导航 */}
       <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -613,7 +613,7 @@ export default function AdminMembershipLevelsPage() {
                                 </span>
                               )}
                               {level.isPopular && (
-                                <span className="text-xs bg-gradient-to-r from-[#f59e0b]/10 to-[#fbbf24]/10 text-[#f59e0b] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                <span className="text-xs bg-gradient-to-r from-[#f59e0b]/10 to-[#f59e0b]/10 text-[#f59e0b] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm whitespace-nowrap">
                                   <Crown className="w-3 h-3 shrink-0" />
                                   热门
                                 </span>

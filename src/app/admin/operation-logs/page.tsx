@@ -37,29 +37,29 @@ interface OperationLog {
 // 操作类型（真实 action 值）→ 中文文案 / 配色（简洁 Badge，与主系统一致）
 const ACTION_META: Record<string, { label: string; color: string }> = {
   // 用户相关
-  "user:create": { label: "创建用户", color: "bg-emerald-100 text-emerald-700" },
-  "user:update": { label: "更新用户", color: "bg-blue-100 text-blue-700" },
-  "user:delete": { label: "删除用户", color: "bg-red-100 text-red-700" },
-  "user:ban": { label: "封禁用户", color: "bg-red-100 text-red-700" },
-  "user:unban": { label: "解封用户", color: "bg-emerald-100 text-emerald-700" },
-  "user:reset_session": { label: "重置会话", color: "bg-orange-100 text-orange-700" },
+  "user:create": { label: "创建用户", color: "bg-emerald-100 text-emerald-600" },
+  "user:update": { label: "更新用户", color: "bg-blue-100 text-[#2b6cb0]" },
+  "user:delete": { label: "删除用户", color: "bg-red-100 text-red-600" },
+  "user:ban": { label: "封禁用户", color: "bg-red-100 text-red-600" },
+  "user:unban": { label: "解封用户", color: "bg-emerald-100 text-emerald-600" },
+  "user:reset_session": { label: "重置会话", color: "bg-amber-100 text-amber-600" },
   // 组件相关
-  "component:create": { label: "创建组件", color: "bg-emerald-100 text-emerald-700" },
-  "component:update": { label: "更新组件", color: "bg-blue-100 text-blue-700" },
-  "component:delete": { label: "删除组件", color: "bg-red-100 text-red-700" },
-  "component:execute": { label: "执行组件", color: "bg-purple-100 text-purple-700" },
-  "BIND_COMPONENT": { label: "绑定组件", color: "bg-blue-100 text-blue-700" },
-  "UNBIND_COMPONENT": { label: "解绑组件", color: "bg-orange-100 text-orange-700" },
+  "component:create": { label: "创建组件", color: "bg-emerald-100 text-emerald-600" },
+  "component:update": { label: "更新组件", color: "bg-blue-100 text-[#2b6cb0]" },
+  "component:delete": { label: "删除组件", color: "bg-red-100 text-red-600" },
+  "component:execute": { label: "执行组件", color: "bg-purple-100 text-[#805ad5]" },
+  "BIND_COMPONENT": { label: "绑定组件", color: "bg-blue-100 text-[#2b6cb0]" },
+  "UNBIND_COMPONENT": { label: "解绑组件", color: "bg-amber-100 text-amber-600" },
   // 工作空间相关
-  "workspace:create": { label: "创建空间", color: "bg-emerald-100 text-emerald-700" },
-  "workspace:update": { label: "更新空间", color: "bg-blue-100 text-blue-700" },
-  "workspace:delete": { label: "删除空间", color: "bg-red-100 text-red-700" },
-  "JOIN_WORKSPACE": { label: "加入空间", color: "bg-emerald-100 text-emerald-700" },
-  "CREATE_ENTERPRISE_WORKSPACE": { label: "创建企业空间", color: "bg-indigo-100 text-indigo-700" },
-  "LEAVE_WORKSPACE": { label: "退出空间", color: "bg-orange-100 text-orange-700" },
+  "workspace:create": { label: "创建空间", color: "bg-emerald-100 text-emerald-600" },
+  "workspace:update": { label: "更新空间", color: "bg-blue-100 text-[#2b6cb0]" },
+  "workspace:delete": { label: "删除空间", color: "bg-red-100 text-red-600" },
+  "JOIN_WORKSPACE": { label: "加入空间", color: "bg-emerald-100 text-emerald-600" },
+  "CREATE_ENTERPRISE_WORKSPACE": { label: "创建企业空间", color: "bg-indigo-100 text-[#5a67d8]" },
+  "LEAVE_WORKSPACE": { label: "退出空间", color: "bg-amber-100 text-amber-600" },
   // 系统 / 认证
-  "system:settings": { label: "系统设置", color: "bg-indigo-100 text-indigo-700" },
-  "auth:login": { label: "登录", color: "bg-purple-100 text-purple-700" },
+  "system:settings": { label: "系统设置", color: "bg-indigo-100 text-[#5a67d8]" },
+  "auth:login": { label: "登录", color: "bg-purple-100 text-[#805ad5]" },
   "auth:logout": { label: "登出", color: "bg-slate-100 text-slate-700" },
 };
 
@@ -618,7 +618,7 @@ export default function OperationLogsPage() {
 
         {/* 错误提示 */}
         {error && (
-          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">
+          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl p-3">
             {error}
           </div>
         )}

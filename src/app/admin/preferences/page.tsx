@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Settings, Search, Server, Sliders } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface UserPreference {
   id: string;
@@ -54,7 +55,7 @@ export default function AdminPreferencesPage() {
 
       const res = await fetch(`/api/admin/preferences?${params}`, {
         headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
 
@@ -72,8 +73,8 @@ export default function AdminPreferencesPage() {
   const getEngineBadge = (engine: string) => {
     const badges: Record<string, string> = {
       zhige: "bg-gradient-to-r from-[#10b981] to-[#059669] text-white",
-      openai: "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white",
-      azure: "bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white",
+      openai: "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white",
+      azure: "bg-gradient-to-r from-[#8b5cf6] to-[#805ad5] text-white",
     };
 
     const labels: Record<string, string> = {
@@ -255,7 +256,7 @@ export default function AdminPreferencesPage() {
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden w-24 shadow-inner">
                           <div
-                            className="h-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] rounded-full shadow-sm"
+                            className="h-full bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] rounded-full shadow-sm"
                             style={{
                               width: `${preference.temperature * 100}%`,
                             }}

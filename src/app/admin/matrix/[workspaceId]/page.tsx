@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import RoleMatrix from "@/components/RoleMatrix";
 import { ArrowLeft, Shield, Users, Building2 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 export default function AdminMatrixPage() {
   const router = useRouter();
@@ -19,11 +20,12 @@ export default function AdminMatrixPage() {
 
   const loadWorkspace = async () => {
     try {
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch(`/api/workspace/detail?id=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (res.ok) {

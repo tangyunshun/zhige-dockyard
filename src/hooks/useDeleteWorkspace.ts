@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Workspace } from "./useWorkspaceHubData";
+import { getAuthToken } from "@/utils/auth";
 
 interface UseDeleteWorkspaceProps {
   refresh: () => void;
@@ -25,29 +26,30 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
   const [checkingDelete, setCheckingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // 获取当前鉴权凭证：以真实 JWT auth_token 为准，未登录时引导重新登录
   const checkUserId = () => {
-    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-    if (!userId) {
+    const authToken = getAuthToken();
+    if (!authToken) {
       toast.error("会话已过期，请重新登录");
       localStorage.removeItem("userId");
       localStorage.removeItem("userRole");
       router.push("/auth/login");
       return null;
     }
-    return userId;
+    return authToken;
   };
 
   const handleDeleteWorkspace = async (workspaceId: string) => {
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       setCheckingDelete(true);
       setWorkspaceToDelete(workspaceId);
 
       const res = await fetch(`/api/workspace/check-delete?workspaceId=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -91,15 +93,15 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
     }
 
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       setDeletingWorkspaceId(workspaceToDelete);
       const deleteRes = await fetch("/api/workspace/delete", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           workspaceId: workspaceToDelete,
@@ -156,15 +158,15 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
 
     try {
       setDeleting(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       // 首先需要获取个人工作空间 ID
       // 可以在组件内部传给此函数，或是通过 API /api/workspace/list 获得。
       // 为保持独立，我们先查一下列表
       const workspacesRes = await fetch("/api/workspace/list", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -183,7 +185,7 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
           body: JSON.stringify({
             workspaceId: personal.id,

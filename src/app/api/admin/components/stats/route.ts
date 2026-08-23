@@ -1,27 +1,32 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const authResult = await requirePlatformPermission(request, "component:read");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
     }
 
-    const userId = authHeader.replace("Bearer ", "");
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const [total, published, categories, usage] = await Promise.all([
+      prisma.componentcatalog.count(),
+      prisma.componentcatalog.count({ where: { isPublished: true } }),
+      prisma.componentcategory.count(),
+      prisma.componentcatalog.aggregate({
+        _sum: { usageCount: true },
+      }),
+    ]);
 
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
-
-    const stats = await prisma.componentstats.findMany({
-      orderBy: { totalUses: "desc" },
-      take: 100,
+    return NextResponse.json({
+      success: true,
+      data: {
+        total,
+        published,
+        stages: categories,
+        totalUsage: Number(usage._sum.usageCount || 0),
+      },
     });
-
-    return NextResponse.json({ success: true, data: stats });
   } catch (error) {
     console.error("Get component stats error:", error);
     return NextResponse.json({ error: "获取组件统计失败" }, { status: 500 });

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -19,6 +19,7 @@ import {
   Tablet,
   Trash2,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface LoginHistory {
   id: string;
@@ -31,7 +32,7 @@ interface LoginHistory {
 
 export default function UserSecurityPage() {
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [showPasswords, setShowPasswords] = useState({
     current: false,
     new: false,
@@ -55,13 +56,10 @@ export default function UserSecurityPage() {
 
   const loadLoginHistory = async () => {
     try {
-      const authToken =
-        typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/login-history?limit=10", {
-        headers: { Authorization: `Bearer ${authToken || userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -78,13 +76,10 @@ export default function UserSecurityPage() {
   const loadDevices = async () => {
     try {
       setDevicesLoading(true);
-      const authToken =
-        typeof window !== "undefined" ? localStorage.getItem("auth_token") : "";
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/devices", {
-        headers: { Authorization: `Bearer ${authToken || userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -99,18 +94,15 @@ export default function UserSecurityPage() {
   };
 
   const handleKickDevice = async (deviceId: string) => {
-    if (!confirm("确定要下线该设备吗？被下线的设备将需要重新登录。")) {
-      return;
-    }
+    setMessage({ type: "info", text: "正在请求强制下线目标设备..." });
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/devices", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ deviceId }),
       });
@@ -150,14 +142,13 @@ export default function UserSecurityPage() {
 
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/change-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           currentPassword: formData.currentPassword,
@@ -201,8 +192,8 @@ export default function UserSecurityPage() {
         <div
           className={`p-4 rounded-xl flex items-center gap-3 shrink-0 ${
             message.type === "success"
-              ? "bg-green-50 text-green-700 border border-green-200"
-              : "bg-red-50 text-red-700 border border-red-200"
+              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+              : "bg-red-50 text-red-600 border border-red-200"
           }`}
         >
           {message.type === "success" ? (
@@ -317,7 +308,7 @@ export default function UserSecurityPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Shield className="w-5 h-5" />
                 {loading ? "修改中..." : "修改密码"}
@@ -433,7 +424,7 @@ export default function UserSecurityPage() {
                     className="flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-white hover:shadow-md transition-all duration-300 border border-slate-200"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
                         {isMobile ? (
                           <Smartphone className="w-5 h-5" />
                         ) : isTablet ? (

@@ -21,12 +21,13 @@ import {
 import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 
 const securityFeatures = [
   {
     icon: <Server className="w-6 h-6" />,
     title: "100% 物理级环境隔离",
-    description: "全面支持 Docker、K8s 容器云在离线局域网环境一键部署，数据与模型资产不出内网。",
+    description: "全面支持 Docker、K8s 容器云在离线局域网环境一键部署，数据与研发资产不出内网。",
     highlights: ["离线局域网部署", "私有独立集群", "外部网络阻断"],
   },
   {
@@ -37,8 +38,8 @@ const securityFeatures = [
   },
   {
     icon: <Database className="w-6 h-6" />,
-    title: "本地大模型算力底座",
-    description: "高度适配国产化算力硬件（如昇腾、寒武纪）及本地开源知识库，离线编译与推理。",
+    title: "本地私有化算力底座",
+    description: "高度适配国产化算力硬件（如昇腾、寒武纪）及本地知识库，离线编译与计算。",
     highlights: ["国产芯片优化", "本地知识库集成", "防隐私外泄"],
   },
   {
@@ -91,8 +92,9 @@ export default function SecurityPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${userState.userInfo?.id || ""}`,
+              Authorization: `Bearer ${getAuthToken()}`,
             },
+            credentials: "include",
             body: JSON.stringify({
               envScale,
               gpuType,
@@ -187,7 +189,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
       desc: "用户发起的所有研发与管理请求，全部通过双向 TLS 链路加密，并结合设备证书和动态零信任准入控制，杜绝中间人攻击与未授权终端接入。"
     },
     central: {
-      title: "知阁舟坊智能中枢 (ZhiGe-Dockyard Core)",
+      title: "知阁舟坊核心引擎 (ZhiGe-Dockyard Core)",
       desc: "私有部署的中央引擎。调度运行时沙箱、管理权限策略、分发原子组件。与外网物理隔绝，所有核心任务调度均在企业本地局域网（LAN）中完成。"
     },
     sandbox: {
@@ -195,8 +197,8 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
       desc: "为每个运行组件（如标书解析、PRD生成）临时分配微容器沙箱。读写隔离，在临时沙箱执行完成后彻底清除容器上下文，杜绝敏感数据残留。"
     },
     gpu: {
-      title: "本地国产化大模型算力 (Local GPU Cluster)",
-      desc: "完美适配昇腾 (Ascend) 芯片及各型算力硬件，所有大语言模型推理均在本地算力网络中计算，保障数据主权与推理过程完全私密。"
+      title: "本地国产化算力集群 (Local GPU Cluster)",
+      desc: "完美适配昇腾 (Ascend) 芯片及各型算力硬件，所有计算任务均在本地算力网络中完成，保障数据主权与计算过程完全私密。"
     }
   };
 
@@ -215,7 +217,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
       {/* Hero Section */}
       <section className="relative pt-20 pb-12 z-10 text-center">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 backdrop-blur-md rounded-full shadow-sm border border-emerald-200/50 mb-6">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 backdrop-blur-md rounded-full shadow-sm border border-emerald-200/50 mb-6">
             <span className="text-xs font-black tracking-wide flex items-center gap-1.5 animate-pulse">
               🛡️ 国家等保三级与全链路国密标准保障
             </span>
@@ -223,12 +225,12 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
 
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-black mb-6 tracking-tight leading-tight">
             数据主权不妥协：<br className="hidden md:inline" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 via-teal-600 to-[#3182ce]">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 via-emerald-600 to-[#3182ce]">
               全链路私有化部署架构
             </span>
           </h1>
           <p className="text-base md:text-lg text-slate-600 max-w-3xl mx-auto leading-relaxed">
-            从数据资产存储、安全审计策略到本地大模型推理，全程都在您的专属局域网掌控之中。<br className="hidden md:inline" />消除泄密敞口，筑牢合规底座。
+            从数据资产存储、安全审计策略到本地算力计算，全程都在您的专属局域网掌控之中。<br className="hidden md:inline" />消除泄密敞口，筑牢合规底座。
           </p>
         </div>
       </section>
@@ -262,7 +264,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                   {feature.highlights.map((highlight, hidx) => (
                     <span
                       key={hidx}
-                      className="px-3 py-1 bg-emerald-50 text-emerald-700 text-[10px] md:text-xs font-bold rounded-full border border-emerald-100"
+                      className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] md:text-xs font-bold rounded-full border border-emerald-100"
                     >
                       {highlight}
                     </span>
@@ -275,7 +277,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
       </section>
 
       {/* Interactive Deployment Architecture Diagram */}
-      <section className="relative py-16 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
+      <section className="relative py-16 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 overflow-hidden">
         {/* Tech Cyber Grid Background */}
         <div 
           className="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -330,7 +332,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                       : "bg-white/[0.02] border-white/5 hover:border-white/10"
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-[#63b3ed] mb-3">
                     <Server className="w-5 h-5" />
                   </div>
                   <span className="text-xs text-white font-black">2. 舟坊中枢</span>
@@ -366,7 +368,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                     <Database className="w-5 h-5" />
                   </div>
                   <span className="text-xs text-white font-black">4. 本地昇腾/GPU</span>
-                  <span className="text-[10px] text-slate-500 mt-1">纯本地化离线大语言模型</span>
+                  <span className="text-[10px] text-slate-500 mt-1">纯本地化离线计算引擎</span>
                 </button>
               </div>
 
@@ -463,7 +465,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
       {/* Security CTA Upgrade banner */}
       <section className="relative py-20 z-10">
         <div className="max-w-4xl mx-auto px-6 text-center">
-          <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-[#3182ce]/5 backdrop-blur-xl border border-white/80 rounded-[24px] p-10 shadow-lg">
+          <div className="bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-[#3182ce]/5 backdrop-blur-xl border border-white/80 rounded-[24px] p-10 shadow-lg">
             <h2 className="text-2xl md:text-3xl font-black text-slate-800 mb-4 tracking-tight">
               准备好定制您的私有化部署架构？
             </h2>
@@ -476,7 +478,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                 setDiagnoseProgress(0);
                 setShowDiagnoseWizard(true);
               }}
-              className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-base font-black rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer animate-pulse"
+              className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-base font-black rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all cursor-pointer animate-pulse"
             >
               <span>立即发起架构与安全诊断</span>
               <ArrowRight className="w-5 h-5" />
@@ -495,7 +497,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                 setWizardStep(0);
                 setDiagnoseProgress(0);
               }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-650 cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 cursor-pointer"
               disabled={wizardStep === 2}
             >
               <X className="w-5 h-5" />
@@ -511,7 +513,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
               <div className="space-y-4">
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
                   <span className="text-xs text-slate-600 font-bold">进度评估</span>
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-700 font-black px-2 py-0.5 rounded-full">步骤 1/2: 基础环境</span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-black px-2 py-0.5 rounded-full">步骤 1/2: 基础环境</span>
                 </div>
 
                 <div>
@@ -576,7 +578,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
               <div className="space-y-4">
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
                   <span className="text-xs text-slate-600 font-bold">进度评估</span>
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-700 font-black px-2 py-0.5 rounded-full">步骤 2/2: 合规配置</span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-black px-2 py-0.5 rounded-full">步骤 2/2: 合规配置</span>
                 </div>
 
                 <div>
@@ -644,7 +646,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                   <div className="overflow-hidden h-2 text-xs flex rounded-full bg-emerald-100">
                     <div 
                       style={{ width: `${diagnoseProgress}%` }}
-                      className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-emerald-500 to-teal-600 transition-all duration-300 rounded-full"
+                      className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-300 rounded-full"
                     />
                   </div>
                 </div>
@@ -661,8 +663,8 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                   </div>
                   <div className={`px-3 py-1 rounded-full text-xs font-black border ${
                     reportScore >= 90 
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                      : "bg-amber-50 text-amber-700 border-amber-200"
+                      ? "bg-emerald-50 text-emerald-600 border-emerald-200" 
+                      : "bg-amber-50 text-amber-600 border-amber-200"
                   }`}>
                     {reportScore >= 90 ? "极高安全" : "中度合规风险"}
                   </div>
@@ -675,7 +677,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                     </h4>
                     <div className="bg-amber-50/50 rounded-lg p-3 border border-amber-100 space-y-2 max-h-[110px] overflow-y-auto pr-1">
                       {reportRisks.map((risk, i) => (
-                        <p key={i} className="text-[10px] text-slate-650 leading-relaxed font-bold">
+                        <p key={i} className="text-[10px] text-slate-600 leading-relaxed font-bold">
                           • {risk}
                         </p>
                       ))}
@@ -688,7 +690,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                     </h4>
                     <div className="bg-emerald-50/30 rounded-lg p-3 border border-emerald-100 space-y-2 max-h-[110px] overflow-y-auto pr-1">
                       {reportRecs.map((rec, i) => (
-                        <p key={i} className="text-[10px] text-slate-650 leading-relaxed font-bold">
+                        <p key={i} className="text-[10px] text-slate-600 leading-relaxed font-bold">
                           • {rec}
                         </p>
                       ))}

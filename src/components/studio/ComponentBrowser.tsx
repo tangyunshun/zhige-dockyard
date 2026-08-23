@@ -4,11 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
-import {
-  COMPONENTS,
-  ComponentCategory,
-  ComponentDefinition,
-} from "@/constants/components";
+import { getAuthToken } from "@/utils/auth";
+import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
 import {
   Search,
   ChevronDown,
@@ -50,42 +47,23 @@ import {
   Code,
   Layout,
   ShieldAlert,
-  Briefcase
+  Briefcase,
+  PenLine
 } from "lucide-react";
 
 // 引入统一侧滑分发控制面板
 import ComponentDispatcherPanel from "./ComponentDispatcherPanelNew";
 
-// 建立 Category 到 1-10 阶段的转换关系
-const categoryToStageId: Record<ComponentCategory, number> = {
-  BID_PREP: 1,
-  REQ_DESIGN: 2,
-  BACKEND_CORE: 3,
-  DATABASE_ENG: 4,
-  FRONTEND_DEV: 5,
-  TEST_QA: 6,
-  DEVOPS: 7,
-  SECURITY: 8,
-  PROJ_MGMT: 9,
-  KNOWLEDGE: 10,
-};
+// 应用阶段分组配置：名称/颜色/顺序一律由数据库 component_category 表（经 AppContext 加载）驱动，
+// 代码中不再硬编码任何阶段分组数据。
+export interface StageConfig {
+  name: string;
+  color: string;
+  bg: string;
+}
 
-// 动态派生出 10 大应用阶段分组
-const STAGE_CONFIGS: Record<number, { name: string; color: string; bg: string }> = {
-  1: { name: "商机售前", color: "#2b6cb0", bg: "bg-blue-50 text-[#2b6cb0]" },
-  2: { name: "需求设计", color: "#319795", bg: "bg-teal-50 text-[#319795]" },
-  3: { name: "后端 API", color: "#805ad5", bg: "bg-purple-50 text-[#805ad5]" },
-  4: { name: "数据库工程", color: "#dd6b20", bg: "bg-orange-50 text-[#dd6b20]" },
-  5: { name: "前端交互", color: "#3182ce", bg: "bg-sky-50 text-[#3182ce]" },
-  6: { name: "测试质量", color: "#38a169", bg: "bg-green-50 text-[#38a169]" },
-  7: { name: "运维部署", color: "#4a5568", bg: "bg-slate-100 text-[#4a5568]" },
-  8: { name: "安全合规", color: "#e53e3e", bg: "bg-red-50 text-[#e53e3e]" },
-  9: { name: "项目协同", color: "#d69e2e", bg: "bg-amber-50 text-[#d69e2e]" },
-  10: { name: "知识资产", color: "#4c51bf", bg: "bg-indigo-50 text-[#4c51bf]" },
-};
-
-const getStageIcon = (id: number, className?: string, useColor: boolean = true) => {
-  const config = STAGE_CONFIGS[id];
+const getStageIcon = (id: number, stageConfigs: Record<number, StageConfig>, className?: string, useColor: boolean = true) => {
+  const config = stageConfigs[id];
   const color = useColor && config ? config.color : undefined;
   const iconProps = {
     className: className || "w-4 h-4",
@@ -106,10 +84,12 @@ const getStageIcon = (id: number, className?: string, useColor: boolean = true) 
   }
 };
 
-// 用确定性算法计算组件的展示属性，彻底移除 Math.random
-const getComponentExtra = (id: string) => {
+// 计算组件的展示属性：
+//  - contract（数据流动契约）与 calls（全网调用次数）来自数据库 component_catalog 字段
+//  - successRate / sparkPoints 为视觉装饰派生值（系统暂未记录单组件成功率序列）
+const getComponentExtra = (id: string, contract?: string | null, usageCount?: number | null) => {
   const idx = parseInt(id.substring(1)) || 1;
-  const calls = 1000 + (idx * 83) % 4000;
+  const calls = usageCount || 0;
   const successRate = 95.2 + (idx * 13) % 4.6;
 
   // 派生趋势 Sparkline 线数据点 (确保在 0-30 范围内平滑变化)
@@ -119,24 +99,9 @@ const getComponentExtra = (id: string) => {
     sparkPoints.push(val);
   }
 
-  // 派生简短的数据流动契约描述
-  const contracts: Record<string, string> = {
-    C01: "PDF ➜ 偏离表",
-    C02: "方案 ➜ 风险点",
-    C07: "脑图 ➜ PRD",
-    C08: "流程 ➜ 异常点",
-    C11: "需求 ➜ Rest API",
-    C18: "DDL ➜ ER图",
-    C21: "需求 ➜ React",
-    C26: "源码 ➜ 单测",
-    C31: "配置 ➜ Docker",
-    C36: "代码 ➜ 修复项",
-    C41: "目标 ➜ WBS",
-    C46: "Swagger ➜ API",
-  };
-  const contract = contracts[id] || "参数 ➜ 输出";
+  const resolvedContract = contract || "参数 ➜ 输出";
 
-  return { calls, successRate, sparkPoints, contract };
+  return { calls, successRate, sparkPoints, contract: resolvedContract };
 };
 
 const categoryEmojis: Record<string, string> = {
@@ -177,12 +142,40 @@ export default function ComponentBrowser({
     recentUsed,
     toggleFavorite,
     boundComponentIds,
+    boundComponentsWorkspaceId,
     bindComponent,
     unbindComponent,
     userState,
     refreshUserState,
     refreshBoundComponents,
+    resetWorkspaceData,
+    componentCatalog,
+    componentCategories,
   } = useAppContext();
+  // 组件信息来自数据库（component_catalog 表）
+  const COMPONENTS = componentCatalog || [];
+
+  // 空间归属校验：全局装配数据仅当属于当前空间时才作为"已装配"展示，
+  // 否则视为未装配（避免切换空间后仍显示旧空间的装配状态）
+  const currentBoundIds = boundComponentsWorkspaceId === workspaceId ? boundComponentIds : [];
+
+  // 阶段分组配置：由数据库 component_category 表（sortOrder/name/color）驱动，不再硬编码
+  const { stageConfigs, categoryToStageId } = React.useMemo(() => {
+    const configs: Record<number, StageConfig> = {};
+    const catToId: Record<string, number> = {};
+    if (componentCategories) {
+      Object.entries(componentCategories).forEach(([catKey, details]) => {
+        const stageId = details.sortOrder && details.sortOrder > 0 ? details.sortOrder : 1;
+        catToId[catKey] = stageId;
+        configs[stageId] = {
+          name: details.name,
+          color: details.color,
+          bg: "bg-slate-50 text-slate-700",
+        };
+      });
+    }
+    return { stageConfigs: configs, categoryToStageId: catToId };
+  }, [componentCategories]);
 
   const [isMounted, setIsMounted] = useState(false);
   const [clientLoggedIn, setClientLoggedIn] = useState(false);
@@ -264,6 +257,17 @@ export default function ComponentBrowser({
   const [dispatcherCompId, setDispatcherCompId] = useState<string | null>(null);
   const [isDispatcherOpen, setIsDispatcherOpen] = useState(false);
 
+  // 解除装配前"使用中"检测弹窗状态
+  // inUse=true → 展示"组件已被使用"引导去空间解除；inUse=false → 展示确认解除
+  const [unbindModal, setUnbindModal] = useState<{
+    componentId: string;
+    name: string;
+    inUse: boolean;
+    reason?: string;
+    checking: boolean;
+    confirming: boolean;
+  } | null>(null);
+
   // 批量操作状态
   const [selectMode, setSelectMode] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
@@ -282,6 +286,27 @@ export default function ComponentBrowser({
     setExpandedStages(prev => ({ ...prev, [stageId]: !prev[stageId] }));
   };
 
+  // 确认弹窗中"确定解除"：真正执行解除装配
+  const confirmUnbind = async () => {
+    if (!unbindModal || !workspaceId) return;
+    setUnbindModal({ ...unbindModal, confirming: true });
+    try {
+      const result = await unbindComponent(unbindModal.componentId, workspaceId);
+      if (result.ok) {
+        toast.success(`组件 ${unbindModal.name} 已成功解除装配 (历史任务与文档 100% 完整保留)`);
+        setUnbindModal(null);
+        refreshBoundComponents(workspaceId);
+        refreshUserState();
+      } else {
+        setUnbindModal(null);
+        toast.error(result.error || "解除装配失败，请稍后重试");
+      }
+    } catch (err) {
+      setUnbindModal(null);
+      toast.error("网络异常，请重试");
+    }
+  };
+
   // 快捷一键装配/解除绑定组件处理函数
   const handleQuickBind = async (e: React.MouseEvent, componentId: string, name: string, isBound: boolean) => {
     e.stopPropagation();
@@ -291,18 +316,46 @@ export default function ComponentBrowser({
     }
     try {
       if (isBound) {
-        const success = await unbindComponent(componentId, workspaceId);
-        if (success) {
-          toast.success(`组件 ${name} 已从当前空间解除引进`);
+        // 解除装配流程：先检测使用状态 → 弹窗展示检测结果 → 用户确认后再解除
+        setUnbindModal({ componentId, name, inUse: false, checking: true, confirming: false });
+        try {
+          const res = await fetch(`/api/studio?action=check-usage&workspaceId=${encodeURIComponent(workspaceId)}&componentId=${encodeURIComponent(componentId)}`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+            credentials: "include",
+          });
+          const data = await res.json();
+          if (data.success && data.data) {
+            setUnbindModal({
+              componentId,
+              name,
+              inUse: data.data.inUse === true,
+              reason: data.data.reason,
+              checking: false,
+              confirming: false,
+            });
+            return;
+          }
+        } catch (err) {
+          console.error("检测组件使用状态失败:", err);
+        }
+        // 检测接口异常时降级：关闭检测弹窗，直接尝试解除（后端仍有强校验兜底）
+        setUnbindModal(null);
+        const result = await unbindComponent(componentId, workspaceId);
+        if (result.ok) {
+          toast.success(`组件 ${name} 已成功解除装配 (历史任务与文档 100% 完整保留)`);
+          refreshBoundComponents(workspaceId);
+          refreshUserState();
         } else {
-          toast.error("操作失败，请重试");
+          toast.error(result.error || "解除装配失败，请稍后重试");
         }
       } else {
-        const success = await bindComponent(componentId, workspaceId);
-        if (success) {
+        const result = await bindComponent(componentId, workspaceId);
+        if (result.ok) {
           toast.success(`组件 ${name} 已成功分发装配至当前空间`);
+          refreshBoundComponents(workspaceId);
+          refreshUserState();
         } else {
-          toast.error("操作失败，请重试");
+          toast.error(result.error || "装配失败，请重试");
         }
       }
     } catch (err) {
@@ -355,13 +408,16 @@ export default function ComponentBrowser({
   const handleSwitchWorkspace = async (targetWsId: string) => {
     if (targetWsId === workspaceId) return;
     setIsSwitching(true);
+    // 同步清空旧空间装配数据，避免 SPA 内切换后新数据返回前组件大厅仍显示旧空间的"已装入 X 项"
+    resetWorkspaceData();
     try {
       const res = await fetch("/api/workspace/switch", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userState.userInfo?.id || localStorage.getItem("userId")}`
+          Authorization: `Bearer ${getAuthToken()}`
         },
+        credentials: "include",
         body: JSON.stringify({ workspaceId: targetWsId }),
       });
       if (res.ok) {
@@ -405,16 +461,18 @@ export default function ComponentBrowser({
       setIsTaskSearching(false);
       const matches: string[] = [];
       const lower = prompt.toLowerCase();
-      if (lower.includes("标书") || lower.includes("rfp") || lower.includes("投标")) matches.push("C01", "C02", "C03");
-      if (lower.includes("prd") || lower.includes("需求") || lower.includes("会议")) matches.push("C07", "C08", "C09");
-      if (lower.includes("api") || lower.includes("rest") || lower.includes("接口")) matches.push("C11", "C12", "C16");
-      if (lower.includes("数据库") || lower.includes("建表") || lower.includes("er") || lower.includes("sql")) matches.push("C17", "C18", "C19");
-      if (lower.includes("react") || lower.includes("vue") || lower.includes("组件") || lower.includes("响应式")) matches.push("C21", "C22", "C23");
-      if (lower.includes("测试") || lower.includes("单元") || lower.includes("单测") || lower.includes("jest")) matches.push("C26", "C27", "C28");
-      if (lower.includes("docker") || lower.includes("k8s") || lower.includes("部署") || lower.includes("流水线")) matches.push("C31", "C32", "C33");
-      if (lower.includes("注入") || lower.includes("xss") || lower.includes("等保") || lower.includes("安全")) matches.push("C36", "C37", "C39");
-      if (lower.includes("甘特图") || lower.includes("wbs") || lower.includes("排期") || lower.includes("成本")) matches.push("C41", "C42", "C43");
-      if (lower.includes("注释") || lower.includes("知识") || lower.includes("文档")) matches.push("C46", "C47", "C48");
+
+      // 基于数据库 component_catalog 的 keywords / 名称 / 描述 / 标签做模糊匹配（不再硬编码关键词映射）
+      COMPONENTS.forEach((comp) => {
+        const kwList = (comp.keywords || []).map((k) => k.toLowerCase());
+        const kwHit = kwList.some((k) => lower.includes(k));
+        const nameHit = comp.name.toLowerCase().includes(lower) || lower.includes(comp.name.toLowerCase());
+        const descHit = comp.description.toLowerCase().includes(lower);
+        const tagHit = (comp.tags || []).some((t) => t.toLowerCase().includes(lower));
+        if (kwHit || nameHit || descHit || tagHit) {
+          matches.push(comp.id);
+        }
+      });
 
       if (matches.length > 0) {
         setMatchedIds(matches);
@@ -543,39 +601,33 @@ export default function ComponentBrowser({
       } else {
         clearInterval(interval);
 
-        // 智能匹配计算逻辑：根据文件名或需求诉求推荐最契合的组件
+        // 智能匹配计算逻辑：基于数据库 component_catalog 的 keywords / 名称 / 描述做通用需求匹配
         const promptLower = smartPrompt.toLowerCase();
         const fileLower = uploadedFile ? uploadedFile.name.toLowerCase() : "";
-        let recommendedIds: string[] = [];
 
-        if (promptLower.includes("标书") || promptLower.includes("rfp") || fileLower.includes("rfp") || fileLower.includes("pdf")) {
-          recommendedIds = ["C01", "C02"];
-        } else if (promptLower.includes("api") || promptLower.includes("接口") || promptLower.includes("后端") || fileLower.includes("json") || fileLower.includes("swagger")) {
-          recommendedIds = ["C11", "C12"];
-        } else if (promptLower.includes("测试") || promptLower.includes("单测") || promptLower.includes("jest")) {
-          recommendedIds = ["C26"];
-        } else if (promptLower.includes("react") || promptLower.includes("vue") || promptLower.includes("前端") || fileLower.includes("html") || fileLower.includes("js")) {
-          recommendedIds = ["C21", "C22"];
-        } else {
-          // 默认推荐
-          recommendedIds = ["C07", "C11"];
-        }
+        const matchResults = COMPONENTS
+          .map(comp => {
+            const kwList = (comp.keywords || []).map(k => k.toLowerCase());
+            const nameLower = comp.name.toLowerCase();
+            const descLower = comp.description.toLowerCase();
 
-        const matchResults = recommendedIds.map(id => {
-          const comp = COMPONENTS.find(c => c.id === id);
-          // 生成 95% ~ 99% 的确定性匹配度
-          const scoreIdx = parseInt(id.substring(1)) || 1;
-          const score = 95.0 + ((scoreIdx * 7) % 49) / 10;
+            const kwHit = kwList.some(k => promptLower.includes(k));
+            const nameHit = promptLower.length > 0 && (nameLower.includes(promptLower) || promptLower.includes(nameLower));
+            const descHit = promptLower.length > 0 && descLower.includes(promptLower);
+            const fileHit = fileLower.length > 0 && kwList.some(k => fileLower.includes(k) || k.includes(fileLower.split(".")[0]));
 
-          let reason = "该组件的功能与您的文件内容及应用需求非常契合，可以帮您大幅提升开发效率。";
-          if (id === "C01") reason = "系统检测到标书相关关键字，该组件可以自动解析标书文件并生成偏离表，省去手动核对时间。";
-          if (id === "C11") reason = "依据您的接口应用需求，该组件可以根据您提供的数据定义，快速生成标准的 API 接口代码及接口文档。";
-          if (id === "C26") reason = "系统检测到测试需求，该组件可自动为您的代码生成单元测试用例，提高测试覆盖率。";
-          if (id === "C21") reason = "依据您的前端应用需求，该组件可以快速生成响应式的 React 数据表格与交互页面。";
-          if (id === "C07") reason = "该组件能自动将您上传的流程脑图或会议纪要，整理转换为结构化的 PRD 需求规格文档。";
+            if (!kwHit && !nameHit && !descHit && !fileHit) return null;
 
-          return { component: comp!, matchScore: score, reason };
-        }).filter(item => item.component !== undefined);
+            // 确定性匹配度（基于组件 ID 派生的视觉分数）
+            const scoreIdx = parseInt(comp.id.substring(1)) || 1;
+            const score = 95.0 + ((scoreIdx * 7) % 49) / 10;
+            const reason = `系统检测到与「${comp.name}」相关的需求特征，该组件可自动完成 ${comp.contract || "对应研发任务"}，大幅提升交付效率。`;
+
+            return { component: comp, matchScore: score, reason };
+          })
+          .filter((item): item is { component: ComponentDefinition; matchScore: number; reason: string } => item !== null)
+          .sort((a, b) => b.matchScore - a.matchScore)
+          .slice(0, 3);
 
         setRecommendedComponents(matchResults);
         setIsAnalyzing(false);
@@ -634,21 +686,24 @@ export default function ComponentBrowser({
     toast.success(`已取消 ${count} 个组件的收藏`);
   };
 
-  // 阶段分组数据
-  const stages = Object.entries(STAGE_CONFIGS).map(([idStr, details]) => {
-    const stageId = parseInt(idStr);
-    const stageComponents = COMPONENTS.filter(
-      (c) => categoryToStageId[c.category] === stageId
-    );
-    return { id: stageId, name: details.name, details, components: stageComponents };
-  });
+  // 阶段分组数据（名称/颜色/顺序来自数据库 component_category 表）
+  const stages = Object.entries(stageConfigs)
+    .map(([idStr, details]) => {
+      const stageId = parseInt(idStr);
+      const stageComponents = COMPONENTS.filter(
+        (c) => categoryToStageId[c.category] === stageId
+      );
+      return { id: stageId, name: details.name, details, components: stageComponents };
+    })
+    .filter((s) => s.components.length > 0)
+    .sort((a, b) => a.id - b.id);
 
   // 检查某个阶段下是否有绑定的组件
   const getBoundComponentsInStage = (stageId: number) => {
     const stageComponents = COMPONENTS.filter(
       (c) => categoryToStageId[c.category] === stageId
     );
-    return stageComponents.filter(c => boundComponentIds.includes(c.id));
+    return stageComponents.filter(c => currentBoundIds.includes(c.id));
   };
 
   // 获取排序筛选后的组件列表
@@ -667,13 +722,11 @@ export default function ComponentBrowser({
     }
 
     return result.sort((a, b) => {
-      const extraA = getComponentExtra(a.id);
-      const extraB = getComponentExtra(b.id);
       switch (sortBy) {
         case "hot":
-          return extraB.calls - extraA.calls;
+          return (b.usageCount || 0) - (a.usageCount || 0);
         case "success":
-          return extraB.successRate - extraA.successRate;
+          return getComponentExtra(b.id).successRate - getComponentExtra(a.id).successRate;
         case "new":
           return parseInt(b.id.substring(1)) - parseInt(a.id.substring(1));
         default:
@@ -691,9 +744,9 @@ export default function ComponentBrowser({
     <div className="relative z-0 max-w-[1600px] mx-auto p-6 space-y-6" onClick={() => setShowSearchHistory(false)}>
 
       {/* 🚀 顶通栏：智阁全栈效能发布大厅愿景与价值中枢 */}
-      <section className="bg-gradient-to-br from-[#f0f8ff] via-[#e6f0fa] to-[#d9e8f5] rounded-2xl p-6 shadow-sm border border-blue-100 relative overflow-hidden">
+      <section className="bg-gradient-to-br from-[#f0f8ff] via-[#ebf8ff] to-[#ffffff] rounded-2xl p-6 shadow-sm border border-blue-100 relative overflow-hidden">
         {/* 装饰流光 */}
-        <div className="absolute right-0 top-0 w-96 h-96 bg-blue-300/10 rounded-full filter blur-3xl pointer-events-none scale-150 transform translate-x-20 -translate-y-20" />
+        <div className="absolute right-0 top-0 w-96 h-96 bg-[#63b3ed]/10 rounded-full filter blur-3xl pointer-events-none scale-150 transform translate-x-20 -translate-y-20" />
         <div className="absolute left-1/3 bottom-0 w-64 h-64 bg-indigo-300/5 rounded-full filter blur-3xl pointer-events-none" />
 
         <div className="relative z-10 space-y-4">
@@ -781,7 +834,7 @@ export default function ComponentBrowser({
               {/* 第二列：剩余 Token 算力 */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                  <span>剩余 Token 算力</span>
+                  <span>剩余调用额度</span>
                   <span className="text-slate-700 font-mono font-black">{workspaceToken.toLocaleString()}</span>
                 </div>
                 <div className="h-10 bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl flex items-center gap-3 shadow-inner">
@@ -806,7 +859,7 @@ export default function ComponentBrowser({
                 <div className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between shadow-inner">
                   <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 truncate pr-2">
                     <FolderClosed className="w-4 h-4 text-[#3182ce] shrink-0" />
-                    已装入 <span className="font-mono text-[#3182ce] font-black">{boundComponentIds.length}</span> 项组件
+                    已装入 <span className="font-mono text-[#3182ce] font-black">{currentBoundIds.length}</span> 项组件
                   </span>
                   <button
                     onClick={() => setIsAssetsDrawerOpen(!isAssetsDrawerOpen)}
@@ -825,11 +878,11 @@ export default function ComponentBrowser({
 
             {/* 下拉资产树面板 - 抽屉 */}
             {isAssetsDrawerOpen && (() => {
-              const boundComps = boundComponentIds
+              const boundComps = currentBoundIds
                 .map(id => COMPONENTS.find(c => c.id === id))
                 .filter((c): c is ComponentDefinition => !!c);
               const displayComps = boundComps.slice(0, 3);
-              const hasMore = boundComponentIds.length > 3;
+              const hasMore = currentBoundIds.length > 3;
 
               return (
                 <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 animate-in slide-in-from-top duration-200">
@@ -844,12 +897,12 @@ export default function ComponentBrowser({
                         }}
                         className="text-xs font-black text-[#3182ce] hover:text-[#2b6cb0] flex items-center gap-1 transition-colors cursor-pointer"
                       >
-                        <span>查看更多组件 ({boundComponentIds.length - 3} 项)</span>
+                        <span>查看更多组件 ({currentBoundIds.length - 3} 项)</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
-                  {boundComponentIds.length === 0 ? (
+                  {currentBoundIds.length === 0 ? (
                     <div className="py-8 text-center bg-[#f8fafc]/60 rounded-xl border border-slate-200/60 flex flex-col items-center justify-center">
                       <p className="text-xs text-slate-400 font-semibold">该空间尚未绑定任何组件</p>
                       <p className="text-xs text-slate-400 mt-1">您可以从下方货架区选择需要引进的效能资产</p>
@@ -870,7 +923,7 @@ export default function ComponentBrowser({
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pr-1">
                       {displayComps.map((c) => {
                         const stageId = categoryToStageId[c.category];
-                        const stageConfig = STAGE_CONFIGS[stageId];
+                        const stageConfig = stageConfigs[stageId];
                         const isUsed = recentUsed.includes(c.id);
 
                         return (
@@ -892,7 +945,7 @@ export default function ComponentBrowser({
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-1.5">
                                   <div className="p-1 bg-slate-100 rounded text-slate-600 group-hover:bg-blue-50 group-hover:text-[#3182ce] transition-colors shrink-0">
-                                    {getStageIcon(stageId, "w-3.5 h-3.5 shrink-0", false)}
+                                    {getStageIcon(stageId, stageConfigs, "w-3.5 h-3.5 shrink-0", false)}
                                   </div>
                                   <span className="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono tracking-wider group-hover:bg-blue-50 group-hover:text-[#3182ce] transition-all">
                                     {c.id}
@@ -900,22 +953,22 @@ export default function ComponentBrowser({
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                   {isUsed && (
-                                    <span className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-[4px] bg-emerald-50 text-emerald-700 border border-emerald-150 animate-pulse">
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-[4px] bg-emerald-50 text-emerald-600 border border-emerald-100 animate-pulse">
                                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                                       活跃使用中
                                     </span>
                                   )}
                                   <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-[4px] border ${
-                                    stageId === 1 ? "bg-blue-50 text-blue-700 border-blue-100" :
-                                    stageId === 2 ? "bg-teal-50 text-teal-700 border-teal-100" :
-                                    stageId === 3 ? "bg-purple-50 text-purple-700 border-purple-100" :
-                                    stageId === 4 ? "bg-orange-50 text-orange-700 border-orange-100" :
-                                    stageId === 5 ? "bg-sky-50 text-sky-700 border-sky-100" :
-                                    stageId === 6 ? "bg-green-50 text-green-700 border-green-100" :
+                                    stageId === 1 ? "bg-blue-50 text-[#2b6cb0] border-blue-100" :
+                                    stageId === 2 ? "bg-indigo-50 text-[#5a67d8] border-indigo-100" :
+                                    stageId === 3 ? "bg-purple-50 text-[#805ad5] border-purple-100" :
+                                    stageId === 4 ? "bg-amber-50 text-[#d97706] border-amber-100" :
+                                    stageId === 5 ? "bg-blue-50 text-[#3182ce] border-blue-100" :
+                                    stageId === 6 ? "bg-emerald-50 text-[#059669] border-emerald-100" :
                                     stageId === 7 ? "bg-slate-100 text-slate-700 border-slate-200" :
-                                    stageId === 8 ? "bg-red-50 text-red-700 border-red-100" :
-                                    stageId === 9 ? "bg-amber-50 text-amber-700 border-amber-100" :
-                                    "bg-indigo-50 text-indigo-700 border-indigo-100"
+                                    stageId === 8 ? "bg-red-50 text-red-600 border-red-100" :
+                                    stageId === 9 ? "bg-amber-50 text-[#f59e0b] border-amber-100" :
+                                    "bg-blue-50 text-[#63b3ed] border-blue-100"
                                   }`}>
                                     {stageConfig?.name}
                                   </span>
@@ -928,7 +981,7 @@ export default function ComponentBrowser({
                                   {c.name}
                                 </h4>
                                 <div className="flex items-center gap-1 text-[9px] font-bold text-[#3182ce] mt-1 bg-blue-50/30 px-1.5 py-0.5 rounded border border-blue-100/30 w-max font-mono">
-                                  <span>{getComponentExtra(c.id).contract}</span>
+                                  <span>{getComponentExtra(c.id, c.contract).contract}</span>
                                 </div>
                                 <p className="text-[10px] text-slate-400 line-clamp-1 mt-1 leading-normal" title={c.description}>
                                   {c.description}
@@ -943,7 +996,7 @@ export default function ComponentBrowser({
                                   e.stopPropagation();
                                   await handleQuickBind(e, c.id, c.name, true);
                                 }}
-                               className="px-3 py-1.5 rounded-[4px] text-[11px] font-black bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all cursor-pointer border border-red-150/40"
+                               className="px-3 py-1.5 rounded-[4px] text-[11px] font-black bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-600 transition-all cursor-pointer border border-red-100/40"
                               >
                                 解除装配
                               </button>
@@ -953,7 +1006,7 @@ export default function ComponentBrowser({
                                     router.push(`/workspace/${workspaceId}?tab=tasks`);
                                   }
                                 }}
-                                className="px-3 py-1.5 rounded-[4px] text-[11px] font-black bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white transition-all flex items-center gap-1 cursor-pointer shadow-sm border border-blue-150/40"
+                                className="px-3 py-1.5 rounded-[4px] text-[11px] font-black bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white transition-all flex items-center gap-1 cursor-pointer shadow-sm border border-blue-100/40"
                               >
                                 <span>立即使用</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
@@ -976,14 +1029,14 @@ export default function ComponentBrowser({
           {/* 模式分流选择器 (一分为二的双轨工作模式导流板) */}
           <section id="dispatch-engines" className="bg-white rounded-2xl p-5 sm:p-6 border border-[#e2e8f0]/90 shadow-sm space-y-4">
             <div>
-              <div className="inline-flex items-center gap-1 bg-blue-50 text-[#3182ce] px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide border border-blue-150 uppercase">
+              <div className="inline-flex items-center gap-1 bg-blue-50 text-[#3182ce] px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide border border-blue-100 uppercase">
                 🔍 检索与装配双引擎
               </div>
               <h2 className="text-sm font-black text-slate-900 tracking-tight mt-2 flex items-center gap-1.5">
                 如何寻找最适合您的效能资产组件？
               </h2>
               <p className="text-xs text-slate-400 font-bold mt-1 leading-normal">
-                本平台提供【智能自动匹配】与【自主精细化筛选】双重通道，帮助您快速定位并装配全栈研发流程中所需的组件。
+                本平台提供【自动匹配】与【自主精细化筛选】双重通道，帮助您快速定位并装配全栈研发流程中所需的组件。
               </p>
             </div>
 
@@ -1010,8 +1063,8 @@ export default function ComponentBrowser({
                       } /* 触发重新编译 */`}>
                       <Search className="w-4 h-4" />
                     </div>
-                    <span className="text-xs font-black text-slate-800">方式一：智能自动匹配组件</span>
-                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-[4px] bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center gap-0.5 shadow-sm shrink-0">
+                    <span className="text-xs font-black text-slate-800">方式一：自动匹配组件</span>
+                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-[4px] bg-amber-50 text-amber-600 border border-amber-200/80 flex items-center gap-0.5 shadow-sm shrink-0">
                       <Zap className="w-2.5 h-2.5 text-amber-500 fill-amber-500 animate-pulse" />
                       推荐
                     </span>
@@ -1022,7 +1075,7 @@ export default function ComponentBrowser({
                 </div>
 
                 <div className="mt-4 flex items-center justify-between relative z-10 pt-2 border-t border-slate-100/60">
-                  <span className="text-[10px] text-slate-400 font-bold">上传资源/描述需求智能匹配</span>
+                  <span className="text-[10px] text-slate-400 font-bold">上传资源/描述需求自动匹配</span>
                   <span className={`text-[10px] font-black px-2.5 py-1 rounded transition-all ${workMode === "smart"
                     ? "bg-[#3182ce] text-white shadow-sm"
                     : "bg-slate-200 text-slate-600 group-hover:bg-[#3182ce]/10 group-hover:text-[#3182ce]"
@@ -1130,7 +1183,7 @@ export default function ComponentBrowser({
                 <div className="relative overflow-x-auto pb-4 pt-2 px-1 scrollbar-thin">
 
                   {/* CSS 流光动画连线背景 */}
-                  <div className="absolute top-[32px] left-[50px] right-[50px] h-0.5 bg-gradient-to-r from-blue-200 via-indigo-300 to-teal-200 rounded animate-pulse pointer-events-none z-0" />
+                  <div className="absolute top-[32px] left-[50px] right-[50px] h-0.5 bg-gradient-to-r from-blue-200 via-[#63b3ed] to-emerald-200 rounded animate-pulse pointer-events-none z-0" />
 
                   <div className="relative z-10 flex items-center justify-between min-w-[950px] px-4">
                     {stages.map((stage) => {
@@ -1146,7 +1199,7 @@ export default function ComponentBrowser({
                               : "bg-white border-slate-200 hover:border-[#3182ce] hover:scale-105"
                               }`}
                           >
-                            {getStageIcon(stage.id, isSelected ? "w-5 h-5 text-white" : "w-5 h-5", !isSelected)}
+                            {getStageIcon(stage.id, stageConfigs, isSelected ? "w-5 h-5 text-white" : "w-5 h-5", !isSelected)}
                           </button>
 
                           {/* 阶段名称与组件计数 */}
@@ -1255,7 +1308,7 @@ export default function ComponentBrowser({
                         <div className="flex gap-1.5">
                           <button
                             onClick={batchFavorite}
-                            className="h-9 px-3.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl text-xs font-bold cursor-pointer hover:shadow-md transition-all"
+                            className="h-9 px-3.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded-xl text-xs font-bold cursor-pointer hover:shadow-md transition-all"
                           >
                             批量收藏
                           </button>
@@ -1294,7 +1347,18 @@ export default function ComponentBrowser({
               {(() => {
                 // 当前激活的应用阶段组件集
                 const activeStageId = selectedStage === -1 ? 1 : selectedStage;
-                const currentStage = stages.find((s) => s.id === activeStageId) || stages[0];
+                const currentStage = stages.find((s) => s.id === activeStageId) || stages[0] || null;
+
+                // 组件目录尚未从数据库加载完成时，渲染加载占位，避免访问 undefined 崩溃
+                if (!currentStage || !currentStage.components || currentStage.components.length === 0) {
+                  return (
+                    <div className="bg-white border border-[#e2e8f0]/80 rounded-2xl p-10 text-center shadow-sm">
+                      <Activity className="w-8 h-8 text-slate-400 block mx-auto mb-3 animate-pulse" />
+                      <p className="text-xs font-black text-slate-700">组件货架加载中...</p>
+                      <p className="text-xs text-slate-400 mt-1">正在从数据库加载组件目录</p>
+                    </div>
+                  );
+                }
 
                 // 过滤搜索内容
                 const comps = currentStage.components.filter((c) => {
@@ -1330,9 +1394,9 @@ export default function ComponentBrowser({
                     {viewMode === "grid" ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                         {getSortedComponents(comps).map((comp) => {
-                          const extra = getComponentExtra(comp.id);
+                          const extra = getComponentExtra(comp.id, comp.contract, comp.usageCount);
                           const isFav = favorites.includes(comp.id);
-                          const isBound = boundComponentIds.includes(comp.id);
+                          const isBound = currentBoundIds.includes(comp.id);
                           const isSelected = selectedComponents.includes(comp.id);
                           const isRestricted = restrictedComponentIds.includes(comp.id);
 
@@ -1358,7 +1422,7 @@ export default function ComponentBrowser({
                                   : isMatched
                                     ? "border-blue-500 ring-2 ring-blue-500/25 bg-blue-50/5"
                                     : isBound
-                                      ? "border-blue-300 shadow-sm"
+                                      ? "border-[#63b3ed] shadow-sm"
                                       : "border-slate-200/90"
                                 }`}
                             >
@@ -1377,7 +1441,7 @@ export default function ComponentBrowser({
 
                                   <div className="flex gap-1 items-center shrink-0">
                                     {comp.isPremium && (
-                                      <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded text-xs font-black flex items-center gap-0.5 shadow-sm">
+                                      <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-xs font-black flex items-center gap-0.5 shadow-sm">
                                         <Award className="w-2.5 h-2.5" />
                                         <span>PREMIUM</span>
                                       </span>
@@ -1439,7 +1503,7 @@ export default function ComponentBrowser({
                                           cy="10"
                                           r="8"
                                           fill="none"
-                                          stroke="#38a169"
+                                          stroke="#059669"
                                           strokeWidth="2"
                                           strokeDasharray="50"
                                           strokeDashoffset={50 - (50 * extra.successRate) / 100}
@@ -1534,9 +1598,9 @@ export default function ComponentBrowser({
                       <div className="bg-white border border-[#e2e8f0]/80 rounded-2xl shadow-sm overflow-hidden">
                         <div className="divide-y divide-slate-100">
                           {getSortedComponents(comps).map((comp) => {
-                            const extra = getComponentExtra(comp.id);
+                            const extra = getComponentExtra(comp.id, comp.contract, comp.usageCount);
                             const isFav = favorites.includes(comp.id);
-                            const isBound = boundComponentIds.includes(comp.id);
+                            const isBound = currentBoundIds.includes(comp.id);
                             const isSelected = selectedComponents.includes(comp.id);
                             const isRestricted = restrictedComponentIds.includes(comp.id);
 
@@ -1571,7 +1635,7 @@ export default function ComponentBrowser({
                                       <span className="text-xs font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono">{comp.id}</span>
                                       <span className="text-xs font-black text-slate-800 truncate">{comp.name}</span>
                                       {comp.isPremium && (
-                                        <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded text-xs font-black">PREMIUM</span>
+                                        <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-xs font-black">PREMIUM</span>
                                       )}
                                       {isLoggedIn ? (
                                         <>
@@ -1811,7 +1875,7 @@ export default function ComponentBrowser({
                               {isRefiningSmart ? (
                                 <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                               ) : (
-                                <span>✨ 智能润色</span>
+                                <span className="inline-flex items-center gap-1"><PenLine className="w-3 h-3" /> 自动润色</span>
                               )}
                             </button>
                           )}
@@ -1923,15 +1987,15 @@ export default function ComponentBrowser({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     {recommendedComponents.map(({ component: comp, matchScore, reason }) => {
-                      const extra = getComponentExtra(comp.id);
+                      const extra = getComponentExtra(comp.id, comp.contract, comp.usageCount);
                       const isFav = favorites.includes(comp.id);
-                      const isBound = boundComponentIds.includes(comp.id);
+                      const isBound = currentBoundIds.includes(comp.id);
                       const isRestricted = restrictedComponentIds.includes(comp.id);
 
                       return (
                         <div
                           key={comp.id}
-                          className={`group relative bg-white border rounded-2xl p-5 hover:shadow-lg transition-all duration-350 flex flex-col justify-between cursor-pointer border-blue-400 shadow-md`}
+                          className={`group relative bg-white border rounded-2xl p-5 hover:shadow-lg transition-all duration-350 flex flex-col justify-between cursor-pointer border-[#63b3ed] shadow-md`}
                           onClick={() => handleOpenDispatcher(comp.id)}
                         >
                           <div>
@@ -1949,7 +2013,7 @@ export default function ComponentBrowser({
 
                               <div className="flex gap-1 items-center shrink-0">
                                 {comp.isPremium && (
-                                  <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded text-xs font-black flex items-center gap-0.5 shadow-sm">
+                                  <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-xs font-black flex items-center gap-0.5 shadow-sm">
                                     <Award className="w-2.5 h-2.5" />
                                     <span>PREMIUM</span>
                                   </span>
@@ -1964,7 +2028,7 @@ export default function ComponentBrowser({
 
                             {/* 标题 */}
                             <h4 className="text-xs font-black text-slate-800 mb-1.5 flex items-center gap-1.5">
-                              {getStageIcon(categoryToStageId[comp.category], "w-4 h-4 shrink-0")}
+                              {getStageIcon(categoryToStageId[comp.category], stageConfigs, "w-4 h-4 shrink-0")}
                               <span className="group-hover:text-[#3182ce] transition-colors">{comp.name}</span>
                             </h4>
 
@@ -2036,6 +2100,132 @@ export default function ComponentBrowser({
           onSelectComponent(compId, wsId); // 触发 Studio 主路由转场重定向
         }}
       />
+
+      {/* 🔔 解除装配前"使用中"检测结果弹窗 */}
+      {unbindModal && (
+        (() => {
+          const modalDef = COMPONENTS.find(c => c.id === unbindModal.componentId);
+          const modalStageId = modalDef ? categoryToStageId[modalDef.category] : 1;
+          const modalStageIcon = getStageIcon(modalStageId, stageConfigs, "w-5 h-5");
+          const isBusy = unbindModal.checking || unbindModal.confirming;
+
+          // 三态视觉配置：检测中(蓝) / 已被使用(琥珀警示) / 确认解除(红色危险)
+          const palette = unbindModal.checking
+            ? {
+                grad: "from-[#3182ce] to-[#2b6cb0]",
+                icon: <Activity className="w-7 h-7 text-white animate-spin" />,
+                badgeText: "检测中",
+                badgeCls: "bg-white/90 text-[#3182ce]",
+                title: "正在检测组件使用状态",
+                sub: "系统正在检测组件是否正在被使用，请稍候...",
+                desc: `正在检测组件【${unbindModal.name}】是否正在被使用，请稍候...`,
+              }
+            : unbindModal.inUse
+              ? {
+                  grad: "from-amber-400 to-amber-500",
+                  icon: <ShieldAlert className="w-7 h-7 text-white" />,
+                  badgeText: "使用中",
+                  badgeCls: "bg-white/90 text-amber-500",
+                  title: "组件已被使用",
+                  sub: `检测结果：${unbindModal.reason || "该组件当前正在被使用"}`,
+                  desc: `组件【${unbindModal.name}】当前正在被使用，无法直接解除装配。请前往当前空间组件库，先禁用该组件切断服务后再解除。`,
+                }
+              : {
+                  grad: "from-red-500 to-red-500",
+                  icon: <Trash2 className="w-7 h-7 text-white" />,
+                  badgeText: "未被使用",
+                  badgeCls: "bg-white/90 text-emerald-600",
+                  title: "确认解除装配",
+                  sub: "检测结果：该组件当前未被使用",
+                  desc: `组件【${unbindModal.name}】当前未被使用，是否解除装配？解除后历史任务与文档 100% 完整保留。`,
+                };
+
+          return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-slate-900/70 backdrop-blur-md animate-in fade-in duration-200"
+                onClick={() => {
+                  if (!isBusy) setUnbindModal(null);
+                }}
+              />
+              <div className="relative w-[520px] max-w-full rounded-2xl bg-white shadow-[0_24px_80px_-16px_rgba(15,23,42,0.45)] ring-1 ring-black/5 overflow-hidden animate-in zoom-in-95 fade-in duration-200">
+                {/* 顶部渐变横幅 */}
+                <div className={`relative px-6 py-5 bg-gradient-to-r ${palette.grad} flex items-center gap-4`}>
+                  <div className="pointer-events-none absolute inset-0 opacity-15 [background-image:radial-gradient(#fff_1px,transparent_1px)] [background-size:18px_18px]" />
+                  <div className="relative w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 shadow-inner ring-1 ring-white/25">
+                    {palette.icon}
+                  </div>
+                  <div className="relative flex-1 min-w-0">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-[18px] font-black text-white tracking-wide">{palette.title}</h3>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black shadow-sm ${palette.badgeCls}`}>
+                        {palette.badgeText}
+                      </span>
+                    </div>
+                    <p className="text-[12px] text-white/85 mt-1 leading-snug">{palette.sub}</p>
+                  </div>
+                  <button
+                    onClick={() => setUnbindModal(null)}
+                    disabled={isBusy}
+                    className="relative shrink-0 w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 text-white/80 hover:text-white flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="关闭"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* 主体内容 */}
+                <div className="p-6 bg-[#f8fafc]">
+                  {/* 目标组件信息卡 */}
+                  <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4 flex items-center gap-3.5 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                      {modalStageIcon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">目标组件</div>
+                      <div className="text-[15px] font-black text-slate-800 truncate">{unbindModal.name}</div>
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-400 font-bold bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                      {unbindModal.componentId}
+                    </div>
+                  </div>
+
+                  <p className="text-[13px] leading-relaxed text-slate-600 mb-5">{palette.desc}</p>
+
+                  <div className="flex items-center justify-end gap-2.5">
+                    <button
+                      onClick={() => setUnbindModal(null)}
+                      disabled={isBusy}
+                      className="h-10 px-5 rounded-xl text-[13px] font-bold text-slate-600 bg-white border border-slate-200 shadow-sm hover:bg-slate-50 hover:border-slate-300 hover:text-slate-700 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      取消
+                    </button>
+                    {unbindModal.checking ? null : unbindModal.inUse ? (
+                      <button
+                        onClick={() => {
+                          setUnbindModal(null);
+                          if (workspaceId) router.push(`/workspace/${workspaceId}?tab=components`);
+                        }}
+                        className="h-10 px-5 rounded-xl text-[13px] font-black text-white bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-px active:scale-[0.98] transition-all cursor-pointer"
+                      >
+                        去解除
+                      </button>
+                    ) : (
+                      <button
+                        onClick={confirmUnbind}
+                        disabled={unbindModal.confirming}
+                        className="h-10 px-5 rounded-xl text-[13px] font-black text-white bg-gradient-to-r from-red-500 to-red-500 shadow-lg shadow-red-500/25 hover:shadow-red-500/40 hover:-translate-y-px active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {unbindModal.confirming ? "解除中..." : "确定解除"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      )}
     </div>
   );
 }

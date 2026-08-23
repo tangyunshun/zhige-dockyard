@@ -2,226 +2,272 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
+function normalizeTags(tags: unknown): string {
+  if (Array.isArray(tags)) return tags.join(",");
+  if (typeof tags === "string") return tags;
+  return "";
+}
+
+function toCatalogView(c: any, categoryName?: string) {
+  return {
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    type: categoryName || c.category,
+    icon: c.icon,
+    category: c.category,
+    tags: normalizeTags(c.tags),
+    sortOrder: c.sortOrder,
+    isPremium: c.isPremium,
+    estimatedTokens: c.estimatedTokens,
+    previewData: c.previewData,
+    inputMode: c.inputMode,
+    accept: c.accept,
+    hint: c.hint,
+    contract: c.contract,
+    keywords: c.keywords,
+    isPublished: c.isPublished,
+    usageCount: c.usageCount,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限包
     const authResult = await requirePlatformPermission(request, "component:read");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.max(1, parseInt(searchParams.get("limit") || "20"));
     const search = searchParams.get("search") || "";
     const stage = searchParams.get("stage") || "";
     const published = searchParams.get("published") || "";
     const startDate = searchParams.get("startDate") || "";
     const endDate = searchParams.get("endDate") || "";
 
-    // 获取所有组件任务
-    const allComponents = await prisma.componenttask.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatar: true,
-            role: true,
-          },
-        },
-      },
+    const categories = await prisma.componentcategory.findMany({
+      orderBy: { sortOrder: "asc" },
     });
+    const categoryNameMap = new Map(categories.map((c) => [c.key, c.name]));
 
-    // 过滤掉阶段配置组件
-    let filteredComponents = allComponents.filter(
-      (component) => (component.config as any)?.isStageConfig !== true,
-    );
-
-    // 应用筛选条件
+    const where: any = {};
     if (search) {
-      filteredComponents = filteredComponents.filter((c) =>
-        c.name?.includes(search),
-      );
+      where.OR = [
+        { name: { contains: search } },
+        { description: { contains: search } },
+      ];
     }
-
     if (stage) {
-      filteredComponents = filteredComponents.filter((c) => c.type === stage);
+      where.category = stage;
+    }
+    if (published === "true" || published === "false") {
+      where.isPublished = published === "true";
+    }
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setDate(end.getDate() + 1);
+        where.createdAt.lt = end;
+      }
     }
 
-    if (published) {
-      filteredComponents = filteredComponents.filter(
-        (c) => c.isPublished === (published === "true"),
-      );
-    }
+    const [total, records] = await Promise.all([
+      prisma.componentcatalog.count({ where }),
+      prisma.componentcatalog.findMany({
+        where,
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
 
-    if (startDate) {
-      const startDateObj = new Date(startDate);
-      filteredComponents = filteredComponents.filter(
-        (c) => new Date(c.createdAt) >= startDateObj,
-      );
-    }
-
-    if (endDate) {
-      const endDateObj = new Date(endDate);
-      endDateObj.setDate(endDateObj.getDate() + 1);
-      filteredComponents = filteredComponents.filter(
-        (c) => new Date(c.createdAt) < endDateObj,
-      );
-    }
-
-    // 分页
-    const total = filteredComponents.length;
-    const skip = (page - 1) * limit;
-    const components = filteredComponents.slice(skip, skip + limit).map(c => ({
-      ...c,
-      category: (c.config as any)?.category || "",
-    }));
-
-    // 获取所有阶段类型
-    const stages = Array.from(
-      new Set(filteredComponents.map((c) => c.type)),
-    ).filter(Boolean);
+    const components = records.map((c) =>
+      toCatalogView(c, categoryNameMap.get(c.category)),
+    );
 
     return NextResponse.json({
       success: true,
       data: {
         components,
         total,
+        totalPages: Math.ceil(total / limit),
         page,
         limit,
-        stages,
+        stages: categories.map((c) => c.key),
+        categories,
       },
     });
   } catch (error) {
     console.error("Get components error:", error);
     return NextResponse.json(
       { error: "获取组件列表失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// POST - 创建组件
-export async function POST(request: NextRequest) {
-  try {
-    // 验证管理员权限包
-    const authResult = await requirePlatformPermission(request, "component:create");
-    if (!authResult.authorized) {
-      return authResult.errorResponse!;
+async function handleUpsert(request: NextRequest, isUpdate: boolean) {
+  const body = await request.json();
+  const { name, description, type, icon, category, tags, isPublished } = body;
+  const requiredPermission = isUpdate
+    ? isPublished !== undefined
+      ? "component:publish"
+      : "component:update"
+    : "component:create";
+
+  const authResult = await requirePlatformPermission(request, requiredPermission);
+  if (!authResult.authorized) {
+    return authResult.errorResponse!;
+  }
+  const userId = authResult.user!.id;
+
+  const tagList = Array.isArray(tags)
+    ? tags
+    : typeof tags === "string"
+      ? tags.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+  const categoryKey = category || (typeof type === "string" ? type : "");
+
+  if (!isUpdate && (!name || !categoryKey)) {
+    return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
+  }
+
+  const data: any = {
+    name,
+    description,
+    category: categoryKey,
+    icon,
+    tags: tagList.length > 0 ? tagList : undefined,
+    inputMode: body.inputMode || "text",
+    accept: body.accept ?? null,
+    hint: body.hint ?? null,
+    contract: body.contract ?? null,
+    keywords: Array.isArray(body.keywords) ? body.keywords : undefined,
+    isPremium: body.isPremium ?? false,
+    estimatedTokens: body.estimatedTokens ?? 0,
+    previewData: body.previewData ?? { inputMock: "", outputMock: "", roiText: "" },
+    sortOrder: body.sortOrder ?? 0,
+    isPublished: isPublished !== undefined ? isPublished : true,
+  };
+
+  let component;
+  if (isUpdate) {
+    const { searchParams } = new URL(request.url);
+    const componentId = searchParams.get("id");
+    if (!componentId) {
+      return NextResponse.json({ error: "缺少组件 ID" }, { status: 400 });
     }
-    const userId = authResult.user!.id;
-
-    const body = await request.json();
-    const { name, description, type, icon, category, tags, config, isPublished } = body;
-
-    if (!name || !type) {
-      return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
+    const current = await prisma.componentcatalog.findUnique({
+      where: { id: componentId },
+    });
+    if (!current) {
+      return NextResponse.json({ error: "组件不存在" }, { status: 404 });
     }
-
+    const currentConfig = (current.previewData as any) || {};
+    component = await prisma.componentcatalog.update({
+      where: { id: componentId },
+      data: {
+        ...data,
+        previewData: data.previewData
+          ? { ...currentConfig, ...(data.previewData as any) }
+          : current.previewData,
+      },
+    });
+    await writeAuditLog(
+      userId,
+      requiredPermission,
+      { id: componentId, name: component.name, updates: body },
+      null,
+      null,
+      request,
+    );
+  } else {
     const componentId = `C-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const component = await prisma.componenttask.create({
+    component = await prisma.componentcatalog.create({
       data: {
         id: componentId,
         name,
-        description,
-        type,
-        icon,
-        tags,
-        config: config ? { ...(config as any), category } : { category },
-        isPublished: isPublished ?? false,
-        userId,
+        description: description || "",
+        category: categoryKey,
+        icon: icon || "package",
+        tags: tagList,
+        isPremium: body.isPremium ?? false,
+        estimatedTokens: body.estimatedTokens ?? 0,
+        previewData: data.previewData,
+        inputMode: body.inputMode || "text",
+        accept: body.accept ?? null,
+        hint: body.hint ?? null,
+        contract: body.contract ?? null,
+        keywords: Array.isArray(body.keywords) ? body.keywords : undefined,
+        sortOrder: body.sortOrder ?? 0,
+        isPublished: isPublished ?? true,
+        usageCount: 0,
       },
     });
+    await writeAuditLog(
+      userId,
+      requiredPermission,
+      { id: component.id, name: component.name },
+      null,
+      null,
+      request,
+    );
+  }
 
-    // 记录高危操作审计日志
-    await writeAuditLog(userId, "component:create", { id: component.id, name: component.name }, null, null, request);
+  const categoryInfo = await prisma.componentcategory.findUnique({
+    where: { key: component.category },
+  });
+  return NextResponse.json({
+    success: true,
+    data: toCatalogView(component, categoryInfo?.name),
+    message: isUpdate ? "更新组件成功" : "创建组件成功",
+  });
+}
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...component,
-        category: (component.config as any)?.category || "",
-      },
-      message: "创建组件成功",
-    });
+export async function POST(request: NextRequest) {
+  try {
+    return await handleUpsert(request, false);
   } catch (error) {
     console.error("Create component error:", error);
     return NextResponse.json(
       { error: "创建组件失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// PUT - 更新组件 (编辑需要 component:update, 上架/下架需要 component:publish)
 export async function PUT(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { name, description, type, icon, category, tags, config, isPublished } = body;
-
-    // 区分编辑还是发布状态变更
-    const isPublishAction = isPublished !== undefined;
-    const requiredPermission = isPublishAction ? "component:publish" : "component:update";
-
-    // 验证管理员权限包
-    const authResult = await requirePlatformPermission(request, requiredPermission);
-    if (!authResult.authorized) {
-      return authResult.errorResponse!;
-    }
-    const userId = authResult.user!.id;
-
-    const { searchParams } = new URL(request.url);
-    const componentId = searchParams.get("id");
-
-    if (!componentId) {
-      return NextResponse.json({ error: "缺少组件 ID" }, { status: 400 });
-    }
-
-    const current = await prisma.componenttask.findUnique({ where: { id: componentId } });
-    const currentConfig = (current?.config as any) || {};
-
-    const component = await prisma.componenttask.update({
-      where: { id: componentId },
-      data: {
-        name: name || undefined,
-        description: description !== undefined ? description : undefined,
-        type: type || undefined,
-        icon: icon !== undefined ? icon : undefined,
-        tags: tags !== undefined ? tags : undefined,
-        config: config !== undefined 
-          ? { ...(config as any), category: category !== undefined ? category : currentConfig.category } 
-          : (category !== undefined ? { ...currentConfig, category } : undefined),
-        isPublished: isPublished !== undefined ? isPublished : undefined,
-      },
-    });
-
-    // 记录高危操作审计日志
-    await writeAuditLog(userId, requiredPermission, { id: componentId, name: component.name, updates: body }, null, null, request);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...component,
-        category: (component.config as any)?.category || "",
-      },
-      message: "更新组件成功",
-    });
+    return await handleUpsert(request, true);
   } catch (error) {
     console.error("Update component error:", error);
     return NextResponse.json(
       { error: "更新组件失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// DELETE - 删除组件 (仅 SuperAdmin 或拥有 component:delete 权限)
+export async function PATCH(request: NextRequest) {
+  try {
+    return await handleUpsert(request, true);
+  } catch (error) {
+    console.error("Update component error:", error);
+    return NextResponse.json(
+      { error: "更新组件失败", details: error instanceof Error ? error.message : error },
+      { status: 500 },
+    );
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
-    // 验证管理员权限包
     const authResult = await requirePlatformPermission(request, "component:delete");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
@@ -230,23 +276,29 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const componentId = searchParams.get("id");
-
     if (!componentId) {
       return NextResponse.json({ error: "缺少组件 ID" }, { status: 400 });
     }
 
-    // 获取组件名字用以审计
-    const current = await prisma.componenttask.findUnique({
+    const current = await prisma.componentcatalog.findUnique({
       where: { id: componentId },
-      select: { name: true }
+      select: { id: true, name: true },
     });
+    if (!current) {
+      return NextResponse.json({ error: "组件不存在" }, { status: 404 });
+    }
 
-    await prisma.componenttask.delete({
+    await prisma.componentcatalog.delete({
       where: { id: componentId },
     });
-
-    // 记录高危操作审计日志
-    await writeAuditLog(userId, "component:delete", { id: componentId, name: current?.name }, null, null, request);
+    await writeAuditLog(
+      userId,
+      "component:delete",
+      { id: componentId, name: current.name },
+      null,
+      null,
+      request,
+    );
 
     return NextResponse.json({
       success: true,
@@ -256,7 +308,7 @@ export async function DELETE(request: NextRequest) {
     console.error("Delete component error:", error);
     return NextResponse.json(
       { error: "删除组件失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

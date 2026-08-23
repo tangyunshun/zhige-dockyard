@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getAuthToken } from "@/utils/auth";
 import {
   Users,
   FolderKanban,
@@ -104,7 +105,7 @@ export default function AdminDashboard() {
       console.log("Cookie auth_token:", hasValidToken ? "存在" : "不存在");
       console.log("================");
 
-      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || userId;
+      const token = getAuthToken();
 
       const res = await fetch("/api/admin/dashboard", {
         headers: {
@@ -361,7 +362,7 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
               onClick={() => router.push("/admin/users")}
-              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2563eb]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
+              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
             >
               <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                 <Users className="w-6 h-6 text-[#3182ce]" />
@@ -431,7 +432,7 @@ export default function AdminDashboard() {
               onClick={() => {
                 router.push("/admin/matrix/select");
               }}
-              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#8b5cf6]/5 hover:to-[#7c3aed]/5 border border-slate-200 hover:border-[#8b5cf6]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
+              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#8b5cf6]/5 hover:to-[#805ad5]/5 border border-slate-200 hover:border-[#8b5cf6]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
             >
               <div className="w-12 h-12 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                 <Shield className="w-6 h-6 text-[#8b5cf6]" />
@@ -454,18 +455,18 @@ export default function AdminDashboard() {
         {/* 最近用户 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
           {/* 装饰背景 */}
-          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#2563eb]/10 opacity-50 blur-3xl"></div>
+          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 opacity-50 blur-3xl"></div>
 
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#2563eb] rounded-full"></div>
+                <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
                 <UserPlus className="w-5 h-5 text-[#3182ce]" />
                 最近注册用户
               </h2>
               <button
                 onClick={() => router.push("/admin/users")}
-                className="text-sm text-[#3182ce] hover:text-[#2563eb] font-bold hover:underline transition-all"
+                className="text-sm text-[#3182ce] hover:text-[#3182ce] font-bold hover:underline transition-all"
               >
                 查看全部 →
               </button>
@@ -486,7 +487,7 @@ export default function AdminDashboard() {
                     key={user.id}
                     className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/60 transition-all duration-300 hover:-translate-x-1"
                   >
-                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
                       {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -521,7 +522,7 @@ export default function AdminDashboard() {
               </h2>
               <button
                 onClick={() => router.push("/admin/workspaces")}
-                className="text-sm text-[#3182ce] hover:text-[#2563eb] font-bold hover:underline transition-all"
+                className="text-sm text-[#3182ce] hover:text-[#3182ce] font-bold hover:underline transition-all"
               >
                 查看全部 →
               </button>
@@ -581,7 +582,7 @@ export default function AdminDashboard() {
             </h2>
             <button
               onClick={() => router.push("/admin/components")}
-              className="text-sm text-[#3182ce] hover:text-[#2563eb] font-bold hover:underline transition-all"
+              className="text-sm text-[#3182ce] hover:text-[#3182ce] font-bold hover:underline transition-all"
             >
               查看全部 →
             </button>
@@ -603,7 +604,7 @@ export default function AdminDashboard() {
                   {
                     bg: "bg-[#3182ce]",
                     text: "text-[#3182ce]",
-                    bar: "from-[#3182ce] to-[#2563eb]",
+                    bar: "from-[#3182ce] to-[#2b6cb0]",
                   },
                   {
                     bg: "bg-[#10b981]",
@@ -618,12 +619,12 @@ export default function AdminDashboard() {
                   {
                     bg: "bg-[#8b5cf6]",
                     text: "text-[#8b5cf6]",
-                    bar: "from-[#8b5cf6] to-[#7c3aed]",
+                    bar: "from-[#8b5cf6] to-[#805ad5]",
                   },
                   {
-                    bg: "bg-[#ec4899]",
-                    text: "text-[#ec4899]",
-                    bar: "from-[#ec4899] to-[#db2777]",
+                    bg: "bg-[#805ad5]",
+                    text: "text-[#805ad5]",
+                    bar: "from-[#805ad5] to-[#805ad5]",
                   },
                 ];
                 const color = colors[index % colors.length];

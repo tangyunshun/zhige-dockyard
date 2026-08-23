@@ -13,12 +13,7 @@ import {
   Filter,
   X,
 } from "lucide-react";
-import {
-  COMPONENTS,
-  COMPONENT_CATEGORIES,
-  ComponentCategory,
-  ComponentDefinition,
-} from "@/constants/components";
+import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
 
 interface MarketModalProps {
   isOpen: boolean;
@@ -34,7 +29,14 @@ export default function MarketModal({
   workspaceName,
 }: MarketModalProps) {
   const toast = useToast();
-  const { boundComponentIds, bindComponent, unbindComponent } = useAppContext();
+  // 组件信息与分类来自数据库（component_catalog / component_category 表）
+  const { boundComponentIds, boundComponentsWorkspaceId, bindComponent, unbindComponent, componentCatalog, componentCategories } = useAppContext();
+  const COMPONENTS = componentCatalog;
+  const COMPONENT_CATEGORIES = componentCategories;
+
+  // 空间归属校验：全局装配数据仅当属于当前空间时才作为"已装配"展示，
+  // 否则视为未装配（避免切换空间后弹窗仍显示旧空间的装配状态）
+  const currentBoundIds = boundComponentsWorkspaceId === workspaceId ? boundComponentIds : [];
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<ComponentCategory | "ALL">("ALL");
@@ -53,24 +55,24 @@ export default function MarketModal({
   });
 
   const handleToggleBind = async (comp: ComponentDefinition) => {
-    const isBound = boundComponentIds.includes(comp.id);
+    const isBound = currentBoundIds.includes(comp.id);
     setProcessingId(comp.id);
     try {
       if (isBound) {
         // 执行解绑
-        const success = await unbindComponent(comp.id, workspaceId);
-        if (success) {
+        const result = await unbindComponent(comp.id, workspaceId);
+        if (result.ok) {
           toast.success(`组件 ${comp.name} 已成功从空间 [${workspaceName}] 解除绑定`);
         } else {
-          toast.error("解绑失败，请重试");
+          toast.error(result.error || "解绑失败，请重试");
         }
       } else {
         // 执行绑定
-        const success = await bindComponent(comp.id, workspaceId);
-        if (success) {
+        const result = await bindComponent(comp.id, workspaceId);
+        if (result.ok) {
           toast.success(`组件 ${comp.name} 已成功绑定安装至空间 [${workspaceName}]`);
         } else {
-          toast.error("绑定失败，请重试");
+          toast.error(result.error || "绑定失败，请重试");
         }
       }
     } catch (err) {
@@ -188,7 +190,7 @@ export default function MarketModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredComponents.map((comp) => {
                     const categoryInfo = COMPONENT_CATEGORIES[comp.category];
-                    const isBound = boundComponentIds.includes(comp.id);
+                    const isBound = currentBoundIds.includes(comp.id);
                     const isProcessing = processingId === comp.id;
 
                     return (
@@ -213,7 +215,7 @@ export default function MarketModal({
                             </span>
                             
                             {comp.isPremium && (
-                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded text-[9px] font-black tracking-wide shadow-sm flex items-center gap-0.5">
+                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-[9px] font-black tracking-wide shadow-sm flex items-center gap-0.5">
                                 <Zap className="w-2.5 h-2.5" />
                                 <span>PREMIUM</span>
                               </span>

@@ -58,11 +58,12 @@ export async function GET(request: NextRequest) {
     });
 
     const isVip = membershipLevel !== "FREE" || isAdmin;
-    const maxEnterpriseWorkspaces = isVip ? 3 : 1;
+    // 配额一律从 membershiplevel 表读取（不再硬编码）
+    const maxEnterpriseWorkspaces = levelData ? Number(levelData.maxEnterpriseWorkspaces) : 1;
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
-    const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+    const tokenLimit = levelData ? Number(levelData.tokenLimit) : 10000;
 
     // 3. 并行查询工作空间列表、Token 消耗以及系统管理员指标（若为管理员）
     const startOfMonth = new Date();
@@ -85,23 +86,27 @@ export async function GET(request: NextRequest) {
       where: { ownerId: userId },
     });
 
-    // 本月 Token 使用统计
-    const monthUsagePromise = prisma.componentusage.count({
+    // 本月组件使用记录（按组件 ID 分组，用于结合 estimatedTokens 统计真实 Token 消耗）
+    const monthUsagePromise = prisma.componentusage.findMany({
       where: {
         userId,
         usedAt: { gte: startOfMonth },
       },
+      select: { componentId: true },
     });
 
-    // 历史累计 Token 使用统计
-    const totalUsagePromise = prisma.componentusage.count({
+    // 历史累计组件使用记录
+    const totalUsagePromise = prisma.componentusage.findMany({
       where: { userId },
+      select: { componentId: true },
     });
 
-    // 查询最近使用最频繁的 Top 3 组件
-    const topComponentsPromise = prisma.componentusage.groupBy({
+    // 查询最近 30 天使用最频繁的 Top 3 组件（真实调用频次）
+    const days30Ago = new Date();
+    days30Ago.setDate(days30Ago.getDate() - 30);
+    const topComponentsPromise = (prisma.componentusage.groupBy as any)({
       by: ["componentId"],
-      where: { userId },
+      where: { userId, usedAt: { gte: days30Ago } },
       _count: {
         id: true,
       },
@@ -127,7 +132,7 @@ export async function GET(request: NextRequest) {
     });
 
     // 并行运行基础用户数据查询
-    const [workspaceMembers, ownedWorkspaces, monthUsageCount, totalUsageCount, topComponentsData, loginHistory] = await Promise.all([
+    const [workspaceMembers, ownedWorkspaces, monthUsageRows, totalUsageRows, topCompData, loginHistory] = await Promise.all([
       workspaceMembersPromise,
       ownedWorkspacesPromise,
       monthUsagePromise,
@@ -135,6 +140,40 @@ export async function GET(request: NextRequest) {
       topComponentsPromise,
       loginHistoryPromise,
     ]);
+
+    // 推荐组件兜底：当前用户近 30 天无调用记录时，回退推荐全平台热门组件（同样来自数据库聚合），保证推荐区始终有数据
+    let topComponentsData: Array<{
+      componentId: string;
+      _count: { id: number };
+    }> = topCompData;
+    let isFallbackRecommend = topCompData.length === 0;
+    if (isFallbackRecommend) {
+      topComponentsData = await (prisma.componentusage.groupBy as any)({
+        by: ["componentId"],
+        where: { usedAt: { gte: days30Ago } },
+        _count: {
+          id: true,
+        },
+        orderBy: {
+          _count: {
+            id: "desc",
+          },
+        },
+        take: 3,
+      });
+    }
+
+    // Token 消耗真实统计：各组件使用次数 × 组件目录 estimatedTokens 基准
+    const usageTokenBase = await prisma.componentcatalog.findMany({
+      select: { id: true, estimatedTokens: true },
+    });
+    const usageTokenMap = new Map(usageTokenBase.map((c) => [c.id, Number(c.estimatedTokens)]));
+    const monthUsageCount = monthUsageRows.length;
+    const totalUsageCount = totalUsageRows.length;
+    const calcUsageTokens = (rows: { componentId: string }[]) =>
+      rows.reduce((sum, r) => sum + (usageTokenMap.get(r.componentId) ?? 0), 0);
+    const monthTokenUsed = calcUsageTokens(monthUsageRows);
+    const totalTokenUsed = calcUsageTokens(totalUsageRows);
 
     // 合并并去重工作空间
     const workspaceMap = new Map<string, any>();
@@ -177,23 +216,49 @@ export async function GET(request: NextRequest) {
     const needsPersonalWorkspace = !hasPersonalWorkspace;
 
     // 联合计算每个工作空间的成员数与组件数
+    // 组件数统计口径与空间内 /api/studio?action=bound 完全一致：
+    // 仅统计"真实装配记录"（componentusage.metadata 含 enabled 标记），纯使用日志不计入；
+    // 且仅统计已发布组件（isPublished = true），系统内部引擎（如 AI_ENGINE）不计入，
+    // 保证中枢计数与空间内组件大厅可见组件数严格一致。
+    const publishedCatalogRows = await prisma.componentcatalog.findMany({
+      where: { isPublished: true },
+      select: { id: true },
+    });
+    const publishedComponentIdSet = new Set(publishedCatalogRows.map(c => c.id));
+
     const workspacesWithCounts = await Promise.all(
       Array.from(workspaceMap.values()).map(async (ws) => {
-        // 自动完成兜底自愈初始化
+        // 自动完成兜底自愈初始化（仅全新空间初始化默认组件，不覆盖用户装配/解除结果）
         await ensureDefaultComponents(ws.id, userId);
 
         const [usages, memberCount] = await Promise.all([
           prisma.componentusage.findMany({
             where: { workspaceId: ws.id },
-            select: { componentId: true },
-            distinct: ['componentId'],
+            select: { componentId: true, metadata: true },
           }),
           prisma.workspacemember.count({
             where: { workspaceId: ws.id },
           }),
         ]);
 
-        const componentCount = usages.length;
+        const boundIdSet = new Set<string>();
+        usages.forEach(u => {
+          if (!u.metadata) return;
+          if (!publishedComponentIdSet.has(u.componentId)) return; // 未发布组件不计入
+          try {
+            const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : (u.metadata as any);
+            if (meta && typeof meta.enabled === "boolean") {
+              boundIdSet.add(u.componentId);
+            }
+          } catch {
+            // metadata 解析失败：保守视为装配记录
+            boundIdSet.add(u.componentId);
+          }
+        });
+
+
+
+        const componentCount = boundIdSet.size;
 
         return {
           ...ws,
@@ -203,18 +268,44 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // 过滤个人工作空间与企业工作空间
-    const personalWorkspace = workspacesWithCounts.find(ws => ws.type === "PERSONAL") || null;
+    // 过滤个人工作空间与企业工作空间（个人空间仅返回本人 OWNER 的，避免展示他人空间）
+    const personalWorkspace = workspacesWithCounts.find(
+      ws => ws.type === "PERSONAL" && (ws.role === "OWNER" || ws.isOwner || ws.ownerId === userId)
+    ) || null;
     const enterpriseWorkspaces = workspacesWithCounts.filter(ws => ws.type === "ENTERPRISE");
 
     // 会员特权与额度信息构建
+    // 企业空间总数（含加入的）与"自己创建"数（创建配额口径，与前端列表/资源监控保持一致）
     const enterpriseCount = enterpriseWorkspaces.length;
-    const availableEnterpriseSlots = Math.max(0, maxEnterpriseWorkspaces - enterpriseCount);
+    const ownedEnterpriseCount = enterpriseWorkspaces.filter(
+      ws => ws.role === "OWNER" || ws.isOwner || ws.ownerId === userId
+    ).length;
+    const availableEnterpriseSlots = Math.max(0, maxEnterpriseWorkspaces - ownedEnterpriseCount);
+
+    // 企业空间协同成员去重统计（跨空间不重复计数）
+    let uniqueEnterpriseMemberCount = 0;
+    const enterpriseWsIds = enterpriseWorkspaces.map(ws => ws.id);
+    if (enterpriseWsIds.length > 0) {
+      const entMembers = await prisma.workspacemember.findMany({
+        where: { workspaceId: { in: enterpriseWsIds } },
+        select: { userId: true },
+      });
+      uniqueEnterpriseMemberCount = new Set(entMembers.map(m => m.userId)).size;
+    }
+
+    // 存储用量真实统计：聚合用户所有空间的 workspacequota 记录
+    const workspaceIdList = Array.from(workspaceMap.keys());
+    const storageQuotas = await prisma.workspacequota.findMany({
+      where: { workspaceId: { in: workspaceIdList } },
+      select: { storageUsed: true, storageLimit: true },
+    });
+    const storageUsed = storageQuotas.reduce((s, q) => s + Number(q.storageUsed), 0);
+    const storageLimitAgg = storageQuotas.reduce((s, q) => s + Number(q.storageLimit), 0);
 
     const userQuota = {
       isVip: membershipLevel !== "FREE",
       membershipLevel,
-      ownedEnterpriseCount: enterpriseCount,
+      ownedEnterpriseCount,
       maxEnterpriseLimit: maxEnterpriseWorkspaces,
       workspaceLimits: {
         personalCount: personalWorkspace ? 1 : 0,
@@ -225,17 +316,19 @@ export async function GET(request: NextRequest) {
       quotas: {
         enterpriseSlots: {
           total: maxEnterpriseWorkspaces,
-          used: enterpriseCount,
+          used: ownedEnterpriseCount,
           available: availableEnterpriseSlots,
         },
         maxTeamSize,
         maxStorage,
+        storageUsed,
+        storageLimit: storageLimitAgg > 0 ? storageLimitAgg : maxStorage,
         maxApiCalls,
         tokenBalance: {
           total: tokenLimit,
-          used: monthUsageCount * 120, // 本月 Token 消耗
-          available: Math.max(0, tokenLimit - (monthUsageCount * 120)),
-          historyTotalUsed: totalUsageCount * 120, // 历史累计 Token 消耗
+          used: monthTokenUsed, // 本月 Token 消耗（真实统计）
+          available: Math.max(0, tokenLimit - monthTokenUsed),
+          historyTotalUsed: totalTokenUsed, // 历史累计 Token 消耗（真实统计）
         }
       }
     };
@@ -245,22 +338,25 @@ export async function GET(request: NextRequest) {
     let pendingApplicationsCount = 0;
 
     if (isAdmin) {
-      // 并行拉取全系统关键运维指标
+      // 并行拉取全系统关键运维指标（Token 消耗按组件目录 estimatedTokens 基准真实统计）
       const [
         totalUsers,
         totalWorkspaces,
         totalComponents,
-        systemMonthUsageCount,
-        systemTotalUsageCount,
+        systemMonthUsageRows,
+        systemTotalUsageRows,
         pendingCount,
       ] = await Promise.all([
         prisma.user.count(),
         prisma.workspace.count(),
-        prisma.componenttask.count(),
-        prisma.componentusage.count({
+        prisma.componentcatalog.count(),
+        prisma.componentusage.findMany({
           where: { usedAt: { gte: startOfMonth } },
+          select: { componentId: true },
         }),
-        prisma.componentusage.count(),
+        prisma.componentusage.findMany({
+          select: { componentId: true },
+        }),
         prisma.upgradeapplication.count({
           where: { status: "PENDING" },
         }),
@@ -270,32 +366,72 @@ export async function GET(request: NextRequest) {
         totalUsers,
         totalWorkspaces,
         totalComponents,
-        monthTokens: systemMonthUsageCount * 120,
-        totalTokens: systemTotalUsageCount * 120,
+        monthTokens: calcUsageTokens(systemMonthUsageRows),
+        totalTokens: calcUsageTokens(systemTotalUsageRows),
       };
 
       pendingApplicationsCount = pendingCount;
     }
 
-    // 处理 Top 3 高频组件中文映射
-    const componentNameMap: Record<string, string> = {
-      C01: "标书智能解析与售后打单",
-      C02: "需求定义与产品设计",
-      C03: "合规与风控审计",
-      C04: "标书智能解析",
-      C05: "方案合规审查",
-      C06: "竞品对比分析",
-      C07: "汇报话术转换",
-      C08: "异常场景补全",
-      C09: "客诉归因分析",
-      C10: "仿真数据生成",
-    };
+    // 处理 Top 3 高频组件名称（从 component_catalog 表读取，不再硬编码组件信息）
+    const topCompIds = topComponentsData.map((item) => item.componentId);
+    const catalogComps = await prisma.componentcatalog.findMany({
+      where: { id: { in: topCompIds } },
+      select: { id: true, name: true },
+    });
+    const catalogNameMap = new Map(catalogComps.map((c) => [c.id, c.name]));
+
+    // 全网装载数：统计每个组件被多少不同空间使用（componentusage 去重 workspaceId）
+    let globalWorkspaceCountMap = new Map<string, number>();
+    if (topCompIds.length > 0) {
+      const usageWorkspaces = await prisma.componentusage.findMany({
+        where: { componentId: { in: topCompIds }, workspaceId: { not: null } },
+        select: { componentId: true, workspaceId: true },
+      });
+      const seen = new Set<string>();
+      usageWorkspaces.forEach((u) => {
+        const key = `${u.componentId}|${u.workspaceId}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          globalWorkspaceCountMap.set(u.componentId, (globalWorkspaceCountMap.get(u.componentId) || 0) + 1);
+        }
+      });
+    }
 
     const topComponents = topComponentsData.map((item) => ({
       componentId: item.componentId,
-      name: componentNameMap[item.componentId] || `组件 ${item.componentId}`,
+      name: catalogNameMap.get(item.componentId) || `组件 ${item.componentId}`,
       callCount: item._count.id,
+      globalWorkspaceCount: globalWorkspaceCountMap.get(item.componentId) || 0,
+      isFallback: isFallbackRecommend,
     }));
+
+    // 待处理事项：查询发给当前用户邮箱且尚未处理的邀请（来自数据库），供顶部"待处理事项"区块展示
+    let pendingItems: any[] = [];
+    if (dbUser.email) {
+      const pendingInvitations = await prisma.workspaceinvitation.findMany({
+        where: { email: dbUser.email, status: "PENDING" },
+        select: { id: true, workspaceId: true, code: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      });
+      if (pendingInvitations.length > 0) {
+        const invWsIds = pendingInvitations.map(i => i.workspaceId);
+        const invWs = await prisma.workspace.findMany({
+          where: { id: { in: invWsIds } },
+          select: { id: true, name: true },
+        });
+        const invWsNameMap = new Map(invWs.map(w => [w.id, w.name]));
+        pendingItems = pendingInvitations.map(inv => ({
+          id: `inv-${inv.id}`,
+          type: "INVITATION",
+          title: "您收到新的工作空间邀请",
+          description: `「${invWsNameMap.get(inv.workspaceId) || "未知空间"}」邀请您加入协作，点击接受即可进入空间`,
+          createdAt: inv.createdAt.toISOString(),
+          workspaceName: invWsNameMap.get(inv.workspaceId) || "",
+          invitationCode: inv.code,
+        }));
+      }
+    }
 
     // 5. 组装并返回 Bento Dashboard 的完整聚合数据，防前端多次加载引起的网络开销
     return NextResponse.json({
@@ -312,6 +448,8 @@ export async function GET(request: NextRequest) {
         personalWorkspace,
         needsPersonalWorkspace,
         enterpriseWorkspaces,
+        uniqueEnterpriseMemberCount,
+        pendingItems,
         userQuota,
         systemStats,
         pendingApplicationsCount,

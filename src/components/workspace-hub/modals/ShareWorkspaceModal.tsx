@@ -268,7 +268,7 @@ export default function ShareWorkspaceModal({
                               {invitation.code}
                             </span>
                             {isRevoked && (
-                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-black border border-amber-200/60 shrink-0 leading-none">
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded font-black border border-amber-200/60 shrink-0 leading-none">
                                 已作废
                               </span>
                             )}

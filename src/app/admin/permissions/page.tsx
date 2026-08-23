@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Key, ArrowLeft, RefreshCw, Check, ShieldAlert, Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 
 interface AdminUser {
   id: string;
@@ -63,9 +64,9 @@ export default function PermissionsPage() {
   const loadAdmins = async () => {
     try {
       setLoading(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/admin/permissions", {
-        headers: userId ? { Authorization: `Bearer ${userId}` } : {}
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
       });
       if (res.ok) {
         const result = await res.json();
@@ -113,12 +114,12 @@ export default function PermissionsPage() {
 
     try {
       setSaving(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/admin/permissions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
         },
         body: JSON.stringify({
           targetUserId: selectedAdminId,
@@ -175,7 +176,7 @@ export default function PermissionsPage() {
       ) : admins.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center min-h-[300px] flex items-center justify-center">
           <div>
-            <ShieldAlert className="w-12 h-12 text-slate-350 mx-auto mb-3" />
+            <ShieldAlert className="w-12 h-12 text-slate-400 mx-auto mb-3" />
             <h3 className="text-sm font-bold text-slate-700">未检测到平台管理员账号</h3>
             <p className="text-xs text-slate-400 font-semibold mt-1">请先前往【管理员管理】委派或指定平台管理员</p>
           </div>
@@ -238,7 +239,7 @@ export default function PermissionsPage() {
                 <button
                   onClick={handleSavePermissions}
                   disabled={saving}
-                  className="h-10 px-4 bg-[#8b5cf6] hover:bg-[#7c3aed] text-white disabled:bg-slate-100 disabled:text-slate-400 text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+                  className="h-10 px-4 bg-[#8b5cf6] hover:bg-[#805ad5] text-white disabled:bg-slate-100 disabled:text-slate-400 text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   {saving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -290,7 +291,7 @@ export default function PermissionsPage() {
                               </span>
                             </div>
                             <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
-                              isChecked ? "bg-[#8b5cf6] border-[#8b5cf6]" : "bg-white border-slate-350"
+                              isChecked ? "bg-[#8b5cf6] border-[#8b5cf6]" : "bg-white border-slate-400"
                             }`}>
                               {isChecked && <Check className="w-3.5 h-3.5 text-white" />}
                             </div>

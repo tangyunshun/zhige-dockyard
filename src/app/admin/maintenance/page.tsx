@@ -40,7 +40,7 @@ export default function MaintenancePage() {
 
         <div className="flex items-center justify-between border-t border-slate-100 pt-6">
           <div>
-            <span className="text-sm font-extrabold text-slate-850 block">当前维护状态</span>
+            <span className="text-sm font-extrabold text-slate-800 block">当前维护状态</span>
             <span className="text-xs text-slate-400 font-semibold mt-0.5 block">系统目前正处于健康运行中</span>
           </div>
           <span className="px-3 py-1 bg-emerald-50 border border-emerald-100 text-emerald-600 font-black rounded-full text-xs">

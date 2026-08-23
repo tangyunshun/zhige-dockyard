@@ -9,10 +9,12 @@
  * 4. 其他网络错误，仅记录日志
  */
 
+import { getAuthToken } from "@/utils/auth";
+
 export function updateUserActivity() {
-  const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+  const authToken = getAuthToken();
   
-  if (!userId) {
+  if (!authToken) {
     return;
   }
 
@@ -20,8 +22,9 @@ export function updateUserActivity() {
   fetch("/api/auth/touch", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${userId}`,
+      Authorization: `Bearer ${authToken}`,
     },
+    credentials: "include",
   })
     .then(async (res) => {
       if (!res.ok) {

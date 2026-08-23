@@ -78,7 +78,7 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#f5f5f5",
+          backgroundColor: "#f0f8ff",
           padding: "20px",
           textAlign: "center",
         }}
@@ -97,7 +97,7 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
               width: "80px",
               height: "80px",
               borderRadius: "50%",
-              backgroundColor: "#fff3cd",
+              backgroundColor: "#fffbeb",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -109,7 +109,7 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
               height="40"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#856404"
+              stroke="#d97706"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"

@@ -10,6 +10,7 @@ import EnterpriseWorkspaceCard from "./EnterpriseWorkspaceCard";
 interface EnterpriseWorkspaceListProps {
   workspaces: Workspace[];
   quota: EnterpriseQuota | null;
+  statistics?: { totalMembers?: number; totalComponents?: number };
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onCreateClick: () => void;
@@ -29,6 +30,7 @@ interface EnterpriseWorkspaceListProps {
 export default function EnterpriseWorkspaceList({
   workspaces,
   quota,
+  statistics,
   searchQuery,
   onSearchChange,
   onCreateClick,
@@ -52,8 +54,11 @@ export default function EnterpriseWorkspaceList({
     ws.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // 统计总成员和总组件数
-  const totalMembers = workspaces.reduce((acc, ws) => acc + (ws.memberCount || 0), 0);
+  // 统计总成员和总组件数（优先使用 dashboard 提供的跨空间去重成员数，避免重复计数）
+  const totalMembers =
+    typeof statistics?.totalMembers === "number"
+      ? statistics.totalMembers
+      : workspaces.reduce((acc, ws) => acc + (ws.memberCount || 0), 0);
   const totalComponents = workspaces.reduce((acc, ws) => acc + (ws.componentCount || 0), 0);
 
   // 配额校验是否超出限制
@@ -65,7 +70,7 @@ export default function EnterpriseWorkspaceList({
       {/* 区块标题 + 新建按钮 */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5 pb-3 border-b border-slate-200/60">
         <div className="flex items-start gap-2.5">
-          <div className="w-1.5 h-4.5 bg-gradient-to-b from-[#f59e0b] to-[#dd6b20] rounded-full shrink-0 mt-0.5" />
+          <div className="w-1.5 h-4.5 bg-gradient-to-b from-[#f59e0b] to-[#d97706] rounded-full shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             <h3 className="text-base font-extrabold text-slate-800">企业空间</h3>
             <p className="text-xs text-slate-400 font-semibold leading-normal sm:whitespace-nowrap">团队共享空间，成员、组件权限和企业知识库在这里管理。</p>
@@ -80,7 +85,7 @@ export default function EnterpriseWorkspaceList({
             <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto flex-wrap">
               {/* 1. 创建配额胶囊 */}
               <div className="text-[11px] font-bold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 border-none shadow-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#f59e0b] shrink-0" />
                 <span>
                   创建配额：{myCreatedCount} / {quota?.maxEnterprise || 0}
                 </span>
@@ -94,7 +99,7 @@ export default function EnterpriseWorkspaceList({
 
               {/* 2. 协同配额胶囊 */}
               <div className="text-[11px] font-bold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 border-none shadow-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#63b3ed] shrink-0" />
                 <span>
                   协同配额：{myJoinedCount} / 5
                 </span>
@@ -150,7 +155,7 @@ export default function EnterpriseWorkspaceList({
       {/* 内容区域：网格列表或空状态 */}
       <div className="flex-1 overflow-visible">
         {workspaces.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 px-4 text-center bg-orange-50/10 rounded-lg border border-dashed border-orange-200/50">
+          <div className="flex flex-col items-center justify-center py-8 px-4 text-center bg-amber-50/10 rounded-lg border border-dashed border-amber-200/50">
             <p className="text-xs text-slate-500 mb-4 font-semibold">暂无已加入的企业协作空间，您可以自主创建或通过邀请码加入</p>
             <div className="flex items-center gap-3">
               <button
@@ -171,7 +176,7 @@ export default function EnterpriseWorkspaceList({
               </button>
               <button
                 onClick={onJoinClick}
-                className="zg-btn px-4.5 h-[38px] text-sm font-semibold text-[#dd6b20] bg-white hover:bg-orange-50/20 border border-orange-200/80 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
+                className="zg-btn px-4.5 h-[38px] text-sm font-semibold text-[#d97706] bg-white hover:bg-amber-50/20 border border-amber-200/80 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
               >
                 <span>🧩 输入邀请码加入</span>
               </button>

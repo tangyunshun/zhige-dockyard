@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get("authorization")?.replace("Bearer ", "");
-    if (!userId) {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
+    const userId = auth.user.id;
 
     const body = await request.json();
     const { invitationCode } = body;

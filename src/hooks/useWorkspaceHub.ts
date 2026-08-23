@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { useLogout } from "@/hooks/useLogout";
+import { getAuthToken } from "@/utils/auth";
 
 export interface Workspace {
   id: string;
@@ -111,9 +112,8 @@ export function useWorkspaceHub() {
   const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState("");
 
   useEffect(() => {
-    // 首先检查用户是否已登录
-    const userId = localStorage.getItem("userId");
-    if (!userId) {
+    // 首先检查用户是否已登录（以真实 JWT 凭证为准）
+    if (!getAuthToken()) {
       console.warn("用户未登录，即将重定向到登录页面...");
       setRedirecting(true);
       window.location.href = "/auth/login";
@@ -153,11 +153,19 @@ export function useWorkspaceHub() {
 
   const loadUserInfo = async () => {
     try {
-      const res = await fetch("/api/auth/me");
+      const authToken = getAuthToken();
+      const res = await fetch("/api/auth/me", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
+      });
 
       if (!res.ok) {
         if (res.status === 404 || res.status === 401) {
-          const errorData = await res.json();
+          const contentType = res.headers.get("content-type");
+          let errorData = {};
+          if (contentType && contentType.includes("application/json")) {
+            errorData = await res.json().catch(() => ({}));
+          }
           console.log("[loadUserInfo] 用户认证失效:", errorData);
 
           localStorage.removeItem("userId");
@@ -173,78 +181,93 @@ export function useWorkspaceHub() {
         return;
       }
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.warn("[loadUserInfo] /api/auth/me 返回非 JSON 格式:", contentType);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (!data || !data.user) return;
       setUser(data.user);
 
       const workspacesRes = await fetch("/api/workspace/list", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-        },
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
       });
 
       if (workspacesRes.ok) {
-        const workspacesData = await workspacesRes.json();
+        const wsContentType = workspacesRes.headers.get("content-type");
+        if (wsContentType && wsContentType.includes("application/json")) {
+          const workspacesData = await workspacesRes.json().catch(() => null);
+          if (workspacesData && workspacesData.workspaces) {
+            const personal = workspacesData.workspaces.find(
+              (w: Workspace) => w.type === "PERSONAL"
+            );
+            const enterprise = workspacesData.workspaces.find(
+              (w: Workspace) => w.type === "ENTERPRISE"
+            );
 
-        const personal = workspacesData.workspaces.find(
-          (w: Workspace) => w.type === "PERSONAL"
-        );
-        const enterprise = workspacesData.workspaces.find(
-          (w: Workspace) => w.type === "ENTERPRISE"
-        );
+            if (personal) {
+              setPersonalWorkspace(personal);
+              setPersonalWorkspaceDeleted(false);
+              localStorage.setItem("personalWorkspaceDeleted", "false");
+            } else if (!personal && data.user?.id) {
+              if (personalWorkspaceDeleted) {
+                setPersonalWorkspace(null);
+              } else if (
+                personalWorkspaceUpgraded &&
+                (upgradeMode === "replace" || upgradeMode === "migrate")
+              ) {
+                setPersonalWorkspace(null);
+              } else if (personalWorkspaceUpgraded && upgradeMode === "parallel") {
+                setPersonalWorkspace(null);
+              } else {
+                const createRes = await fetch("/api/workspace/create-personal", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${getAuthToken()}`,
+                  },
+                  credentials: "include",
+                });
 
-        if (personal) {
-          setPersonalWorkspace(personal);
-          setPersonalWorkspaceDeleted(false);
-          localStorage.setItem("personalWorkspaceDeleted", "false");
-        } else if (!personal && data.user?.id) {
-          if (personalWorkspaceDeleted) {
-            setPersonalWorkspace(null);
-          } else if (
-            personalWorkspaceUpgraded &&
-            (upgradeMode === "replace" || upgradeMode === "migrate")
-          ) {
-            setPersonalWorkspace(null);
-          } else if (personalWorkspaceUpgraded && upgradeMode === "parallel") {
-            setPersonalWorkspace(null);
-          } else {
-            const createRes = await fetch("/api/workspace/create-personal", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${data.user.id}`,
-              },
-            });
-
-            if (createRes.ok) {
-              const createData = await createRes.json();
-              setPersonalWorkspace(createData.workspace);
+                if (createRes.ok) {
+                  const createContentType = createRes.headers.get("content-type");
+                  if (createContentType && createContentType.includes("application/json")) {
+                    const createData = await createRes.json().catch(() => null);
+                    if (createData) setPersonalWorkspace(createData.workspace);
+                  }
+                } else {
+                  setPersonalWorkspace(null);
+                }
+              }
             } else {
-              setPersonalWorkspace(null);
+              setPersonalWorkspace(personal || null);
             }
-          }
-        } else {
-          setPersonalWorkspace(personal || null);
-        }
 
-        setEnterpriseWorkspace(enterprise || null);
+            setEnterpriseWorkspace(enterprise || null);
+          }
+        }
       }
 
       // 聚合加载 Dashboard 数据
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      if (!userId) {
+      if (!authToken) {
         router.push("/auth/login");
         return;
       }
 
       const dashboardRes = await fetch("/api/user/workspace-hub/dashboard", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (dashboardRes.ok) {
-        const resData = await dashboardRes.json();
-        if (resData.success && resData.data) {
+        const dbContentType = dashboardRes.headers.get("content-type");
+        if (dbContentType && dbContentType.includes("application/json")) {
+          const resData = await dashboardRes.json().catch(() => null);
+          if (resData && resData.success && resData.data) {
           const bentoData = resData.data;
           setDashboardData(bentoData);
 
@@ -285,7 +308,8 @@ export function useWorkspaceHub() {
           }
         }
       }
-    } catch (error) {
+    }
+  } catch (error) {
       console.error("加载用户信息失败:", error);
       setPersonalWorkspace(null);
       setEnterpriseWorkspace(null);
@@ -333,29 +357,30 @@ export function useWorkspaceHub() {
     return false;
   };
 
+  // 获取当前鉴权凭证：以真实 JWT auth_token 为准，未登录时引导重新登录
   const checkUserId = () => {
-    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-    if (!userId) {
+    const authToken = getAuthToken();
+    if (!authToken) {
       toast.error("会话已过期，请重新登录");
       localStorage.removeItem("userId");
       localStorage.removeItem("userRole");
       router.push("/auth/login");
       return null;
     }
-    return userId;
+    return authToken;
   };
 
   const handleDeleteWorkspace = async (workspaceId: string) => {
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       setCheckingDelete(true);
       setWorkspaceToDelete(workspaceId);
 
       const res = await fetch(`/api/workspace/check-delete?workspaceId=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -408,14 +433,14 @@ export function useWorkspaceHub() {
 
     try {
       setCreatingEnterprise(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/create-enterprise", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           name: newEnterpriseName.trim(),
@@ -456,14 +481,14 @@ export function useWorkspaceHub() {
 
   const handleCreatePersonal = async () => {
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const createRes = await fetch("/api/workspace/create-personal", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -511,8 +536,8 @@ export function useWorkspaceHub() {
 
     try {
       setDeleting(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const deleteRes = await fetch(
         `/api/workspace/delete?workspaceId=${personalWorkspace.id}`,
@@ -520,7 +545,7 @@ export function useWorkspaceHub() {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
           body: JSON.stringify({
             workspaceId: personalWorkspace.id,
@@ -553,8 +578,8 @@ export function useWorkspaceHub() {
 
   const handleRecreatePersonal = async () => {
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      if (!userId) {
+      const authToken = getAuthToken();
+      if (!authToken) {
         toast.error("请先登录");
         setTimeout(() => {
           router.push("/auth/login");
@@ -566,8 +591,9 @@ export function useWorkspaceHub() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (createRes.ok) {
@@ -612,15 +638,15 @@ export function useWorkspaceHub() {
     }
 
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       setDeletingWorkspaceId(workspaceToDelete);
       const deleteRes = await fetch("/api/workspace/delete", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           workspaceId: workspaceToDelete,
@@ -677,12 +703,12 @@ export function useWorkspaceHub() {
   const verifyInvitation = async (code: string) => {
     try {
       setVerifyingCode(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch(`/api/workspace/invitation/verify?code=${code}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -718,14 +744,14 @@ export function useWorkspaceHub() {
 
     try {
       setJoiningCode(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/join", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           invitationCode,
@@ -767,13 +793,14 @@ export function useWorkspaceHub() {
 
   const loadShareableWorkspaces = async () => {
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/shareable-list", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (!res.ok) throw new Error("加载失败");
@@ -813,14 +840,15 @@ export function useWorkspaceHub() {
 
     try {
       setGenerating(true);
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/workspace/invitation/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           workspaceId: selectedWorkspace,
           email: null,
@@ -859,7 +887,7 @@ export function useWorkspaceHub() {
   };
 
   const handleCopyInvitation = (code: string, invitationUrl: string) => {
-    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、智能的团队研发协同中枢，让开发化繁为简。`;
+    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、自动化的团队研发协同中枢，让开发化繁为简。`;
     navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("已复制到剪贴板");

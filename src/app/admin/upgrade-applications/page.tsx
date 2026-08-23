@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { getAuthToken } from "@/utils/auth";
 import {
   Building2,
   CheckCircle,
@@ -80,7 +81,7 @@ export default function AdminUpgradeApplicationsPage() {
 
       const res = await fetch(`/api/admin/upgrade-applications?${params}`, {
         headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
 
@@ -108,7 +109,7 @@ export default function AdminUpgradeApplicationsPage() {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+              Authorization: `Bearer ${getAuthToken()}`,
             },
             body: JSON.stringify({ id, status }),
           });

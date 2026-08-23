@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Clock,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 export default function CancelDeletionPage() {
   const router = useRouter();
@@ -26,14 +27,15 @@ export default function CancelDeletionPage() {
 
   const checkAccountStatus = async () => {
     try {
-      const userId = localStorage.getItem("userId");
-      if (!userId) {
+      const authToken = getAuthToken();
+      if (!authToken) {
         router.push("/auth/login");
         return;
       }
 
       const res = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
+        credentials: "include",
       });
 
       if (res.ok) {
@@ -62,8 +64,8 @@ export default function CancelDeletionPage() {
   const handleCancelDeletion = async () => {
     setLoading(true);
     try {
-      const userId = localStorage.getItem("userId");
-      if (!userId) {
+      const authToken = getAuthToken();
+      if (!authToken) {
         router.push("/auth/login");
         return;
       }
@@ -72,8 +74,9 @@ export default function CancelDeletionPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (res.ok) {
@@ -96,9 +99,9 @@ export default function CancelDeletionPage() {
 
   if (!checkComplete) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-300 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-16 h-16 border-4 border-[#63b3ed] border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-600">检查账号状态中...</p>
         </div>
       </div>
@@ -106,7 +109,7 @@ export default function CancelDeletionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8">
         <div className="text-center mb-6">
           <button
@@ -122,24 +125,24 @@ export default function CancelDeletionPage() {
         </div>
 
         <div className="text-center mb-6">
-          <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
-            <Clock className="w-8 h-8 text-orange-500" />
+          <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+            <Clock className="w-8 h-8 text-amber-500" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800 mb-2">
             账号注销申请中
           </h1>
           <p className="text-slate-600">
             您的账号已进入冷静期，还剩{" "}
-            <span className="text-orange-500 font-bold">{daysRemaining}</span> 天
+            <span className="text-amber-500 font-bold">{daysRemaining}</span> 天
           </p>
         </div>
 
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-orange-700">
+            <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-amber-600">
               <p className="font-medium mb-1">冷静期说明：</p>
-              <ul className="space-y-1 text-orange-600">
+              <ul className="space-y-1 text-amber-600">
                 <li>• 冷静期为 {cooldownDays} 天，期间可随时撤销</li>
                 <li>• 冷静期内账号数据完整保留</li>
                 <li>• 冷静期结束后，账号将被永久删除</li>
@@ -148,12 +151,12 @@ export default function CancelDeletionPage() {
           </div>
         </div>
 
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
           <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-green-700">
+            <CheckCircle className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-emerald-600">
               <p className="font-medium mb-1">撤销后可恢复正常：</p>
-              <ul className="space-y-1 text-green-600">
+              <ul className="space-y-1 text-emerald-600">
                 <li>• 所有数据完整保留</li>
                 <li>• 账号状态恢复正常</li>
                 <li>• 可继续使用所有功能</li>
@@ -165,7 +168,7 @@ export default function CancelDeletionPage() {
         <button
           onClick={handleCancelDeletion}
           disabled={loading}
-          className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-3 rounded-xl font-medium hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white py-3 rounded-xl font-medium hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (
             <>

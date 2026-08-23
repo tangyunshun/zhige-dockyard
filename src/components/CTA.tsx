@@ -34,7 +34,7 @@ export default function CTA({ onDemoRequest }: CTAProps) {
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
           <h2 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight text-slate-955">
             开启下一代
-            <span className="bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-transparent bg-clip-text">
+            <span className="bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-transparent bg-clip-text">
               软件工程新纪元
             </span>
           </h2>
@@ -44,13 +44,13 @@ export default function CTA({ onDemoRequest }: CTAProps) {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={handleDemoRequest}
-              className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white font-bold rounded-lg shadow-xl shadow-[#3182ce]/30 hover:shadow-2xl hover:shadow-[#3182ce]/40 hover:scale-105 transition-all text-lg transform hover:-translate-y-0.5 cursor-pointer"
+              className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-bold rounded-lg shadow-xl shadow-[#3182ce]/30 hover:shadow-2xl hover:shadow-[#3182ce]/40 hover:scale-105 transition-all text-lg transform hover:-translate-y-0.5 cursor-pointer"
             >
               申请系统演示
             </button>
             <button
               onClick={handleDocsView}
-              className="w-full sm:w-auto px-10 py-4 border-2 border-slate-200 text-slate-650 font-bold rounded-lg hover:border-[#3182ce] hover:text-[#3182ce] hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-white transition-all text-lg flex items-center justify-center gap-2 group cursor-pointer"
+              className="w-full sm:w-auto px-10 py-4 border-2 border-slate-200 text-slate-600 font-bold rounded-lg hover:border-[#3182ce] hover:text-[#3182ce] hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-white transition-all text-lg flex items-center justify-center gap-2 group cursor-pointer"
             >
               查阅开发者文档{" "}
               <ExternalLink className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />

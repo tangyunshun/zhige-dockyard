@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
+import { getAuthToken } from "@/utils/auth";
 import {
   Search,
   Plus,
@@ -107,10 +108,7 @@ export default function AdminDocumentsPage() {
   const loadDocuments = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-
-      console.log("加载文档，用户ID:", userId);
+      const authToken = getAuthToken();
 
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -122,7 +120,7 @@ export default function AdminDocumentsPage() {
 
       const res = await fetch(`/api/admin/documents?${params}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -168,14 +166,13 @@ export default function AdminDocumentsPage() {
       type: "info",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
           const res = await fetch(`/api/admin/documents?id=${id}`, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
             body: JSON.stringify({
               id,
@@ -212,13 +209,12 @@ export default function AdminDocumentsPage() {
       type: "danger",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
           const res = await fetch(`/api/admin/documents?id=${id}`, {
             method: "DELETE",
             headers: {
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
           });
 
@@ -286,8 +282,7 @@ export default function AdminDocumentsPage() {
     setSubmitting(true);
 
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const url = editingDoc
         ? `/api/admin/documents?id=${editingDoc.id}`
         : "/api/admin/documents";
@@ -298,7 +293,7 @@ export default function AdminDocumentsPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(formData),
       });
@@ -321,7 +316,7 @@ export default function AdminDocumentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-8">
       {/* 顶部标题区 */}
       <div className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
         <div className="max-w-7xl mx-auto px-6 py-6">
@@ -576,7 +571,7 @@ export default function AdminDocumentsPage() {
                               className="p-2.5 hover:bg-red-50 rounded-xl transition-all duration-300 group/btn"
                               title="删除"
                             >
-                              <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-700" />
+                              <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-600" />
                             </button>
                           </div>
                         </td>

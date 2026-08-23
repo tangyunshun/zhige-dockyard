@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { Check, X, Copy, Save, AlertCircle, ChevronRight } from "lucide-react";
-import { COMPONENTS } from "@/constants/components";
+import { useAppContext } from "@/contexts/AppContext";
+import { getAuthToken } from "@/utils/auth";
 
 interface WorkspacePost {
   id: string;
@@ -19,6 +20,8 @@ interface PermissionMatrixProps {
 }
 
 export default function RoleMatrix({ workspaceId }: PermissionMatrixProps) {
+  // 组件列表来自数据库（component_catalog 表，经 AppContext 加载）
+  const { componentCatalog: COMPONENTS } = useAppContext();
   const [posts, setPosts] = useState<WorkspacePost[]>([]);
   const [permissions, setPermissions] = useState<Record<string, Record<string, boolean>>>({});
   const [loading, setLoading] = useState(false);
@@ -37,11 +40,11 @@ export default function RoleMatrix({ workspaceId }: PermissionMatrixProps) {
     
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/permissions?workspaceId=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
+        credentials: "include",
       });
       
       if (res.ok) {
@@ -69,13 +72,13 @@ export default function RoleMatrix({ workspaceId }: PermissionMatrixProps) {
     
     setSaving(true);
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch("/api/admin/permissions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           workspaceId,
           permissions,

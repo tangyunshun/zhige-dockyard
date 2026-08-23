@@ -33,7 +33,7 @@ export default function RoleCapabilities() {
       highlightText: "正在匹配公司核心能力...",
       steps: [
         { label: "上传标书", desc: "支持 PDF, Word。自动结构化。" },
-        { label: "偏离度分析", desc: "智能对比系统匹配度与偏离项。" },
+        { label: "偏离度分析", desc: "自动对比系统匹配度与偏离项。" },
         { label: "成本精算", desc: "基于历史数据自动核算人月毛利。" },
         { label: "生成报价", desc: "输出标准技术投标应答建议书。" }
       ],
@@ -44,13 +44,13 @@ export default function RoleCapabilities() {
       ]
     },
     pm: {
-      title: "混沌想法智能补全，需求转 PRD 一步到位",
+      title: "混沌想法自动补全，需求转 PRD 一步到位",
       subtitle: "免去手动撰写繁杂文档，系统帮您补齐异常流逻辑、安全限制以及多标签状态同步规则。",
       activeStep: 1, // step 2 (边界补齐)
       highlightText: "正在推导系统非功能性需求...",
       steps: [
         { label: "录入想法", desc: "自由录入碎片需求或原始脑图。" },
-        { label: "边界补全", desc: "智能自动补充业务逻辑漏洞。" },
+        { label: "边界补全", desc: "自动补充业务逻辑漏洞。" },
         { label: "原型生成", desc: "根据功能描述渲染低保真草图。" },
         { label: "PRD 导出", desc: "一键导出 Markdown 格式的 PRD。" }
       ],
@@ -107,7 +107,7 @@ export default function RoleCapabilities() {
               千人千面 • 角色解决方案
             </div>
             <h2 className="text-4xl md:text-5xl font-extrabold mb-6 tracking-tight text-slate-900 leading-tight">
-              <span className="bg-gradient-to-r from-[#3182ce] via-[#2563eb] to-[#1e40af] text-transparent bg-clip-text">
+              <span className="bg-gradient-to-r from-[#3182ce] via-[#2b6cb0] to-[#2b6cb0] text-transparent bg-clip-text">
                 为每一个岗位打造专属工作流
               </span>
             </h2>
@@ -213,7 +213,7 @@ export default function RoleCapabilities() {
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-sm transition-all duration-300 ${
                             isHighlighted
-                              ? "bg-gradient-to-br from-[#3182ce] to-[#2563eb] text-white shadow-md shadow-[#3182ce]/20 scale-110 ring-4 ring-blue-50"
+                              ? "bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] text-white shadow-md shadow-[#3182ce]/20 scale-110 ring-4 ring-blue-50"
                               : isBeforeHighlight
                               ? "bg-emerald-50 border border-emerald-200 text-emerald-600"
                               : "bg-white border border-slate-200 text-slate-400"
@@ -234,7 +234,7 @@ export default function RoleCapabilities() {
               </div>
 
               {/* 性能指标 */}
-              <div className="pt-6 border-t border-slate-150 grid grid-cols-3 gap-6">
+              <div className="pt-6 border-t border-slate-200 grid grid-cols-3 gap-6">
                 {currentData.metrics.map((metric, idx) => (
                   <div key={idx} className="transition-all duration-300">
                     <div className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">

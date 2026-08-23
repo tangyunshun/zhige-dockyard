@@ -102,6 +102,23 @@ export async function GET(request: NextRequest) {
       }));
     }
 
+    // 查询该空间下的扩展岗位变更日志，以实现多账号协同服务端全局共享
+    const roleLogs = await prisma.operationlog.findMany({
+      where: {
+        workspaceId,
+        action: "UPDATE_MEMBER_ROLE",
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const extendedRoleMap: Record<string, string> = {};
+    roleLogs.forEach((log) => {
+      const details = log.details as any;
+      if (details && typeof details === "object" && details.targetUserId && details.newRole) {
+        extendedRoleMap[details.targetUserId] = details.newRole;
+      }
+    });
+
     return NextResponse.json({
       success: true,
       members: members.map((m) => ({
@@ -109,7 +126,7 @@ export async function GET(request: NextRequest) {
         name: m.user?.name || "极客成员",
         email: m.user?.email || "未绑定邮箱",
         avatar: m.user?.avatar || null,
-        role: m.role,
+        role: extendedRoleMap[m.userId] || m.role,
         joinedAt: m.joinedAt,
       })),
       activeInvitations,
@@ -138,7 +155,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "缺少必要参数" }, { status: 400 });
     }
 
-    // 校验请求者必须是该空间的 OWNER
+    // 校验请求者必须是该空间的 OWNER 或 空间创建者
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { ownerId: true }
+    });
+
     const currentMembership = await prisma.workspacemember.findUnique({
       where: {
         userId_workspaceId: {
@@ -148,31 +170,56 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    if (!currentMembership || currentMembership.role !== "OWNER") {
+    const isSpaceOwner = workspace?.ownerId === userId;
+    const isOwnerRole = (currentMembership?.role || "").toUpperCase() === "OWNER";
+
+    if (!isSpaceOwner && !isOwnerRole) {
       return NextResponse.json({ error: "只有空间所有者有权修改角色" }, { status: 403 });
     }
 
-    // 更新角色
-    const updatedMember = await prisma.workspacemember.update({
+    // 安全映射：将 5 大全系统业务岗位安全转换为 Prisma 数据库合法的 Enum (OWNER | ADMIN | MEMBER)
+    const validDbRole: "OWNER" | "ADMIN" | "MEMBER" =
+      newRole === "OWNER" ? "OWNER" :
+      newRole === "ADMIN" ? "ADMIN" : "MEMBER";
+
+    // 更新角色（采用 upsert 容错，防止记录不存在时更新抛错）
+    const updatedMember = await prisma.workspacemember.upsert({
       where: {
         userId_workspaceId: {
           userId: targetUserId,
           workspaceId,
         },
       },
-      data: {
-        role: newRole,
-        updatedAt: new Date(),
+      update: {
+        role: validDbRole,
+      },
+      create: {
+        id: `wm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        userId: targetUserId,
+        workspaceId,
+        role: validDbRole,
       },
     });
+
+    // 写入扩展岗位操作日志，供多账号协同服务端全局共享
+    await prisma.operationlog.create({
+      data: {
+        id: `op_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        workspaceId,
+        userId,
+        action: "UPDATE_MEMBER_ROLE",
+        resource: targetUserId,
+        details: { targetUserId, newRole },
+      },
+    }).catch((e) => console.error("Write member role log error:", e));
 
     return NextResponse.json({
       success: true,
       member: updatedMember,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Update workspace member role error:", error);
-    return NextResponse.json({ error: "更新成员角色失败" }, { status: 500 });
+    return NextResponse.json({ error: error?.message || "更新成员角色失败" }, { status: 500 });
   }
 }
 

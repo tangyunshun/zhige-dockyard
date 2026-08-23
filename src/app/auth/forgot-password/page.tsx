@@ -588,8 +588,8 @@ function ForgotPasswordForm() {
           )}
 
           {accountCheckStatus.exists === false && (
-            <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
-              <p className="text-xs text-orange-700">
+            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs text-amber-600">
                 ⚠️ 该账号不存在，请检查输入是否正确
               </p>
             </div>
@@ -597,7 +597,7 @@ function ForgotPasswordForm() {
 
           {accountCheckStatus.locked && (
             <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-xs text-red-700">
+              <p className="text-xs text-red-600">
                 ⚠️ 账号已锁定，请
                 {accountCheckStatus.minutesRemaining}分钟后再试
               </p>
@@ -606,7 +606,7 @@ function ForgotPasswordForm() {
 
           {accountCheckStatus.disabled && (
             <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-xs text-red-700">
+              <p className="text-xs text-red-600">
                 ⚠️ 账号已被禁用，请联系管理员
               </p>
             </div>
@@ -644,7 +644,7 @@ function ForgotPasswordForm() {
             onClick={() => handleSelectVerificationMethod("phone")}
             className="w-full p-4 border border-[#e2e8f0] rounded-lg hover:border-[#3182ce] hover:bg-[#f0f8ff] transition-colors flex items-center gap-3"
           >
-            <div className="w-10 h-10 bg-[#e6f4f1] rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-[#ebf8ff] rounded-full flex items-center justify-center">
               <Phone className="w-5 h-5 text-[#3182ce]" />
             </div>
             <div className="text-left">
@@ -661,7 +661,7 @@ function ForgotPasswordForm() {
             onClick={() => handleSelectVerificationMethod("email")}
             className="w-full p-4 border border-[#e2e8f0] rounded-lg hover:border-[#3182ce] hover:bg-[#f0f8ff] transition-colors flex items-center gap-3"
           >
-            <div className="w-10 h-10 bg-[#e6f4f1] rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-[#ebf8ff] rounded-full flex items-center justify-center">
               <Mail className="w-5 h-5 text-[#3182ce]" />
             </div>
             <div className="text-left">
@@ -775,7 +775,7 @@ function ForgotPasswordForm() {
               </button>
             </div>
             {smsMessage && (
-              <p className="mt-1 text-xs text-green-600">{smsMessage}</p>
+              <p className="mt-1 text-xs text-emerald-600">{smsMessage}</p>
             )}
             {errors.smsCode && (
               <p className="mt-1 text-xs text-red-500">{errors.smsCode}</p>
@@ -882,11 +882,11 @@ function ForgotPasswordForm() {
                     className={`flex-1 h-1.5 rounded-full transition-colors ${
                       level <= passwordStrength.score
                         ? passwordStrength.score === 5
-                          ? "bg-green-500"
+                          ? "bg-emerald-500"
                           : level <= 2
                             ? "bg-red-500"
                             : level <= 4
-                              ? "bg-orange-500"
+                              ? "bg-amber-500"
                               : "bg-yellow-500"
                         : "bg-slate-200"
                     }`}
@@ -979,7 +979,7 @@ function ForgotPasswordForm() {
 
   return (
     <div 
-      className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden relative"
+      className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4 overflow-hidden relative"
       style={{
         backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.08) 1.5px, transparent 1.5px)",
         backgroundSize: "24px 24px",
@@ -987,10 +987,10 @@ function ForgotPasswordForm() {
     >
       <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[24px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50 relative z-10">
         {/* 左侧品牌区 - 固定 */}
-        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
+        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1a365d] p-6 text-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl" />
-            <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-300 rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-40 h-40 bg-[#63b3ed] rounded-full blur-3xl" />
           </div>
 
           <div className="relative z-10 text-center">
@@ -1010,15 +1010,15 @@ function ForgotPasswordForm() {
 
             <div className="space-y-3 text-left">
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
                 <span className="text-xs">企业级安全架构</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
-                <span className="text-xs">智能驱动</span>
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
+                <span className="text-xs">自动化驱动</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
                 <span className="text-xs">全链路提效 300%</span>
               </div>
             </div>

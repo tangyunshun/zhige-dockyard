@@ -5,6 +5,7 @@ import { UserCheck, ArrowLeft, Plus, Search, RefreshCw, Loader2, X, ShieldAlert,
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { getAuthToken } from "@/utils/auth";
 
 interface AdminUser {
   id: string;
@@ -50,9 +51,9 @@ export default function AdministratorsPage() {
   const loadAdmins = async () => {
     try {
       setLoading(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/admin/permissions", {
-        headers: userId ? { Authorization: `Bearer ${userId}` } : {}
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
       });
       if (res.ok) {
         const result = await res.json();
@@ -69,9 +70,9 @@ export default function AdministratorsPage() {
 
   const loadUsers = async () => {
     try {
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/admin/users?limit=400", {
-        headers: userId ? { Authorization: `Bearer ${userId}` } : {}
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
       });
       if (res.ok) {
         const result = await res.json();
@@ -111,13 +112,13 @@ export default function AdministratorsPage() {
 
     try {
       setSubmitting(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
 
       const patchRes = await fetch("/api/admin/user", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
         },
         body: JSON.stringify({
           userId: selectedUserId,
@@ -157,12 +158,12 @@ export default function AdministratorsPage() {
       type: "danger",
       onConfirm: async () => {
         try {
-          const userId = localStorage.getItem("userId");
+          const authToken = getAuthToken();
           const res = await fetch("/api/admin/user", {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              ...(userId ? { Authorization: `Bearer ${userId}` } : {})
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
             },
             body: JSON.stringify({
               userId: targetAdmin.id,
@@ -253,7 +254,7 @@ export default function AdministratorsPage() {
       ) : filteredAdmins.length === 0 ? (
         <div className="bg-white/80 border border-slate-200 rounded-2xl shadow-sm min-h-[300px] flex items-center justify-center p-8 text-center">
           <div>
-            <ShieldAlert className="w-12 h-12 text-slate-350 mx-auto mb-3" />
+            <ShieldAlert className="w-12 h-12 text-slate-400 mx-auto mb-3" />
             <h3 className="text-sm font-bold text-slate-700">未找到匹配的管理员记录</h3>
           </div>
         </div>
@@ -295,7 +296,7 @@ export default function AdministratorsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="px-2 py-0.5 bg-green-50 border border-green-100 text-green-600 font-black rounded text-[10px]">
+                    <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-600 font-black rounded text-[10px]">
                       正常活跃
                     </span>
                   </td>

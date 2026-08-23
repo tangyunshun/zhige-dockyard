@@ -155,7 +155,7 @@ export default function WebhooksPage() {
         </div>
         
         <div className="flex items-center gap-2">
-          <div className="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg text-xs font-bold flex items-center gap-1.5">
+          <div className="px-3 py-1 bg-indigo-50 text-[#5a67d8] border border-indigo-100 rounded-lg text-xs font-bold flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5" />
             <span>实时事件流推送通道</span>
           </div>
@@ -192,7 +192,7 @@ export default function WebhooksPage() {
                 
                 {/* 目标 URL */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-600 block">推送 URL 地址</label>
+                  <label className="text-xs font-black text-slate-600 block">推送 URL 地址 <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     required
@@ -205,7 +205,7 @@ export default function WebhooksPage() {
 
                 {/* 订阅事件 */}
                 <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-600 block">订阅的事件类别</label>
+                  <label className="text-xs font-black text-slate-600 block">订阅的事件类别 <span className="text-red-500">*</span></label>
                   <div className="grid gap-2.5">
                     {eventTypes.map((event) => {
                       const checked = selectedEvents.includes(event.id);
@@ -335,7 +335,7 @@ export default function WebhooksPage() {
                           订阅事件: <span className="text-slate-600">{wh.events.length} 个</span>
                         </div>
                         <div>
-                          推送成功率: <span className="text-[#38a169]">{wh.successRate}</span>
+                          推送成功率: <span className="text-[#059669]">{wh.successRate}</span>
                         </div>
                         <div className="truncate">
                           最近触发: <span className="text-slate-600">{wh.lastTriggered}</span>

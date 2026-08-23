@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Building2, Layers, Shuffle, ArrowRight, ShieldAlert, Sparkles } from "lucide-react";
+import { Building2, Layers, Shuffle, ArrowRight, ShieldAlert, Crown } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { Workspace, EnterpriseQuota } from "@/hooks/useWorkspaceHubData";
+import { getAuthToken } from "@/utils/auth";
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -34,19 +35,19 @@ export default function UpgradeModal({
 
     try {
       setLoading(true);
-      const userId = localStorage.getItem("userId");
-      if (!userId) {
+      const authToken = getAuthToken();
+      if (!authToken) {
         toast.error("未授权访问，请重新登录");
         return;
       }
 
-      const token = localStorage.getItem("auth_token");
       const res = await fetch("/api/workspace/upgrade", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token || ""}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           workspaceId: personalWorkspace.id,
           option,
@@ -97,7 +98,7 @@ export default function UpgradeModal({
         <div className="mb-6 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2b6cb0] to-[#3182ce] flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-5 h-5 text-white" />
+              <Crown className="w-5 h-5 text-white" />
             </div>
             <div>
               <h2 className="text-lg font-black text-slate-800">升级为企业空间</h2>
@@ -118,13 +119,13 @@ export default function UpgradeModal({
               onClick={() => !loading && setOption("retain")}
               className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between h-[180px] ${
                 option === "retain"
-                  ? "border-orange-500 bg-orange-50/20"
+                  ? "border-amber-500 bg-amber-50/20"
                   : "border-slate-200 hover:border-slate-300"
               }`}
             >
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className={`p-1.5 rounded ${option === "retain" ? "bg-orange-100 text-orange-600" : "bg-slate-100 text-slate-500"}`}>
+                  <div className={`p-1.5 rounded ${option === "retain" ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500"}`}>
                     <Layers className="w-4 h-4" />
                   </div>
                   <span className="text-xs font-bold text-slate-800">并行模式</span>
@@ -133,7 +134,7 @@ export default function UpgradeModal({
                   保留原个人空间与全部沙箱配置，同时额外为您开辟一个新的企业协作空间。
                 </p>
               </div>
-              <span className="text-[10px] font-bold text-orange-600 bg-orange-100/60 px-2 py-0.5 rounded self-start mt-2">
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-100/60 px-2 py-0.5 rounded self-start mt-2">
                 适合独立沙箱与团队并存
               </span>
             </div>
@@ -196,7 +197,7 @@ export default function UpgradeModal({
             <ShieldAlert className="w-4.5 h-4.5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
               <h4 className="text-xs font-bold text-amber-800">升级安全提示：</h4>
-              <p className="text-xs text-amber-700 leading-relaxed mt-0.5">
+              <p className="text-xs text-amber-600 leading-relaxed mt-0.5">
                 {option === "upgrade" && "替换升级后，个人沙箱将无法单独进入，所有组件将合并为企业所有，企业内的其他管理员将获得其管理权限。"}
                 {option === "retain" && "并行升级将额外消耗 1 个企业空间容量指标。目前这不会影响您现有的个人开发空间数据。"}
                 {option === "delete" && "迁移模式会进行安全前置检测：如果个人空间含有进行中的组件任务、未转移的外部项目或存在其他协同成员，升级操作将被拦截。"}

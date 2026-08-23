@@ -7,17 +7,11 @@ import { validateUser } from "@/lib/auth";
  */
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const authResult = await validateUser(request.headers.get("Authorization"), request);
+    if (!authResult.valid || !authResult.user) {
+      return NextResponse.json({ error: authResult.error || "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const userId = authHeader.replace("Bearer ", "");
-    const authResult = await validateUser(authHeader);
-    
-    if (!authResult.valid) {
-      return NextResponse.json({ error: authResult.error }, { status: 401 });
-    }
+    const userId = authResult.user.id;
 
     const user = authResult.user!;
 
@@ -62,17 +56,23 @@ export async function GET(request: NextRequest) {
     // 统计企业空间数量
     const enterpriseCount = workspaces.filter(ws => ws.type === "ENTERPRISE").length;
 
-    // 算力配额计算 (从数据库中统计运行的组件任务)
-    const usedTasksCount = await prisma.componenttask.count({
+    // Token 消耗真实统计：组件使用次数 × 组件目录 estimatedTokens 基准
+    const usageRows = await prisma.componentusage.findMany({
       where: { userId },
+      select: { componentId: true },
     });
-    const usedTokens = usedTasksCount * 120; // 假设每次运行组件消耗平均120个Token
+    const tokenBase = await prisma.componentcatalog.findMany({
+      select: { id: true, estimatedTokens: true },
+    });
+    const tokenBaseMap = new Map(tokenBase.map((c) => [c.id, Number(c.estimatedTokens)]));
+    const usedTokens = usageRows.reduce((sum, r) => sum + (tokenBaseMap.get(r.componentId) ?? 0), 0);
 
+    // 配额一律从 membershiplevel 表读取（不再硬编码）
     const maxEnterpriseWorkspaces = levelData ? Number(levelData.maxEnterpriseWorkspaces) : 1;
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
-    const tokenLimit = levelData ? (membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000) : 10000;
+    const tokenLimit = levelData ? Number(levelData.tokenLimit) : 10000;
 
     const availableEnterpriseSlots = maxEnterpriseWorkspaces === -1 
       ? -1 
@@ -100,7 +100,6 @@ export async function GET(request: NextRequest) {
         workspaces: await Promise.all(workspaces.map(async (ws) => {
           let wsQuota = ws.workspacequota;
           if (!wsQuota) {
-            const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
             let ml = await prisma.membershiplevel.findUnique({
               where: { id: membershipLevel }
             });

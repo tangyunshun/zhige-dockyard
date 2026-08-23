@@ -45,7 +45,7 @@ export default function Home() {
 
       try {
         const res = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${userId || authToken}` },
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         });
 
         if (res.ok) {
@@ -135,11 +135,10 @@ export default function Home() {
     setCancelling(true);
 
     try {
-      // 获取认证信息
-      const userId = localStorage.getItem("userId");
+      // 获取认证信息：身份凭证一律使用 JWT（auth_token），禁止用明文 userId 冒充 Bearer
       const authToken = localStorage.getItem("auth_token");
 
-      if (!userId && !authToken) {
+      if (!authToken) {
         cancellingRef.current = false;
         setCancelling(false);
         window.location.href = "/auth/login";
@@ -150,7 +149,7 @@ export default function Home() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId || authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -225,8 +224,8 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5">
             <div className="text-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-3">
-                <Clock className="w-6 h-6 text-orange-500" />
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
+                <Clock className="w-6 h-6 text-amber-500" />
               </div>
               <h2 className="text-lg font-bold text-slate-800 mb-1">
                 账号注销申请中
@@ -237,12 +236,12 @@ export default function Home() {
             </div>
 
             {/* 倒计时 */}
-            <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-xl p-3 mb-3 text-center">
-              <p className="text-xs text-orange-600 mb-1">冷静期剩余时间</p>
-              <p className="text-xl font-bold text-orange-600 font-mono">
+            <div className="bg-gradient-to-r from-amber-50 to-red-50 border border-amber-200 rounded-xl p-3 mb-3 text-center">
+              <p className="text-xs text-amber-600 mb-1">冷静期剩余时间</p>
+              <p className="text-xl font-bold text-amber-600 font-mono">
                 {formatCountdown(countdown)}
               </p>
-              <p className="text-xs text-orange-500 mt-1">
+              <p className="text-xs text-amber-500 mt-1">
                 约 {deletionDaysRemaining} 天后账号将被永久删除
               </p>
             </div>
@@ -257,10 +256,10 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <CheckCircle className="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
                 <div className="text-slate-600">
                   撤销后，所有数据将
-                  <span className="font-medium text-green-600">完整保留</span>
+                  <span className="font-medium text-emerald-600">完整保留</span>
                 </div>
               </div>
               <div className="flex items-start gap-2">
@@ -277,7 +276,7 @@ export default function Home() {
               <button
                 onClick={handleCancelDeletion}
                 disabled={cancelling}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-green-500/30 transition-all text-sm disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-emerald-500/30 transition-all text-sm disabled:opacity-50"
               >
                 {cancelling ? (
                   <>

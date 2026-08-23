@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { markNotificationAsRead, markAllNotificationsAsRead } from "@/lib/notifications-store";
+import { validateUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req });
-    if (!token?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: auth.error || "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const userId = token.id as string;
+    const userId = auth.user.id;
     const body = await req.json().catch(() => ({}));
     const { id, all } = body;
 
     let updatedList;
     if (all || !id) {
-      updatedList = markAllNotificationsAsRead(userId);
+      updatedList = await markAllNotificationsAsRead(userId);
     } else {
-      updatedList = markNotificationAsRead(userId, id);
+      updatedList = await markNotificationAsRead(userId, id);
     }
 
     const unreadCount = updatedList.filter(item => !item.isRead).length;

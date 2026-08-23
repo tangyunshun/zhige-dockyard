@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { isAdminRole, validateUser } from "@/lib/auth";
 import {
   DELETION_COOLDOWN_CONFIG_KEY,
   DEFAULT_DELETION_COOLDOWN_DAYS,
@@ -17,16 +17,15 @@ const COOLDOWN_DAYS_MIN = 1;
 const COOLDOWN_DAYS_MAX = 90;
 
 async function assertAdmin(request: NextRequest): Promise<{ ok: true; adminId: string } | { ok: false; status: number; message: string }> {
-  const authHeader = request.headers.get("authorization");
-  const adminId = (authHeader && authHeader.replace("Bearer ", "")) || "";
-  if (!adminId) {
+  const auth = await validateUser(request.headers.get("Authorization"), request);
+  if (!auth.valid || !auth.user) {
     return { ok: false, status: 401, message: "未授权" };
   }
-  const admin = await prisma.user.findUnique({ where: { id: adminId } });
+  const admin = await prisma.user.findUnique({ where: { id: auth.user.id } });
   if (!admin || !isAdminRole(admin.role)) {
     return { ok: false, status: 403, message: "需要管理员权限" };
   }
-  return { ok: true, adminId };
+  return { ok: true, adminId: auth.user.id };
 }
 
 /** 获取当前冷静期配置 */

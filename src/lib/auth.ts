@@ -68,45 +68,37 @@ export async function validateUser(
   error?: string;
 }> {
   let token = "";
-  let isVerifiedByMiddleware = false;
-  let userIdFromHeader = "";
 
-  // 1. 优先尝试从 request headers 获取已由中间件校验注入的 x-user-id
-  if (request) {
-    const headers = "headers" in request ? request.headers : null;
-    if (headers) {
-      const xUserId = typeof headers.get === "function" ? headers.get("x-user-id") : null;
-      if (xUserId) {
-        userIdFromHeader = xUserId;
-        isVerifiedByMiddleware = true;
-      }
+  // 1. 仅接受合法 JWT：从 Authorization 提取 Bearer token。
+  //    明文 userId、Bearer null / undefined / 空 Bearer 一律拒绝（不是 JWT 形态 → 不留 token）。
+  if (authHeader) {
+    const raw = authHeader.replace("Bearer ", "").trim();
+    if (raw && raw !== "null" && raw !== "undefined" && raw.includes(".")) {
+      token = raw;
     }
   }
 
-  // 2. 如果中间件没有注入，我们常规提取 Authorization 里的 token
-  if (!isVerifiedByMiddleware) {
-    if (authHeader && authHeader !== "Bearer null" && authHeader !== "Bearer " && authHeader !== "Bearer undefined") {
-      token = authHeader.replace("Bearer ", "");
-    }
-  }
-
-  // 3. 如果依然没有，且传入了 request，我们尝试从 Cookie 中提取 auth_token
-  if (!isVerifiedByMiddleware && !token && request) {
+  // 2. Authorization 缺省时，从 Cookie auth_token 提取（同样必须为合法 JWT 形态）
+  if (!token && request) {
     let cookieToken = "";
     if ("cookies" in request && typeof request.cookies?.get === "function") {
       cookieToken = request.cookies.get("auth_token")?.value || "";
     } else if (request.headers) {
-      const cookieHeader = typeof request.headers.get === "function" ? request.headers.get("cookie") || "" : "";
+      const cookieHeader =
+        typeof request.headers.get === "function"
+          ? request.headers.get("cookie") || ""
+          : "";
       const match = cookieHeader.match(/auth_token=([^;]+)/);
       if (match) cookieToken = match[1];
     }
-    if (cookieToken) {
-      token = cookieToken;
+    const ct = cookieToken.trim();
+    if (ct && ct !== "null" && ct !== "undefined" && ct.includes(".")) {
+      token = ct;
     }
   }
 
-  // 4. 如果所有途径都拿不到，判定 UNAUTHORIZED
-  if (!isVerifiedByMiddleware && !token) {
+  // 3. 无任何合法 JWT 凭证 → UNAUTHORIZED（明文 userId 无法到达第 4 步）
+  if (!token) {
     return { valid: false, error: "UNAUTHORIZED" };
   }
 
@@ -115,42 +107,24 @@ export async function validateUser(
     let jwtSessionToken: string | undefined;
     let jwtIssuedAtStr: string | undefined;
 
-    if (isVerifiedByMiddleware) {
-      userId = userIdFromHeader;
-      // 中间件仅注入 userId，但挤线(sessionToken)与强制下线(issuedAt)校验依赖 JWT 载荷，
-      // 因此这里仍需解析一次 token，否则第 3、4 步校验会被静默跳过。
-      let rawToken = "";
-      if ("cookies" in request && typeof request.cookies?.get === "function") {
-        rawToken = request.cookies.get("auth_token")?.value || "";
-      } else if (request?.headers) {
-        const cookieHeader =
-          typeof request.headers.get === "function"
-            ? request.headers.get("cookie") || ""
-            : "";
-        const match = cookieHeader.match(/auth_token=([^;]+)/);
-        if (match) rawToken = match[1];
-      }
-      if (!rawToken && authHeader?.startsWith("Bearer ")) {
-        rawToken = authHeader.replace("Bearer ", "");
-      }
-      if (rawToken && rawToken.includes(".")) {
-        try {
-          const { payload } = await jwtVerify(rawToken, JWT_SECRET);
-          jwtSessionToken = payload.sessionToken as string | undefined;
-          jwtIssuedAtStr = payload.issuedAt as string | undefined;
-        } catch {
+    // 4. 强制 JWT 验签：任何非 JWT 明文（裸 userId / 伪造串）都会在此抛错 → INVALID_TOKEN
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    userId = payload.userId as string;
+    if (!userId) {
+      return { valid: false, error: "INVALID_TOKEN" };
+    }
+    jwtSessionToken = payload.sessionToken as string | undefined;
+    jwtIssuedAtStr = payload.issuedAt as string | undefined;
+
+    // 5. x-user-id 仅作为交叉校验：若请求头携带该字段，必须与已验签 JWT 载荷中的 userId 完全一致，
+    //    防止业务 API 直接信任客户端伪造的 x-user-id。
+    if (request) {
+      const headers = "headers" in request ? request.headers : null;
+      if (headers && typeof headers.get === "function") {
+        const xUserId = headers.get("x-user-id");
+        if (xUserId && xUserId !== userId) {
           return { valid: false, error: "INVALID_TOKEN" };
         }
-      }
-    } else {
-      // 兼容性放行：若 token 不包含点号，代表前端传输的是明文的 userId 令牌，绕过 JWT 解密并直接降级以执行 Prisma 数据校验
-      if (!token.includes(".")) {
-        userId = token;
-      } else {
-        const { payload } = await jwtVerify(token, JWT_SECRET);
-        userId = payload.userId as string;
-        jwtSessionToken = payload.sessionToken as string | undefined;
-        jwtIssuedAtStr = payload.issuedAt as string | undefined;
       }
     }
 

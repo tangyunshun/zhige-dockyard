@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { getNotifications } from "@/lib/notifications-store";
+import { validateUser } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const token = await getToken({ req });
-    if (!token?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: auth.error || "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const userId = token.id as string;
-    const list = getNotifications(userId);
+    const userId = auth.user.id;
+    const list = await getNotifications(userId);
     const unreadCount = list.filter(item => !item.isRead).length;
 
     return NextResponse.json({

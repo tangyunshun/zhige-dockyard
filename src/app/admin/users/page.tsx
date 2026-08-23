@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { getAuthToken } from "@/utils/auth";
 import {
   Filter,
   MoreVertical,
@@ -415,13 +416,13 @@ export default function AdminUsersPage() {
 
   const handleChangeStatus = async (userId: string, newStatus: string, bannedUntil?: string | null) => {
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch(`/api/admin/users/${userId}/status`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
+        credentials: "include",
         body: JSON.stringify({ 
           status: newStatus,
           bannedUntil: bannedUntil || null,
@@ -619,13 +620,13 @@ export default function AdminUsersPage() {
     switch (role?.toUpperCase()) {
       case "SUPER_ADMIN":
         return (
-          <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">
+          <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full">
             超级管理员
           </span>
         );
       case "ADMIN":
         return (
-          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
+          <span className="px-2 py-1 bg-blue-100 text-[#2b6cb0] text-xs font-bold rounded-full">
             管理员
           </span>
         );
@@ -642,19 +643,19 @@ export default function AdminUsersPage() {
     switch (status?.toUpperCase()) {
       case "ACTIVE":
         return (
-          <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
+          <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-xs font-bold rounded-full">
             活跃
           </span>
         );
       case "INACTIVE":
         return (
-          <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full">
+          <span className="px-2 py-1 bg-amber-100 text-amber-600 text-xs font-bold rounded-full">
             未激活
           </span>
         );
       case "BANNED":
         return (
-          <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">
+          <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full">
             已封禁
           </span>
         );
@@ -670,8 +671,8 @@ export default function AdminUsersPage() {
   const getLoginStatusBadge = (isOnline: boolean) => {
     if (isOnline) {
       return (
-        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+        <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-xs font-bold rounded-full flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
           在线
         </span>
       );
@@ -847,7 +848,7 @@ export default function AdminUsersPage() {
             <div className="flex gap-2">
               <button
                 onClick={handleBatchKick}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
               >
                 <LogOut className="w-4 h-4" />
                 批量踢出
@@ -955,7 +956,7 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                              <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
                                 {user.name?.charAt(0) ||
                                   user.email?.charAt(0) ||
                                   "U"}
@@ -1005,7 +1006,7 @@ export default function AdminUsersPage() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             {user.lastLoginAt ? (
                               <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 shrink-0 rounded-full bg-green-500"></div>
+                                <div className="w-2 h-2 shrink-0 rounded-full bg-emerald-500"></div>
                                 <span
                                   className="text-sm text-slate-600 font-medium"
                                   title={formatTimeAgo(user.lastLoginAt)}
@@ -1076,9 +1077,9 @@ export default function AdminUsersPage() {
                                             handleToggleStatus(user);
                                             setShowActionMenu(null);
                                           }}
-                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-orange-50 transition-colors border-b border-slate-50"
+                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-amber-50 transition-colors border-b border-slate-50"
                                         >
-                                          <UserX className="w-4 h-4 text-orange-600" />
+                                          <UserX className="w-4 h-4 text-amber-600" />
                                           禁用登录
                                         </button>
                                       )}
@@ -1252,7 +1253,7 @@ export default function AdminUsersPage() {
               </div>
 
               {/* 系统信息区域 */}
-              <div className="bg-gradient-to-r from-green-50/50 to-teal-50/50 rounded-xl p-4 border border-slate-100">
+              <div className="bg-gradient-to-r from-emerald-50/50 to-emerald-50/50 rounded-xl p-4 border border-slate-100">
                 <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
                   <span className="w-1.5 h-4 bg-gradient-to-b from-[#10b981] to-[#059669] rounded-full"></span>
                   系统信息
@@ -1279,8 +1280,8 @@ export default function AdminUsersPage() {
                     <div className="text-sm font-semibold px-3 py-2 bg-white/60 rounded-lg border border-slate-100 flex items-center gap-2">
                       {editingUser.status === "active" ? (
                         <>
-                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                          <span className="text-green-600">活跃</span>
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                          <span className="text-emerald-600">活跃</span>
                         </>
                       ) : editingUser.status === "inactive" ? (
                         <>
@@ -1304,7 +1305,7 @@ export default function AdminUsersPage() {
                     </label>
                     <div className="text-sm font-semibold px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
                       {editingUser.membershipLevel === "premium" ? (
-                        <span className="text-orange-600">普通会员</span>
+                        <span className="text-amber-600">普通会员</span>
                       ) : editingUser.membershipLevel === "vip" ? (
                         <span className="text-purple-600">VIP 会员</span>
                       ) : editingUser.membershipLevel === "svip" ? (
@@ -1328,7 +1329,7 @@ export default function AdminUsersPage() {
               {/* 可编辑字段 */}
               <div className="bg-gradient-to-r from-slate-50/50 to-gray-50/50 rounded-xl p-4 border border-slate-100">
                 <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                  <span className="w-1.5 h-4 bg-gradient-to-b from-[#6b7280] to-[#4b5563] rounded-full"></span>
+                  <span className="w-1.5 h-4 bg-gradient-to-b from-[#64748b] to-[#475569] rounded-full"></span>
                   修改角色权限
                 </h4>
                 {editingUser.role === "super_admin" ? (
@@ -1527,8 +1528,8 @@ export default function AdminUsersPage() {
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-white/90">
             <div className="p-6">
               <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                  <AlertCircle className="w-6 h-6 text-orange-600" />
+                <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-amber-600" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-800">确认操作</h3>
               </div>
@@ -1551,7 +1552,7 @@ export default function AdminUsersPage() {
                     e.stopPropagation();
                     handleConfirm();
                   }}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 font-semibold text-sm"
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 font-semibold text-sm"
                 >
                   确认
                 </button>
@@ -1611,7 +1612,7 @@ export default function AdminUsersPage() {
                       onClick={() => setBanDuration(option.value)}
                       className={`px-4 py-3 rounded-xl border-2 font-semibold transition-all ${
                         banDuration === option.value
-                          ? "border-red-500 bg-red-50 text-red-700"
+                          ? "border-red-500 bg-red-50 text-red-600"
                           : "border-slate-200 text-slate-700 hover:border-slate-300"
                       }`}
                     >

@@ -36,15 +36,11 @@ export default function ResourceOverview({
     return "资源额度";
   };
 
-  // 存储空间动态估算
-  const getStorageInfo = () => {
-    if (level === "DIAMOND") return { used: 12.4, total: 100, unit: "GB" };
-    if (level === "GOLD") return { used: 4.8, total: 20, unit: "GB" };
-    return { used: 0.8, total: 2, unit: "GB" };
-  };
-
-  const storage = getStorageInfo();
-  const storageRatio = Math.round((storage.used / storage.total) * 100);
+  // 存储空间：真实用量（dashboard 聚合 workspacequota 提供），无数据时以配额上限兜底
+  const storageUsed = dashboardData?.userQuota?.quotas?.storageUsed || 0;
+  const storageTotal = dashboardData?.userQuota?.quotas?.storageLimit || 1073741824;
+  const storage = { used: storageUsed, total: storageTotal, unit: "GB" };
+  const storageRatio = storage.total > 0 ? Math.min(100, Math.round((storage.used / storage.total) * 100)) : 0;
 
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -56,19 +52,19 @@ export default function ResourceOverview({
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200/60">
         <div className="flex items-center gap-2">
           {/* 金色/橙色高质感指示图标 */}
-          <div className="w-7.5 h-7.5 rounded bg-orange-50 border border-orange-100 flex items-center justify-center shadow-sm">
-            <Cpu className="w-4 h-4 text-orange-500" />
+          <div className="w-7.5 h-7.5 rounded bg-amber-50 border border-amber-100 flex items-center justify-center shadow-sm">
+            <Cpu className="w-4 h-4 text-amber-500" />
           </div>
           <div>
             <h3 className="text-sm font-extrabold text-slate-700">{getVipTitle()}</h3>
-            <p className="text-xs text-slate-400 font-semibold mt-0.5">Token 与存储空间监控</p>
+            <p className="text-xs text-slate-400 font-semibold mt-0.5">调用额度与存储空间监控</p>
           </div>
         </div>
         
         {/* 升级额度右上角小文字链 */}
         <button
           onClick={() => router.push("/pricing")}
-          className="text-xs font-bold text-[#2b6cb0] hover:text-[#2563eb] transition-colors cursor-pointer flex items-center gap-0.5"
+          className="text-xs font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors cursor-pointer flex items-center gap-0.5"
         >
           <span>提升配额</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
@@ -92,15 +88,15 @@ export default function ResourceOverview({
             {/* 渐变定义 (V6.0 绚丽多色系配置) */}
             <defs>
               <linearGradient id="gradient-free" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#60a5fa" />
-                <stop offset="100%" stopColor="#3b82f6" />
+                <stop offset="0%" stopColor="#63b3ed" />
+                <stop offset="100%" stopColor="#3182ce" />
               </linearGradient>
               <linearGradient id="gradient-gold" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#fbbf24" />
+                <stop offset="0%" stopColor="#f59e0b" />
                 <stop offset="100%" stopColor="#d97706" />
               </linearGradient>
               <linearGradient id="gradient-diamond" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#34d399" />
+                <stop offset="0%" stopColor="#10b981" />
                 <stop offset="100%" stopColor="#059669" />
               </linearGradient>
             </defs>
@@ -127,7 +123,7 @@ export default function ResourceOverview({
 
         {/* 消耗数值 */}
         <div className="min-w-0 flex-1">
-          <span className="text-xs text-slate-400 font-bold block mb-1">Token 消耗</span>
+          <span className="text-xs text-slate-400 font-bold block mb-1">额度消耗</span>
           <div className="text-sm font-bold text-slate-800 truncate leading-none">
             {tokenUsed.toLocaleString("zh-CN")} <span className="text-xs font-semibold text-slate-400">/ {tokenTotal.toLocaleString("zh-CN")}</span>
           </div>
@@ -146,11 +142,11 @@ export default function ResourceOverview({
               <HardDrive className="w-3.5 h-3.5 text-slate-400" />
               <span>沙箱存储空间</span>
             </div>
-            <span>{storage.used} {storage.unit} / {storage.total} {storage.unit}</span>
+            <span>{(storage.used / 1073741824).toFixed(1)} {storage.unit} / {(storage.total / 1073741824).toFixed(1)} {storage.unit}</span>
           </div>
           <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-blue-400 to-[#3182ce] transition-all duration-300"
+              className="h-full bg-gradient-to-r from-[#63b3ed] to-[#3182ce] transition-all duration-300"
               style={{ width: `${storageRatio}%` }}
             />
           </div>
@@ -167,7 +163,7 @@ export default function ResourceOverview({
           </div>
           <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-orange-400 to-[#dd6b20] transition-all duration-300"
+              className="h-full bg-gradient-to-r from-[#f59e0b] to-[#d97706] transition-all duration-300"
               style={{ width: `${quota ? (quota.enterpriseCount / quota.maxEnterprise) * 100 : 0}%` }}
             />
           </div>

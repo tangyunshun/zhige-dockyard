@@ -52,7 +52,7 @@ function OAuthCallbackContent() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center">
       <div className="text-center">
         <div className="w-16 h-16 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-slate-600">
@@ -66,7 +66,7 @@ function OAuthCallbackContent() {
 export default function OAuthCallback() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-600">加载中...</p>

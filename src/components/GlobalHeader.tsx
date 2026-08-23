@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, Trash2 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { Logo } from "./Logo";
 import AvatarDropdown from "./AvatarDropdown";
@@ -27,11 +27,18 @@ export default function GlobalHeader() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch("/api/user/notifications/list");
+      const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const res = await fetch("/api/user/notifications/list", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include"
+      });
+      if (res.status === 401) {
+        return;
+      }
       if (res.ok) {
         const json = await res.json();
-        setNotifications(json.data.list || []);
-        setUnreadCount(json.data.unreadCount || 0);
+        setNotifications(json.data?.list || []);
+        setUnreadCount(json.data?.unreadCount || 0);
       }
     } catch (e) {
       console.error("加载消息通知失败:", e);
@@ -40,9 +47,14 @@ export default function GlobalHeader() {
 
   const handleMarkAsRead = async (id?: string) => {
     try {
+      const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       const res = await fetch("/api/user/notifications/read", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        credentials: "include",
         body: JSON.stringify(id ? { id } : { all: true })
       });
       if (res.ok) {
@@ -50,9 +62,39 @@ export default function GlobalHeader() {
         setNotifications(json.data.list || []);
         setUnreadCount(json.data.unreadCount || 0);
         toast.success(id ? "已标记已读" : "已全部标记为已读");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("zhige_notifications_updated"));
+        }
       }
     } catch (e) {
       console.error("标记已读失败:", e);
+    }
+  };
+
+  // 删除单条通知（下拉面板内 hover 显示）
+  const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const res = await fetch("/api/user/notifications/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({ id })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setNotifications(json.data.list || []);
+        setUnreadCount(json.data.unreadCount || 0);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("zhige_notifications_updated"));
+        }
+      }
+    } catch (e) {
+      console.error("删除通知失败:", e);
     }
   };
 
@@ -60,7 +102,18 @@ export default function GlobalHeader() {
     if (mounted && userState.isLoggedIn) {
       fetchNotifications();
       const interval = setInterval(fetchNotifications, 60 * 1000);
-      return () => clearInterval(interval);
+      const handleGlobalNotifyUpdate = () => {
+        fetchNotifications();
+      };
+      if (typeof window !== "undefined") {
+        window.addEventListener("zhige_notifications_updated", handleGlobalNotifyUpdate);
+      }
+      return () => {
+        clearInterval(interval);
+        if (typeof window !== "undefined") {
+          window.removeEventListener("zhige_notifications_updated", handleGlobalNotifyUpdate);
+        }
+      };
     }
   }, [mounted, userState.isLoggedIn]);
 
@@ -212,13 +265,13 @@ export default function GlobalHeader() {
             <>
               <button 
                 onClick={() => router.push("/auth/login")}
-                className="px-3 h-[38px] text-xs sm:text-sm font-bold text-slate-650 hover:text-[#3182ce] transition-colors cursor-pointer"
+                className="px-3 h-[38px] text-xs sm:text-sm font-bold text-slate-600 hover:text-[#3182ce] transition-colors cursor-pointer"
               >
                 登录/注册
               </button>
               <button 
                 onClick={() => router.push("/auth/login?signup=true")}
-                className="h-9 px-4 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white text-xs font-bold shadow-sm hover:shadow hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center"
+                className="h-9 px-4 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold shadow-sm hover:shadow hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center"
               >
                 免费体验工作台
               </button>
@@ -235,7 +288,9 @@ export default function GlobalHeader() {
                 >
                   <Bell className="w-4.5 h-4.5" />
                   {unreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white" />
+                    <span className="absolute -top-1 -right-1 min-w-[17px] h-4 px-1 bg-red-500 text-white text-[9px] font-black rounded-full ring-2 ring-white flex items-center justify-center leading-none">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
                   )}
                 </button>
 
@@ -248,7 +303,7 @@ export default function GlobalHeader() {
                     <div className="absolute right-0 top-11 w-80 bg-white/95 backdrop-blur-xl rounded-[20px] shadow-2xl border border-slate-100/90 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                       <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                         <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                          <span>🔔</span> 通知中心 ({unreadCount})
+                          <span>🔔</span> 通知中心 <span className="text-[10px] text-slate-500 font-bold">(未读 {unreadCount} / 已读 {notifications.length - unreadCount})</span>
                         </h3>
                         {unreadCount > 0 && (
                           <button 
@@ -266,7 +321,7 @@ export default function GlobalHeader() {
                             🎉 暂无任何通知，工作台一切正常
                           </div>
                         ) : (
-                          notifications.map((notify) => {
+                          notifications.slice(0, 5).map((notify) => {
                             const typeLabels: Record<string, string> = {
                               system: "系统",
                               task: "任务",
@@ -275,31 +330,45 @@ export default function GlobalHeader() {
                             const badgeColors: Record<string, string> = {
                               system: "bg-blue-50 text-blue-600 border-blue-100",
                               task: "bg-emerald-50 text-emerald-600 border-emerald-100",
-                              security: "bg-orange-50 text-orange-600 border-orange-100"
+                              security: "bg-amber-50 text-amber-600 border-amber-100"
                             };
 
                             return (
                               <div 
                                 key={notify.id}
                                 onClick={() => {
-                                  if (!notify.isRead) {
+                                  // 携带跳转链接时直接前往目标页，否则标记已读
+                                  if (notify.link) {
+                                    setShowNotifications(false);
+                                    router.push(notify.link);
+                                  } else if (!notify.isRead) {
                                     handleMarkAsRead(notify.id);
                                   }
                                 }}
-                                className={`p-4 hover:bg-slate-50/60 transition-colors cursor-pointer text-left ${!notify.isRead ? 'bg-blue-500/[0.01]' : ''}`}
+                                className={`group p-4 hover:bg-slate-50/60 transition-colors cursor-pointer text-left ${!notify.isRead ? 'bg-blue-500/[0.01]' : ''}`}
                               >
                                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                                  <span className={`px-2 py-0.5 border rounded-full text-[9px] font-black ${badgeColors[notify.type] || 'bg-slate-150 text-slate-600 border-slate-200'}`}>
+                                  <span className={`px-2 py-0.5 border rounded-full text-[9px] font-black ${badgeColors[notify.type] || 'bg-slate-200 text-slate-600 border-slate-300'}`}>
                                     {typeLabels[notify.type] || "通用"}
                                   </span>
-                                  <span className="text-[9px] text-slate-400 font-bold">
-                                    {new Date(notify.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-slate-400 font-bold">
+                                      {new Date(notify.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      title="删除该通知"
+                                      onClick={(e) => handleDeleteNotification(notify.id, e)}
+                                      className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
                                 <h4 className={`text-xs mb-1 ${!notify.isRead ? 'font-black text-slate-800' : 'font-semibold text-slate-500'}`}>
                                   {notify.title}
                                 </h4>
-                                <p className={`text-[10px] leading-relaxed ${!notify.isRead ? 'text-slate-650 font-bold' : 'text-slate-400 font-semibold'}`}>
+                                <p className={`text-[10px] leading-relaxed line-clamp-2 ${!notify.isRead ? 'text-slate-600 font-bold' : 'text-slate-400 font-semibold'}`}>
                                   {notify.content}
                                 </p>
                                 {!notify.isRead && (
@@ -311,6 +380,20 @@ export default function GlobalHeader() {
                             );
                           })
                         )}
+                      </div>
+
+                      {/* 底部固定入口：跳转独立消息中心 */}
+                      <div className="p-2.5 bg-slate-50/80 border-t border-slate-100 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNotifications(false);
+                            router.push("/messages");
+                          }}
+                          className="text-xs font-bold text-[#3182ce] hover:underline flex items-center justify-center gap-1 w-full cursor-pointer py-0.5"
+                        >
+                          <span>查看更多通知消息 ➔</span>
+                        </button>
                       </div>
                     </div>
                   </>

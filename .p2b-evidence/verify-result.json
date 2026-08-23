@@ -1,0 +1,746 @@
+{
+  "network": [
+    {
+      "who": "Gao@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/user/workspace-hub/dashboard",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/user/notifications/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=favorites&_t=1787419499166",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=recent&_t=1787419499168",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws-personal-1783232038008-z2o3jy&_t=1787419499170",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=favorites&_t=1787419500262",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=recent&_t=1787419500264",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/workspace/ws-personal-1783232038008-z2o3jy/my-membership",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws-personal-1783232038008-z2o3jy",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/user/profile",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws-personal-1783232038008-z2o3jy&_t=1787419500633",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=restricted&workspaceId=ws-personal-1783232038008-z2o3jy",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=tasks&workspaceId=ws-personal-1783232038008-z2o3jy",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=documents&workspaceId=ws-personal-1783232038008-z2o3jy",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/user/workspace-hub/quota",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=knowledges&workspaceId=ws-personal-1783232038008-z2o3jy",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws-personal-1783232038008-z2o3jy&_t=1787419500953",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Gao@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/ws_1783254751673_fwwpmbgg/my-membership",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/user/profile",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg&_t=1787419505636",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=restricted&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=tasks&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=documents&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/user/workspace-hub/quota",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=knowledges&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=favorites&_t=1787419506456",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=recent&_t=1787419506458",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws-personal-1783252748700-9nn8g7&_t=1787419506459",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=positions&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=favorites&_t=1787419514632",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=recent&_t=1787419514634",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/ws_1783254751673_fwwpmbgg/my-membership",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/user/profile",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg&_t=1787419514900",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=restricted&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=tasks&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=documents&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/user/workspace-hub/quota",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=knowledges&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg&_t=1787419515043",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=bound&workspaceId=ws-personal-1783252748700-9nn8g7&_t=1787419515714",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": "Test01@163.com",
+      "path": "/api/studio?action=positions&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/ws_1783254751673_fwwpmbgg/my-membership",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/user/profile",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg&_t=1787419522714",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=tasks&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=documents&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=restricted&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/user/workspace-hub/quota",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=knowledges&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=favorites&_t=1787419523709",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=recent&_t=1787419523711",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg&_t=1787419523712",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=positions&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/ws_1783254751673_fwwpmbgg/my-membership",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/auth/me",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/user/profile",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=tasks&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=documents&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=bound&workspaceId=ws_1783254751673_fwwpmbgg&_t=1787419532151",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=restricted&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/user/workspace-hub/quota",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=knowledges&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/workspace/list",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=favorites&_t=1787419532938",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=recent&_t=1787419532939",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=bound&workspaceId=ws-personal-1783257618531-e3d6ph&_t=1787419532941",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio?action=positions&workspaceId=ws_1783254751673_fwwpmbgg",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "who": null,
+      "path": "/api/studio",
+      "method": "POST",
+      "status": 403
+    }
+  ],
+  "consoleErrors": [
+    "[null] Failed to load resource: the server responded with a status of 403 (Forbidden)"
+  ],
+  "scenarios": {
+    "A_personal_superadmin": {
+      "tabs": [
+        "总览",
+        "快速任务",
+        "组件",
+        "统计",
+        "任务",
+        "资料",
+        "结果",
+        "知识库",
+        "设置"
+      ],
+      "hasMembersTab": false,
+      "hasPermTab": false,
+      "hasLogsTab": false,
+      "pass": true
+    },
+    "B_owner_enterprise": {
+      "initialTabs": [
+        "总览",
+        "快速任务",
+        "组件",
+        "统计",
+        "任务",
+        "资料",
+        "结果",
+        "知识库",
+        "设置",
+        "日志",
+        "成员",
+        "权限"
+      ],
+      "url": "http://localhost:3000/workspace/ws_1783254751673_fwwpmbgg",
+      "head": "🏢 西安云舜科技有限公司 / 工作控制台 快速切换空间 | 西安云舜科技有限公司 test-01 Test01@163.com 西安云舜科技有限公司 🏢 企业协同空间 岗位角色: 👑 所有者 企业空间支持团队研发协作、组件安全授权、企业文档共享、开发标准 SOP 归档及操作日志审计。 开始新任"
+    },
+    "B_owner_positionsGet": [
+      "GET 200"
+    ],
+    "B_owner_toggle": {
+      "compIds": [
+        "C11",
+        "C12"
+      ],
+      "targetId": "C11",
+      "before": "not-allowed",
+      "after": "allowed",
+      "toggled": true,
+      "changed": true
+    },
+    "B_owner_save": [
+      "POST 200"
+    ],
+    "B_owner_saveToast": "success-toast",
+    "B_owner_dbPersisted": {
+      "found": true,
+      "count": 9,
+      "bidSpecialistAllowedTarget": true,
+      "action": "SAVE_CUSTOM_POSITIONS"
+    },
+    "B_owner_reloadPersist": {
+      "afterReload": "allowed",
+      "persisted": true
+    },
+    "C_admin": {
+      "tabs": [
+        "总览",
+        "快速任务",
+        "组件",
+        "统计",
+        "任务",
+        "资料",
+        "结果",
+        "知识库",
+        "设置",
+        "日志",
+        "成员",
+        "权限"
+      ],
+      "head": "🏢 西安云舜科技有限公司 / 工作控制台 快速切换空间 | 西安云舜科技有限公司 T test-03 未绑定邮箱 西安云舜科技有限公司 🏢 企业协同空间 岗位角色: 🔧 管理员 企业空间支持团队研发协作、组件安全授权、企业文档共享、开",
+      "pass": true
+    },
+    "C_admin_toggle": {
+      "targetC": "C01",
+      "cBefore": "not-allowed",
+      "cAfter": "allowed",
+      "toggledC": true,
+      "changed": true
+    },
+    "C_admin_save": [
+      "POST 200"
+    ],
+    "D_member": {
+      "tabs": [
+        "总览",
+        "快速任务",
+        "组件",
+        "统计",
+        "任务",
+        "资料",
+        "结果",
+        "知识库",
+        "设置"
+      ],
+      "hasAdminTabs": false,
+      "pass": true
+    },
+    "D_member_api": {
+      "getStatus": 200,
+      "getSuccess": true,
+      "postStatus": 403,
+      "postError": "越权警告：仅空间所有者、管理员或组件管理员可执行此管理操作"
+    }
+  },
+  "consoleErrorCount": 1
+}

@@ -21,6 +21,7 @@ import {
   AlertCircle,
   X,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface Workspace {
   id: string;
@@ -53,11 +54,10 @@ export default function UserWorkspacesPage() {
 
   const loadWorkspaces = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/workspaces", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -106,10 +106,10 @@ export default function UserWorkspacesPage() {
     if (!selectedWorkspace) return;
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const res = await fetch(`/api/user/workspaces?id=${selectedWorkspace.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -133,12 +133,12 @@ export default function UserWorkspacesPage() {
     if (!selectedWorkspace) return;
 
     try {
-      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const res = await fetch(`/api/user/workspaces?id=${selectedWorkspace.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(editFormData),
       });
@@ -187,8 +187,8 @@ export default function UserWorkspacesPage() {
         <div
           className={`p-4 rounded-xl flex items-center gap-3 shrink-0 ${
             message.type === "success"
-              ? "bg-green-50 text-green-700 border border-green-200"
-              : "bg-red-50 text-red-700 border border-red-200"
+              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+              : "bg-red-50 text-red-600 border border-red-200"
           }`}
         >
           {message.type === "success" ? (
@@ -234,7 +234,7 @@ export default function UserWorkspacesPage() {
               <div className="w-14 h-14 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
                 <FolderOpen className="w-7 h-7 text-[#3182ce]" />
               </div>
-              <TrendingUp className="w-5 h-5 text-green-500" />
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
             </div>
             <div className="text-3xl font-black text-slate-800 mb-1">
               {workspaces.length}
@@ -304,7 +304,7 @@ export default function UserWorkspacesPage() {
               {filteredWorkspaces.map((workspace) => (
                 <div
                   key={workspace.id}
-                  className="group p-6 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2563eb]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+                  className="group p-6 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -389,7 +389,7 @@ export default function UserWorkspacesPage() {
                     </div>
                     <button
                       onClick={() => router.push(`/workspace/${workspace.id}`)}
-                      className="flex items-center gap-1.5 text-sm text-[#3182ce] font-semibold hover:text-[#2563eb] transition-colors"
+                      className="flex items-center gap-1.5 text-sm text-[#3182ce] font-semibold hover:text-[#3182ce] transition-colors"
                     >
                       管理
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -407,7 +407,7 @@ export default function UserWorkspacesPage() {
               <p className="text-slate-500 mb-6">创建您的第一个工作空间开始使用</p>
               <button
                 onClick={() => (window.location.href = "/workspace-hub")}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
               >
                 <Plus className="w-5 h-5" />
                 创建工作空间
@@ -466,7 +466,7 @@ export default function UserWorkspacesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
                 >
                   保存修改
                 </button>

@@ -154,17 +154,17 @@ export function DeleteWorkspaceDialog({
           {/* 检测信息 */}
           <div className="mb-6 space-y-3">
             {/* 检测通过提示 */}
-            <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div className="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-bold text-green-800">
+                <p className="text-sm font-bold text-[#059669]">
                   环境检测通过
                 </p>
-                <p className="text-xs text-green-700 mt-1">
+                <p className="text-xs text-emerald-600 mt-1">
                   该空间符合注销条件，可以继续操作
                 </p>
               </div>
@@ -172,17 +172,17 @@ export function DeleteWorkspaceDialog({
 
             {/* 警告信息 */}
             {warnings.length > 0 && (
-              <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-orange-800 mb-2">
+                    <p className="text-sm font-bold text-[#d97706] mb-2">
                       ⚠️ 注销后将产生以下影响：
                     </p>
                     <ul className="space-y-1.5">
                       {warnings.map((warning, index) => (
-                        <li key={index} className="text-xs text-orange-700 flex items-start gap-2">
-                          <span className="text-orange-500 mt-0.5">•</span>
+                        <li key={index} className="text-xs text-amber-600 flex items-start gap-2">
+                          <span className="text-amber-500 mt-0.5">•</span>
                           <span>{warning}</span>
                         </li>
                       ))}
@@ -200,7 +200,7 @@ export function DeleteWorkspaceDialog({
                   <p className="text-sm font-bold text-red-800 mb-1">
                     数据不可恢复
                   </p>
-                  <p className="text-xs text-red-700">
+                  <p className="text-xs text-red-600">
                     注销后，该空间的所有数据将被标记为已删除，所有成员将失去访问权限。此操作不可撤销！
                   </p>
                 </div>
@@ -247,7 +247,7 @@ export function DeleteWorkspaceDialog({
               <button
                 onClick={handleContinueClick}
                 disabled={isDeleting}
-                className="flex-1 px-4 py-3 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-500/30"
+                className="flex-1 px-4 py-3 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-500/30"
               >
                 继续注销
               </button>
@@ -255,7 +255,7 @@ export function DeleteWorkspaceDialog({
               <button
                 onClick={handleFinalConfirm}
                 disabled={confirmText !== "确认注销" || isDeleting}
-                className="flex-1 px-4 py-3 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-500/30 flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-3 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-500/30 flex items-center justify-center gap-2"
               >
                 {isDeleting ? (
                   <>

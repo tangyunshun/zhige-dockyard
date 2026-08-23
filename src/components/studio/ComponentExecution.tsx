@@ -3,8 +3,8 @@
 import React, { useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
-import { COMPONENTS } from "@/constants/components";
 import { Play, RotateCcw, ShieldCheck, Terminal, AlertCircle, Copy, PlayCircle, Upload } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface ComponentExecutionProps {
   componentId: string;
@@ -24,10 +24,18 @@ export default function ComponentExecution({
   onTokenUpdate,
 }: ComponentExecutionProps) {
   const toast = useToast();
-  const { userState } = useAppContext();
+  // 组件信息来自数据库（component_catalog 表），输入方式由数据库字段推导
+  const { userState, componentCatalog } = useAppContext();
   
-  const comp = COMPONENTS.find((c) => c.id === componentId);
+  const comp = componentCatalog.find((c) => c.id === componentId);
   const cost = comp?.estimatedTokens || 5;
+  const inputInfo = {
+    mode: (comp?.inputMode as "text" | "file" | "both") || "text",
+    accept: comp?.accept || ".txt,.md,.json,.csv,.log,.sql,.ts,.js,.html,.css,.xml,.yaml,.yml",
+    hint: comp?.hint || "请直接输入或粘贴待处理的文字内容",
+  };
+  const isFileInput = inputInfo.mode === "file";
+  const isBothInput = inputInfo.mode === "both";
 
   const [inputData, setInputData] = useState(comp?.previewData?.inputMock || "");
   const [outputData, setOutputData] = useState("");
@@ -45,7 +53,11 @@ export default function ComponentExecution({
     }
     if (!inputData.trim()) {
       setInputError(true);
-      toast.error("运行输入参数不能为空，请输入或加载分析数据");
+      toast.error(
+        isFileInput
+          ? "请先上传待分析的源文档（PDF/Word/TXT 等），无需手动复制全文"
+          : "运行输入参数不能为空，请输入或加载分析数据"
+      );
       return;
     }
     if (!workspaceId) {
@@ -53,7 +65,7 @@ export default function ComponentExecution({
       return;
     }
     if (workspaceToken < cost) {
-      toast.error("当前工作空间算力 Token 余额不足，请联系管理员充值");
+      toast.error("当前工作空间算力额度余额不足，请联系管理员充值");
       return;
     }
 
@@ -61,17 +73,18 @@ export default function ComponentExecution({
     toast.info(`正在初始化安全沙箱，预计消耗 ${cost} 点算力...`);
 
     try {
-      const userId = userState.userInfo?.id || localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      if (userId) {
-        headers["Authorization"] = `Bearer ${userId}`;
+      if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
       }
 
       const response = await fetch("/api/studio", {
         method: "POST",
         headers,
+        credentials: "include",
         body: JSON.stringify({
           action: "simulate",
           componentId,
@@ -85,7 +98,7 @@ export default function ComponentExecution({
         onTokenUpdate(result.tokenBalance);
         setOutputData(
           comp.previewData?.outputMock || 
-          `[系统输出] 组件 ${comp.name} 服务运行成功！\n- 安全审计ID: ${crypto.randomUUID()}\n- 算力扣减: -${cost} Token\n- 运行状态: COMPLETED\n- 数据返回值: 200 OK`
+          `[系统输出] 组件 ${comp.name} 服务运行成功！\n- 安全审计ID: ${crypto.randomUUID()}\n- 算力扣减: -${cost} 额度\n- 运行状态: COMPLETED\n- 数据返回值: 200 OK`
         );
         toast.success(`组件运行成功！已从空间 [${workspaceName}] 扣减 ${cost} 算力，余额 ${result.tokenBalance}。`);
       } else {
@@ -152,20 +165,48 @@ export default function ComponentExecution({
               <div className="flex flex-col items-center justify-center pt-4 pb-4 text-center px-4">
                 <Upload className="w-8 h-8 text-slate-400 group-hover:text-[#3182ce] transition-colors mb-2" />
                 <p className="text-sm text-slate-700 font-bold group-hover:text-[#3182ce] transition-colors">
-                  点击或拖拽招标文件/数据源文件至此上传
+                  {isFileInput ? "点击或拖拽源文档至此上传" : isBothInput ? "上传源文档（或直接在下框输入文字）" : "加载数据文件（选填，也可直接输入文字）"}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  支持 PDF, Word, Excel, TXT (最大 50MB)
+                  {isFileInput ? "上传后系统自动解析文档文字内容" : `支持 ${inputInfo.accept}`}
                 </p>
               </div>
               <input
                 type="file"
+                accept={inputInfo.accept}
                 className="hidden"
                 disabled={isSimulating || isRestricted}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
+                  e.target.value = "";
                   if (!file) return;
-                  
+
+                  const TEXT_EXT = /\.(txt|md|json|csv|log|sql|ts|js|tsx|jsx|html|css|xml|yaml|yml|java|py|go|prisma|env|ini|properties)$/i;
+                  if (TEXT_EXT.test(file.name)) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const buffer = reader.result as ArrayBuffer;
+                      let content = "";
+                      try {
+                        const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+                        content = utf8Decoder.decode(buffer);
+                      } catch {
+                        try {
+                          const gbkDecoder = new TextDecoder("gbk");
+                          content = gbkDecoder.decode(buffer);
+                        } catch {
+                          content = new TextDecoder("utf-8").decode(buffer);
+                        }
+                      }
+                      setInputData(content);
+                      setInputError(false);
+                      toast.success(`已读取文档 [${file.name}]，文字内容已解码载入（${content.length} 字）`);
+                    };
+                    reader.onerror = () => toast.error("文档读取失败，请更换文件重试");
+                    reader.readAsArrayBuffer(file);
+                    return;
+                  }
+
                   const mockSha256 = Array.from({ length: 64 }, () => 
                     Math.floor(Math.random() * 16).toString(16)
                   ).join("");
@@ -184,12 +225,12 @@ export default function ComponentExecution({
                       retentionPolicy: "DESTROY_ON_COMPLETION",
                       executionTimeoutSeconds: 300
                     },
-                    instructions: "提取文档中的资质门槛、偏离项，并进行结构化合规审计分析。"
+                    instructions: "提取文档内容，并进行结构化合规分析。"
                   };
                   
                   setInputData(JSON.stringify(fileData, null, 2));
                   setInputError(false);
-                  toast.success(`文件 [${file.name}] 上传成功！已将其元数据结构化为分析参数。`);
+                  toast.success(`文件 [${file.name}] 上传成功！已将其元数据结构化为分析参数，执行时将解析原文内容。`);
                 }}
               />
             </label>
@@ -202,7 +243,13 @@ export default function ComponentExecution({
               setInputError(false);
             }}
             disabled={isSimulating || isRestricted}
-            placeholder="请输入待分析的内容或上传的数据参数..."
+            placeholder={
+              isFileInput
+                ? "上传文档后此处将自动载入解析出的文字内容..."
+                : isBothInput
+                  ? "请输入待分析的内容，或在上方上传源文档..."
+                  : "请输入待分析的内容或加载的数据参数..."
+            }
             className={`w-full h-28 p-3 bg-slate-50 border rounded-[8px] text-xs font-mono text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 resize-none font-bold ${
               inputError ? "border-red-500 bg-red-50/10 focus:border-red-500 focus:ring-red-100" : "border-slate-200"
             }`}
@@ -210,12 +257,12 @@ export default function ComponentExecution({
 
           {/* 算力不足的橙色警示卡片 */}
           {workspaceToken < cost && !isRestricted && (
-            <div className="mt-2.5 p-3 bg-amber-50 border border-amber-200 rounded-[8px] text-xs text-amber-700 font-bold flex items-start gap-1.5 animate-in fade-in duration-200">
+            <div className="mt-2.5 p-3 bg-amber-50 border border-amber-200 rounded-[8px] text-xs text-amber-600 font-bold flex items-start gap-1.5 animate-in fade-in duration-200">
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600" />
               <div>
-                <p className="font-extrabold text-[#dd6b20]">算力配额不足（当前余额: {workspaceToken} Tokens / 运行需消耗: {cost} Tokens）</p>
+                <p className="font-extrabold text-[#d97706]">算力额度不足（当前余额: {workspaceToken} / 运行需消耗: {cost}）</p>
                 <p className="text-slate-500 font-medium mt-0.5 leading-normal">
-                  当前工作空间可用算力不足，请联系空间管理员或所有者补充 Token 配额。
+                  当前工作空间可用额度不足，请联系空间管理员或所有者补充调用额度。
                 </p>
               </div>
             </div>
@@ -234,7 +281,7 @@ export default function ComponentExecution({
             <div className="text-xs font-semibold text-slate-500">
               空间余额:{" "}
               <span className={`font-extrabold ${workspaceToken < cost ? "text-red-500" : "text-slate-700"}`}>
-                {workspaceToken} Tokens
+                {workspaceToken} 额度
               </span>
             </div>
           </div>
@@ -273,7 +320,7 @@ export default function ComponentExecution({
         </div>
 
         {/* 输出终端 */}
-        <div className="p-4 bg-slate-950 text-slate-200">
+        <div className="p-4 bg-slate-900 text-slate-200">
           <div className="flex items-center justify-between mb-2 text-left">
             <span className="text-sm font-bold text-slate-300 flex items-center gap-1">
               <Terminal className="w-3.5 h-3.5" />
@@ -285,7 +332,7 @@ export default function ComponentExecution({
                   <button
                     type="button"
                     onClick={handleCopyOutput}
-                    className="text-xs text-[#3182ce] bg-blue-950 hover:bg-blue-900 border border-blue-800/60 hover:border-blue-700/80 px-2 py-1 rounded flex items-center gap-1 font-bold cursor-pointer transition-colors"
+                    className="text-xs text-[#3182ce] bg-blue-950 hover:bg-blue-900 border border-blue-800/60 hover:border-[#2b6cb0]/80 px-2 py-1 rounded flex items-center gap-1 font-bold cursor-pointer transition-colors"
                     title="复制控制台输出内容到剪贴板"
                   >
                     <Copy className="w-2.5 h-2.5" />

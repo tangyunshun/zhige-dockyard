@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 
 interface UseEnterpriseWorkspaceProps {
   refresh: () => void;
@@ -19,16 +20,17 @@ export function useEnterpriseWorkspace({ refresh }: UseEnterpriseWorkspaceProps)
   const [newEnterpriseDesc, setNewEnterpriseDesc] = useState("");
   const [creatingEnterprise, setCreatingEnterprise] = useState(false);
 
+  // 获取当前鉴权凭证：以真实 JWT auth_token 为准，未登录时引导重新登录
   const checkUserId = () => {
-    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-    if (!userId) {
+    const authToken = getAuthToken();
+    if (!authToken) {
       toast.error("会话已过期，请重新登录");
       localStorage.removeItem("userId");
       localStorage.removeItem("userRole");
       router.push("/auth/login");
       return null;
     }
-    return userId;
+    return authToken;
   };
 
   const handleCreateEnterprise = async (e: React.FormEvent) => {
@@ -49,14 +51,14 @@ export function useEnterpriseWorkspace({ refresh }: UseEnterpriseWorkspaceProps)
 
     try {
       setCreatingEnterprise(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/create-enterprise", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           name: newEnterpriseName.trim(),

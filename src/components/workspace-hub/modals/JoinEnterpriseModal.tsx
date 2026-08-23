@@ -58,7 +58,7 @@ export default function JoinEnterpriseModal({
         {/* 邀请码输入 */}
         <div className="mb-6">
           <label className="block text-xs font-bold text-slate-700 mb-2">
-            邀请码
+            邀请码 <span className="text-red-500">*</span>
           </label>
           <input
             type="text"

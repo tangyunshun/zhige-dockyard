@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { isAdminRole, validateUser } from "@/lib/auth";
 
 /**
  * 空间级别踢出接口
@@ -8,17 +8,12 @@ import { isAdminRole } from "@/lib/auth";
  */
 export async function POST(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
+    // 验证管理员权限（统一走合法 JWT 校验）
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const adminId = authHeader.replace("Bearer ", "");
+    const adminId = auth.user.id;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });

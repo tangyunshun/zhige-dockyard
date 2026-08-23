@@ -59,7 +59,7 @@ export default function CreateEnterpriseModal({
             <div>
               <h2 className="text-lg font-black text-slate-800">创建企业协作空间</h2>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                开启团队协同研发，共享组件工坊与企业算力额度
+                开启团队协同研发，共享组件工坊与企业资源额度
               </p>
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 import {
   Building2,
   Users,
@@ -56,7 +57,7 @@ export default function AdminTenantsPage() {
 
       const res = await fetch(`/api/admin/tenants?${params}`, {
         headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
 
@@ -77,7 +78,7 @@ export default function AdminTenantsPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
         body: JSON.stringify({ id, status }),
       });
@@ -93,7 +94,7 @@ export default function AdminTenantsPage() {
 
   const getStatusBadge = (status: string) => {
     const badges: Record<string, string> = {
-      active: "bg-green-100 text-green-700",
+      active: "bg-emerald-100 text-emerald-600",
       inactive: "bg-slate-100 text-slate-700",
     };
 
@@ -126,7 +127,7 @@ export default function AdminTenantsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-8">
       {/* 页面标题 */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 overflow-hidden">
         <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
@@ -163,7 +164,7 @@ export default function AdminTenantsPage() {
           <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-sm">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-sm">
                 <CheckCircle className="w-6 h-6 text-white" />
               </div>
               <Activity className="w-5 h-5 text-[#10b981]" />
@@ -181,7 +182,7 @@ export default function AdminTenantsPage() {
           <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-sm">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-sm">
                 <Users className="w-6 h-6 text-white" />
               </div>
               <Activity className="w-5 h-5 text-[#f59e0b]" />
@@ -371,7 +372,7 @@ export default function AdminTenantsPage() {
                             onClick={() =>
                               handleStatusChange(tenant.id, "active")
                             }
-                            className="px-4 h-10 text-xs font-bold border border-green-200 text-green-600 rounded-xl hover:bg-green-50 hover:border-green-300 transition-all duration-300"
+                            className="px-4 h-10 text-xs font-bold border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300"
                           >
                             激活
                           </button>

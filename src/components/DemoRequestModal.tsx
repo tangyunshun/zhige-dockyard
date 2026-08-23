@@ -180,7 +180,7 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
                 <Zap className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
                 免费试用 · 专属顾问 1v1
               </div>
-              <h3 className="text-2xl font-bold text-slate-950">申请系统演示</h3>
+              <h3 className="text-2xl font-bold text-slate-900">申请系统演示</h3>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                 请填写以下信息，我们的技术架构师将在24小时内为您安排系统演示与试用。
               </p>

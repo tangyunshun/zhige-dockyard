@@ -148,7 +148,7 @@ export default function UserDashboardLayout({
         <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
           <button
             onClick={() => router.push("/")}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all w-full"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="font-bold text-sm">返回首页</span>
@@ -156,7 +156,7 @@ export default function UserDashboardLayout({
         </div>
 
         {/* 用户中心标识 */}
-        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200 shrink-0">
+        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-2 text-[#3182ce]">
             <User className="w-5 h-5" />
             <span className="font-bold text-sm">个人工作台</span>
@@ -175,7 +175,7 @@ export default function UserDashboardLayout({
                 onClick={() => router.push(item.href)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                   isActive
-                    ? "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white shadow-lg shadow-[#3182ce]/30"
+                    ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
                     : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -203,7 +203,7 @@ export default function UserDashboardLayout({
                 className="w-10 h-10 shrink-0 rounded-lg object-cover border-2 border-white shadow-md"
               />
             ) : (
-              <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+              <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
                 {user?.name?.charAt(0).toUpperCase() || "U"}
               </div>
             )}
@@ -262,14 +262,14 @@ export default function UserDashboardLayout({
             <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
               <button
                 onClick={() => router.push("/")}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2563eb]/20 transition-all w-full"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all w-full"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span className="font-bold text-sm">返回首页</span>
               </button>
             </div>
 
-            <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 border-b border-slate-200 shrink-0">
+            <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
               <div className="flex items-center gap-2 text-[#3182ce]">
                 <User className="w-5 h-5" />
                 <span className="font-bold text-sm">个人工作台</span>
@@ -290,7 +290,7 @@ export default function UserDashboardLayout({
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                       isActive
-                        ? "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white shadow-lg shadow-[#3182ce]/30"
+                        ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
                         : "text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -319,7 +319,7 @@ export default function UserDashboardLayout({
                     className="w-10 h-10 shrink-0 rounded-lg object-cover border-2 border-white shadow-md"
                   />
                 ) : (
-                  <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold shadow-md">
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
                     {user?.name?.charAt(0).toUpperCase() || "U"}
                   </div>
                 )}

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Sparkles } from "lucide-react";
+import { Crown } from "lucide-react";
 
 interface UserGreetingProps {
   user: any;
@@ -20,7 +20,7 @@ export default function UserGreeting({
     if (level === "DIAMOND") {
       return (
         <span className="px-2.5 py-1 text-xs font-bold rounded bg-slate-800 text-white shadow-sm flex items-center gap-1 shrink-0">
-          <Sparkles className="w-3.5 h-3.5" />
+          <Crown className="w-3.5 h-3.5" />
           <span>钻石会员版</span>
         </span>
       );
@@ -28,7 +28,7 @@ export default function UserGreeting({
     if (level === "GOLD") {
       return (
         <span className="px-2.5 py-1 text-xs font-bold rounded bg-amber-500 text-white shadow-sm flex items-center gap-1 shrink-0">
-          <Sparkles className="w-3.5 h-3.5" />
+          <Crown className="w-3.5 h-3.5" />
           <span>黄金会员版</span>
         </span>
       );

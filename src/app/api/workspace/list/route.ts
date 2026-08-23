@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
-import { ensureDefaultComponents } from "@/lib/workspaceInit";
+import { ensureDefaultComponents, getBoundComponentCount } from "@/lib/workspaceInit";
 
 // P1-2 优化：自愈逻辑节流缓存，避免每次 list 都触发大量写操作
 // 同一用户 5 分钟内只跑一次自愈
@@ -247,7 +247,7 @@ export async function GET(request: NextRequest) {
             userId,
             workspaceId: workspace.id,
             role: 'OWNER',
-            updatedAt: now,
+            joinedAt: now,
           },
         });
 
@@ -297,18 +297,11 @@ export async function GET(request: NextRequest) {
     // 获取每个工作空间的组件数量
     const workspacesWithComponents = await Promise.all(
       Array.from(workspaceMap.values()).map(async (workspace) => {
-        // 执行自愈兜底初始化
+        // 执行自愈兜底初始化（仅全新空间初始化默认组件，不覆盖用户装配/解除结果）
         await ensureDefaultComponents(workspace.id, userId);
 
-        const usages = await prisma.componentusage.findMany({
-          where: {
-            workspaceId: workspace.id,
-          },
-          select: { componentId: true },
-          distinct: ['componentId'],
-        });
-
-        const componentCount = usages.length;
+        // 组件数统计与空间内 bound 口径一致（仅计真实装配记录）
+        const componentCount = await getBoundComponentCount(workspace.id);
 
         return {
           ...workspace,
@@ -316,6 +309,19 @@ export async function GET(request: NextRequest) {
         };
       }),
     );
+
+    // 用户进入空间时（loadWorkspace 带 workspaceId 参数请求）记录最近访问空间，
+    // 保证后续 refreshUserState / 组件大厅读取的 currentWorkspaceId 与用户实际所在空间一致，
+    // 避免 lastWorkspaceId 停留过期空间导致进入空间后被错误空间数据覆盖
+    const targetWsId = request.nextUrl.searchParams.get("workspaceId");
+    if (targetWsId && workspaceMap.has(targetWsId)) {
+      await prisma.user
+        .update({
+          where: { id: userId },
+          data: { lastWorkspaceId: targetWsId },
+        })
+        .catch(() => {});
+    }
 
     // 获取用户 lastWorkspaceId 或者是默认第一个
     const userForLastWs = await prisma.user.findUnique({

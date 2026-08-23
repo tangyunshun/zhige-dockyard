@@ -23,10 +23,11 @@ const LOGGED_IN_ROUTES = [
   "/workspace-hub",
   "/workspace/",
   "/user/",
+  "/knowledge",
 ];
 
 // 管理员页面
-const ADMIN_ROUTES = ["/admin/", "/platform-admin/"];
+const ADMIN_ROUTES = ["/admin/"];
 
 export default function RouterGuards({
   children,

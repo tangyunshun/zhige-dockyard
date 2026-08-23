@@ -169,9 +169,9 @@ export default function DocsPage() {
         },
         {
           id: "flow-3",
-          title: "智能推荐组件",
-          summary: "平台配有智能调度算法。可根据您上传文件的词汇密度与任务领域，自动在页面推荐出效率最高、耗点最省的沙箱处理组件组合。",
-          category: "智能辅助"
+          title: "自动推荐组件",
+          summary: "平台配有自动调度算法。可根据您上传文件的词汇密度与任务领域，自动在页面推荐出效率最高、耗点最省的沙箱处理组件组合。",
+          category: "自动辅助"
         },
         {
           id: "flow-4",
@@ -330,8 +330,8 @@ export default function DocsPage() {
         },
         {
           id: "faq-2",
-          title: "上传的数据会作为 AI 训练的材料吗？",
-          summary: "绝对不会。知阁舟坊对商业机密安全执行极高等级保护，您的业务数据和运行结果绝不会被用来作为大模型的二次训练材料，并在缓存到期后彻底粉碎清除。",
+          title: "上传的数据会作为模型训练的材料吗？",
+          summary: "绝对不会。知阁舟坊对商业机密安全执行极高等级保护，您的业务数据和运行结果绝不会被用来作为模型二次训练的材料，并在缓存到期后彻底粉碎清除。",
           category: "数据安全"
         },
         {
@@ -431,7 +431,7 @@ export default function DocsPage() {
               <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center mb-3">
                 <Rocket className="w-5 h-5" />
               </div>
-              <h4 className="text-sm font-extrabold text-slate-850 flex items-center gap-1 group-hover:text-[#3182ce] transition-colors">
+              <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-1 group-hover:text-[#3182ce] transition-colors">
                 新手入门 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
               </h4>
               <p className="text-xs text-slate-500 font-semibold mt-2 leading-relaxed">
@@ -446,7 +446,7 @@ export default function DocsPage() {
               <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
                 <Server className="w-5 h-5" />
               </div>
-              <h4 className="text-sm font-extrabold text-slate-850 flex items-center gap-1 group-hover:text-emerald-600 transition-colors">
+              <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-1 group-hover:text-emerald-600 transition-colors">
                 组件使用 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
               </h4>
               <p className="text-xs text-slate-500 font-semibold mt-2 leading-relaxed">
@@ -461,7 +461,7 @@ export default function DocsPage() {
               <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3">
                 <Code className="w-5 h-5" />
               </div>
-              <h4 className="text-sm font-extrabold text-slate-850 flex items-center gap-1 group-hover:text-purple-600 transition-colors">
+              <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-1 group-hover:text-purple-600 transition-colors">
                 开发者接入 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
               </h4>
               <p className="text-xs text-slate-500 font-semibold mt-2 leading-relaxed">
@@ -473,10 +473,10 @@ export default function DocsPage() {
               onClick={() => setActiveSection("enterprise")}
               className="p-5 bg-white border border-slate-200/60 rounded-2xl hover:border-[#3182ce] hover:shadow-md transition-all duration-300 text-left group cursor-pointer"
             >
-              <div className="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center mb-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
                 <Shield className="w-5 h-5" />
               </div>
-              <h4 className="text-sm font-extrabold text-slate-850 flex items-center gap-1 group-hover:text-orange-600 transition-colors">
+              <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-1 group-hover:text-amber-600 transition-colors">
                 企业部署 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
               </h4>
               <p className="text-xs text-slate-500 font-semibold mt-2 leading-relaxed">
@@ -600,7 +600,7 @@ export default function DocsPage() {
                                     {article.category}
                                   </span>
                                 </div>
-                                <h3 className="text-sm sm:text-base font-extrabold text-slate-850 mb-2">
+                                <h3 className="text-sm sm:text-base font-extrabold text-slate-800 mb-2">
                                   {article.title}
                                 </h3>
                                 <p className="text-xs text-slate-500 leading-relaxed font-medium">
@@ -610,7 +610,7 @@ export default function DocsPage() {
                                 {/* 开发者文档 Mock 代码与凭证安全展示规范 */}
                                 {article.contentCode && (
                                   <div className="mt-3.5 relative rounded-xl overflow-hidden border border-slate-200/70 bg-slate-900 font-mono text-xs leading-relaxed text-slate-300">
-                                    <div className="flex items-center justify-between px-4 py-2 bg-slate-950/80 border-b border-slate-800 text-xs text-slate-500 font-bold select-none">
+                                    <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-800 text-xs text-slate-500 font-bold select-none">
                                       <span>MOCK_SHELL_SANDBOX</span>
                                       <span className="text-[#3182ce]">Bearer Token 样例</span>
                                     </div>
@@ -632,7 +632,7 @@ export default function DocsPage() {
               {/* Bottom Support Actions banner */}
               <div className="mt-10 pt-8 border-t border-slate-100">
                 <div className="bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5 rounded-[20px] p-6 text-center">
-                  <h3 className="text-sm font-extrabold text-slate-850 mb-1">
+                  <h3 className="text-sm font-extrabold text-slate-800 mb-1">
                     需要更高级的专属部署或咨询支持？
                   </h3>
                   <p className="text-xs text-slate-500 mb-4 font-semibold leading-relaxed">

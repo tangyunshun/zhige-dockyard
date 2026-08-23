@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Settings, Shield, Users, Save, RefreshCw, AlertTriangle, Upload, ArrowLeft, Copy } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 export default function WorkspaceSettingsPage() {
   const params = useParams();
@@ -113,14 +114,14 @@ export default function WorkspaceSettingsPage() {
 
     try {
       setLogoUploading(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const formData = new FormData();
       formData.append("icon", file);
 
       const res = await fetch("/api/workspace/upload-icon", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: formData,
       });
@@ -171,12 +172,12 @@ export default function WorkspaceSettingsPage() {
 
     try {
       setSaving(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(workspace),
       });
@@ -206,12 +207,12 @@ export default function WorkspaceSettingsPage() {
 
     try {
       setClearing(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/workspace/clear-data", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ workspaceId, confirmText: "确认重置" }),
       });
@@ -242,12 +243,12 @@ export default function WorkspaceSettingsPage() {
 
     try {
       setDeleting(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/workspace/delete", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ workspaceId, action: "DEACTIVATE" }),
       });
@@ -326,7 +327,7 @@ export default function WorkspaceSettingsPage() {
                     navigator.clipboard.writeText(workspaceId ?? "");
                     toast.success("空间 ID 已复制到剪贴板");
                   }}
-                  className="p-1 hover:bg-slate-200/60 rounded text-slate-400 hover:text-slate-650 transition-colors cursor-pointer"
+                  className="p-1 hover:bg-slate-200/60 rounded text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </button>
@@ -346,8 +347,8 @@ export default function WorkspaceSettingsPage() {
             </div>
             <div>
               <span className="text-xs text-slate-400 font-bold block">当前状态</span>
-              <span className="text-sm font-bold text-green-600 mt-1.5 block flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+              <span className="text-sm font-bold text-emerald-600 mt-1.5 block flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 正常运行中
               </span>
             </div>
@@ -377,7 +378,7 @@ export default function WorkspaceSettingsPage() {
               onClick={() => router.push(`/workspace/${workspaceId}/members`)}
               className="text-left p-4 bg-white hover:bg-slate-50 border border-slate-200 hover:border-blue-200 rounded-xl transition-all shadow-sm flex items-start gap-3 cursor-pointer group"
             >
-              <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                 <Users className="w-4 h-4" />
               </div>
               <div>
@@ -641,38 +642,52 @@ export default function WorkspaceSettingsPage() {
 
       </div>
 
-      {/* 确认清空模态框 */}
+      {/* 确认清空模态框 — 纯净精致 Modal，遮罩层保持不变 */}
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 text-left space-y-4">
-            <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-1.5">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              确认清空空间数据？
-            </h3>
-            <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-              此操作将清空当前空间下的所有岗位数据、契约关系及审计日志。此操作不可撤销，请输入 <span className="font-extrabold text-red-500">确认重置</span> 以执行。
-            </p>
-            <input
-              type="text"
-              placeholder="请输入 '确认重置'"
-              value={clearConfirmText}
-              onChange={(e) => setClearConfirmText(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-red-500 font-semibold"
-            />
-            <div className="flex justify-end gap-2.5 pt-2">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 text-left space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center shrink-0 shadow-xs">
+                <AlertTriangle className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                  确认清空空间数据？
+                </h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  此操作将物理清除该工作空间下的所有执行历史、分析报告和团队知识库。所有数据将被重置且<strong className="text-red-500 font-bold">不可恢复</strong>！
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+              <p className="text-xs text-slate-700 font-bold flex items-center justify-between">
+                <span>请输入确认文本：</span>
+                <span className="font-mono text-red-500 font-black bg-red-50 border border-red-100 px-2 py-0.5 rounded text-xs select-all">确认重置</span>
+              </p>
+              <input
+                type="text"
+                placeholder="在此输入“确认重置”"
+                value={clearConfirmText}
+                onChange={(e) => setClearConfirmText(e.target.value)}
+                className="w-full h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-red-500 transition-all placeholder:text-slate-400"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
               <button
                 onClick={() => {
                   setShowClearConfirm(false);
                   setClearConfirmText("");
                 }}
-                className="px-4 py-2 text-xs text-slate-500 hover:bg-slate-50 rounded-lg border font-bold cursor-pointer"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-all"
               >
                 取消
               </button>
               <button
                 onClick={handleClearData}
-                disabled={clearing}
-                className="px-4 py-2 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg font-bold cursor-pointer shadow-sm"
+                disabled={clearing || clearConfirmText !== "确认重置"}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer disabled:cursor-not-allowed transition-all"
               >
                 {clearing ? "正在重置..." : "确认清空"}
               </button>
@@ -681,40 +696,54 @@ export default function WorkspaceSettingsPage() {
         </div>
       )}
 
-      {/* 确认停用模态框 */}
+      {/* 确认停用模态框 — 纯净精致 Modal，遮罩层保持不变 */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 text-left space-y-4">
-            <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-1.5">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
-              确认停用该工作空间？
-            </h3>
-            <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-              停用后，空间的所有协同成员将被移出，且组件服务将被禁用。此操作不可逆，请输入 <span className="font-extrabold text-red-500">确认停用</span> 以执行。
-            </p>
-            <input
-              type="text"
-              placeholder="请输入 '确认停用'"
-              value={deleteConfirmText}
-              onChange={(e) => setDeleteConfirmText(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-red-500 font-semibold"
-            />
-            <div className="flex justify-end gap-2.5 pt-2">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 text-left space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-200/80 text-red-500 flex items-center justify-center shrink-0 shadow-xs">
+                <AlertTriangle className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                  确认停用此工作空间？
+                </h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  此操作将物理解散并彻底停用本协同空间，解散后所有成员无法访问此空间，该操作<strong className="text-red-500 font-bold">不可逆</strong>！
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+              <p className="text-xs text-slate-700 font-bold flex items-center justify-between">
+                <span>请输入确认指令：</span>
+                <span className="font-mono text-red-500 font-black bg-red-50 border border-red-100 px-2 py-0.5 rounded text-xs select-all">确认停用</span>
+              </p>
+              <input
+                type="text"
+                placeholder="在此输入“确认停用”"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-red-500 transition-all placeholder:text-slate-400"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
               <button
                 onClick={() => {
                   setShowDeleteConfirm(false);
                   setDeleteConfirmText("");
                 }}
-                className="px-4 py-2 text-xs text-slate-500 hover:bg-slate-50 rounded-lg border font-bold cursor-pointer"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer transition-all"
               >
                 取消
               </button>
               <button
                 onClick={handleDeactivateWorkspace}
-                disabled={deleting}
-                className="px-4 py-2 text-xs text-white bg-red-600 hover:bg-red-750 rounded-lg font-bold cursor-pointer shadow-sm"
+                disabled={deleting || deleteConfirmText !== "确认停用"}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-lg shadow-sm cursor-pointer disabled:cursor-not-allowed transition-all"
               >
-                {deleting ? "正在停用..." : "确认停用"}
+                {deleting ? "正在解散..." : "确认停用"}
               </button>
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getAuthToken } from "@/utils/auth";
 import {
   Crown,
   FileText,
@@ -30,10 +31,9 @@ export default function AdminMembershipIndex() {
   const loadStats = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
-      if (!userId) {
+      if (!authToken) {
         console.error("User ID not found");
         return;
       }
@@ -41,17 +41,17 @@ export default function AdminMembershipIndex() {
       const [levelsRes, ordersRes, usersRes] = await Promise.all([
         fetch("/api/admin/membership/levels", {
           headers: {
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
         }),
         fetch("/api/admin/membership/orders?page=1&limit=1", {
           headers: {
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
         }),
         fetch("/api/admin/membership/users?page=1&limit=1", {
           headers: {
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
         }),
       ]);
@@ -100,7 +100,7 @@ export default function AdminMembershipIndex() {
       description: "查看订单记录、手动开通会员",
       href: "/admin/membership/orders",
       color: "#10b981",
-      bgColor: "from-green-500 to-green-600",
+      bgColor: "from-emerald-500 to-emerald-600",
     },
     {
       icon: Users,
@@ -108,7 +108,7 @@ export default function AdminMembershipIndex() {
       description: "查看会员用户列表和状态",
       href: "/admin/membership/users",
       color: "#f59e0b",
-      bgColor: "from-orange-500 to-orange-600",
+      bgColor: "from-amber-500 to-amber-600",
     },
     {
       icon: History,
@@ -171,10 +171,10 @@ export default function AdminMembershipIndex() {
             <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-sm">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-sm">
                   <FileText className="w-6 h-6 text-white" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-green-600" />
+                <TrendingUp className="w-5 h-5 text-emerald-600" />
               </div>
               <div className="text-sm text-slate-600 mb-1">订单总数</div>
               <div className="text-2xl font-black text-slate-800">
@@ -187,10 +187,10 @@ export default function AdminMembershipIndex() {
             <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-sm">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-sm">
                   <Award className="w-6 h-6 text-white" />
                 </div>
-                <TrendingUp className="w-5 h-5 text-orange-600" />
+                <TrendingUp className="w-5 h-5 text-amber-600" />
               </div>
               <div className="text-sm text-slate-600 mb-1">活跃等级</div>
               <div className="text-2xl font-black text-slate-800">
@@ -260,7 +260,7 @@ export default function AdminMembershipIndex() {
       </div>
 
       {/* 快速说明 */}
-      <div className="mt-8 bg-gradient-to-br from-[#3182ce]/5 to-[#2563eb]/5 rounded-xl border border-[#3182ce]/20 p-6">
+      <div className="mt-8 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 rounded-xl border border-[#3182ce]/20 p-6">
         <h3 className="text-lg font-black text-slate-800 mb-3 flex items-center gap-2">
           <Crown className="w-5 h-5 text-[#3182ce]" />
           会员管理系统说明

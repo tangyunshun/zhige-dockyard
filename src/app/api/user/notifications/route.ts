@@ -1,25 +1,21 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { getToken } from "next-auth/jwt";
-
-const prisma = new PrismaClient();
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 // 获取用户通知设置
 export async function GET(req: NextRequest) {
   try {
-    const token = await getToken({ req });
-    if (!token?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: auth.error || "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const userId = token.id as string;
+    const userId = auth.user.id;
 
-    // 获取用户通知设置
     const notifications = await prisma.usernotification.findFirst({
       where: { userId },
     });
 
-    // 如果没有设置，返回默认值
     if (!notifications) {
       return NextResponse.json({
         notifications: {
@@ -45,12 +41,12 @@ export async function GET(req: NextRequest) {
 // 更新用户通知设置
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req });
-    if (!token?.id) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: auth.error || "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const userId = token.id as string;
+    const userId = auth.user.id;
     const {
       emailNotifications,
       systemMessages,
@@ -59,7 +55,6 @@ export async function POST(req: NextRequest) {
       frequency,
     } = await req.json();
 
-    // 验证频率设置
     const validFrequencies = ["REALTIME", "DAILY", "WEEKLY"];
     if (frequency && !validFrequencies.includes(frequency)) {
       return NextResponse.json(
@@ -68,7 +63,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 检查是否已存在通知设置
     const existingNotification = await prisma.usernotification.findFirst({
       where: { userId },
     });

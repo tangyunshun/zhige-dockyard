@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { requireStepUp } from "@/lib/step-up";
@@ -15,13 +15,14 @@ export async function DELETE(request: NextRequest) {
 
     const userId = authResult.user!.id;
     const body = await request.json();
-    const { workspaceId, action, verifyToken } = body;
+    const { workspaceId, verifyToken } = body;
+    const action = body.action || "DEACTIVATE";
 
     if (!workspaceId) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
 
-    if (!action || !["DELETE", "DEACTIVATE"].includes(action)) {
+    if (!["DELETE", "DEACTIVATE"].includes(action)) {
       return NextResponse.json({ error: "无效的操作类型" }, { status: 400 });
     }
 

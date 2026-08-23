@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 
 export interface Workspace {
   id: string;
@@ -61,14 +62,19 @@ export function useWorkspaceHubData() {
 
   const loadUserInfo = async () => {
     try {
-      const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const authToken = getAuthToken();
       const res = await fetch("/api/auth/me", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
       });
 
       if (!res.ok) {
         if (res.status === 404 || res.status === 401) {
-          const errorData = await res.json();
+          const contentType = res.headers.get("content-type");
+          let errorData = {};
+          if (contentType && contentType.includes("application/json")) {
+            errorData = await res.json().catch(() => ({}));
+          }
           console.log("[useWorkspaceHubData] 用户认证失效:", errorData);
 
           localStorage.removeItem("userId");
@@ -87,7 +93,13 @@ export function useWorkspaceHubData() {
         return;
       }
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.warn("[useWorkspaceHubData] 接口未返回 valid JSON:", contentType);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (!data) return;
       setUser(data.user);
 
       // 加载所有的工作空间列表
@@ -96,37 +108,45 @@ export function useWorkspaceHubData() {
       });
 
       if (workspacesRes.ok) {
-        const workspacesData = await workspacesRes.json();
+        const wsContentType = workspacesRes.headers.get("content-type");
+        if (wsContentType && wsContentType.includes("application/json")) {
+          const workspacesData = await workspacesRes.json().catch(() => null);
 
-        const personal = workspacesData.workspaces.find(
-          (w: Workspace) => w.type === "PERSONAL"
-        );
-        const enterprise = workspacesData.workspaces.find(
-          (w: Workspace) => w.type === "ENTERPRISE"
-        );
+          if (workspacesData && workspacesData.workspaces) {
+            const personal = workspacesData.workspaces.find(
+              (w: Workspace) => w.type === "PERSONAL" && (w.role === "OWNER" || w.isOwner)
+            );
+            const enterprise = workspacesData.workspaces.find(
+              (w: Workspace) => w.type === "ENTERPRISE"
+            );
 
-        // 如果获取到个人空间，重置已删除标记
-        if (personal) {
-          setPersonalWorkspace(personal);
-          setPersonalWorkspaceDeleted(false);
-          localStorage.setItem("personalWorkspaceDeleted", "false");
-        } else {
-          setPersonalWorkspace(null);
+            // 如果获取到个人空间，重置已删除标记
+            if (personal) {
+              setPersonalWorkspace(personal);
+              setPersonalWorkspaceDeleted(false);
+              localStorage.setItem("personalWorkspaceDeleted", "false");
+            } else {
+              setPersonalWorkspace(null);
+            }
+            setEnterpriseWorkspace(enterprise || null);
+          }
         }
-        setEnterpriseWorkspace(enterprise || null);
       }
 
       // 获取用户主工作区看板聚合数据
       const dashboardRes = await fetch("/api/user/workspace-hub/dashboard", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
       });
 
       if (dashboardRes.ok) {
-        const resData = await dashboardRes.json();
-        if (resData.success && resData.data) {
-          const bentoData = resData.data;
-          setDashboardData(bentoData);
-          setNeedsPersonalWorkspace(!!bentoData.needsPersonalWorkspace);
+        const dbContentType = dashboardRes.headers.get("content-type");
+        if (dbContentType && dbContentType.includes("application/json")) {
+          const resData = await dashboardRes.json().catch(() => null);
+          if (resData && resData.success && resData.data) {
+            const bentoData = resData.data;
+            setDashboardData(bentoData);
+            setNeedsPersonalWorkspace(!!bentoData.needsPersonalWorkspace);
 
           if (bentoData.user) {
             setUser(bentoData.user);
@@ -137,7 +157,7 @@ export function useWorkspaceHubData() {
             localStorage.setItem("personalWorkspaceDeleted", "false");
           }
           if (bentoData.enterpriseWorkspaces) {
-            setEnterpriseWorkspace(bentoData.enterpriseWorkspaces);
+            setEnterpriseWorkspace(bentoData.enterpriseWorkspaces[0] || null);
             setEnterpriseData({
               success: true,
               workspaces: bentoData.enterpriseWorkspaces,
@@ -147,10 +167,13 @@ export function useWorkspaceHubData() {
                   (acc: number, ws: any) => acc + (ws.componentCount || 0),
                   0
                 ),
-                totalMembers: bentoData.enterpriseWorkspaces.reduce(
-                  (acc: number, ws: any) => acc + (ws.memberCount || 0),
-                  0
-                ),
+                totalMembers:
+                  typeof bentoData.uniqueEnterpriseMemberCount === "number"
+                    ? bentoData.uniqueEnterpriseMemberCount
+                    : bentoData.enterpriseWorkspaces.reduce(
+                        (acc: number, ws: any) => acc + (ws.memberCount || 0),
+                        0
+                      ),
               },
             });
           }
@@ -174,7 +197,8 @@ export function useWorkspaceHubData() {
           }
         }
       }
-    } catch (error) {
+    }
+  } catch (error) {
       console.error("加载聚合数据失败:", error);
     } finally {
       setIsLoading(false);
@@ -182,8 +206,7 @@ export function useWorkspaceHubData() {
   };
 
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    if (!userId) {
+    if (!getAuthToken()) {
       console.warn("用户未登录，即将重定向...");
       setRedirecting(true);
       // 保留当前 URL 参数（如 invitationCode），登录后可回到原页面继续邀请流程
@@ -205,6 +228,16 @@ export function useWorkspaceHubData() {
     }
 
     loadUserInfo();
+
+    // 监听全网组件装配/卸载更新事件，实时刷新中枢卡片与列表
+    const handleComponentUpdate = () => {
+      console.log("[useWorkspaceHubData] 捕获全网组件装配变更事件，自动同步刷新中枢...");
+      loadUserInfo();
+    };
+    window.addEventListener("zhige_workspace_components_updated", handleComponentUpdate);
+    return () => {
+      window.removeEventListener("zhige_workspace_components_updated", handleComponentUpdate);
+    };
   }, []);
 
   // 派生出来的个人工作空间状态

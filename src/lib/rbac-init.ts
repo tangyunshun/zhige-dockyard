@@ -4,7 +4,6 @@
  */
 
 import { prisma } from "./prisma";
-import { COMPONENTS } from "@/constants/components";
 import { POST_PERMISSION_TEMPLATES } from "@/constants/roles";
 import crypto from "crypto";
 
@@ -49,7 +48,7 @@ export async function initializeRBACData(workspaceId: string, createdBy: string)
       {
         name: "产品经理",
         description: "负责产品规划、需求分析和产品生命周期管理",
-        color: "#ec4899",
+        color: "#805ad5",
         isDefault: true,
         isSystem: true,
         template: POST_PERMISSION_TEMPLATES.PRODUCT_MANAGER,
@@ -57,7 +56,7 @@ export async function initializeRBACData(workspaceId: string, createdBy: string)
       {
         name: "运维工程师",
         description: "负责系统部署、监控和维护 CI/CD 流程",
-        color: "#06b6d4",
+        color: "#3182ce",
         isDefault: true,
         isSystem: true,
         template: POST_PERMISSION_TEMPLATES.DEVOPS_ENGINEER,

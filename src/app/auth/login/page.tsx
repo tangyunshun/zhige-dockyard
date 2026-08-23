@@ -20,6 +20,7 @@ import {
   Check,
 } from "lucide-react";
 import Image from "next/image";
+import { getAuthToken } from "@/utils/auth";
 import {
   validateAccount,
   validatePhone,
@@ -136,9 +137,8 @@ function LoginForm() {
   // 检查用户是否已登录，如果已登录则重定向
   useEffect(() => {
     const checkLoggedIn = async () => {
-      // 快速检查：如果 localStorage 没有 userId，直接显示登录页
-      const localStorageUserId = localStorage.getItem("userId");
-      const authToken = localStorage.getItem("auth_token");
+      // 快速检查：如果 localStorage 没有有效 JWT 凭证，直接显示登录页
+      const authToken = getAuthToken();
 
       // 检查有效的 cookie token（排除空值情况）
       const cookies = document.cookie.split(";");
@@ -151,8 +151,8 @@ function LoginForm() {
         }
       }
 
-      // 必须同时具备：userId、auth_token（localStorage 或 cookie）
-      if (!localStorageUserId || !((authToken && authToken.length > 0) || hasValidToken)) {
+      // 必须同时具备：本地 JWT 凭证 + Cookie 会话（与中间件/刷新口径一致）
+      if (!authToken || !hasValidToken) {
         console.log("登录页：未检测到登录状态，显示登录页面");
         setIsCheckingAuth(false);
         return;
@@ -160,7 +160,10 @@ function LoginForm() {
 
       // localStorage 和 Cookie 都有，调用 API 验证
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await fetch("/api/auth/me", {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          credentials: "include",
+        });
         if (res.ok) {
           // 用户已登录，重定向到首页或原页面
           const savedPath = sessionStorage.getItem("redirectAfterLogin");
@@ -842,7 +845,7 @@ function LoginForm() {
 
   return (
     <div 
-      className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden relative"
+      className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4 overflow-hidden relative"
       style={{
         backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.08) 1.5px, transparent 1.5px)",
         backgroundSize: "24px 24px",
@@ -850,10 +853,10 @@ function LoginForm() {
     >
       <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[24px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50 relative z-10">
         {/* 左侧品牌区 - 固定 */}
-        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
+        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1a365d] p-6 text-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl" />
-            <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-300 rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-40 h-40 bg-[#63b3ed] rounded-full blur-3xl" />
           </div>
 
           <div className="relative z-10 text-center">
@@ -873,15 +876,15 @@ function LoginForm() {
 
             <div className="space-y-3 text-left">
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
                 <span className="text-xs">企业级安全架构</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
-                <span className="text-xs">智能驱动</span>
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
+                <span className="text-xs">自动化驱动</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
                 <span className="text-xs">全链路提效 300%</span>
               </div>
             </div>
@@ -941,7 +944,7 @@ function LoginForm() {
           </div>
 
           {timeoutNotice && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-xs text-amber-700 font-semibold mb-4 leading-normal animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-xs text-amber-600 font-semibold mb-4 leading-normal animate-in fade-in slide-in-from-top-2 duration-200">
               ⚠️ 因长时间未操作，您已自动退出登录
             </div>
           )}
@@ -954,14 +957,14 @@ function LoginForm() {
                   <Lock className="w-4 h-4 text-red-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-red-700">
+                  <p className="text-sm font-bold text-red-600">
                     账号「{formData.account}」已锁定
                   </p>
                   <p className="text-xs text-red-600 mt-0.5 leading-relaxed">
                     由于密码连续输入错误超过 5 次，系统已临时锁定该账号。锁定期间无法登录，请等待倒计时结束，或切换其他账号。
                   </p>
                   <div className="mt-2 inline-flex items-center gap-2 bg-white border border-red-200 rounded-lg px-3 py-1.5">
-                    <span className="text-base font-mono font-bold text-red-700 tabular-nums">
+                    <span className="text-base font-mono font-bold text-red-600 tabular-nums">
                       {formatLockTime(lockSeconds)}
                     </span>
                     <span className="text-xs text-red-500 font-medium">后自动解锁</span>
@@ -987,7 +990,7 @@ function LoginForm() {
                   checkAccount(value);
                 }}
               >
-                <label className="block text-xs font-medium text-red-700 mb-1.5">
+                <label className="block text-xs font-medium text-red-600 mb-1.5">
                   切换其他账号登录
                 </label>
                 <div className="flex gap-2">
@@ -1071,8 +1074,8 @@ function LoginForm() {
                   {/* 账号状态提示 */}
                   {accountCheckStatus.exists === false &&
                     redirectCountdown !== null && (
-                      <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
-                        <p className="text-xs text-orange-700">
+                      <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+                        <p className="text-xs text-amber-600">
                           ⚠️ 该账号未注册，{redirectCountdown}秒后跳转注册页面
                         </p>
                         <button
@@ -1091,7 +1094,7 @@ function LoginForm() {
                     )}
                   {accountCheckStatus.disabled && (
                     <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
-                      <p className="text-xs text-red-700">
+                      <p className="text-xs text-red-600">
                         ⛔ 账号已被禁用，请联系管理员
                       </p>
                       <button
@@ -1170,7 +1173,7 @@ function LoginForm() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {loading ? (
                     <>
@@ -1238,8 +1241,8 @@ function LoginForm() {
                     {/* 手机号状态提示 */}
                     {accountCheckStatus.exists === false &&
                       redirectCountdown !== null && (
-                        <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
-                          <p className="text-xs text-orange-700">
+                        <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+                          <p className="text-xs text-amber-600">
                             ️ 该手机号未注册，{redirectCountdown}秒后跳转注册页面
                           </p>
                           <button
@@ -1258,7 +1261,7 @@ function LoginForm() {
                       )}
                     {accountCheckStatus.locked && (
                       <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-xs text-red-700">
+                        <p className="text-xs text-red-600">
                           🔒 手机号已被锁定，请
                           {accountCheckStatus.minutesRemaining}
                           分钟后再试
@@ -1267,7 +1270,7 @@ function LoginForm() {
                     )}
                     {accountCheckStatus.disabled && (
                       <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-xs text-red-700">
+                        <p className="text-xs text-red-600">
                           ⛔ 该手机号对应的账号已被禁用，请联系管理员
                         </p>
                       </div>
@@ -1325,7 +1328,7 @@ function LoginForm() {
                     </p>
                   )}
                   {smsMessage && (
-                    <p className="mt-1 text-xs text-green-600">{smsMessage}</p>
+                    <p className="mt-1 text-xs text-emerald-600">{smsMessage}</p>
                   )}
                 </div>
 
@@ -1333,7 +1336,7 @@ function LoginForm() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {loading ? (
                     <>
@@ -1421,6 +1424,7 @@ function LoginForm() {
   );
 }
 
+// 确保 Next.js App Router 正确扫描并编译登录页面路由
 export default function LoginPage() {
   return (
     <Suspense fallback={<div>加载中...</div>}>

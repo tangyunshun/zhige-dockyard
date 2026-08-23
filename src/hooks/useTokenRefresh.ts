@@ -18,13 +18,13 @@ const RETRY_DELAY = 5000;
 
 function hasValidLocalSession(): boolean {
   if (typeof window === "undefined") return false;
-  const hasUserId = localStorage.getItem("userId");
+  const hasLocalToken = !!localStorage.getItem("auth_token");
   const cookies = document.cookie.split(";");
   const hasToken = cookies.some((c) => {
     const [name, value] = c.trim().split("=");
     return name === "auth_token" && value && value.length > 0;
   });
-  return !!hasUserId && hasToken;
+  return hasLocalToken && hasToken;
 }
 
 function clearLocalSession() {

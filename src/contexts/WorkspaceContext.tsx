@@ -1,6 +1,7 @@
-﻿﻿"use client";
+﻿"use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { getAuthToken } from "@/utils/auth";
 
 export interface Workspace {
   id: string;
@@ -30,7 +31,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const fetchWorkspacesFromAPI = useCallback(async () => {
     try {
       setLoading(true);
+      const authToken = getAuthToken();
       const res = await fetch("/api/workspace/list", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
         cache: "no-store",
       });
       if (res.ok) {

@@ -17,6 +17,7 @@ import {
   Cpu,
   Users,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface PersonalWorkspace {
   id: string;
@@ -138,11 +139,10 @@ function UpgradeWorkspaceForm() {
       setCheckResult({ status: null, message: "" });
 
       try {
-        const userId =
-          typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+        const authToken = getAuthToken();
 
         // 检查必要参数
-        if (!userId) {
+        if (!authToken) {
           setCheckResult({
             status: "error",
             message: "用户未登录，无法检测",
@@ -163,8 +163,9 @@ function UpgradeWorkspaceForm() {
         // 验证用户会话是否有效
         const authRes = await fetch("/api/auth/me", {
           headers: {
-            Authorization: `Bearer ${userId}`,
+            Authorization: `Bearer ${authToken}`,
           },
+          credentials: "include",
         });
 
         if (!authRes.ok) {
@@ -178,8 +179,9 @@ function UpgradeWorkspaceForm() {
           `/api/workspace/check-delete?workspaceId=${personalWorkspace.id}`,
           {
             headers: {
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
+            credentials: "include",
           },
         );
 
@@ -328,7 +330,7 @@ function UpgradeWorkspaceForm() {
   return (
     <div className="min-h-screen w-full relative bg-[#f0f8ff]">
       {/* 背景 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]" />
 
       {/* 内容区 */}
       <main className="relative z-10 px-6 py-8">
@@ -416,7 +418,7 @@ function UpgradeWorkspaceForm() {
             {/* 升级选项 */}
             <div className="space-y-4 mb-6">
               <h3 className="text-sm font-bold text-slate-700 mb-3">
-                请选择升级方式：
+                请选择升级方式：<span className="text-red-500">*</span>
               </h3>
 
               {/* 选项 A：保留个人空间（并行创建） */}
@@ -433,7 +435,7 @@ function UpgradeWorkspaceForm() {
                     <div
                       className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
                         selectedOption === "retain"
-                          ? "bg-gradient-to-br from-[#3182ce] to-[#2563eb]"
+                          ? "bg-gradient-to-br from-[#3182ce] to-[#2b6cb0]"
                           : "bg-gradient-to-br from-slate-100 to-slate-200"
                       }`}
                     >

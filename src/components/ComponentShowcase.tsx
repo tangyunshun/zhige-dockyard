@@ -42,7 +42,7 @@ import {
   Presentation,
   Award
 } from "lucide-react";
-import { COMPONENTS, COMPONENT_CATEGORIES, getComponentCategoryName } from "@/constants/components";
+import { useAppContext } from "@/contexts/AppContext";
 
 const iconMap: Record<string, React.ComponentType<any>> = {
   "document": FileText,
@@ -104,6 +104,11 @@ interface ComponentShowcaseProps {
 }
 
 export default function ComponentShowcase({ workspaceId }: ComponentShowcaseProps) {
+  // 组件信息与分类均来自数据库（component_catalog / component_category 表，经 AppContext 加载）
+  const { componentCatalog, componentCategories } = useAppContext();
+  const COMPONENTS = componentCatalog;
+  const COMPONENT_CATEGORIES = componentCategories;
+
   // 按照 category 分组，并保留原始类别顺序
   const categoriesList = Object.keys(COMPONENT_CATEGORIES) as Array<keyof typeof COMPONENT_CATEGORIES>;
   
@@ -181,7 +186,7 @@ export default function ComponentShowcase({ workspaceId }: ComponentShowcaseProp
 
       <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
         <p className="text-xs text-slate-600 text-center">
-          ✨ 舟坊协作资产库持续更新中，更多专业组件敬请期待
+          舟坊协作资产库持续更新中，更多专业组件敬请期待
         </p>
       </div>
     </div>

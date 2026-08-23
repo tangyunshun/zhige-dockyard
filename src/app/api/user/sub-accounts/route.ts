@@ -1,6 +1,6 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { isAdminRole, validateUser } from "@/lib/auth";
 
 /**
  * 子账号管理API
@@ -12,12 +12,11 @@ import { isAdminRole } from "@/lib/auth";
  */
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    const authResult = await validateUser(request.headers.get("Authorization"), request);
+    if (!authResult.valid || !authResult.user) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
-
-    const userId = authHeader.replace("Bearer ", "");
+    const userId = authResult.user.id;
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -60,12 +59,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    const authResult = await validateUser(request.headers.get("Authorization"), request);
+    if (!authResult.valid || !authResult.user) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
-
-    const adminId = authHeader.replace("Bearer ", "");
+    const adminId = authResult.user.id;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });
@@ -133,12 +131,11 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
+    const authResult = await validateUser(request.headers.get("Authorization"), request);
+    if (!authResult.valid || !authResult.user) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
-
-    const adminId = authHeader.replace("Bearer ", "");
+    const adminId = authResult.user.id;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });

@@ -10,6 +10,7 @@ import {
   XCircle,
   Clock,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface UserNotification {
   id: string;
@@ -58,7 +59,7 @@ export default function AdminNotificationsPage() {
 
       const res = await fetch(`/api/admin/notifications?${params}`, {
         headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
 
@@ -76,8 +77,8 @@ export default function AdminNotificationsPage() {
   const getFrequencyBadge = (frequency: string) => {
     const badges: Record<string, string> = {
       REALTIME: "bg-gradient-to-r from-[#10b981] to-[#059669] text-white",
-      DAILY: "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white",
-      WEEKLY: "bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white",
+      DAILY: "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white",
+      WEEKLY: "bg-gradient-to-r from-[#8b5cf6] to-[#805ad5] text-white",
     };
 
     const labels: Record<string, string> = {

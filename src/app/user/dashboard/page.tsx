@@ -78,9 +78,10 @@ export default function UserDashboardPage() {
 
   const fetchUserRole = async (userId: string) => {
     try {
-      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || userId;
+      // 身份凭证一律使用 JWT，禁止用明文 userId 冒充 Bearer
+      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
       const res = await fetch("/api/auth/me", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         const data = await res.json();
@@ -93,20 +94,19 @@ export default function UserDashboardPage() {
 
   const loadDashboardData = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || userId;
+      // 身份凭证一律使用 JWT，禁止用明文 userId 冒充 Bearer
+      const token = (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
 
       // middleware 会校验 JWT 并把真实 userId 注入 x-user-id，前端只需传 auth_token(JWT)
       const [userRes, statsRes, activitiesRes] = await Promise.all([
         fetch("/api/user/profile", {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         }),
         fetch("/api/user/dashboard/stats", {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         }),
         fetch("/api/user/activities?limit=5", {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         }),
       ]);
 
@@ -203,7 +203,7 @@ export default function UserDashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
               onClick={() => (window.location.href = "/workspace-hub")}
-              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2563eb]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
+              className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
             >
               <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                 <FolderOpen className="w-6 h-6 text-[#3182ce]" />
@@ -278,12 +278,12 @@ export default function UserDashboardPage() {
       {/* 最近活动 */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
         {/* 装饰背景 */}
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#2563eb]/10 opacity-50 blur-3xl"></div>
+        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 opacity-50 blur-3xl"></div>
 
         <div className="relative">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#2563eb] rounded-full"></div>
+              <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
               <Activity className="w-5 h-5 text-[#3182ce]" />
               最近活动
             </h2>
@@ -295,7 +295,7 @@ export default function UserDashboardPage() {
                   key={index}
                   className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/60 transition-all duration-300 hover:-translate-x-1"
                 >
-                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
                     <Activity className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">

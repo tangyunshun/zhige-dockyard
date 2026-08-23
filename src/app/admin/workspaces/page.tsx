@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { getAuthToken } from "@/utils/auth";
 import {
   Filter,
   Building2,
@@ -113,7 +114,7 @@ export default function AdminWorkspacesPage() {
 
       const res = await fetch(`/api/admin/workspaces?${params}`, {
         headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
 
@@ -158,7 +159,7 @@ export default function AdminWorkspacesPage() {
           {
             method: "DELETE",
             headers: {
-              Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+              Authorization: `Bearer ${getAuthToken()}`,
             },
           },
         );
@@ -189,7 +190,7 @@ export default function AdminWorkspacesPage() {
     try {
       const res = await fetch(`/api/admin/workspaces/${workspace.id}`, {
         headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
 
@@ -231,7 +232,7 @@ export default function AdminWorkspacesPage() {
             {
               method: "PATCH",
               headers: {
-                Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+                Authorization: `Bearer ${getAuthToken()}`,
               },
             },
           );
@@ -264,7 +265,7 @@ export default function AdminWorkspacesPage() {
     const toast = document.createElement("div");
     toast.className = `zg-toast ${type === "success" ? "show" : ""}`;
     toast.innerHTML = `
-      <span class="${type === "success" ? "text-green-600" : "text-red-600"} font-bold">
+      <span class="${type === "success" ? "text-emerald-600" : "text-red-600"} font-bold">
         ${type === "success" ? "✓" : "✕"}
       </span>
       <span class="text-sm font-medium text-slate-700">${message}</span>
@@ -394,7 +395,7 @@ export default function AdminWorkspacesPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+              Authorization: `Bearer ${getAuthToken()}`,
             },
             body: JSON.stringify({
               workspaceIds: Array.from(selectedWorkspaces),
@@ -426,7 +427,7 @@ export default function AdminWorkspacesPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+              Authorization: `Bearer ${getAuthToken()}`,
             },
             body: JSON.stringify({
               workspaceIds: Array.from(selectedWorkspaces),
@@ -641,7 +642,7 @@ export default function AdminWorkspacesPage() {
                   {showDisable && (
                     <button
                       onClick={handleBatchDisable}
-                      className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold hover:bg-orange-600 transition-colors flex items-center gap-2"
+                      className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-bold hover:bg-amber-600 transition-colors flex items-center gap-2"
                     >
                       <EyeOff className="w-4 h-4" />
                       批量禁用
@@ -650,7 +651,7 @@ export default function AdminWorkspacesPage() {
                   {showEnable && (
                     <button
                       onClick={handleBatchEnable}
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-bold hover:bg-green-600 transition-colors flex items-center gap-2"
+                      className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2"
                     >
                       <CheckCircle className="w-4 h-4" />
                       批量启用
@@ -755,11 +756,11 @@ export default function AdminWorkspacesPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {workspace.type === "PERSONAL" ? (
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
+                            <span className="px-2 py-1 bg-blue-100 text-[#2b6cb0] text-xs font-bold rounded-full">
                               个人空间
                             </span>
                           ) : (
-                            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">
+                            <span className="px-2 py-1 bg-purple-100 text-[#805ad5] text-xs font-bold rounded-full">
                               企业空间
                             </span>
                           )}
@@ -772,19 +773,19 @@ export default function AdminWorkspacesPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2 text-sm">
-                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full font-bold">
+                            <span className="px-2 py-1 bg-emerald-100 text-emerald-600 rounded-full font-bold">
                               {workspace.componentCount} 个
                             </span>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {workspace.status === "ACTIVE" ? (
-                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
+                            <span className="px-2 py-1 bg-emerald-100 text-emerald-600 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
                               <CheckCircle className="w-3 h-3 shrink-0" />
                               已审核
                             </span>
                           ) : (
-                            <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
+                            <span className="px-2 py-1 bg-amber-100 text-amber-600 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
                               <AlertCircle className="w-3 h-3 shrink-0" />
                               待审核
                             </span>
@@ -814,10 +815,10 @@ export default function AdminWorkspacesPage() {
                                 <button
                                   onClick={() => handleToggleStatus(workspace)}
                                   disabled={togglingId === workspace.id}
-                                  className="p-2 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                                  className="p-2 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
                                   title="禁用空间"
                                 >
-                                  <EyeOff className="w-4 h-4 text-orange-600" />
+                                  <EyeOff className="w-4 h-4 text-amber-600" />
                                 </button>
                               ) : (
                                 // 已禁用状态：显示启用和删除按钮
@@ -827,10 +828,10 @@ export default function AdminWorkspacesPage() {
                                       handleToggleStatus(workspace)
                                     }
                                     disabled={togglingId === workspace.id}
-                                    className="p-2 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                                    className="p-2 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                                     title="启用空间"
                                   >
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                    <CheckCircle className="w-4 h-4 text-emerald-600" />
                                   </button>
                                   <button
                                     onClick={() => handleDelete(workspace.id)}
@@ -846,7 +847,7 @@ export default function AdminWorkspacesPage() {
 
                             {/* 状态标识 */}
                             {workspace.status === "DISABLED" && (
-                              <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">
+                              <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full flex items-center gap-1">
                                 <XCircle className="w-3 h-3" />
                                 已禁用
                               </span>
@@ -882,7 +883,7 @@ export default function AdminWorkspacesPage() {
                       )
                     }
                     disabled={currentPage === workspaceData.totalPages}
-                    className="px-4 py-2 bg-[#3182ce] text-white rounded-lg text-sm hover:bg-[#2563eb] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-[#3182ce] text-white rounded-lg text-sm hover:bg-[#3182ce] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     下一页
                   </button>
@@ -924,11 +925,11 @@ export default function AdminWorkspacesPage() {
                     <div className="text-xs text-slate-500 mb-1">空间类型</div>
                     <div className="text-sm font-bold">
                       {viewingWorkspace.type === "PERSONAL" ? (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs">
+                        <span className="px-2 py-1 bg-blue-100 text-[#2b6cb0] rounded-full text-xs">
                           个人空间
                         </span>
                       ) : (
-                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">
+                        <span className="px-2 py-1 bg-purple-100 text-[#805ad5] rounded-full text-xs">
                           企业空间
                         </span>
                       )}
@@ -942,7 +943,7 @@ export default function AdminWorkspacesPage() {
                   </div>
                   <div className="p-4 bg-slate-50 rounded-xl">
                     <div className="text-xs text-slate-500 mb-1">组件数量</div>
-                    <div className="text-sm font-bold text-green-600">
+                    <div className="text-sm font-bold text-emerald-600">
                       {viewingWorkspace.componentCount} 个
                     </div>
                   </div>
@@ -958,12 +959,12 @@ export default function AdminWorkspacesPage() {
                     <div className="text-xs text-slate-500 mb-1">状态</div>
                     <div className="text-sm font-bold">
                       {viewingWorkspace.status === "ACTIVE" ? (
-                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs flex items-center gap-1 w-fit">
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-600 rounded-full text-xs flex items-center gap-1 w-fit">
                           <CheckCircle className="w-3 h-3" />
                           活跃
                         </span>
                       ) : (
-                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs flex items-center gap-1 w-fit">
+                        <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs flex items-center gap-1 w-fit">
                           <XCircle className="w-3 h-3" />
                           已禁用
                         </span>
@@ -1026,7 +1027,7 @@ export default function AdminWorkspacesPage() {
                         className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white text-sm font-bold">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-sm font-bold">
                             {member.user.name?.charAt(0).toUpperCase() ||
                               member.user.email?.charAt(0).toUpperCase() ||
                               "U"}
@@ -1040,7 +1041,7 @@ export default function AdminWorkspacesPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold">
+                        <div className="px-2 py-1 bg-blue-100 text-[#2b6cb0] rounded text-xs font-bold">
                           {member.role === "OWNER"
                             ? "空间所有者"
                             : member.role === "ADMIN"
@@ -1089,7 +1090,7 @@ export default function AdminWorkspacesPage() {
                               <span className="text-xs text-slate-500">
                                 使用次数：
                               </span>
-                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">
+                              <span className="px-2 py-1 bg-emerald-100 text-emerald-600 rounded text-xs font-bold">
                                 {component.usageCount} 次
                               </span>
                             </div>
@@ -1120,8 +1121,8 @@ export default function AdminWorkspacesPage() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
             <div className="p-6">
               <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                  <AlertCircle className="w-6 h-6 text-orange-600" />
+                <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-amber-600" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-800">确认操作</h3>
               </div>
@@ -1138,7 +1139,7 @@ export default function AdminWorkspacesPage() {
                 </button>
                 <button
                   onClick={handleConfirm}
-                  className="flex-1 px-4 py-2.5 bg-[#3182ce] text-white rounded-xl hover:bg-[#2563eb] transition-colors font-semibold text-sm"
+                  className="flex-1 px-4 py-2.5 bg-[#3182ce] text-white rounded-xl hover:bg-[#3182ce] transition-colors font-semibold text-sm"
                 >
                   确认
                 </button>

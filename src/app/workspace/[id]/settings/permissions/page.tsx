@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Check, X, Plus, ArrowLeft, Settings, Save } from "lucide-react";
-import { COMPONENTS, COMPONENT_CATEGORIES, ComponentCategory } from "@/constants/components";
+import type { ComponentCategory } from "@/constants/components";
 import { useAppContext } from "@/contexts/AppContext";
 
 // 数据模型定义
@@ -23,7 +23,10 @@ export default function WorkspacePermissionsPage() {
   const router = useRouter();
   const params = useParams();
   const toast = useToast();
-  const { userState } = useAppContext();
+  // 组件信息与分类来自数据库（component_catalog / component_category 表）
+  const { userState, componentCatalog, componentCategories } = useAppContext();
+  const COMPONENTS = componentCatalog;
+  const COMPONENT_CATEGORIES = componentCategories;
   
   const workspaceId = Array.isArray(params.id) ? params.id[0] : params.id;
   
@@ -88,10 +91,12 @@ export default function WorkspacePermissionsPage() {
     // Admin 默认拥有所有权限
     initialMatrix['post_admin'] = COMPONENTS.map(c => c.id);
     
-    // 售前默认拥有商机相关组件
-    initialMatrix['post_sales'] = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07'];
+    // 售前默认拥有商机与需求阶段组件（按数据库分类动态筛选，不再硬编码组件 ID）
+    initialMatrix['post_sales'] = COMPONENTS
+      .filter(c => ['BID_PREP', 'REQ_DESIGN'].includes(c.category))
+      .map(c => c.id);
     
-    // 研发默认拥有技术相关组件
+    // 研发默认拥有技术相关组件（商机阶段以外全量）
     initialMatrix['post_fullstack'] = COMPONENTS
       .filter(c => c.category !== 'BID_PREP')
       .map(c => c.id);
@@ -370,7 +375,7 @@ export default function WorkspacePermissionsPage() {
       <div className="sticky bottom-0 z-30 bg-white border-t border-slate-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="text-xs text-slate-500">
-            {hasChanges && <span className="text-orange-600 font-bold">⚠️ 有未保存的更改</span>}
+            {hasChanges && <span className="text-amber-600 font-bold">⚠️ 有未保存的更改</span>}
           </div>
           <div className="flex items-center gap-3">
             <button

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { X, Shield, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface StepUpAuthModalProps {
   isOpen: boolean;
@@ -57,15 +58,16 @@ export default function StepUpAuthModal({
       setLoading(true);
       setErrorMsg(null);
 
-      // 从 localStorage 获取当前登录的 userId
-      const userId = localStorage.getItem("userId");
+      // 使用真实 JWT 凭证进行二次鉴权
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/auth/verify-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           password,
           action,
@@ -117,8 +119,8 @@ export default function StepUpAuthModal({
         {/* 内容区 */}
         <form onSubmit={handleSubmit} className="p-6">
           <div className="flex items-start gap-4 mb-5">
-            <div className="w-11 h-11 rounded-xl bg-orange-50 border border-orange-200 flex items-center justify-center flex-shrink-0">
-              <Shield className="w-5 h-5 text-orange-600" />
+            <div className="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
+              <Shield className="w-5 h-5 text-amber-600" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-bold text-slate-800 mb-1">
@@ -152,7 +154,7 @@ export default function StepUpAuthModal({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="请输入登录密码以确认身份"
                 disabled={loading}
-                className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold text-slate-800"
+                className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-500 focus:bg-white transition-all text-sm font-semibold text-slate-800"
               />
               <button
                 type="button"
@@ -178,7 +180,7 @@ export default function StepUpAuthModal({
             <button
               type="submit"
               disabled={loading || !password}
-              className="flex-1 h-11 bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-bold rounded-xl hover:shadow-lg hover:shadow-orange-500/20 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0 flex items-center justify-center gap-1.5"
+              className="flex-1 h-11 bg-gradient-to-r from-amber-500 to-red-500 text-white text-sm font-bold rounded-xl hover:shadow-lg hover:shadow-amber-500/20 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0 flex items-center justify-center gap-1.5"
             >
               {loading ? (
                 <>

@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Box,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface MembershipInfo {
   name: string;
@@ -47,15 +48,14 @@ export default function UserMembershipPage() {
 
   const loadMembershipData = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const [userRes, levelsRes] = await Promise.all([
         fetch("/api/user/profile", {
-          headers: { Authorization: `Bearer ${userId}` },
+          headers: { Authorization: `Bearer ${authToken}` },
         }),
         fetch("/api/admin/membership/levels", {
-          headers: { Authorization: `Bearer ${userId}` },
+          headers: { Authorization: `Bearer ${authToken}` },
         }),
       ]);
 
@@ -75,7 +75,7 @@ export default function UserMembershipPage() {
 
         // 加载使用统计
         const statsRes = await fetch("/api/user/dashboard/stats", {
-          headers: { Authorization: `Bearer ${userId}` },
+          headers: { Authorization: `Bearer ${authToken}` },
         });
 
         if (statsRes.ok) {
@@ -206,7 +206,7 @@ export default function UserMembershipPage() {
       {/* 配额使用进度 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0">
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#2563eb]/10 opacity-50 blur-3xl"></div>
+          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 opacity-50 blur-3xl"></div>
           <div className="relative">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
@@ -287,7 +287,7 @@ export default function UserMembershipPage() {
         </div>
 
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#8b5cf6]/10 to-[#7c3aed]/10 opacity-50 blur-3xl"></div>
+          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#8b5cf6]/10 to-[#805ad5]/10 opacity-50 blur-3xl"></div>
           <div className="relative">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center">
@@ -343,8 +343,8 @@ export default function UserMembershipPage() {
           </div>
         </div>
       ) : (
-        <div className="relative bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border border-green-200 p-8 text-center overflow-hidden shrink-0">
-          <div className="absolute -right-4 -top-4 w-64 h-64 rounded-full bg-green-100 opacity-50 blur-3xl"></div>
+        <div className="relative bg-gradient-to-br from-emerald-50 to-emerald-50 rounded-2xl border border-emerald-200 p-8 text-center overflow-hidden shrink-0">
+          <div className="absolute -right-4 -top-4 w-64 h-64 rounded-full bg-emerald-100 opacity-50 blur-3xl"></div>
           <div className="relative">
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center mx-auto mb-4 shadow-lg">
               <CheckCircle className="w-10 h-10 text-white" />
@@ -357,7 +357,7 @@ export default function UserMembershipPage() {
             </p>
             <button 
               onClick={() => router.push("/admin/membership/levels")}
-              className="px-8 py-3 bg-white border-2 border-[#10b981] text-[#10b981] rounded-xl font-semibold hover:bg-green-50 transition-all duration-300"
+              className="px-8 py-3 bg-white border-2 border-[#10b981] text-[#10b981] rounded-xl font-semibold hover:bg-emerald-50 transition-all duration-300"
             >
               查看会员套餐
             </button>

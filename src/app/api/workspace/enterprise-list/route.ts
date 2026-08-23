@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { ensureDefaultComponents } from "@/lib/workspaceInit";
+import { ensureDefaultComponents, getBoundComponentCount } from "@/lib/workspaceInit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,17 +63,13 @@ export async function GET(request: NextRequest) {
       ).length || 0);
     }, 0);
 
-    // 执行默认组件自愈并计算组件数量
+    // 执行默认组件自愈并计算组件数量（自愈仅全新空间初始化，组件数与空间内 bound 口径一致）
     const workspacesWithComponents = await Promise.all(
       enterpriseWorkspaces.map(async (ws: any) => {
         // 自动完成兜底自愈初始化
         await ensureDefaultComponents(ws.id, userId);
 
-        const usages = await prisma.componentusage.findMany({
-          where: { workspaceId: ws.id },
-          select: { componentId: true },
-          distinct: ['componentId'],
-        });
+        const componentCount = await getBoundComponentCount(ws.id);
 
         return {
           id: ws.id,
@@ -81,7 +77,7 @@ export async function GET(request: NextRequest) {
           description: ws.description,
           createdAt: ws.createdAt,
           memberCount: ws.workspacemember?.length || 0,
-          componentCount: usages.length,
+          componentCount,
           activeTasks: 0,
           completedTasks: 0,
         };

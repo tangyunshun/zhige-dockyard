@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Lock, Key, Eye, EyeOff, Shield, AlertTriangle } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 function ChangePasswordForm() {
   const router = useRouter();
@@ -81,14 +82,15 @@ function ChangePasswordForm() {
     try {
       setLoading(true);
 
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/change-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           currentPassword: isExpired ? "" : formData.currentPassword,
           newPassword: formData.newPassword,
@@ -124,7 +126,7 @@ function ChangePasswordForm() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-red-50 via-slate-50 to-orange-50 flex flex-col">
+    <div className="min-h-screen w-full bg-gradient-to-br from-red-50 via-slate-50 to-amber-50 flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4 py-6 w-full max-w-md mx-auto">
         <div className="w-full animate-slide-up">
           <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 p-6 sm:p-8">

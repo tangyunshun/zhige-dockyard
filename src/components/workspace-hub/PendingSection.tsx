@@ -30,10 +30,10 @@ export default function PendingSection({
     <div className="relative group bg-white/70 backdrop-blur-xl rounded-2xl p-6 border border-slate-200 shadow-md hover:shadow-xl transition-all duration-300">
       {/* 头部 */}
       <div className="flex items-center gap-2.5 mb-5 pb-3 border-b border-slate-100">
-        <div className="w-1.5 h-4 bg-gradient-to-b from-rose-500 to-red-500 rounded-full" />
+        <div className="w-1.5 h-4 bg-gradient-to-b from-red-500 to-red-500 rounded-full" />
         <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
           <span>待处理事项</span>
-          <span className="px-1.5 py-0.2 bg-rose-100 text-rose-600 text-[9px] font-black rounded-lg">
+          <span className="px-1.5 py-0.2 bg-red-100 text-red-500 text-[9px] font-black rounded-lg">
             {pendingItems.length}
           </span>
         </h3>
@@ -47,8 +47,8 @@ export default function PendingSection({
             className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:bg-slate-100/50"
           >
             <div className="flex items-start gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <ShieldAlert className="w-4 h-4 text-orange-600" />
+              <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <ShieldAlert className="w-4 h-4 text-amber-600" />
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-bold text-slate-800 truncate">{item.title}</h4>

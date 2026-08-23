@@ -71,8 +71,8 @@ const FAQS = [
     a: "在工作空间操作台【挑选大厅】挂载组件后，点击【新建自动化任务】即可拉起组件参数表单，确认后点击【开始运行】。任务消耗的点数取决于组件复杂程度，可在空间统计页实时查看消耗流水。",
   },
   {
-    q: "上传的数据会被用作 AI 训练吗？",
-    a: "绝对不会。知阁·舟坊对商业机密执行极高等级保护，您的业务数据和运行结果绝不会被用作大模型的二次训练材料，并在缓存到期后彻底清除（详见《服务条款》与《隐私政策》）。",
+    q: "上传的数据会被用作模型训练吗？",
+    a: "绝对不会。知阁·舟坊对商业机密执行极高等级保护，您的业务数据和运行结果绝不会被用作模型二次训练的材料，并在缓存到期后彻底清除（详见《服务条款》与《隐私政策》）。",
   },
   {
     q: "如何升级会员等级或购买企业服务？",
@@ -191,7 +191,7 @@ export default function HelpPage() {
       title: "解决方案",
       desc: "企业级部署与行业解决方案",
       icon: CircleHelp,
-      color: "bg-orange-50 text-orange-600",
+      color: "bg-amber-50 text-amber-600",
       path: "/solutions",
     },
     {
@@ -205,7 +205,7 @@ export default function HelpPage() {
       title: "隐私政策",
       desc: "了解我们如何保护您的个人信息",
       icon: ShieldCheck,
-      color: "bg-cyan-50 text-cyan-600",
+      color: "bg-blue-50 text-[#3182ce]",
       path: "/privacy-policy",
     },
   ];
@@ -363,7 +363,7 @@ export default function HelpPage() {
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white/80 backdrop-blur-xl rounded-[24px] shadow-xl border border-white/95 p-6 md:p-8">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm text-white">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-sm text-white">
                     <MessageSquareText className="w-5 h-5" />
                   </div>
                   <div>
@@ -414,7 +414,7 @@ export default function HelpPage() {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1.5">
-                      标题 <span className="text-rose-500">*</span>
+                      标题 <span className="text-red-500">*</span>
                     </label>
                     <input
                       value={title}
@@ -427,7 +427,7 @@ export default function HelpPage() {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1.5">
-                      详细描述 <span className="text-rose-500">*</span>
+                      详细描述 <span className="text-red-500">*</span>
                     </label>
                     <textarea
                       value={content}

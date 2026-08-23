@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
+import { getAuthToken } from "@/utils/auth";
 import {
   Settings,
   ArrowLeft,
@@ -94,7 +95,11 @@ export default function PersonalWorkspaceSettings() {
 
   const loadWorkspaceData = async () => {
     try {
-      const res = await fetch("/api/auth/me");
+      const authToken = getAuthToken();
+      const res = await fetch("/api/auth/me", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
+      });
       if (!res.ok) {
         router.push("/auth/login");
         return;
@@ -103,7 +108,10 @@ export default function PersonalWorkspaceSettings() {
       const userName = data.user?.name || "用户";
 
       // 获取工作空间列表
-      const workspaceRes = await fetch("/api/workspace/list");
+      const workspaceRes = await fetch("/api/workspace/list", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
+      });
       if (workspaceRes.ok) {
         const workspaceData = await workspaceRes.json();
         const personalWorkspace = workspaceData.workspaces?.find(
@@ -368,7 +376,7 @@ export default function PersonalWorkspaceSettings() {
   return (
     <div className="min-h-screen w-full relative overflow-hidden bg-[#f0f8ff]">
       {/* 背景：科技感点阵 + 弥散光晕 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+      <div className="absolute inset-0 bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
         {/* 点阵背景 */}
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -414,7 +422,7 @@ export default function PersonalWorkspaceSettings() {
           {/* 头部 - 更紧凑 */}
           <div className="px-6 py-5 border-b border-[#e2e8f0]/90 bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
                 <Settings className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -441,7 +449,7 @@ export default function PersonalWorkspaceSettings() {
                       onClick={() => setActiveTab(tab.id)}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${
                         isActive
-                          ? "bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white shadow-lg shadow-[#3182ce]/20"
+                          ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/20"
                           : "text-slate-600 hover:bg-slate-100/80"
                       }`}
                     >
@@ -454,7 +462,7 @@ export default function PersonalWorkspaceSettings() {
                 {/* 升级团队版 - 更紧凑 */}
                 <button
                   onClick={handleUpgrade}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white shadow-lg shadow-[#8b5cf6]/20 hover:-translate-y-0.5"
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer bg-gradient-to-r from-[#8b5cf6] to-[#805ad5] text-white shadow-lg shadow-[#8b5cf6]/20 hover:-translate-y-0.5"
                   style={{
                     transitionTimingFunction:
                       "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
@@ -484,7 +492,7 @@ export default function PersonalWorkspaceSettings() {
                           空间标识
                         </label>
                         <div className="flex items-center gap-3">
-                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20 text-2xl">
+                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-lg shadow-[#3182ce]/20 text-2xl">
                             {workspaceData.emoji}
                           </div>
                           <div className="flex gap-2">
@@ -530,7 +538,7 @@ export default function PersonalWorkspaceSettings() {
                       {/* 空间名称 */}
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">
-                          空间名称
+                          空间名称 <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -594,7 +602,7 @@ export default function PersonalWorkspaceSettings() {
                             {
                               id: "deepseek",
                               label: "DeepSeek-V3",
-                              desc: "强大推理能力",
+                              desc: "强大计算能力",
                             },
                             {
                               id: "custom",
@@ -778,7 +786,7 @@ export default function PersonalWorkspaceSettings() {
 
                   {/* 危险操作区 */}
                   <div>
-                    <h2 className="text-lg font-bold text-red-700 mb-4 flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-red-600 mb-4 flex items-center gap-2">
                       <AlertTriangle className="w-5 h-5 text-red-600" />
                       危险操作
                     </h2>
@@ -841,15 +849,15 @@ export default function PersonalWorkspaceSettings() {
 
                       <ul className="space-y-2 mb-6">
                         <li className="flex items-center gap-2 text-sm">
-                          <Check className="w-5 h-5 text-green-300" />
+                          <Check className="w-5 h-5 text-emerald-300" />
                           <span>邀请团队成员，解锁多人协作</span>
                         </li>
                         <li className="flex items-center gap-2 text-sm">
-                          <Check className="w-5 h-5 text-green-300" />
-                          <span>统一算力池分配，集中管理 Token</span>
+                          <Check className="w-5 h-5 text-emerald-300" />
+                          <span>统一算力池分配，集中管理调用额度</span>
                         </li>
                         <li className="flex items-center gap-2 text-sm">
-                          <Check className="w-5 h-5 text-green-300" />
+                          <Check className="w-5 h-5 text-emerald-300" />
                           <span>企业级审计日志，追踪所有操作</span>
                         </li>
                       </ul>
@@ -884,13 +892,13 @@ export default function PersonalWorkspaceSettings() {
           {/* 弹窗内容 */}
           <div className="relative bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
             {/* 标题栏 */}
-            <div className="px-6 py-4 border-b border-red-200 bg-gradient-to-r from-red-50 to-orange-50">
+            <div className="px-6 py-4 border-b border-red-200 bg-gradient-to-r from-red-50 to-amber-50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-lg shadow-red-500/20">
                   <AlertTriangle className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-red-700">
+                  <h2 className="text-xl font-bold text-red-600">
                     危险操作确认
                   </h2>
                   <p className="text-sm text-red-600 mt-1">
@@ -906,7 +914,7 @@ export default function PersonalWorkspaceSettings() {
                 <p className="text-sm text-red-800 font-bold mb-2">
                   警告：此操作不可恢复！
                 </p>
-                <p className="text-xs text-red-700">
+                <p className="text-xs text-red-600">
                   清空后将删除此空间下的所有标书、架构图、测试数据等。
                   请确保您已经导出了需要保留的数据。
                 </p>
@@ -968,7 +976,7 @@ export default function PersonalWorkspaceSettings() {
             {/* 标题栏 */}
             <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#3182ce]/5 to-[#10b981]/5">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-lg shadow-[#3182ce]/20">
                   <Key className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -1057,9 +1065,9 @@ export default function PersonalWorkspaceSettings() {
           {/* 弹窗内容 */}
           <div className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             {/* 标题栏 */}
-            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#8b5cf6]/5 to-[#7c3aed]/5 flex-shrink-0">
+            <div className="px-6 py-4 border-b border-[#e2e8f0] bg-gradient-to-r from-[#8b5cf6]/5 to-[#805ad5]/5 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center shadow-lg shadow-[#8b5cf6]/20">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#805ad5] flex items-center justify-center shadow-lg shadow-[#8b5cf6]/20">
                   <Lightbulb className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -1090,7 +1098,7 @@ export default function PersonalWorkspaceSettings() {
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-[#10b981]" />
-                    <span>10,000 Token/月 算力额度</span>
+                    <span>每月 10,000 调用额度</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-[#10b981]" />
@@ -1175,7 +1183,7 @@ export default function PersonalWorkspaceSettings() {
                   confirmUpgrade();
                 }}
                 disabled={loading}
-                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white shadow-[0_2px_6px_-1px_rgba(139,92,246,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(139,92,246,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] bg-gradient-to-r from-[#8b5cf6] to-[#805ad5] text-white shadow-[0_2px_6px_-1px_rgba(139,92,246,0.3)] hover:shadow-[0_4px_12px_-2px_rgba(139,92,246,0.4)] hover:-translate-y-[1px] transition-all duration-[250ms] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? "提交中..." : "提交申请"}
               </button>

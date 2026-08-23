@@ -70,7 +70,7 @@ const guideSections: GuideSection[] = [
       },
       {
         title: "招标文件分析",
-        description: "智能分析招标文件，提取重要条款和要求",
+        description: "自动分析招标文件，提取重要条款和要求",
         link: "/studio?stage=0",
       },
       {
@@ -85,7 +85,7 @@ const guideSections: GuideSection[] = [
       },
       {
         title: "报价计算器",
-        description: "根据项目规模和需求，智能计算报价",
+        description: "根据项目规模和需求，自动计算报价",
         link: "/studio?stage=0",
       },
     ],
@@ -124,7 +124,7 @@ const guideSections: GuideSection[] = [
     items: [
       {
         title: "代码 Diff 评审",
-        description: "上传代码变更，获取智能评审意见和改进建议",
+        description: "上传代码变更，获取自动评审意见和改进建议",
         link: "/studio?stage=2",
       },
       {
@@ -139,7 +139,7 @@ const guideSections: GuideSection[] = [
       },
       {
         title: "日志分析器",
-        description: "上传日志文件，智能分析异常和性能问题",
+        description: "上传日志文件，自动分析异常和性能问题",
         link: "/studio?stage=2",
       },
       {
@@ -176,7 +176,7 @@ const guideSections: GuideSection[] = [
       },
       {
         title: "研发偏好设置",
-        description: "自定义引擎、系统提示词等偏好设置",
+        description: "自定义引擎、系统参数等偏好设置",
         link: "/workspace-hub/settings",
       },
     ],
@@ -245,7 +245,7 @@ export default function StudioGuide() {
   return (
     <div className="min-h-screen w-full relative bg-[#f0f8ff]">
       {/* 背景：科技感点阵 + 弥散光晕 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+      <div className="absolute inset-0 bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -277,7 +277,7 @@ export default function StudioGuide() {
         </div>
         <button
           onClick={handleGoToStudio}
-          className="px-4 py-2 bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white text-sm font-bold rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+          className="px-4 py-2 bg-gradient-to-r from-[#8b5cf6] to-[#805ad5] text-white text-sm font-bold rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
         >
           <span>前往组件库</span>
           <ExternalLink className="w-4 h-4" />
@@ -289,7 +289,7 @@ export default function StudioGuide() {
         <div className="max-w-6xl mx-auto">
           {/* 标题区 */}
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] shadow-xl shadow-[#8b5cf6]/30 mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#8b5cf6] to-[#805ad5] shadow-xl shadow-[#8b5cf6]/30 mb-4">
               <BookOpen className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-3xl font-black text-slate-800 mb-3">
@@ -402,9 +402,9 @@ export default function StudioGuide() {
           </div>
 
           {/* 底部提示 */}
-          <div className="mt-8 p-6 bg-gradient-to-br from-[#8b5cf6]/10 to-[#7c3aed]/10 backdrop-blur-xl rounded-xl border-2 border-[#8b5cf6]/20">
+          <div className="mt-8 p-6 bg-gradient-to-br from-[#8b5cf6]/10 to-[#805ad5]/10 backdrop-blur-xl rounded-xl border-2 border-[#8b5cf6]/20">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#8b5cf6]/30">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#805ad5] flex items-center justify-center flex-shrink-0 shadow-lg shadow-[#8b5cf6]/30">
                 <Box className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1">
@@ -423,7 +423,7 @@ export default function StudioGuide() {
                   </button>
                   <button
                     onClick={() => router.push("/workspace-hub/settings")}
-                    className="px-4 py-2 bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] text-white text-sm font-bold rounded-lg hover:shadow-lg transition-all"
+                    className="px-4 py-2 bg-gradient-to-r from-[#8b5cf6] to-[#805ad5] text-white text-sm font-bold rounded-lg hover:shadow-lg transition-all"
                   >
                     联系技术支持
                   </button>

@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import ActivityMonitor from "./ActivityMonitor";
+import { getAuthToken } from "@/utils/auth";
 
 export default function ClientActivityMonitor() {
   const [hasUser, setHasUser] = useState(false);
 
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    if (userId) {
+    if (getAuthToken()) {
       setHasUser(true);
     }
   }, []);

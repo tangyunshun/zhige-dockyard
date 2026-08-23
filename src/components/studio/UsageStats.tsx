@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { Activity, Star, ThumbsUp, Calendar, Heart, CheckCircle2 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface UsageStatsProps {
   componentId: string;
@@ -30,10 +31,11 @@ export default function UsageStats({ componentId }: UsageStatsProps) {
     const fetchStats = async () => {
       try {
         setLoading(true);
-        const userId = localStorage.getItem("userId");
-        const headers: Record<string, string> = userId ? { Authorization: `Bearer ${userId}` } : {};
+        const authToken = getAuthToken();
+        const headers: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
         const res = await fetch(`/api/studio?action=stats&componentId=${componentId}`, {
-          headers
+          headers,
+          credentials: "include",
         });
         if (res.ok) {
           const data = await res.json();

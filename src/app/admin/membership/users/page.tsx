@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 import {
   Search,
   ArrowLeft,
@@ -59,8 +60,7 @@ export default function AdminMembershipUsersPage() {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
@@ -75,7 +75,7 @@ export default function AdminMembershipUsersPage() {
       const res = await fetch(`/api/admin/membership/users?${params}`, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -110,7 +110,7 @@ export default function AdminMembershipUsersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
       {/* 顶部导航 */}
       <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">

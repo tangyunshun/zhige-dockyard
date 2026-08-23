@@ -1,17 +1,18 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 // GET - 获取用户的工作空间列表
 export async function GET(req: NextRequest) {
   try {
-    const userId = req.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json(
         { error: "未授权访问" },
         { status: 401 }
       );
     }
+    const userId = auth.user.id;
 
     // 获取用户的工作空间列表
     const workspaces = await prisma.workspace.findMany({
@@ -51,14 +52,14 @@ export async function GET(req: NextRequest) {
 // PUT - 更新用户工作空间
 export async function PUT(req: NextRequest) {
   try {
-    const userId = req.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json(
         { error: "未授权访问" },
         { status: 401 }
       );
     }
+    const userId = auth.user.id;
 
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("id");
@@ -117,14 +118,14 @@ export async function PUT(req: NextRequest) {
 // DELETE - 删除用户工作空间（级联清理关联数据，避免外键约束报错）
 export async function DELETE(req: NextRequest) {
   try {
-    const userId = req.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json(
         { error: "未授权访问" },
         { status: 401 }
       );
     }
+    const userId = auth.user.id;
 
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("id");

@@ -89,17 +89,17 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
 
   return (
     <>
-      <section className="relative pt-32 pb-20 px-6 overflow-hidden bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1]">
+      <section className="relative pt-32 pb-20 px-6 overflow-hidden bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
         <div className="max-w-5xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-50 to-blue-100/50 border border-blue-200/50 text-[#3182ce] text-xs font-semibold mb-8 animate-fade-in shadow-sm">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#63b3ed] opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3182ce]"></span>
             </span>
             V5.0 全新发布:50+ 效能组件引擎上线
           </div>
 
-          <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-[#3182ce] via-[#2563eb] to-[#1e40af] bg-clip-text text-transparent leading-[1.15] mb-6">
+          <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-[#3182ce] via-[#2b6cb0] to-[#2b6cb0] bg-clip-text text-transparent leading-[1.15] mb-6">
             重塑软件工程:
             <br />
             全链路效能操作系统
@@ -128,7 +128,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
               />
               <button
                 type="submit"
-                className="bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white p-2 rounded-lg hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all cursor-pointer flex items-center justify-center"
+                className="bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white p-2 rounded-lg hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all cursor-pointer flex items-center justify-center"
               >
                 <CornerDownLeft className="w-4 h-4" />
               </button>
@@ -237,7 +237,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             : "text-slate-600 hover:bg-slate-50/80"
                         }`}
                       >
-                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "tender" ? "bg-[#3182ce]" : "bg-slate-350"}`}></div>
+                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "tender" ? "bg-[#3182ce]" : "bg-slate-400"}`}></div>
                         标书解析
                       </button>
 
@@ -250,7 +250,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             : "text-slate-600 hover:bg-slate-50/80"
                         }`}
                       >
-                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "prd" ? "bg-[#3182ce]" : "bg-slate-350"}`}></div>
+                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "prd" ? "bg-[#3182ce]" : "bg-slate-400"}`}></div>
                         需求转 PRD
                       </button>
 
@@ -263,7 +263,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             : "text-slate-600 hover:bg-slate-50/80"
                         }`}
                       >
-                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "arch" ? "bg-[#3182ce]" : "bg-slate-350"}`}></div>
+                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "arch" ? "bg-[#3182ce]" : "bg-slate-400"}`}></div>
                         架构设计
                       </button>
 
@@ -276,7 +276,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             : "text-slate-600 hover:bg-slate-50/80"
                         }`}
                       >
-                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "er" ? "bg-[#3182ce]" : "bg-slate-350"}`}></div>
+                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "er" ? "bg-[#3182ce]" : "bg-slate-400"}`}></div>
                         ER 图生成
                       </button>
 
@@ -289,7 +289,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             : "text-slate-600 hover:bg-slate-50/80"
                         }`}
                       >
-                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "diff" ? "bg-[#3182ce]" : "bg-slate-350"}`}></div>
+                        <div className={`w-1.5 h-1.5 rounded-full ${currentSandbox === "diff" ? "bg-[#3182ce]" : "bg-slate-400"}`}></div>
                         代码对比
                       </button>
                     </div>
@@ -325,7 +325,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                               </svg>
                               <div className="absolute top-[10%] left-[10%] px-4 py-1.5 bg-white border border-[#3182ce] text-[#3182ce] text-[10px] font-bold rounded-lg shadow-sm z-10 w-20 text-center">Web</div>
                               <div className="absolute top-[10%] left-[50%] -translate-x-1/2 px-4 py-1.5 bg-white border border-[#3182ce] text-[#3182ce] text-[10px] font-bold rounded-lg shadow-sm z-10 w-20 text-center">Mobile</div>
-                              <div className="absolute top-[10%] right-[10%] px-4 py-1.5 bg-white border border-purple-400 text-purple-600 text-[10px] font-bold rounded-lg shadow-sm z-10 w-24 text-center">API GW</div>
+                              <div className="absolute top-[10%] right-[10%] px-4 py-1.5 bg-white border border-[#805ad5] text-[#805ad5] text-[10px] font-bold rounded-lg shadow-sm z-10 w-24 text-center">API GW</div>
                               <div className="absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 px-4 py-2 bg-[#3182ce] text-white text-[10px] font-bold rounded-lg shadow-md z-10 w-28 text-center tracking-wide">Service Mesh</div>
                               <div className="absolute bottom-[10%] left-[10%] px-4 py-1.5 bg-white border border-[#3182ce] text-[#3182ce] text-[10px] font-bold rounded-lg shadow-sm z-10 w-20 text-center">Auth</div>
                               <div className="absolute bottom-[10%] left-[50%] -translate-x-1/2 px-4 py-1.5 bg-white border border-[#3182ce] text-[#3182ce] text-[10px] font-bold rounded-lg shadow-sm z-10 w-20 text-center">Order</div>
@@ -345,7 +345,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             <p className="text-xs text-slate-500 mt-1">解析文件：招标说明书_政务云二期建设项目.pdf</p>
                           </div>
                           <div className="flex-1 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50 p-2 text-xs">
-                            <div className="grid grid-cols-12 bg-white border border-slate-150 rounded-lg font-bold py-2 px-3 text-slate-700 shadow-sm mb-2">
+                            <div className="grid grid-cols-12 bg-white border border-slate-200 rounded-lg font-bold py-2 px-3 text-slate-700 shadow-sm mb-2">
                               <div className="col-span-4">招标规格条款</div>
                               <div className="col-span-2 text-center">偏离匹配</div>
                               <div className="col-span-6">知阁舟坊技术应答及系统对标建议</div>
@@ -362,9 +362,9 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                                 <div className="col-span-6 text-slate-500">系统完全解耦，支持专网物理单机包及VPC隔离环境离线一键部署。</div>
                               </div>
                               <div className="grid grid-cols-12 bg-white border border-red-100 bg-red-50/10 rounded-lg py-2 px-3 items-center">
-                                <div className="col-span-4 text-red-700 font-semibold">3. 系统需内置大型大语言模型</div>
+                                <div className="col-span-4 text-red-600 font-semibold">3. 系统需内置本地化部署引擎</div>
                                 <div className="col-span-2 text-center text-red-600 font-bold">! 建议偏离</div>
-                                <div className="col-span-6 text-slate-600 font-medium">不提供公网SAAS大模型，建议应答为：完美对接本地私有化DeepSeek算力集群。</div>
+                                <div className="col-span-6 text-slate-600 font-medium">不提供公网SaaS服务，建议应答为：完美对接本地私有化自研算力集群。</div>
                               </div>
                             </div>
                           </div>
@@ -376,7 +376,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                         <div className="flex-1 flex flex-col justify-between">
                           <div className="mb-4">
                             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                              智能自动补齐 PRD 文档
+                              自动补齐 PRD 文档
                             </h2>
                             <p className="text-xs text-slate-500 mt-1">脑图输入源：用户提到“支持冷静期并在注销时有撤销按钮”</p>
                           </div>
@@ -390,7 +390,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                               </p>
                             </div>
                             <div>
-                              <span className="text-[#3182ce] font-bold"># 2. 安全性与多标签同步（智能追加）</span>
+                              <span className="text-[#3182ce] font-bold"># 2. 安全性与多标签同步（自动追加）</span>
                               <p className="pl-3 mt-1 text-slate-600 leading-relaxed">
                                 2.1 安全机制：删除行为需调用 `localStorage.clear()` 和 `sessionStorage.clear()` 防止会话污染。<br />
                                 2.2 多端联动：使用同步监听器，一旦注销，将同时清理当前设备所有打开的标签页会话信息。
@@ -412,7 +412,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                           <div className="flex-1 flex items-center justify-center gap-8 bg-slate-50/30 border border-slate-100 rounded-xl p-4 min-h-[220px]">
                             {/* users table */}
                             <div className="border border-slate-200 rounded-xl bg-white shadow-sm w-36 overflow-hidden text-[11px]">
-                              <div className="bg-blue-50 border-b border-slate-200 px-3 py-1.5 font-bold text-blue-700">users</div>
+                              <div className="bg-blue-50 border-b border-slate-200 px-3 py-1.5 font-bold text-[#2b6cb0]">users</div>
                               <div className="p-2.5 space-y-1 font-mono text-slate-500">
                                 <div>🔑 id : int</div>
                                 <div>📧 email : varchar</div>
@@ -427,7 +427,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
 
                             {/* workspaces table */}
                             <div className="border border-slate-200 rounded-xl bg-white shadow-sm w-40 overflow-hidden text-[11px]">
-                              <div className="bg-purple-50 border-b border-slate-200 px-3 py-1.5 font-bold text-purple-700">workspaces</div>
+                              <div className="bg-purple-50 border-b border-slate-200 px-3 py-1.5 font-bold text-[#805ad5]">workspaces</div>
                               <div className="p-2.5 space-y-1 font-mono text-slate-500">
                                 <div>🔑 id : int</div>
                                 <div>👤 owner_id : int (FK)</div>
@@ -570,7 +570,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                           <Workflow className="w-3.5 h-3.5" />
                         </div>
                         <span className="font-bold text-slate-800 text-sm tracking-wide">
-                          智能架构助手
+                        架构助手
                         </span>
                       </div>
 
@@ -591,7 +591,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             标书内容《政务云二期建设项目》解析成功。
                           </div>
                           <div className="bg-blue-50/70 rounded-12 p-4 border border-blue-100 text-xs text-slate-700 leading-relaxed mb-6">
-                            检测到 <span className="text-red-600 font-bold">1项</span> 技术规格偏离（大语言模型集成要求），建议应答方案已生成。
+                            检测到 <span className="text-red-600 font-bold">1项</span> 技术规格偏离（本地化引擎集成要求），建议应答方案已生成。
                           </div>
                         </>
                       )}
@@ -637,7 +637,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             <span>{currentSandbox === "tender" || currentSandbox === "prd" || currentSandbox === "arch" || currentSandbox === "er" || currentSandbox === "diff" ? "100%" : "0%"}</span>
                           </div>
                           <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-gradient-to-r from-[#3182ce] to-indigo-400 h-full transition-all duration-500" style={{ width: currentSandbox === "tender" || currentSandbox === "prd" || currentSandbox === "arch" || currentSandbox === "er" || currentSandbox === "diff" ? "100%" : "0%" }}></div>
+                            <div className="bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] h-full transition-all duration-500" style={{ width: currentSandbox === "tender" || currentSandbox === "prd" || currentSandbox === "arch" || currentSandbox === "er" || currentSandbox === "diff" ? "100%" : "0%" }}></div>
                           </div>
                         </div>
                         <div>
@@ -646,7 +646,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             <span>{currentSandbox === "prd" || currentSandbox === "arch" || currentSandbox === "er" || currentSandbox === "diff" ? "100%" : currentSandbox === "tender" ? "0%" : "0%"}</span>
                           </div>
                           <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-gradient-to-r from-[#3182ce] to-indigo-400 h-full transition-all duration-500" style={{ width: currentSandbox === "prd" || currentSandbox === "arch" || currentSandbox === "er" || currentSandbox === "diff" ? "100%" : "0%" }}></div>
+                            <div className="bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] h-full transition-all duration-500" style={{ width: currentSandbox === "prd" || currentSandbox === "arch" || currentSandbox === "er" || currentSandbox === "diff" ? "100%" : "0%" }}></div>
                           </div>
                         </div>
                         <div>
@@ -655,7 +655,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             <span>{currentSandbox === "arch" ? "72%" : currentSandbox === "er" ? "90%" : currentSandbox === "prd" ? "45%" : currentSandbox === "diff" ? "95%" : "0%"}</span>
                           </div>
                           <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-gradient-to-r from-[#3182ce] to-indigo-400 h-full transition-all duration-500" style={{ width: currentSandbox === "arch" ? "72%" : currentSandbox === "er" ? "90%" : currentSandbox === "prd" ? "45%" : currentSandbox === "diff" ? "95%" : "0%" }}></div>
+                            <div className="bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] h-full transition-all duration-500" style={{ width: currentSandbox === "arch" ? "72%" : currentSandbox === "er" ? "90%" : currentSandbox === "prd" ? "45%" : currentSandbox === "diff" ? "95%" : "0%" }}></div>
                           </div>
                         </div>
                       </div>
@@ -669,7 +669,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
       </section>
 
       {/* 核心指标统计区 */}
-      <section className="py-24 bg-gradient-to-b from-[#eaf4fc] to-white">
+      <section className="py-24 bg-gradient-to-b from-[#ebf8ff] to-white">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-12">
             <div className="group text-center">

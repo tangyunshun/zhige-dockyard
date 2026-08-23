@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { validateUser } from "@/lib/auth";
 
 const STORE_PATH = path.join(process.cwd(), "src/app/api/user/settings/settings-store.json");
 
@@ -30,14 +31,14 @@ function writeStore(store: Record<string, any>) {
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = req.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json(
         { error: "未授权访问" },
         { status: 401 }
       );
     }
+    const userId = auth.user.id;
 
     const store = readStore();
     const userSettings = store[userId] || {
@@ -66,14 +67,14 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const userId = req.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json(
         { error: "未授权访问" },
         { status: 401 }
       );
     }
+    const userId = auth.user.id;
 
     const body = await req.json();
 

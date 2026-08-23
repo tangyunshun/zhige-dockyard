@@ -8,6 +8,7 @@ import {
   VALIDATE_ERROR_TO_SESSION_CODE,
   SESSION_ERROR_CODES,
 } from "@/lib/session-constants";
+import { getAuthToken, getCurrentUserId } from "@/utils/auth";
 
 // 不需要检查的公共路径 - 营销页面所有人都能访问
 const PUBLIC_PATHS = [
@@ -97,11 +98,10 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const localStorageUserId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      const authToken = getAuthToken();
 
-      // 场景 1：localStorage 没有 userId → 立即跳转，不调用 API
-      if (!localStorageUserId) {
+      // 场景 1：localStorage 没有有效凭证 → 立即跳转，不调用 API
+      if (!authToken) {
         isRedirectingRef.current = true;
 
         // 如果是公共页面，不需要跳转
@@ -129,6 +129,8 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
 
       // 调用 API 验证
       const res = await fetch("/api/auth/me", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
         signal: AbortSignal.timeout(10000),
       });
 
@@ -219,7 +221,7 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
 
         const hasSession = sessionStorage.getItem("hasActiveSession");
 
-        if (localStorageUserId && !hasSession) {
+        if (getCurrentUserId() && !hasSession) {
           sessionStorage.setItem("hasActiveSession", "true");
           return;
         }

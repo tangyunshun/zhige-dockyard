@@ -16,6 +16,7 @@ import {
   Trash2,
   Clock,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 export default function UserProfilePage() {
   const [loading, setLoading] = useState(false);
@@ -53,11 +54,11 @@ export default function UserProfilePage() {
   const loadUserInfo = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/profile", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
+        credentials: "include",
       });
 
       if (res.ok) {
@@ -89,13 +90,12 @@ export default function UserProfilePage() {
     setShowCheckModal(false);
 
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const res = await fetch("/api/user/delete-account", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ verifyToken: token }),
       });
@@ -166,14 +166,13 @@ export default function UserProfilePage() {
 
     try {
       setSaving(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(formData),
       });
@@ -211,8 +210,7 @@ export default function UserProfilePage() {
 
     try {
       setSaving(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const uploadFormData = new FormData();
       uploadFormData.append("avatar", file);
@@ -220,7 +218,7 @@ export default function UserProfilePage() {
       const res = await fetch("/api/user/upload-avatar", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: uploadFormData,
       });
@@ -270,8 +268,8 @@ export default function UserProfilePage() {
         <div
           className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
             message.type === "success"
-              ? "bg-green-50 text-green-700 border border-green-200"
-              : "bg-red-50 text-red-700 border border-red-200"
+              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+              : "bg-red-50 text-red-600 border border-red-200"
           }`}
         >
           {message.type === "success" ? (
@@ -420,7 +418,7 @@ export default function UserProfilePage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-5 h-5" />
                 {saving ? "保存中..." : "保存修改"}
@@ -494,8 +492,8 @@ export default function UserProfilePage() {
               <X className="w-5 h-5 text-slate-400" />
             </button>
             <div className="text-center mb-4">
-              <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-3">
-                <AlertTriangle className="w-7 h-7 text-orange-500" />
+              <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle className="w-7 h-7 text-amber-500" />
               </div>
               <h3 className="text-lg font-bold text-slate-800 mb-1">
                 账号注销须知
@@ -506,7 +504,7 @@ export default function UserProfilePage() {
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Clock className="w-4 h-4 text-blue-500" />
-                  <span className="font-semibold text-blue-700">
+                  <span className="font-semibold text-[#2b6cb0]">
                     冷静期说明
                   </span>
                 </div>
@@ -520,7 +518,7 @@ export default function UserProfilePage() {
               <div className="bg-red-50 border border-red-200 rounded-xl p-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Trash2 className="w-4 h-4 text-red-500" />
-                  <span className="font-semibold text-red-700">数据清空</span>
+                  <span className="font-semibold text-red-600">数据清空</span>
                 </div>
                 <p className="text-red-600 text-sm">
                   冷静期结束后，系统中{" "}
@@ -530,12 +528,12 @@ export default function UserProfilePage() {
                 </p>
               </div>
 
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span className="font-semibold text-green-700">撤销操作</span>
+                  <CheckCircle className="w-4 h-4 text-emerald-500" />
+                  <span className="font-semibold text-emerald-600">撤销操作</span>
                 </div>
-                <p className="text-green-600 text-sm">
+                <p className="text-emerald-600 text-sm">
                   冷静期内登录后点击"撤销注销"可恢复正常，所有数据完整保留
                 </p>
               </div>
@@ -573,7 +571,7 @@ export default function UserProfilePage() {
                 type="button"
                 onClick={handleStartCheck}
                 disabled={!hasAgreed}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-orange-500/30 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-amber-500/30 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
               >
                 开始检测
               </button>
@@ -590,7 +588,7 @@ export default function UserProfilePage() {
               <>
                 <div className="text-center mb-4">
                   <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
-                    <div className="w-8 h-8 border-4 border-blue-300 border-t-blue-500 rounded-full animate-spin"></div>
+                    <div className="w-8 h-8 border-4 border-[#63b3ed] border-t-blue-500 rounded-full animate-spin"></div>
                   </div>
                   <h3 className="text-lg font-bold text-slate-800 mb-1">
                     正在检测账号数据
@@ -611,9 +609,9 @@ export default function UserProfilePage() {
                       key={index}
                       className="flex items-center gap-2 text-sm"
                     >
-                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
                       <span className="text-slate-600">{result.item}</span>
-                      <span className="text-green-500 text-xs ml-auto">
+                      <span className="text-emerald-500 text-xs ml-auto">
                         检测通过
                       </span>
                     </div>
@@ -623,13 +621,13 @@ export default function UserProfilePage() {
             ) : (
               <>
                 <div className="text-center mb-4">
-                  <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-                    <CheckCircle className="w-8 h-8 text-green-500" />
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle className="w-8 h-8 text-emerald-500" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-800 mb-1">
                     检测完成
                   </h3>
-                  <p className="text-sm text-green-600">
+                  <p className="text-sm text-emerald-600">
                     未发现任何问题，可以注销
                   </p>
                 </div>
@@ -638,11 +636,11 @@ export default function UserProfilePage() {
                   {checkResults.map((result, index) => (
                     <div
                       key={index}
-                      className="flex items-center gap-2 text-sm bg-green-50 p-2 rounded-lg"
+                      className="flex items-center gap-2 text-sm bg-emerald-50 p-2 rounded-lg"
                     >
-                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
                       <span className="text-slate-600">{result.item}</span>
-                      <span className="text-green-500 text-xs ml-auto">
+                      <span className="text-emerald-500 text-xs ml-auto">
                         正常
                       </span>
                     </div>

@@ -192,7 +192,7 @@ export default function UpgradeModal({
                 <h4 className="text-sm font-bold text-amber-800">
                   数据删除警告
                 </h4>
-                <p className="text-xs text-amber-700 mt-1">
+                <p className="text-xs text-amber-600 mt-1">
                   此操作将永久删除您的个人空间数据，包括所有组件、项目和文档。删除后无法恢复，请谨慎选择！
                 </p>
               </div>

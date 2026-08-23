@@ -11,6 +11,8 @@ import { ToastProvider } from "@/components/Toast";
 import AuthCheck from "@/components/AuthCheck";
 import ActivityMonitor from "@/components/ActivityMonitor";
 import { ResponsiveProvider } from "@/contexts/ResponsiveContext";
+import { DeviceProvider } from "@/contexts/DeviceContext";
+import MobileBottomNav from "@/components/platform/MobileBottomNav";
 
 export default function AppLayout({
   children,
@@ -23,14 +25,13 @@ export default function AppLayout({
   // 检查是否应该隐藏全局 Header 和 pt-[60px] 容器偏移
   const shouldHideGlobalHeader =
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/platform-admin") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/workspace/") ||
     pathname.startsWith("/user/");
 
   useEffect(() => {
     if (shouldHideGlobalHeader) return;
-    
+
     const handleScroll = () => {
       const scrollTop = window.scrollY;
       const docHeight =
@@ -48,53 +49,59 @@ export default function AppLayout({
 
   return (
     <ResponsiveProvider>
-      <AppProvider>
-        {/* 全局工作空间上下文：WorkspaceKickoutGuard 等组件依赖 useWorkspace，必须提供 Provider */}
-        <WorkspaceProvider>
-        <ToastProvider>
-          <AuthCheck>
-            <RouterGuards>
-              {/* 根据路由显示或隐藏 GlobalHeader */}
-              {shouldHideGlobalHeader ? (
-                children
-              ) : (
-                <>
-                  <GlobalHeader />
-                  {/* 顶部滚动进度条 */}
-                  <div
-                    className="fixed top-[60px] left-0 right-0 h-1 z-40 transition-all duration-300 pointer-events-none"
-                    style={{
-                      backgroundColor: "#3182ce",
-                      width: `${scrollProgress}%`,
-                    }}
-                  />
-                  <div className="pt-[60px]">
-                    {children}
-                  </div>
-                  {/* 全局悬浮回到顶部按钮 */}
-                  <button
-                    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                    aria-label="回到顶部"
-                    className={`fixed bottom-8 right-8 z-50 w-12 h-12 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center cursor-pointer border border-[#3182ce]/20 ${
-                      scrollProgress > 5
-                        ? "opacity-100 translate-y-0"
-                        : "opacity-0 translate-y-4 pointer-events-none"
-                    }`}
-                    style={{
-                      backgroundColor: "#3182ce",
-                      backgroundImage: "linear-gradient(135deg, #3182ce 0%, #2b6cb0 100%)"
-                    }}
-                  >
-                    <ArrowUp className="w-5 h-5 text-white" />
-                  </button>
-                </>
-              )}
-            </RouterGuards>
-          </AuthCheck>
-          <ActivityMonitor />
-        </ToastProvider>
-        </WorkspaceProvider>
-      </AppProvider>
+      <DeviceProvider>
+        <AppProvider>
+          {/* 全局工作空间上下文：WorkspaceKickoutGuard 等组件依赖 useWorkspace，必须提供 Provider */}
+          <WorkspaceProvider>
+            <ToastProvider>
+              <AuthCheck>
+                <RouterGuards>
+                  {/* 根据路由显示或隐藏 GlobalHeader */}
+                  {shouldHideGlobalHeader ? (
+                    <>
+                      {children}
+                      <MobileBottomNav />
+                    </>
+                  ) : (
+                    <>
+                      <GlobalHeader />
+                      {/* 顶部滚动进度条 */}
+                      <div
+                        className="fixed top-[60px] left-0 right-0 h-1 z-40 transition-all duration-300 pointer-events-none"
+                        style={{
+                          backgroundColor: "#3182ce",
+                          width: `${scrollProgress}%`,
+                        }}
+                      />
+                      <div className="pt-[60px] pb-20 md:pb-0">
+                        {children}
+                      </div>
+                      {/* 全局悬浮回到顶部按钮 */}
+                      <button
+                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                        aria-label="回到顶部"
+                        className={`fixed bottom-8 right-8 z-50 w-12 h-12 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center cursor-pointer border border-[#3182ce]/20 ${
+                          scrollProgress > 5
+                            ? "opacity-100 translate-y-0"
+                            : "opacity-0 translate-y-4 pointer-events-none"
+                        }`}
+                        style={{
+                          backgroundColor: "#3182ce",
+                          backgroundImage: "linear-gradient(135deg, #3182ce 0%, #2b6cb0 100%)"
+                        }}
+                      >
+                        <ArrowUp className="w-5 h-5 text-white" />
+                      </button>
+                      <MobileBottomNav />
+                    </>
+                  )}
+                </RouterGuards>
+              </AuthCheck>
+              <ActivityMonitor />
+            </ToastProvider>
+          </WorkspaceProvider>
+        </AppProvider>
+      </DeviceProvider>
     </ResponsiveProvider>
   );
 }

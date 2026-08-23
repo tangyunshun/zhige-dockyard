@@ -367,7 +367,7 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
         userId,
         workspaceId: workspace.id,
         role: 'OWNER',
-        updatedAt: now,
+        joinedAt: now,
       },
     });
 

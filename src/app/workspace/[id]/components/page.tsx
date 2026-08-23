@@ -5,18 +5,19 @@ import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { LayoutGrid, RefreshCw, Layers, ArrowUpRight, Search } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 import SearchInput from "@/components/common/SearchInput";
-import {
-  COMPONENTS,
-  COMPONENT_CATEGORIES,
-  ComponentCategory,
-  ComponentDefinition,
-} from "@/constants/components";
+import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
+import { useAppContext } from "@/contexts/AppContext";
 
 export default function WorkspaceComponentsPage() {
   const params = useParams();
   const router = useRouter();
   const toast = useToast();
+  // 组件信息与分类来自数据库（component_catalog / component_category 表）
+  const { componentCatalog, componentCategories } = useAppContext();
+  const COMPONENTS = componentCatalog;
+  const COMPONENT_CATEGORIES = componentCategories;
   const workspaceId = Array.isArray(params.id) ? params.id[0] : params.id;
 
   const [boundComponentIds, setBoundComponentIds] = useState<string[]>([]);
@@ -34,10 +35,10 @@ export default function WorkspaceComponentsPage() {
   const loadBoundComponents = async () => {
     try {
       setLoading(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch(`/api/studio?action=bound&workspaceId=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -61,14 +62,14 @@ export default function WorkspaceComponentsPage() {
   const handleToggleBind = async (comp: ComponentDefinition, isBound: boolean) => {
     try {
       setUpdatingId(comp.id);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const action = isBound ? "unbind" : "bind";
 
       const res = await fetch("/api/studio", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           action,
@@ -199,7 +200,8 @@ export default function WorkspaceComponentsPage() {
                     {/* 标题 */}
                     <h3 className="text-sm font-black text-slate-800 mb-1.5 flex items-center gap-1.5">
                       <span className="text-lg">⚙️</span>
-                      <span className={isBound ? "text-blue-700" : ""}>{comp.name}</span>
+                      <span className={isBound ? "text-[#2b6cb0]" : ""}>{comp.name}</span>
+                      <span className="text-[10px] font-mono font-bold text-slate-400">{comp.id}</span>
                     </h3>
 
                     {/* 描述 */}

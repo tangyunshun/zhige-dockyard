@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 import {
   Search,
   Plus,
@@ -77,8 +78,7 @@ export default function AdminMembershipOrdersPage() {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
@@ -89,7 +89,7 @@ export default function AdminMembershipOrdersPage() {
 
       const res = await fetch(`/api/admin/membership/orders?${params}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
       if (res.ok) {
@@ -112,9 +112,9 @@ export default function AdminMembershipOrdersPage() {
   const getStatusBadge = (status: string) => {
     const badges: Record<string, string> = {
       PENDING: "bg-yellow-100 text-yellow-700",
-      PAID: "bg-green-100 text-green-700",
-      REFUNDED: "bg-blue-100 text-blue-700",
-      CANCELLED: "bg-red-100 text-red-700",
+      PAID: "bg-emerald-100 text-emerald-600",
+      REFUNDED: "bg-blue-100 text-[#2b6cb0]",
+      CANCELLED: "bg-red-100 text-red-600",
     };
 
     const labels: Record<string, string> = {
@@ -158,7 +158,7 @@ export default function AdminMembershipOrdersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff]">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
       {/* 顶部导航 */}
       <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">

@@ -136,7 +136,7 @@ export default function WorkspaceSwitcher({
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 bg-white/60 hover:bg-white/80 backdrop-blur-sm rounded-lg border border-[#e2e8f0] hover:border-[#3182ce] transition-all"
       >
-        <div className="w-6 h-6 rounded bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white text-xs">
+        <div className="w-6 h-6 rounded bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs">
           {current?.type === "PERSONAL" ? (
             <User className="w-3 h-3" />
           ) : (
@@ -175,7 +175,7 @@ export default function WorkspaceSwitcher({
                   className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/80 transition-all disabled:opacity-50 rounded-lg"
                 >
                   {/* 图标 */}
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2563eb] flex items-center justify-center text-white flex-shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white flex-shrink-0">
                     {workspace.type === "PERSONAL" ? (
                       <User className="w-4 h-4" />
                     ) : (
@@ -190,11 +190,11 @@ export default function WorkspaceSwitcher({
                         {workspace.name}
                       </h4>
                       {workspace.type === "PERSONAL" ? (
-                        <span className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full font-bold">
+                        <span className="px-1.5 py-0.5 text-xs bg-blue-100 text-[#2b6cb0] rounded-full font-bold">
                           个人
                         </span>
                       ) : (
-                        <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full font-bold">
+                        <span className="px-1.5 py-0.5 text-xs bg-purple-100 text-[#805ad5] rounded-full font-bold">
                           企业
                         </span>
                       )}
@@ -247,7 +247,7 @@ export default function WorkspaceSwitcher({
             </p>
             <button
               onClick={() => setShowCreateModal(false)}
-              className="w-full px-4 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#2563eb] transition-all"
+              className="w-full px-4 py-2 bg-[#3182ce] text-white rounded-lg hover:bg-[#3182ce] transition-all"
             >
               关闭
             </button>

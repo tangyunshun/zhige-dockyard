@@ -200,12 +200,12 @@ export default function WorkspaceHub() {
     }
   }, [showJoinSuccessModal, setShowJoinSuccessModal]);
 
-  // 动态获取当前中枢渲染展示的推荐组件ID列表（防御型自动对齐）
+  // 动态获取当前中枢渲染展示的推荐组件ID列表（数据来自数据库 30 天真实调用聚合，无数据时为空）
   const getRecommendedComponentIds = () => {
     if (dashboardData?.topComponents && dashboardData.topComponents.length > 0) {
       return dashboardData.topComponents.slice(0, 3).map((item: any) => item.id || item.componentId);
     }
-    return ["C01", "C03", "C02"];
+    return [];
   };
 
   // 页面加载或空间数据变化时，拉取当前正在展示的 3 个推荐组件的所有已绑定空间名称列表
@@ -261,28 +261,26 @@ export default function WorkspaceHub() {
     fetchAllWorkspaceBindings();
   }, [personalWorkspace, enterpriseData, dashboardData]);
 
-  // 7. 进入空间跳转与包装
-  const handleEnterWorkspace = async (workspace: any) => {
-    toast.info("正在加载空间信息...", 1000);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  // 7. 进入空间跳转与包装 (升级为无缝即时物理跳转)
+  const handleEnterWorkspace = (workspace: any) => {
     if (workspace && workspace.id) {
-      router.push(`/workspace/${workspace.id}`);
+      toast.info("正在进入工作空间...", 600);
+      try {
+        localStorage.setItem("currentWorkspaceId", workspace.id);
+        sessionStorage.setItem("currentWorkspaceId", workspace.id);
+      } catch (e) {
+        console.error("写入空间缓存失败:", e);
+      }
+      window.location.href = `/workspace/${workspace.id}`;
     } else {
-      router.push("/workspace-hub/create");
+      window.location.href = "/workspace-hub/create";
     }
   };
 
-  // 智能路由分流：个人空间直接直达控制台；企业空间静默绑定后直达控制台。统一带上 newBoundComponentId 触发高亮
+  // 智能路由分流：统一执行真实后端物理装配，装配成功后带上 newBoundComponentId 触发高亮跳转
   const navigateToWorkspaceComponent = async (workspaceId: string, type: "PERSONAL" | "ENTERPRISE", componentId: string) => {
     toast.info("正在装配组件并连接环境...", 1000);
     
-    if (type === "PERSONAL") {
-      // 个人空间直接跳转并标记最新装配
-      router.push(`/workspace/${workspaceId}?newBoundComponentId=${componentId}`);
-      return;
-    }
-    
-    // 如果是企业空间，在后台静默执行装配
     try {
       // 1. 检查是否已经绑定
       const checkRes = await fetch(`/api/studio?action=bound&workspaceId=${workspaceId}`);
@@ -298,7 +296,7 @@ export default function WorkspaceHub() {
       }
 
       if (!isAlreadyBound) {
-        // 2. 发送绑定请求进行静默装配
+        // 2. 发送绑定请求进行真实物理装配
         const bindRes = await fetch("/api/studio", {
           method: "POST",
           headers: {
@@ -311,7 +309,11 @@ export default function WorkspaceHub() {
           }),
         });
 
-        if (!bindRes.ok) {
+        if (bindRes.ok) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("zhige_workspace_components_updated", { detail: { workspaceId, componentId, action: "bind" } }));
+          }
+        } else {
           const bindData = await bindRes.json();
           throw new Error(bindData.error || bindData.message || "装配组件失败");
         }
@@ -566,6 +568,18 @@ export default function WorkspaceHub() {
     return <PageSkeleton />;
   }
 
+  // 装配弹窗：被选中组件的信息（编号 + 名称）
+  const selectedCompInfo = (() => {
+    if (!selectedComponentId) return null;
+    const item = (dashboardData?.topComponents || []).find(
+      (c: any) => (c.id || c.componentId) === selectedComponentId
+    );
+    return {
+      id: item?.id || item?.componentId || selectedComponentId,
+      name: item?.name || "",
+    };
+  })();
+
   if (redirecting) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-[#f1f5f9]">
@@ -643,6 +657,7 @@ export default function WorkspaceHub() {
             <EnterpriseWorkspaceList
               workspaces={enterpriseData?.workspaces || []}
               quota={quota ? { ...quota, enterpriseCount: (enterpriseData?.workspaces || []).filter((ws: any) => ws.role === "OWNER" || ws.isOwner).length } : null}
+              statistics={enterpriseData?.statistics}
               searchQuery={enterpriseSearchQuery}
               onSearchChange={setEnterpriseSearchQuery}
               onCreateClick={() => setShowCreateEnterpriseModal(true)}
@@ -829,7 +844,13 @@ export default function WorkspaceHub() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[20px] border border-white/90 shadow-xl max-w-sm w-full p-6 text-left animate-in fade-in zoom-in duration-200">
             <h3 className="text-sm font-extrabold text-slate-800 mb-2">选择装配的目标空间</h3>
-            <p className="text-xs text-slate-400 font-semibold mb-4 leading-normal">请选择要将组件装配并运行的目标空间环境：</p>
+            {selectedCompInfo && (
+              <div className="mb-4 px-3 py-2.5 bg-blue-50/60 border border-blue-100 rounded-lg flex items-center gap-2 text-xs">
+                <span className="font-mono font-black text-[#2b6cb0] shrink-0">{selectedCompInfo.id}</span>
+                <span className="font-bold text-slate-700 truncate">{selectedCompInfo.name || "组件"}</span>
+              </div>
+            )}
+            <p className="text-xs text-slate-400 font-semibold mb-4 leading-normal">请选择要将该组件装配并运行的目标空间环境：</p>
             
             <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
               {/* 个人空间 */}
@@ -992,7 +1013,7 @@ export default function WorkspaceHub() {
                   </div>
                 </div>
 
-                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-700 font-medium leading-relaxed mb-5">
+                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-600 font-medium leading-relaxed mb-5">
                   ⚠️ <strong>安全提示：</strong>退出空间后，您将无法再访问和管理此空间。您在此空间产生的上述所有任务报告与关联数据将作为企业总数据<strong>安全留存归档</strong>，不会被物理删除。
                 </div>
 
@@ -1009,7 +1030,7 @@ export default function WorkspaceHub() {
                   <button
                     onClick={handleConfirmLeaveWorkspace}
                     disabled={submittingLeave}
-                    className="px-4.5 h-[38px] text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer transition-all shadow-sm flex items-center justify-center gap-1.5"
+                    className="px-4.5 h-[38px] text-xs font-bold bg-red-500 hover:bg-red-600 text-white rounded-lg cursor-pointer transition-all shadow-sm flex items-center justify-center gap-1.5"
                   >
                     {submittingLeave ? (
                       <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />

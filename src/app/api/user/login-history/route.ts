@@ -1,18 +1,18 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { validateUser } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 // 获取用户登录历史
 export async function GET(req: NextRequest) {
   try {
-    // middleware 已校验 JWT 并把真实 userId 注入 x-user-id
-    const userId =
-      req.headers.get("x-user-id") ||
-      req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (!userId) {
+    // 统一走合法 JWT 校验，禁止信任客户端伪造的 x-user-id 或明文 userId
+    const auth = await validateUser(req.headers.get("Authorization"), req);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
+    const userId = auth.user.id;
 
     const limit = parseInt(req.nextUrl.searchParams.get("limit") || "10");
 
@@ -36,13 +36,12 @@ export async function GET(req: NextRequest) {
 // 记录登录历史
   export async function POST(req: NextRequest) {
     try {
-      // middleware 已校验 JWT 并把真实 userId 注入 x-user-id
-      const userId =
-        req.headers.get("x-user-id") ||
-        req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (!userId) {
-      return NextResponse.json({ error: "未授权" }, { status: 401 });
-    }
+      // 统一走合法 JWT 校验，禁止信任客户端伪造的 x-user-id 或明文 userId
+      const auth = await validateUser(req.headers.get("Authorization"), req);
+      if (!auth.valid || !auth.user) {
+        return NextResponse.json({ error: "未授权" }, { status: 401 });
+      }
+      const userId = auth.user.id;
 
     const { ipAddress, userAgent, location, device } = await req.json();
 

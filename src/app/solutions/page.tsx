@@ -6,6 +6,7 @@ import { ArrowRight, CheckCircle, TrendingDown, TrendingUp, Clock, Users, Shield
 import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 
 type TabType = "integrator" | "government" | "outsourcing";
 
@@ -22,7 +23,7 @@ const tabContents: Record<TabType, TabContent> = {
     title: "软件集成商",
     subtitle: "售前打单成本降低 40%，项目交付周期缩短",
     highlights: [
-      "标书智能解析，快速响应招标需求要点",
+      "标书自动化解析，快速响应招标需求要点",
       "自动化技术方案生成，打造高水准标书",
       "需求分析与软件方案一键自动化产出",
       "交付质量标准化，消除后期实施风险",
@@ -34,9 +35,9 @@ const tabContents: Record<TabType, TabContent> = {
       { label: "交付满意度", value: "98%", change: "+18%", icon: <Users className="w-4 h-4" /> },
     ],
     benefits: [
-      { title: "标书智能解析", description: "提取招标要点与符合性条款，极速匹配响应策略", icon: <Code className="w-6 h-6" /> },
+      { title: "标书自动化解析", description: "提取招标要点与符合性条款，极速匹配响应策略", icon: <Code className="w-6 h-6" /> },
       { title: "方案自动生成", description: "根据业务需求自动编写专业架构设计与配置清单", icon: <Database className="w-6 h-6" /> },
-      { title: "报价辅助系统", description: "基于项目复杂度多维度智能估算成本，优化定价", icon: <TrendingUp className="w-6 h-6" /> },
+      { title: "报价辅助系统", description: "基于项目复杂度多维度自动化估算成本，优化定价", icon: <TrendingUp className="w-6 h-6" /> },
     ],
   },
   government: {
@@ -167,7 +168,7 @@ export default function SolutionsPage() {
   };
 
   // Hydration-safe UI text states
-  const [descText, setDescText] = useState("深入多业务核心痛点，针对不同商业主体与合规生态提供定制化算力底座，助力团队实现百倍效能跃升与资产安全隔离。");
+  const [descText, setDescText] = useState("深入多业务核心痛点，针对不同商业主体与合规生态提供定制化资源底座，助力团队实现百倍效能跃升与资产安全隔离。");
   const [btnText, setBtnText] = useState("免费咨询此解决方案");
   const [globalCtaText, setGlobalCtaText] = useState("申请专属行业架构咨询");
 
@@ -190,9 +191,10 @@ export default function SolutionsPage() {
     if (mounted && userState.isLoggedIn) {
       const fetchWorkspaceSolutions = async () => {
         try {
-          const userId = localStorage.getItem("userId") || userState.userInfo?.id;
+          const authToken = getAuthToken();
           const res = await fetch("/api/workspace/list", {
-            headers: userId ? { Authorization: `Bearer ${userId}` } : {},
+            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+            credentials: "include",
           });
           if (res.ok) {
             const data = await res.json();
@@ -227,7 +229,7 @@ export default function SolutionsPage() {
         );
         setGlobalCtaText(`提交定制架构咨询 (当前账号: ${userState.userInfo?.name || '开发者'})`);
       } else {
-        setDescText("深入多业务核心痛点，针对不同商业主体与合规生态提供定制化算力底座，助力团队实现百倍效能跃升与资产安全隔离。");
+        setDescText("深入多业务核心痛点，针对不同商业主体与合规生态提供定制化资源底座，助力团队实现百倍效能跃升与资产安全隔离。");
         setBtnText("免费咨询此解决方案");
         setGlobalCtaText("申请专属行业架构咨询");
       }
@@ -261,8 +263,9 @@ export default function SolutionsPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${userState.userInfo?.id || localStorage.getItem("userId")}`
+            "Authorization": `Bearer ${getAuthToken()}`
           },
+          credentials: "include",
           body: JSON.stringify({
             workspaceId: selectedWorkspaceId,
             solutionName: activeTab
@@ -453,7 +456,7 @@ export default function SolutionsPage() {
                     }
                   </div>
                   <div className="min-w-0">
-                    <p className={`text-xs font-black truncate ${isConfigured ? "text-emerald-700" : "text-[#2b6cb0]"}`}>
+                    <p className={`text-xs font-black truncate ${isConfigured ? "text-emerald-600" : "text-[#2b6cb0]"}`}>
                       💡 {isConfigured ? "当前方案已部署至此空间" : "建议：一键为当前空间配置此方案"}
                     </p>
                     <p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">
@@ -470,7 +473,7 @@ export default function SolutionsPage() {
                   }}
                   className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
                     isConfigured
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-md hover:-translate-y-0.5"
+                      ? "bg-emerald-600 hover:bg-emerald-600 text-white shadow-sm hover:shadow-md hover:-translate-y-0.5"
                       : "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-sm hover:shadow-md hover:-translate-y-0.5"
                   }`}
                 >
@@ -587,7 +590,7 @@ export default function SolutionsPage() {
       </section>
 
       {/* Scenario Applications (Dark Mode Feature Section) */}
-      <section className="relative py-20 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
+      <section className="relative py-20 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 overflow-hidden">
         {/* Dotted grid for dark section */}
         <div 
           className="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -677,7 +680,7 @@ export default function SolutionsPage() {
                 setConfigStep(0);
                 setConfigProgress(0);
               }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-650 cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 cursor-pointer"
               disabled={configStep > 0 && configStep < 4}
             >
               <X className="w-5 h-5" />
@@ -875,7 +878,7 @@ export default function SolutionsPage() {
           <div className="bg-white rounded-[16px] shadow-xl border border-slate-200 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 relative text-left">
             <button 
               onClick={() => setShowConsultModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-650 cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

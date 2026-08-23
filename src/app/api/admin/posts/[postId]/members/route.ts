@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/auth";
+import { isAdminRole, validateUser } from "@/lib/auth";
 
 /**
  * 岗位成员管理 API
@@ -12,16 +12,11 @@ import { isAdminRole } from "@/lib/auth";
 export async function POST(request: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
   try {
     // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const adminId = authHeader.replace("Bearer ", "");
+    const adminId = auth.user.id;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });
@@ -102,16 +97,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
   try {
     // 验证管理员权限
-    const authHeader = request.headers.get("authorization");
-    if (
-      !authHeader ||
-      authHeader === "Bearer null" ||
-      authHeader === "Bearer "
-    ) {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const adminId = authHeader.replace("Bearer ", "");
+    const adminId = auth.user.id;
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
     });

@@ -73,7 +73,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-[240px] flex-shrink-0 bg-[#eaf4fc] text-[#1e293b] flex flex-col border-r border-[var(--zhige-border)] shadow-xl md:shadow-none z-30 h-screen">
+    <aside className="w-[240px] flex-shrink-0 bg-[#ebf8ff] text-[#1e293b] flex flex-col border-r border-[var(--zhige-border)] shadow-xl md:shadow-none z-30 h-screen">
       {/* Logo Area */}
       <div className="h-16 flex items-center px-6 border-b border-[var(--zhige-border)] flex-shrink-0">
         <Logo variant="light" />
@@ -83,7 +83,7 @@ export default function Sidebar() {
       <div className="p-4 border-b border-[var(--zhige-border)]">
         <div className="bg-white rounded-[var(--radius-btn)] p-2 px-3 flex justify-between items-center cursor-pointer border border-[var(--zhige-border)] hover:border-[var(--zhige-primary)] transition shadow-sm">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#63b3ed] to-indigo-500 flex items-center justify-center text-white text-xs font-bold">
               A
             </div>
             <span className="text-sm font-medium">安泰集团</span>

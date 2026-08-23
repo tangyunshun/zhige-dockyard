@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { COMPONENTS } from "@/constants/components";
 import { hasPermission, PermissionAction, ResourceType } from "@/constants/roles";
 
 /**
@@ -9,17 +8,11 @@ import { hasPermission, PermissionAction, ResourceType } from "@/constants/roles
  */
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || authHeader === "Bearer null" || authHeader === "Bearer ") {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const authResult = await validateUser(request.headers.get("Authorization"), request);
+    if (!authResult.valid || !authResult.user) {
+      return NextResponse.json({ error: authResult.error || "UNAUTHORIZED" }, { status: 401 });
     }
-
-    const userId = authHeader.replace("Bearer ", "");
-    const authResult = await validateUser(authHeader);
-    
-    if (!authResult.valid) {
-      return NextResponse.json({ error: authResult.error }, { status: 401 });
-    }
+    const userId = authResult.user.id;
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
@@ -79,8 +72,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "岗位不存在" }, { status: 404 });
     }
 
-    // 获取所有组件
-    const allComponents = COMPONENTS;
+    // 获取所有组件（唯一数据源：component_catalog 表）
+    const allComponents = await prisma.componentcatalog.findMany({
+      where: { isPublished: true },
+      orderBy: { sortOrder: "asc" },
+    });
 
     // 构建权限矩阵
     const permissionMatrix = allComponents.map(component => ({

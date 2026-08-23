@@ -107,6 +107,7 @@ model user {
   userfeedback                                             userfeedback[]
   tenant                                                   tenant?               @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
   usernotification                                         usernotification?
+  notification                                             notification[]
   userpreference                                           userpreference?
   usersession                                              usersession[]
   stepuptoken                                              stepuptoken[]
@@ -323,6 +324,7 @@ model membershiplevel {
   maxTeamSize             BigInt                @default(5)
   maxStorage              BigInt                @default(1073741824)
   maxApiCalls             BigInt                @default(1000)
+  tokenLimit              BigInt                @default(10000)
   features                Json?
   priceMonthly            Int                   @default(0)
   priceYearly             Int                   @default(0)
@@ -460,11 +462,28 @@ model usernotification {
   projectUpdates     Boolean  @default(true)
   commentMentions    Boolean  @default(true)
   frequency          String   @default("REALTIME")
+  // 默认欢迎通知是否已注入（避免删除全部后再次冒出默认通知）
+  defaultsSeeded     Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime
   user               user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserNotification_userId_fkey")
 
   @@index([userId], map: "UserNotification_userId_idx")
+}
+
+// 用户通知消息（持久化存储，替代原内存 store；服务重启不丢失）
+model notification {
+  id        String   @id
+  userId    String
+  title     String
+  content   String
+  type      String   @default("system")
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Notification_userId_fkey")
+
+  @@index([userId, createdAt], map: "Notification_userId_createdAt_idx")
 }
 
 model userpreference {
@@ -811,4 +830,72 @@ model systemconfig {
   value     String?
   updatedAt DateTime @updatedAt
   @@map("system_config")
+}
+
+// ============ 组件目录（唯一数据源，禁止前端/后端代码写死组件信息） ============
+
+// 组件目录表：系统全部组件的元数据（名称/描述/分类/图标/标签/计费/预览/输入方式）。
+// 前端与后端一律通过 /api/studio?action=catalog 从本表读取，代码中不得再硬编码组件列表。
+model componentcatalog {
+  id              String    @id // C01-C53
+  name            String
+  description     String
+  category        String // 分类 key（BID_PREP / REQ_DESIGN / ...）
+  icon            String
+  tags            Json // string[]
+  isPremium       Boolean   @default(false)
+  estimatedTokens Int       @default(0)
+  previewData     Json // { inputMock, outputMock, roiText }
+  businessTags    Json? // string[]
+  inputMode       String    @default("text") // text | file | both
+  accept          String? // 文件上传支持的格式
+  hint            String? // 界面引导文案
+  detail          Json? // 深度详情：{ fullDescription, usage, apiDoc, faq }
+  isDefault       Boolean   @default(false) // 是否为新空间默认装配的 5 套件组件
+  contract        String? // 数据流动契约描述，如 "PDF ➜ 偏离表"
+  keywords        Json? // 智能搜索关键词 string[]，用于需求检索匹配组件
+  sortOrder       Int       @default(0)
+  isPublished     Boolean   @default(true)
+  usageCount      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([category], map: "ComponentCatalog_category_idx")
+  @@index([isPublished], map: "ComponentCatalog_isPublished_idx")
+  @@index([sortOrder], map: "ComponentCatalog_sortOrder_idx")
+  @@map("component_catalog")
+}
+
+// 组件分类表：阶段分类的显示名/主题色/组件范围。
+model componentcategory {
+  key       String   @id // BID_PREP / REQ_DESIGN / ...
+  name      String
+  color     String
+  range     String // 如 "C01-C06"
+  sortOrder Int      @default(0)
+
+  @@map("component_category")
+}
+
+// 岗位表：预置岗位 + 空间所有者自定义岗位统一定义（名称/徽标/默认组件授权矩阵）。
+// 预置岗位由 seed 一次性写入（isPreset=true），运行期由 /api/studio?action=positions 与配置中心读写。
+model position {
+  id                         String   @id // 如 pos_owner / pos_custom_xxx
+  code                       String   @unique // 如 OWNER / PROJECT_MANAGER / 自定义唯一码
+  name                       String
+  badge                      String?
+  icon                       String?
+  colorCls                   String? // Tailwind 徽章样式类
+  description                String?
+  isPreset                   Boolean  @default(true) // 预置岗位不可删除，仅可覆盖授权
+  editable                   Boolean  @default(true) // 是否允许空间所有者编辑
+  status                     String   @default("ACTIVE") // ACTIVE | DISABLED
+  defaultAllowedComponentIds Json? // string[] 默认允许组件 ID，null 表示不限制
+  sortOrder                  Int      @default(0)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([status], map: "Position_status_idx")
+  @@index([sortOrder], map: "Position_sortOrder_idx")
+  @@map("position")
 }

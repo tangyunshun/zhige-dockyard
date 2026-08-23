@@ -13,6 +13,7 @@ import {
   Check,
   Save,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 export default function UserSettingsPage() {
   const toast = useToast();
@@ -67,11 +68,10 @@ export default function UserSettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/settings", {
-        headers: { Authorization: `Bearer ${userId}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       if (res.ok) {
@@ -88,14 +88,13 @@ export default function UserSettingsPage() {
   const saveSettings = async () => {
     setLoading(true);
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/user/settings", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(settings),
       });
@@ -314,11 +313,11 @@ export default function UserSettingsPage() {
 
       {/* 显示密度 */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#8b5cf6]/10 to-[#7c3aed]/10 opacity-50 blur-3xl"></div>
+        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#8b5cf6]/10 to-[#805ad5]/10 opacity-50 blur-3xl"></div>
 
         <div className="relative">
           <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-            <div className="w-1 h-6 bg-gradient-to-b from-[#8b5cf6] to-[#7c3aed] rounded-full"></div>
+            <div className="w-1 h-6 bg-gradient-to-b from-[#8b5cf6] to-[#805ad5] rounded-full"></div>
             显示密度
           </h2>
 
@@ -416,7 +415,7 @@ export default function UserSettingsPage() {
         <button
           onClick={saveSettings}
           disabled={loading}
-          className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save className="w-5 h-5" />
           {loading ? "保存中..." : "保存设置"}

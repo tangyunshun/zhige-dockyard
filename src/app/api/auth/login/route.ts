@@ -497,7 +497,7 @@ export async function POST(request: NextRequest) {
             userId: user.id,
             workspaceId,
             role: 'OWNER',
-            updatedAt: nowTime,
+            joinedAt: nowTime,
           },
         });
 

@@ -83,7 +83,7 @@ export default function AvatarDropdown({
 
   const getRoleBadgeClass = () => {
     if (isSuperAdmin) return "bg-amber-50 text-amber-600 border-amber-100";
-    if (isPlatformAdmin) return "bg-rose-50 text-rose-600 border-rose-100";
+    if (isPlatformAdmin) return "bg-red-50 text-red-500 border-red-100";
     if (isEnterpriseAdmin) return "bg-blue-50 text-blue-600 border-blue-100";
     if (isComponentAdmin) return "bg-indigo-50 text-indigo-600 border-indigo-100";
     if (isKnowledgeAdmin) return "bg-emerald-50 text-emerald-600 border-emerald-100";
@@ -118,18 +118,18 @@ export default function AvatarDropdown({
             className="w-9 h-9 rounded-full object-cover border-2 border-white shadow-sm"
           />
         ) : (
-          <div className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold shadow-sm">
+          <span className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold shadow-sm shrink-0">
             {userInfo.name.charAt(0).toUpperCase()}
-          </div>
+          </span>
         )}
-        <div className="text-left hidden lg:block">
-          <p className="text-sm font-bold text-slate-800">
+        <span className="text-left hidden lg:flex flex-col leading-tight">
+          <span className="text-sm font-bold text-slate-800">
             {userInfo.name || "用户"}
-          </p>
-          <p className="text-xs text-slate-400 font-semibold mt-0.5">
+          </span>
+          <span className="text-xs text-slate-400 font-semibold mt-0.5">
             {userInfo.email || "未绑定邮箱"}
-          </p>
-        </div>
+          </span>
+        </span>
         <svg
           className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
             showDropdown ? "rotate-180" : ""
@@ -162,28 +162,28 @@ export default function AvatarDropdown({
           <div className="space-y-0.5">
             <button
               onClick={() => { router.push("/user/profile"); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-650 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"
+              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"
             >
               <User className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">个人中心</span>
             </button>
             <button
               onClick={() => { router.push("/user/security"); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-650 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"
+              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"
             >
               <Lock className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">账号安全</span>
             </button>
             <button
               onClick={() => { router.push("/user/membership"); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-650 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
+              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
             >
               <CreditCard className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">会员与额度</span>
             </button>
             <button
               onClick={() => { router.push("/user/developer"); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-650 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
+              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
             >
               <Code className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">开发者设置</span>
@@ -207,7 +207,7 @@ export default function AvatarDropdown({
                     <span className={`px-1.5 py-0.2 rounded text-[8px] font-black shrink-0 select-none border shadow-sm ${
                       isSuperAdmin 
                         ? "bg-amber-50 text-amber-600 border-amber-100" 
-                        : "bg-rose-50 text-rose-600 border-rose-100"
+                        : "bg-red-50 text-red-500 border-red-100"
                     }`}>
                       {isSuperAdmin ? "超管" : "管理"}
                     </span>
@@ -230,9 +230,9 @@ export default function AvatarDropdown({
             </button>
             <button
               onClick={() => { handleLogout(); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50/60 transition-all cursor-pointer"
+              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50/60 transition-all cursor-pointer"
             >
-              <LogOut className="w-4 h-4 text-rose-500 group-hover:translate-x-0.5 transition-transform" />
+              <LogOut className="w-4 h-4 text-red-500 group-hover:translate-x-0.5 transition-transform" />
               <span>退出登录</span>
             </button>
           </div>

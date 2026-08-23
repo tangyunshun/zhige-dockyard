@@ -120,7 +120,7 @@ export default function VerifyCrossRegionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-[16px] shadow-xl border border-gray-100 p-8">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
@@ -157,7 +157,7 @@ export default function VerifyCrossRegionPage() {
         </div>
 
         {error && <p className="text-sm text-red-500 mb-2">{error}</p>}
-        {!error && notice && <p className="text-sm text-green-600 mb-2">{notice}</p>}
+        {!error && notice && <p className="text-sm text-emerald-600 mb-2">{notice}</p>}
 
         <button
           type="button"

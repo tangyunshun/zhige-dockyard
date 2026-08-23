@@ -1,16 +1,15 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
 
 // GET - 获取用户仪表板统计信息
 export async function GET(request: NextRequest) {
   try {
-    const userId =
-      request.headers.get("x-user-id") ||
-      request.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
+    const userId = auth.user.id;
 
     // 获取工作空间数量
     const workspaceCount = await prisma.workspace.count({

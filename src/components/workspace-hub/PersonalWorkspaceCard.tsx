@@ -66,7 +66,7 @@ export default function PersonalWorkspaceCard({
         );
       case "PARALLEL":
         return (
-          <span className="px-2.5 py-0.5 bg-orange-50 text-orange-600 text-xs font-bold rounded border-none flex items-center gap-1 shrink-0">
+          <span className="px-2.5 py-0.5 bg-amber-50 text-amber-600 text-xs font-bold rounded border-none flex items-center gap-1 shrink-0">
             <span>并行升级中</span>
           </span>
         );
@@ -205,7 +205,12 @@ export default function PersonalWorkspaceCard({
 
           <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
             <button
-              onClick={() => workspace && onEnter(workspace)}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (workspace) {
+                  onEnter(workspace);
+                }
+              }}
               className="zg-btn zg-btn-primary px-4.5 h-[38px] text-sm font-semibold rounded-lg flex items-center gap-1.5 hover:-translate-y-0.5 transition-all cursor-pointer bg-gradient-to-b from-[#4299e1] to-[#3182ce] hover:brightness-105 border-t border-[#63b3ed] text-white shadow-sm shrink-0"
             >
               <span>进入空间</span>
@@ -251,7 +256,7 @@ export default function PersonalWorkspaceCard({
                       setMenuOpen(false);
                       if (workspace) onDelete(workspace.id);
                     }}
-                    className="w-full text-left px-3.5 py-2 text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 flex items-center gap-2"
+                    className="w-full text-left px-3.5 py-2 text-xs font-bold text-red-600 hover:text-red-600 hover:bg-red-50 flex items-center gap-2"
                   >
                     <RefreshCw className="w-3.5 h-3.5 text-red-600" />
                     <span>注销个人空间</span>
@@ -265,7 +270,7 @@ export default function PersonalWorkspaceCard({
         {showUpgradeLink && state === "NORMAL" && (
           <div className="p-3.5 bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white border border-blue-100/50 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 leading-normal">
-              ✨ 需要团队协作时，可将个人空间升级为企业空间，保留已有组件与数据。
+              需要团队协作时，可将个人空间升级为企业空间，保留已有组件与数据。
             </span>
             <button
               onClick={onUpgrade}

@@ -15,11 +15,16 @@
   --zhige-primary: #3182ce;
   --zhige-primary-hover: #2b6cb0;
   --zhige-primary-light: #ebf8ff;
-  --zhige-success: #10b981; 
+  --zhige-primary-600: #2b6cb0;
+  --zhige-primary-400: #63b3ed;
+  --zhige-success: #10b981;
+  --zhige-success-600: #059669;
   --zhige-success-light: #ecfdf5;
-  --zhige-warning: #f59e0b; 
+  --zhige-warning: #f59e0b;
+  --zhige-warning-600: #d97706;
   --zhige-warning-light: #fffbeb;
-  --zhige-danger: #ef4444;  
+  --zhige-danger: #ef4444;
+  --zhige-danger-600: #dc2626;
   --zhige-danger-light: #fef2f2;
   
   --zhige-text-main: #0f172a; 
@@ -54,6 +59,20 @@
 
   /* 安全最大容器宽度限制 */
   --max-content-width: 1440px;
+}
+
+/* 强制彻底抹除全网一切浏览器原生 Scrollbar 与滚动箭头 */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 
 /* ===================================
@@ -508,4 +527,75 @@ body {
 
 .animate-fade-in {
   animation: fade-in 0.6s ease-out forwards;
+}
+
+/* ===================================
+   跨平台操作系统自适应层 (Cross-Platform OS Adaptation)
+   通过 <html data-os> / <html data-form> 标记，全站统一适配桌面/移动/触屏
+   =================================== */
+
+/* 1. 触屏设备：放大可点击目标，避免依赖 hover 才显现的操作 */
+html[data-form="mobile"] button,
+html[data-form="mobile"] a,
+html[data-form="mobile"] [role="button"],
+html[data-form="mobile"] .zg-btn {
+  min-height: 40px;
+  touch-action: manipulation; /* 去除 300ms 点击延迟 */
+}
+html[data-form="mobile"] input,
+html[data-form="mobile"] textarea,
+html[data-form="mobile"] select {
+  font-size: 16px; /* 防止 iOS 聚焦时自动缩放 */
+  min-height: 42px;
+}
+
+/* 2. 触屏设备：弱化 hover 依赖（hover 在触屏上无意义），保留 :active 反馈 */
+html[data-touch="true"] .group:hover,
+html[data-touch="true"] [class*="hover:"] {
+  /* 触屏下 hover 态不强依赖，由 :active / 选中态提供反馈 */
+}
+html[data-touch="true"] ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 3. 桌面端：启用更明显的 hover 过渡（触屏已弱化） */
+html[data-touch="false"] .zg-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ===================================
+   系统级高清晰字体栈 (System Font Stack)
+   支持 Windows / macOS / Linux / iOS / Android 零开销清晰排版
+   =================================== */
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑",
+    "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  line-height: 1.6;
+}
+
+/* 针对代码块/数字/仪表盘/表格数据等宽高可读性字体 */
+.code, .number, .mono, .font-mono, code, pre, th, td {
+  font-variant-numeric: tabular-nums;
+}
+.code, .number, .mono, .font-mono, code, pre {
+  font-family:
+    "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas",
+    "SF Mono", "Roboto Mono", "Courier New", monospace;
+}
+
+/* 6. 移动端底部安全区内边距（配合底部导航） */
+.zg-bottom-safe {
+  padding-bottom: calc(0.5rem + var(--zg-safe-bottom, 0px));
+}
+
+/* 7. 全站滚动条在桌面端保持纤细，触屏端隐藏 */
+html[data-touch="true"] {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }

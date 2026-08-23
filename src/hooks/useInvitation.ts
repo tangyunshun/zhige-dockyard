@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Workspace } from "./useWorkspaceHubData";
+import { getAuthToken } from "@/utils/auth";
 
 interface UseInvitationProps {
   refresh: () => void;
@@ -33,27 +34,28 @@ export function useInvitation({ refresh }: UseInvitationProps) {
   const [expiresInDays, setExpiresInDays] = useState<number>(7);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
+  // 获取当前鉴权凭证：以真实 JWT auth_token 为准，未登录时引导重新登录
   const checkUserId = () => {
-    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-    if (!userId) {
+    const authToken = getAuthToken();
+    if (!authToken) {
       toast.error("会话已过期，请重新登录");
       localStorage.removeItem("userId");
       localStorage.removeItem("userRole");
       router.push("/auth/login");
       return null;
     }
-    return userId;
+    return authToken;
   };
 
   const handleDirectJoin = async (code: string) => {
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       // 1. 静默验证邀请码以获取空间基本信息
       const verifyRes = await fetch(`/api/workspace/invitation/verify?code=${code}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
       if (!verifyRes.ok) return;
@@ -64,7 +66,7 @@ export function useInvitation({ refresh }: UseInvitationProps) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           invitationCode: code,
@@ -100,10 +102,10 @@ export function useInvitation({ refresh }: UseInvitationProps) {
       setInvitationCode(codeFromUrl);
     }
 
-    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+    const authToken = getAuthToken();
     const pendingCode = sessionStorage.getItem("pendingInviteCode") || localStorage.getItem("pendingInviteCode");
 
-    if (!userId) {
+    if (!authToken) {
       // 未登录状态：如果带有邀请码，重定向到登录页去进行 Onboarding (带上重定向参数以透传全链路)
       if (pendingCode) {
         console.log("检测到协同邀请，已暂存凭证，即将重定向到登录/注册页面...");
@@ -131,12 +133,12 @@ export function useInvitation({ refresh }: UseInvitationProps) {
     if (!code) return;
     try {
       setVerifyingCode(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch(`/api/workspace/invitation/verify?code=${code}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -169,14 +171,14 @@ export function useInvitation({ refresh }: UseInvitationProps) {
 
     try {
       setJoiningCode(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/join", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           invitationCode,
@@ -212,12 +214,12 @@ export function useInvitation({ refresh }: UseInvitationProps) {
     const target = wsId || selectedWorkspace;
     if (!target) return;
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch(`/api/workspace/members?workspaceId=${target}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
       if (!res.ok) {
@@ -270,12 +272,12 @@ export function useInvitation({ refresh }: UseInvitationProps) {
 
   const loadShareableWorkspaces = async () => {
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/shareable-list", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -312,14 +314,14 @@ export function useInvitation({ refresh }: UseInvitationProps) {
 
     try {
       setGenerating(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/invitation/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           workspaceId: selectedWorkspace,
@@ -361,7 +363,7 @@ export function useInvitation({ refresh }: UseInvitationProps) {
   };
 
   const handleCopyInvitation = (code: string, invitationUrl: string) => {
-    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、智能的团队研发协同中枢，让开发化繁为简。`;
+    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、自动化的团队研发协同中枢，让开发化繁为简。`;
     navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("已复制到剪贴板");
@@ -370,14 +372,14 @@ export function useInvitation({ refresh }: UseInvitationProps) {
 
   const handleDeleteInvitation = async (invitationId: string) => {
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/invitation/delete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ invitationId }),
       });
@@ -395,14 +397,14 @@ export function useInvitation({ refresh }: UseInvitationProps) {
 
   const handleRevokeInvitation = async (invitationId: string) => {
     try {
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const res = await fetch("/api/workspace/invitation/delete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ invitationId, action: "revoke" }),
       });

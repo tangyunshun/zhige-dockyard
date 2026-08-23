@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 
 interface UsePersonalWorkspaceProps {
   refresh: () => void;
@@ -13,29 +14,32 @@ export function usePersonalWorkspace({ refresh }: UsePersonalWorkspaceProps) {
   const toast = useToast();
   const [creatingPersonal, setCreatingPersonal] = useState(false);
 
+  // 获取当前鉴权凭证：以真实 JWT auth_token 为准，未登录时引导重新登录
   const checkUserId = () => {
-    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : "";
-    if (!userId) {
+    const authToken = getAuthToken();
+    if (!authToken) {
       toast.error("会话已过期，请重新登录");
       localStorage.removeItem("userId");
       localStorage.removeItem("userRole");
       router.push("/auth/login");
       return null;
     }
-    return userId;
+    return authToken;
   };
 
   const handleCreatePersonal = async () => {
     try {
       setCreatingPersonal(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const createRes = await fetch("/api/workspace/create-personal", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (createRes.ok) {
@@ -61,14 +65,16 @@ export function usePersonalWorkspace({ refresh }: UsePersonalWorkspaceProps) {
   const handleRecreatePersonal = async () => {
     try {
       setCreatingPersonal(true);
-      const userId = checkUserId();
-      if (!userId) return;
+      const authToken = getAuthToken();
+      if (!authToken) return;
 
       const createRes = await fetch("/api/workspace/create-personal", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (createRes.ok) {

@@ -120,11 +120,11 @@ export default function InitWizard() {
 
   if (step === 3) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="bg-white rounded-[var(--radius-card)] shadow-xl p-8 text-center">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-12 h-12 text-green-500" />
+            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-12 h-12 text-emerald-500" />
             </div>
             <h2 className="text-2xl font-bold text-slate-800 mb-2">
               系统初始化完成！
@@ -143,10 +143,10 @@ export default function InitWizard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4">
       <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8">
         {/* 左侧品牌区 */}
-        <div className="hidden md:flex flex-col justify-center items-center bg-gradient-to-br from-[var(--zhige-primary)] to-[#1e3a8a] rounded-[var(--radius-card)] p-8 text-white shadow-2xl">
+        <div className="hidden md:flex flex-col justify-center items-center bg-gradient-to-br from-[var(--zhige-primary)] to-[#1a365d] rounded-[var(--radius-card)] p-8 text-white shadow-2xl">
           <div className="w-24 h-24 mb-6 bg-white/10 rounded-[var(--radius-card)] flex items-center justify-center backdrop-blur-sm">
             <Shield className="w-14 h-14" />
           </div>
@@ -158,16 +158,16 @@ export default function InitWizard() {
           </p>
           <div className="space-y-3 w-full">
             <div className="flex items-center gap-3 bg-white/10 rounded-[var(--radius-btn)] px-4 py-3 backdrop-blur-sm">
-              <CheckCircle className="w-5 h-5 text-green-300" />
+              <CheckCircle className="w-5 h-5 text-emerald-300" />
               <span className="text-sm">企业级安全架构</span>
             </div>
             <div className="flex items-center gap-3 bg-white/10 rounded-[var(--radius-btn)] px-4 py-3 backdrop-blur-sm">
-              <CheckCircle className="w-5 h-5 text-green-300" />
+              <CheckCircle className="w-5 h-5 text-emerald-300" />
               <span className="text-sm">全链路效能提升</span>
             </div>
             <div className="flex items-center gap-3 bg-white/10 rounded-[var(--radius-btn)] px-4 py-3 backdrop-blur-sm">
-              <CheckCircle className="w-5 h-5 text-green-300" />
-              <span className="text-sm">智能驱动</span>
+              <CheckCircle className="w-5 h-5 text-emerald-300" />
+              <span className="text-sm">自动化驱动</span>
             </div>
           </div>
         </div>
@@ -335,11 +335,11 @@ export default function InitWizard() {
                           className={`flex-1 h-1.5 rounded-full transition-colors ${
                             level <= passwordStrength.score
                               ? passwordStrength.score === 5
-                                ? "bg-green-500"
+                                ? "bg-emerald-500"
                                 : level <= 2
                                 ? "bg-red-500"
                                 : level <= 4
-                                ? "bg-orange-500"
+                                ? "bg-amber-500"
                                 : "bg-yellow-500"
                               : "bg-slate-200"
                           }`}

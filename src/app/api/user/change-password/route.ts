@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { addNotification } from "@/lib/notifications-store";
 import { assertCSRF } from "@/lib/csrf";
+import { validateUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,11 +13,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "CSRF_INVALID", message: "请求来源校验失败" }, { status: 403 });
     }
 
-    const userId = request.headers.get("Authorization")?.replace("Bearer ", "");
-
-    if (!userId) {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
+    const userId = auth.user.id;
 
     const { currentPassword, newPassword, forceChange } = await request.json();
 
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     // I-02：密码被改实时通知用户（防黑客静默攻击）
     try {
-      addNotification(
+      await addNotification(
         userId,
         "密码已修改",
         "您的账号密码已被修改，所有设备已强制下线。若非本人操作，请立即联系客服。",

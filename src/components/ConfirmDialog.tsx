@@ -44,17 +44,17 @@ export function ConfirmDialog({
   const typeConfig = {
     danger: {
       iconColor: "text-red-600",
-      confirmBg: "bg-red-600 hover:bg-red-700",
+      confirmBg: "bg-red-600 hover:bg-red-600",
       iconBg: "bg-red-50",
     },
     warning: {
-      iconColor: "text-orange-600",
-      confirmBg: "bg-orange-600 hover:bg-orange-700",
-      iconBg: "bg-orange-50",
+      iconColor: "text-amber-600",
+      confirmBg: "bg-amber-600 hover:bg-amber-600",
+      iconBg: "bg-amber-50",
     },
     info: {
       iconColor: "text-blue-600",
-      confirmBg: "bg-blue-600 hover:bg-blue-700",
+      confirmBg: "bg-blue-600 hover:bg-[#2b6cb0]",
       iconBg: "bg-blue-50",
     },
   };
@@ -120,18 +120,18 @@ export function ConfirmDialog({
 
           {/* 警告信息 */}
           {warnings.length > 0 && (
-            <div className="ml-16 mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <div className="ml-16 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <div className="flex-1">
-                  <p className="text-xs font-bold text-orange-800 mb-1">
+                  <p className="text-xs font-bold text-[#d97706] mb-1">
                     注意事项：
                   </p>
                   <ul className="space-y-0.5">
                     {warnings.map((warning, index) => (
-                      <li key={index} className="text-xs text-orange-700">
+                      <li key={index} className="text-xs text-amber-600">
                         • {warning}
                       </li>
                     ))}

@@ -249,30 +249,46 @@ async function loadPermissionsMapping(): Promise<Record<string, string[]>> {
   }
 
   let mapping: Record<string, string[]> = {};
+  // 读取 DB / 文件失败时不允许向调用方（如 /api/auth/me）抛出异常，
+  // 必须回退到 JSON 文件或内存缓存，保证普通认证接口不 500。
   try {
     const row = await prisma.systemconfig.findUnique({
       where: { key: ADMIN_PERMISSIONS_CONFIG_KEY },
     });
     if (row?.value) {
-      mapping = JSON.parse(row.value);
+      try {
+        mapping = JSON.parse(row.value);
+      } catch (parseError) {
+        // DB 值损坏（可能曾被截断写入）：记录 warning 并回退 JSON 文件
+        console.warn("[权限] systemconfig 中权限映射 JSON 解析失败，回退 JSON 文件:", parseError);
+        if (fs.existsSync(PERMISSIONS_FILE)) {
+          const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
+          mapping = JSON.parse(data);
+        }
+      }
     } else if (fs.existsSync(PERMISSIONS_FILE)) {
-      // DB 无记录时，从 JSON 文件一次性迁移
+      // DB 无记录时，从 JSON 文件一次性迁移；写入失败（如 P2000 列容量超限）不得阻断读取，
+      // 仅记录 warning，后续继续使用文件内容作为可靠回退。
       const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
       mapping = JSON.parse(data);
-      await prisma.systemconfig.upsert({
-        where: { key: ADMIN_PERMISSIONS_CONFIG_KEY },
-        create: {
-          key: ADMIN_PERMISSIONS_CONFIG_KEY,
-          value: JSON.stringify(mapping),
-        },
-        update: {
-          value: JSON.stringify(mapping),
-        },
-      });
-      console.log("[权限] 已将 admin-permissions.json 迁移至 systemconfig 表");
+      try {
+        await prisma.systemconfig.upsert({
+          where: { key: ADMIN_PERMISSIONS_CONFIG_KEY },
+          create: {
+            key: ADMIN_PERMISSIONS_CONFIG_KEY,
+            value: JSON.stringify(mapping),
+          },
+          update: {
+            value: JSON.stringify(mapping),
+          },
+        });
+        console.log("[权限] 已将 admin-permissions.json 迁移至 systemconfig 表");
+      } catch (upsertError) {
+        console.warn("[权限] 权限映射写入 systemconfig 失败（可能超过列容量），本次继续使用 JSON 文件回退:", upsertError);
+      }
     }
   } catch (error) {
-    console.error("读取管理员权限包失败:", error);
+    console.error("读取管理员权限包失败，回退 JSON 文件:", error);
     try {
       if (fs.existsSync(PERMISSIONS_FILE)) {
         const data = fs.readFileSync(PERMISSIONS_FILE, "utf-8");
@@ -318,25 +334,53 @@ export async function saveAdminPermissions(
   userId: string,
   permissions: string[]
 ): Promise<boolean> {
+  let mapping: Record<string, string[]>;
   try {
-    const mapping = await loadPermissionsMapping();
-    mapping[userId] = permissions;
+    mapping = await loadPermissionsMapping();
+  } catch (error) {
+    console.error("加载管理员权限映射失败，无法保存:", error);
+    return false;
+  }
+
+  mapping[userId] = permissions;
+  const json = JSON.stringify(mapping);
+
+  // 1. 优先写入 DB（systemconfig），写入失败（如 P2000 列容量超限）不阻断后续回退
+  let dbOk = false;
+  try {
     await prisma.systemconfig.upsert({
       where: { key: ADMIN_PERMISSIONS_CONFIG_KEY },
       create: {
         key: ADMIN_PERMISSIONS_CONFIG_KEY,
-        value: JSON.stringify(mapping),
+        value: json,
       },
       update: {
-        value: JSON.stringify(mapping),
+        value: json,
       },
     });
-    invalidatePermissionsCache();
-    return true;
-  } catch (error) {
-    console.error("保存管理员权限包失败:", error);
-    return false;
+    dbOk = true;
+  } catch (dbError) {
+    console.warn("[权限] 权限映射写入 systemconfig 失败（可能超过列容量），回退 JSON 文件:", dbError);
   }
+
+  // 2. 尽力持久化到 JSON 文件（与 loadPermissionsMapping 的可靠回退源保持一致）
+  let fileOk = false;
+  if (!dbOk) {
+    try {
+      fs.writeFileSync(PERMISSIONS_FILE, json, "utf-8");
+      fileOk = true;
+    } catch (fileError) {
+      console.error("[权限] 权限映射写入 JSON 文件失败:", fileError);
+    }
+  }
+
+  // 3. 无论如何更新内存缓存，保证进程内权限立即生效（认证接口始终能读到最新结果）
+  globalForPerms.adminPermissionsCache = {
+    mapping,
+    fetchedAt: Date.now(),
+  };
+
+  return dbOk || fileOk;
 }
 
 /**
@@ -351,7 +395,8 @@ export async function requirePlatformAuth(
   errorResponse?: Response;
 }> {
   const authHeader = request.headers.get("authorization");
-  let authResult = await validateUser(authHeader);
+  // 统一走合法 JWT 校验（同时交叉校验 x-user-id，拒绝客户端伪造的明文身份）
+  let authResult = await validateUser(request.headers.get("authorization"), request as any);
 
   // 双保险机制：如果 header 校验失败，尝试从 Request Cookie 中提取并解析 auth_token JWT
   if (!authResult.valid) {
@@ -417,7 +462,14 @@ export async function requirePlatformAuth(
     if (!requiredPermission) {
       return { authorized: true, user }; // 仅要求管理员权限
     }
-    const permissions = await getAdminPermissions(user.id);
+    let permissions: string[] = [];
+    try {
+      permissions = await getAdminPermissions(user.id);
+    } catch (permError) {
+      // 权限包读取失败（如 systemconfig 列容量 P2000 等）不得阻断认证：
+      // 仅记录 warning，本次按空权限包处理，绝不默认放开全部权限。
+      console.warn("[权限] 读取平台管理员权限包失败，本次按空权限包处理:", permError);
+    }
     if (permissions.includes(requiredPermission)) {
       return { authorized: true, user };
     }
@@ -470,6 +522,23 @@ export async function getLogicalWorkspaceRole(
     return "VIEWER";
   }
 
+  // 查询扩展岗位变更日志
+  const roleLog = await prisma.operationlog.findFirst({
+    where: {
+      workspaceId,
+      action: "UPDATE_MEMBER_ROLE",
+      resource: userId,
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (roleLog && roleLog.details) {
+    const extRole = (roleLog.details as any)?.newRole;
+    if (extRole) {
+      return extRole as any;
+    }
+  }
+
   const physicalRole = member.role.toUpperCase();
   if (physicalRole === "OWNER") return "OWNER";
   if (physicalRole === "ADMIN") return "ADMIN";
@@ -517,6 +586,24 @@ export async function getLogicalWorkspaceRolesBatch(
     postsByWorkspace.set(p.workspaceId, arr);
   }
 
+  // 4. 一次性批量查询最新的扩展岗位变更日志
+  const roleLogs = await prisma.operationlog.findMany({
+    where: {
+      workspaceId: { in: workspaceIds },
+      action: "UPDATE_MEMBER_ROLE",
+      resource: userId,
+    },
+    orderBy: { createdAt: "asc" }
+  });
+
+  const extRoleMap = new Map<string, string>();
+  roleLogs.forEach(log => {
+    const ext = (log.details as any)?.newRole;
+    if (ext && log.workspaceId) {
+      extRoleMap.set(log.workspaceId, ext);
+    }
+  });
+
   for (const wsId of workspaceIds) {
     const ownerId = workspaceMap.get(wsId);
     if (ownerId === userId) {
@@ -527,6 +614,12 @@ export async function getLogicalWorkspaceRolesBatch(
     const member = memberMap.get(wsId);
     if (!member) {
       result.set(wsId, null);
+      continue;
+    }
+
+    const extRole = extRoleMap.get(wsId);
+    if (extRole) {
+      result.set(wsId, extRole as any);
       continue;
     }
 

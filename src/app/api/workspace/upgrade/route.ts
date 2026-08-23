@@ -250,6 +250,7 @@ export async function POST(request: NextRequest) {
           userId,
           workspaceId: newWorkspaceId,
           role: "OWNER",
+          joinedAt: new Date(),
         },
       });
 

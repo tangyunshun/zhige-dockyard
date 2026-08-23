@@ -42,7 +42,7 @@ const DEFAULT_PLANS: PricingPlan[] = [
     features: [
       { text: "1 个个人空间", included: true },
       { text: "基础组件访问", included: true },
-      { text: "每月 1000 Token 配额", included: true },
+      { text: "每月 1000 调用额度", included: true },
       { text: "社区技术支持", included: true },
       { text: "企业空间创建", included: false },
       { text: "团队协作功能", included: false },
@@ -64,12 +64,12 @@ const DEFAULT_PLANS: PricingPlan[] = [
     features: [
       { text: "3 个企业空间", included: true },
       { text: "全部 53 个组件", included: true },
-      { text: "每月 100000 Token 配额", included: true },
+      { text: "每月 100000 调用额度", included: true },
       { text: "优先技术支持", included: true },
       { text: "团队协作功能", included: true },
       { text: "岗位权限配置", included: true },
       { text: "私有化部署", included: false },
-      { text: "专属模型微调", included: false },
+      { text: "专属定制服务", included: false },
     ],
   },
   {
@@ -85,11 +85,11 @@ const DEFAULT_PLANS: PricingPlan[] = [
     features: [
       { text: "无限企业空间", included: true },
       { text: "全部 53 个组件", included: true },
-      { text: "无限 Token 配额", included: true },
+      { text: "无限调用额度", included: true },
       { text: "7x24 专属支持", included: true },
       { text: "私有化部署", included: true },
       { text: "源码级二开支持", included: true },
-      { text: "专属模型微调", included: true },
+      { text: "专属定制服务", included: true },
       { text: "定制化开发", included: true },
     ],
   },
@@ -103,7 +103,7 @@ const featureMatrix = [
     CROWN: "全部 (53个)",
   },
   {
-    feature: "Token 配额",
+    feature: "调用额度",
     FREE: "1,000/月",
     SILVER: "100,000/月",
     CROWN: "无限",
@@ -316,7 +316,7 @@ export default function PricingPage() {
               </span>
             </div>
             {userState.isLoggedIn && (
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-[#3182ce]/10 to-purple-500/10 backdrop-blur-md rounded-full border border-blue-300/20 shadow-sm animate-fade-in">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-[#3182ce]/10 to-purple-500/10 backdrop-blur-md rounded-full border border-[#63b3ed]/20 shadow-sm animate-fade-in">
                 <span className="text-xs text-slate-700 font-bold">
                   您当前的订阅方案为：
                   <span className="text-[#2b6cb0] font-black ml-1">
@@ -414,7 +414,7 @@ export default function PricingPage() {
                   )}
 
                   {isCurrentPlan && !plan.popular && (
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-md">
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-md">
                       当前订阅方案
                     </div>
                   )}
@@ -525,16 +525,16 @@ export default function PricingPage() {
 
             {/* 卡片 2 */}
             <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
-              <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center mb-4 text-[#dd6b20]">
+              <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center mb-4 text-[#d97706]">
                 <Server className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">每月 Token 额度</h3>
+              <h3 className="text-base font-black text-slate-800 mb-2">每月调用额度</h3>
               <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
-                提供更多的 AI 算力 Token 额度，避免在开发或调用大算力组件时额度不足。
+                提供更多的组件调用额度，避免在开发或调用高性能组件时额度不足。
               </p>
-              <div className="bg-orange-50/30 rounded-lg p-3 border border-orange-100/50">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">每月 Token 额度</span>
-                <span className="text-xs text-slate-700 font-bold">1,000 Token ➔ <span className="text-[#dd6b20] font-black">100,000 Token</span></span>
+              <div className="bg-amber-50/30 rounded-lg p-3 border border-amber-100/50">
+                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">每月调用额度</span>
+                <span className="text-xs text-slate-700 font-bold">1,000 额度 ➔ <span className="text-[#d97706] font-black">100,000 额度</span></span>
               </div>
             </div>
 
@@ -557,7 +557,7 @@ export default function PricingPage() {
 
             {/* 卡片 4 */}
             <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
-              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-4 text-[#38a169]">
+              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-4 text-[#059669]">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
@@ -568,7 +568,7 @@ export default function PricingPage() {
               </p>
               <div className="bg-emerald-50/30 rounded-lg p-3 border border-emerald-100/50">
                 <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">高级组件支持</span>
-                <span className="text-xs text-slate-700 font-bold">6 个体验组件 ➔ <span className="text-[#38a169] font-black">解锁全部 53 个高级组件</span></span>
+                <span className="text-xs text-slate-700 font-bold">6 个体验组件 ➔ <span className="text-[#059669] font-black">解锁全部 53 个高级组件</span></span>
               </div>
             </div>
           </div>
@@ -650,7 +650,7 @@ export default function PricingPage() {
       </section>
 
       {/* Pricing bottom upgrade banner */}
-      <section className="relative py-20 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
+      <section className="relative py-20 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 overflow-hidden">
         {/* Dotted dark grid */}
         <div 
           className="absolute inset-0 opacity-[0.03] pointer-events-none"

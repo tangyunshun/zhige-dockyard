@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Shield, Building2, Lock, Users, ArrowRight } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 interface Workspace {
   id: string;
@@ -26,8 +27,8 @@ export default function SelectWorkspaceForMatrixPage() {
 
   const loadWorkspaces = async () => {
     try {
-      const userId = localStorage.getItem("userId");
-      if (!userId) {
+      const authToken = getAuthToken();
+      if (!authToken) {
         console.error("未找到用户 ID");
         setLoading(false);
         return;
@@ -35,7 +36,7 @@ export default function SelectWorkspaceForMatrixPage() {
       
       const res = await fetch("/api/workspace/list", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 

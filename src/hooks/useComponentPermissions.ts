@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ComponentPermission } from "@/types/workspace-hub";
+import { getAuthToken } from "@/utils/auth";
 
 interface UseComponentPermissionsReturn {
   permissions: Record<string, ComponentPermission>;
@@ -30,8 +31,9 @@ export function useComponentPermissions(
     try {
       const response = await fetch(`/api/user/workspace-hub/posts?workspaceId=${workspaceId}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
+        credentials: "include",
       });
 
       if (!response.ok) {

@@ -73,46 +73,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 如果是个人空间，只重置关联数据而不禁用该工作空间
-    if (workspace.type === "PERSONAL") {
-      // 删除个人空间的所有岗位
-      await prisma.workspacepost.deleteMany({
-        where: { workspaceId },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: "个人工作空间数据已成功清空重置",
-      });
-    }
-
-    // 删除工作空间的所有成员（除了 owner）
-    await prisma.workspacemember.deleteMany({
-      where: {
-        workspaceId,
-        role: {
-          not: "OWNER",
-        },
-      },
+    // 执行真正的空间数据物理清空重置 (彻底清空该空间下所有历史任务、文档资料与知识规约)
+    // 1. 删除组件任务运行历史（任务按 tenantId 关联工作空间）
+    await prisma.componenttask.deleteMany({
+      where: { tenantId: workspaceId },
     });
 
-    // 删除工作空间的所有岗位
-    await prisma.workspacepost.deleteMany({
+    // 2. 删除归档文档资料与分析报告（含 knowledge 类型的知识库条目）
+    await prisma.document.deleteMany({
       where: { workspaceId },
-    });
-
-    // 更新工作空间状态为禁用
-    await prisma.workspace.update({
-      where: { id: workspaceId },
-      data: {
-        status: "DISABLED",
-        updatedAt: new Date(),
-      },
     });
 
     return NextResponse.json({
       success: true,
-      message: "工作空间数据已清空",
+      message: "工作空间核心业务数据、执行历史与归档文档已全量物理清空重置",
     });
   } catch (error) {
     console.error("Clear workspace data error:", error);

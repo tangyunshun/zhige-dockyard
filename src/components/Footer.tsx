@@ -5,7 +5,7 @@ import { Hexagon } from "lucide-react";
 export default function Footer() {
   return (
     <footer className="relative pt-20 pb-10">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1e40af] via-[#2b6cb0] to-[#1e3a8a]"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-[#2b6cb0] via-[#2b6cb0] to-[#1a365d]"></div>
       
       <div className="absolute inset-0 opacity-[0.05]" style={{
         backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
@@ -32,13 +32,13 @@ export default function Footer() {
             <div className="flex gap-4 relative">
               <div className="relative group">
                 <button className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-300 hover:scale-110">
-                  <svg fill="currentColor" viewBox="0 0 1024 1024" className="w-5 h-5 text-green-300">
+                  <svg fill="currentColor" viewBox="0 0 1024 1024" className="w-5 h-5 text-emerald-300">
                     <path d="M682.666667 362.666667c14.933333 0 29.866667 0 42.666666 4.266666-42.666667-157.866667-200.533333-273.066667-396.8-273.066666C153.6 93.866667 12.8 217.6 12.8 371.2c0 89.6 46.933333 166.4 123.733333 226.133333L102.4 695.466667l102.4-55.466667c42.666667 12.8 85.333333 17.066667 123.733333 17.066667 12.8 0 25.6 0 38.4-4.266667-4.266667-17.066667-4.266667-34.133333-4.266666-51.2 0-132.266667 140.8-238.933333 315.733333-238.933333z m-264.533334-110.933334c21.333333 0 38.4 17.066667 38.4 38.4 0 21.333333-17.066667 38.4-38.4 38.4-21.333333 0-38.4-17.066667-38.4-38.4 0-21.333333 17.066667-38.4 38.4-38.4z m-162.133333 76.8c-21.333333 0-38.4-17.066667-38.4-38.4 0-21.333333 17.066667-38.4 38.4-38.4 21.333333 0 38.4 17.066667 38.4 38.4 0 21.333333-17.066667 38.4-38.4 38.4zM1006.933333 601.6c0-119.466667-119.466667-217.6-268.8-217.6s-268.8 98.133333-268.8 217.6c0 119.466667 119.466667 217.6 268.8 217.6 34.133333 0 64-8.533333 93.866667-17.066667l76.8 42.666667-25.6-72.533333c55.466667-46.933333 89.6-106.666667 89.6-170.666667z m-354.133333-34.133333c-17.066667 0-29.866667-12.8-29.866667-29.866667s12.8-29.866667 29.866667-29.866667c17.066667 0 29.866667 12.8 29.866667 29.866667s-12.8 29.866667-29.866667 29.866667z m170.666667 0c-17.066667 0-29.866667-12.8-29.866667-29.866667s12.8-29.866667 29.866667-29.866667 29.866667 12.8 29.866667 29.866667-12.8 29.866667-29.866667 29.866667z" />
                   </svg>
                 </button>
                 <div className="absolute bottom-full left-0 mb-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 ease-out z-[100]">
                   <div className="bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] p-4 w-48">
-                    <div className="bg-gradient-to-br from-green-50 to-transparent p-2 rounded-xl mb-3">
+                    <div className="bg-gradient-to-br from-emerald-50 to-transparent p-2 rounded-xl mb-3">
                       <img
                         src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/wechat"
                         alt="微信二维码"
@@ -56,13 +56,13 @@ export default function Footer() {
 
               <div className="relative group">
                 <button className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 transition-all duration-300 hover:scale-110">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" className="w-5 h-5 text-cyan-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" className="w-5 h-5 text-blue-300">
                     <path d="M824.8 613.2c-16-51.4-34.4-94.6-62.7-165.3C766.5 262.2 689.3 112 511.5 112 331.7 112 256.2 265.2 261 447.9c-28.4 70.8-46.7 113.8-62.7 165.3-22.6 72.2-32.6 142.1 16.5 177 19.4 13.8 41.5 20.6 66.2 20.6 8.4 0 17-0.9 25.8-2.6 15 26.6 40.5 48.9 76.8 66 40.8 19.2 92.1 30.1 146.4 31.9 44.5 1.5 91.1-6.1 135.5-22.3 35.5-13 65-31.5 86-53.9 14.5 4.6 29.8 6.9 45.4 6.9 23.3 0 44-5.8 62.3-17.1 50-31.1 41.5-103.7 16.3-175.7z" />
                   </svg>
                 </button>
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 ease-out z-[100]">
                   <div className="bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] p-4 w-48">
-                    <div className="bg-gradient-to-br from-cyan-50 to-transparent p-2 rounded-xl mb-3">
+                    <div className="bg-gradient-to-br from-blue-50 to-transparent p-2 rounded-xl mb-3">
                       <img
                         src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/qq"
                         alt="QQ 二维码"
@@ -110,7 +110,7 @@ export default function Footer() {
               <li><a href="#/" className="hover:text-white transition-colors">核心模块</a></li>
               <li><a href="#/" className="hover:text-white transition-colors">组件大全</a></li>
               <li><a href="#/" className="hover:text-white transition-colors">更新日志</a></li>
-              <li><a href="#/" className="hover:text-white transition-colors">模型广场</a></li>
+              <li><a href="#/" className="hover:text-white transition-colors">组件广场</a></li>
             </ul>
           </div>
 
@@ -152,8 +152,8 @@ export default function Footer() {
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <a href="#/" className="text-[13px] text-blue-200 hover:text-white transition-colors">隐私政策</a>
             <a href="#/" className="text-[13px] text-blue-200 hover:text-white transition-colors">服务条款</a>
-            <div className="flex items-center gap-1.5 text-[13px] text-green-300">
-              <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.6)] animate-pulse"></span>
+            <div className="flex items-center gap-1.5 text-[13px] text-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.6)] animate-pulse"></span>
               系统服务状态正常
             </div>
           </div>

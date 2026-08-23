@@ -48,7 +48,7 @@ export default function SafeUninstallModal({
               {checkLogs.map((log, i) => {
                 if (!log) return null;
                 return (
-                  <div key={i} className={log.startsWith("✔") ? "text-emerald-400" : log.startsWith("❌") ? "text-rose-400" : ""}>
+                  <div key={i} className={log.startsWith("✔") ? "text-emerald-400" : log.startsWith("❌") ? "text-red-400" : ""}>
                     {log}
                   </div>
                 );
@@ -76,7 +76,7 @@ export default function SafeUninstallModal({
               <button
                 type="button"
                 onClick={onConfirmUninstall}
-                className="h-8 px-4 text-xs font-bold rounded-lg bg-red-600 hover:bg-red-700 text-white border-none cursor-pointer transition-colors"
+                className="h-8 px-4 text-xs font-bold rounded-lg bg-red-600 hover:bg-red-600 text-white border-none cursor-pointer transition-colors"
               >
                 确认卸载
               </button>
@@ -94,7 +94,7 @@ export default function SafeUninstallModal({
               {checkLogs.map((log, i) => {
                 if (!log) return null;
                 return (
-                  <div key={i} className={log.startsWith("❌") ? "text-rose-400" : ""}>
+                  <div key={i} className={log.startsWith("❌") ? "text-red-400" : ""}>
                     {log}
                   </div>
                 );
@@ -102,7 +102,7 @@ export default function SafeUninstallModal({
             </div>
 
             <p className="text-xs text-slate-500 font-bold leading-normal">
-              如果您依旧希望卸载它，必须先清空删除全部空间历史记录。
+              解绑仅移除组件绑定关系，任务历史、结果与知识库数据资产将完整保留，可直接继续卸载。
             </p>
 
             <div className="flex justify-between items-center pt-3 border-t border-slate-100">
@@ -111,7 +111,7 @@ export default function SafeUninstallModal({
                 onClick={onClearData}
                 className="h-8 px-3.5 text-xs font-black text-red-600 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg cursor-pointer transition-all shadow-sm"
               >
-                🔥 一键清理历史数据并卸载
+                ✔ 保留数据并继续解绑
               </button>
               <button
                 type="button"

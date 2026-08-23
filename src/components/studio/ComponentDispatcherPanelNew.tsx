@@ -1,27 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { X, Shield, ArrowRight, Layers, Database, FileText, CheckCircle2, ChevronRight, Activity, Star, TrendingUp, Code, FolderOpen, Layout, Server, Monitor, Users, ShieldCheck, FlaskConical, Coins, Cpu } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ComponentDefinition, COMPONENTS, COMPONENT_CATEGORIES } from "@/constants/components";
+import type { ComponentDefinition, ComponentCategory } from "@/constants/components";
+import { getAuthToken } from "@/utils/auth";
 
-// 建立 Category 到 1-10 阶段的转换关系
-const categoryToStageId: Record<string, number> = {
-  BID_PREP: 1,
-  REQ_DESIGN: 2,
-  BACKEND_CORE: 3,
-  DATABASE_ENG: 4,
-  FRONTEND_DEV: 5,
-  TEST_QA: 6,
-  DEVOPS: 7,
-  SECURITY: 8,
-  PROJ_MGMT: 9,
-  KNOWLEDGE: 10,
-};
-
-const getDispatcherStageIcon = (category: string, className?: string) => {
+const getDispatcherStageIcon = (category: string, categoryToStageId: Record<string, number>, className?: string) => {
   const stageId = categoryToStageId[category] || 1;
   const iconProps = { className: className || "w-5 h-5 text-white" };
   switch (stageId) {
@@ -88,10 +75,21 @@ export default function ComponentDispatcherPanel({
     bindComponent,
     unbindComponent,
     userState,
+    componentCatalog,
+    componentCategories,
   } = useAppContext();
 
   const isLoggedIn = userState?.isLoggedIn || false;
   const workspaces = userState?.workspaces || [];
+
+  // 分类 → 阶段号映射（由数据库 component_category.sortOrder 驱动，不再硬编码）
+  const categoryToStageId = useMemo(() => {
+    const map: Record<string, number> = {};
+    Object.entries(componentCategories || {}).forEach(([key, value]) => {
+      map[key] = value.sortOrder && value.sortOrder > 0 ? value.sortOrder : 1;
+    });
+    return map;
+  }, [componentCategories]);
 
   // 获取当前活跃的工作空间及绑定状态
   const activeWsId = typeof window !== "undefined"
@@ -145,15 +143,15 @@ export default function ComponentDispatcherPanel({
     } else {
       toast.info(`正在为您的一键算力空间 [${wsName}] 快速装配引进该效能组件...`);
       try {
-        const success = await bindComponent(comp.id, wsId);
-        if (success) {
+        const result = await bindComponent(comp.id, wsId);
+        if (result.ok) {
           toast.success("装配成功！正在为您载入智阁极客工作流...");
           setBindingStatusMap(prev => ({ ...prev, [wsId]: true }));
           setTimeout(() => {
             handleGoToWorkspace(wsId);
           }, 800);
         } else {
-          toast.error("装配引进失败，请重试");
+          toast.error(result.error || "装配引进失败，请重试");
         }
       } catch (err) {
         toast.error("网络异常，请稍后重试");
@@ -165,7 +163,7 @@ export default function ComponentDispatcherPanel({
   const [simState, setSimState] = useState<"idle" | "running" | "success">("idle");
   const [simLogs, setSimLogs] = useState<string[]>([]);
 
-  const comp = COMPONENTS.find((c) => c.id === componentId) || null;
+  const comp = componentCatalog.find((c) => c.id === componentId) || null;
 
   // 监听组件切换，重置沙箱状态
   useEffect(() => {
@@ -211,8 +209,8 @@ export default function ComponentDispatcherPanel({
       const quotaMap: Record<string, number> = {};
 
       try {
-        const userId = localStorage.getItem("userId") || userState.userInfo?.id;
-        const headers: Record<string, string> = userId ? { Authorization: `Bearer ${userId}` } : {};
+        const authToken = getAuthToken();
+        const headers: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
         // A. 批量并发获取每个空间的组件绑定状态
         await Promise.all(
@@ -262,9 +260,7 @@ export default function ComponentDispatcherPanel({
 
   if (!isOpen || !comp) return null;
 
-  const categoryInfo = COMPONENTS.find(c => c.id === componentId) 
-    ? COMPONENT_CATEGORIES[comp.category] 
-    : null;
+  const categoryInfo = comp ? componentCategories[comp.category as ComponentCategory] : null;
   const isFav = favorites.includes(comp.id);
   const media = getPhysicalDataMedia(comp.category);
 
@@ -277,20 +273,20 @@ export default function ComponentDispatcherPanel({
 
     try {
       if (wasBound) {
-        const success = await unbindComponent(comp.id, workspaceId);
-        if (success) {
+        const result = await unbindComponent(comp.id, workspaceId);
+        if (result.ok) {
           setBindingStatusMap((prev) => ({ ...prev, [workspaceId]: false }));
           toast.success(`组件 ${comp.name} 已成功从空间 [${workspaceName}] 解除引进`);
         } else {
-          toast.error("操作失败，请重试");
+          toast.error(result.error || "操作失败，请重试");
         }
       } else {
-        const success = await bindComponent(comp.id, workspaceId);
-        if (success) {
+        const result = await bindComponent(comp.id, workspaceId);
+        if (result.ok) {
           setBindingStatusMap((prev) => ({ ...prev, [workspaceId]: true }));
           toast.success(`组件 ${comp.name} 已成功分发至空间 [${workspaceName}]`);
         } else {
-          toast.error("操作失败，请重试");
+          toast.error(result.error || "操作失败，请重试");
         }
       }
     } catch (e) {
@@ -335,7 +331,7 @@ export default function ComponentDispatcherPanel({
         <header className="bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between flex-shrink-0 z-10">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white shadow-sm">
-              {getDispatcherStageIcon(comp.category, "w-4.5 h-4.5 text-white")}
+              {getDispatcherStageIcon(comp.category, categoryToStageId, "w-4.5 h-4.5 text-white")}
             </div>
             <div>
               <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-1.5">
@@ -380,7 +376,7 @@ export default function ComponentDispatcherPanel({
           <div className="lg:col-span-7 h-full overflow-y-auto p-5 space-y-5 scrollbar-thin">
             
             {/* 1. 基本信息看板 - 扁平无边框设计 */}
-            <section className="bg-slate-50/50 rounded-xl p-4.5 border border-slate-150 space-y-2.5">
+            <section className="bg-slate-50/50 rounded-xl p-4.5 border border-slate-200 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span
                   className="px-2 py-0.5 rounded text-[9px] font-black border"
@@ -394,7 +390,7 @@ export default function ComponentDispatcherPanel({
                 </span>
                 <div className="flex items-center gap-1 text-[9px] text-slate-400 font-bold">
                   <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
-                  <span>估算消耗 {comp.estimatedTokens} Token/次</span>
+                  <span>估算消耗 {comp.estimatedTokens} 额度/次</span>
                 </div>
               </div>
               
@@ -407,7 +403,7 @@ export default function ComponentDispatcherPanel({
                   {comp.tags.map((tag, i) => (
                     <span
                       key={i}
-                      className="px-2 py-0.5 bg-white text-slate-500 border border-slate-150 text-[9px] font-bold rounded"
+                      className="px-2 py-0.5 bg-white text-slate-500 border border-slate-200 text-[9px] font-bold rounded"
                     >
                       #{tag}
                     </span>
@@ -428,19 +424,33 @@ export default function ComponentDispatcherPanel({
 
                 <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-3">
                   {/* 输入材料极 */}
-                  <div className="flex-1 w-full bg-slate-950/90 rounded-lg p-3 border border-slate-900 shadow-inner flex flex-col justify-between min-h-[105px]">
+                  <div className="flex-1 w-full bg-slate-900/90 rounded-lg p-3 border border-slate-900 shadow-inner flex flex-col justify-between min-h-[105px]">
                     <div>
-                      <div className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                      <div className="text-[8px] font-black text-[#63b3ed] uppercase tracking-widest mb-1.5 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
                         输入材料规范 (Input)
                       </div>
                       <div className="font-mono text-[9.5px] text-slate-400 leading-relaxed bg-slate-900/50 p-2 rounded border border-slate-800/80 min-h-[40px] flex items-center">
                         {comp.previewData.inputMock}
                       </div>
+                      <div className="mt-1 flex items-center gap-1 text-[8px] font-bold text-slate-500">
+                        <span>输入方式:</span>
+                        <span className={(() => {
+                          const m = comp.inputMode;
+                          if (m === "file") return "text-amber-300 bg-amber-950/40 border border-amber-900/30 px-1 py-0.2 rounded";
+                          if (m === "both") return "text-emerald-300 bg-emerald-950/40 border border-emerald-900/30 px-1 py-0.2 rounded";
+                          return "text-blue-200 bg-slate-900/40 border border-slate-800/30 px-1 py-0.2 rounded";
+                        })()}>
+                          {(() => {
+                            const m = comp.inputMode;
+                            return m === "file" ? "📎 文件上传" : m === "both" ? "🔀 上传 / 输入" : "⌨️ 文本输入";
+                          })()}
+                        </span>
+                      </div>
                     </div>
                     <div className="mt-2 pt-1.5 border-t border-slate-900 flex items-center gap-1 text-[8.5px] font-bold text-slate-500">
                       <span>载体:</span>
-                      <span className="text-blue-300 bg-blue-950/40 border border-blue-900/20 px-1 py-0.2 rounded truncate max-w-[100px]">
+                      <span className="text-[#63b3ed] bg-blue-950/40 border border-blue-900/20 px-1 py-0.2 rounded truncate max-w-[100px]">
                         {media.inputMedia}
                       </span>
                     </div>
@@ -448,14 +458,14 @@ export default function ComponentDispatcherPanel({
 
                   {/* 中枢枢纽 */}
                   <div className="flex flex-col items-center justify-center shrink-0 sm:w-10">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center text-white text-[8px] font-black shadow-md border border-blue-400/20">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center text-white text-[8px] font-black shadow-md border border-[#63b3ed]/20">
                       中枢
                     </div>
                     <span className="text-[6.5px] font-black text-indigo-400 uppercase tracking-widest scale-90 mt-1 whitespace-nowrap hidden sm:block">数据流转</span>
                   </div>
 
                   {/* 输出成果极 */}
-                  <div className="flex-1 w-full bg-slate-950/90 rounded-lg p-3 border border-slate-900 shadow-inner flex flex-col justify-between min-h-[105px]">
+                  <div className="flex-1 w-full bg-slate-900/90 rounded-lg p-3 border border-slate-900 shadow-inner flex flex-col justify-between min-h-[105px]">
                     <div>
                       <div className="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -484,10 +494,10 @@ export default function ComponentDispatcherPanel({
             </section>
 
             {/* 3. 契约沙箱仿真模拟器 */}
-            <section className="bg-slate-50/50 rounded-xl p-4.5 border border-slate-150 space-y-3">
+            <section className="bg-slate-50/50 rounded-xl p-4.5 border border-slate-200 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black text-slate-800 flex items-center gap-1.5">
-                  <FlaskConical className="w-3.5 h-3.5 text-[#38a169]" />
+                  <FlaskConical className="w-3.5 h-3.5 text-[#059669]" />
                   <span>契约加工沙箱仿真模拟 (Sandbox Simulator)</span>
                 </span>
                 {simState === "running" ? (
@@ -506,7 +516,7 @@ export default function ComponentDispatcherPanel({
               </div>
 
               {simState === "idle" ? (
-                <div className="bg-white border border-slate-150 p-3.5 rounded-lg text-center space-y-2.5">
+                <div className="bg-white border border-slate-200 p-3.5 rounded-lg text-center space-y-2.5">
                   <p className="text-[9.5px] text-slate-500 font-semibold leading-normal">
                     想查看该组件如何进行数据比对并转换输出吗？一键启动数据沙箱测试，预览运行日志流。
                   </p>
@@ -520,7 +530,7 @@ export default function ComponentDispatcherPanel({
                 </div>
               ) : (
                 <div className="space-y-2.5 animate-in fade-in duration-250">
-                  <div className="bg-slate-950 text-slate-400 rounded-lg p-3 border border-slate-800 shadow-inner font-mono text-[9px] leading-relaxed space-y-1.5 max-h-[110px] overflow-y-auto scrollbar-thin">
+                  <div className="bg-slate-900 text-slate-400 rounded-lg p-3 border border-slate-800 shadow-inner font-mono text-[9px] leading-relaxed space-y-1.5 max-h-[110px] overflow-y-auto scrollbar-thin">
                     {simLogs.map((log, index) => (
                       <div key={index} className="transition-all">
                         {log}
@@ -559,9 +569,9 @@ export default function ComponentDispatcherPanel({
             </section>
 
             {/* 4. 可视化 ROI 商业提效滑轨 - 轻量化 */}
-            <section className="bg-gradient-to-r from-emerald-50/40 via-blue-50/10 to-teal-50/30 border border-emerald-100/60 rounded-xl p-3.5 flex items-center gap-3 justify-between">
+            <section className="bg-gradient-to-r from-emerald-50/40 via-blue-50/10 to-emerald-50/30 border border-emerald-100/60 rounded-xl p-3.5 flex items-center gap-3 justify-between">
               <div className="space-y-0.5 min-w-0 flex-1">
-                <span className="text-[10px] font-black text-emerald-700 flex items-center gap-1">
+                <span className="text-[10px] font-black text-emerald-600 flex items-center gap-1">
                   <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
                   <span>商业级投入产出比 (ROI Efficiency)</span>
                 </span>
@@ -580,7 +590,7 @@ export default function ComponentDispatcherPanel({
           </div>
 
           {/* 右侧空间分发与部署中枢 (占 5 列) - 精致渐变分栏底色 */}
-          <div className="lg:col-span-5 h-full overflow-y-auto p-5 bg-gradient-to-br from-[#f8fafc] to-[#f1f5f9] scrollbar-thin flex flex-col justify-between border-l border-slate-150">
+          <div className="lg:col-span-5 h-full overflow-y-auto p-5 bg-gradient-to-br from-[#f8fafc] to-[#f1f5f9] scrollbar-thin flex flex-col justify-between border-l border-slate-200">
             <div className="space-y-4">
               
               {/* 🚀 智能路由网关 (ZhiGe Dynamic Routing Hub) - 精致仪表卡片 */}
@@ -603,7 +613,7 @@ export default function ComponentDispatcherPanel({
                   
                   {/* 配额与状态对齐展示 */}
                   <div className="flex items-center gap-3 pt-1 text-[9.5px] font-semibold text-slate-500 border-t border-slate-50 mt-2">
-                    <span className="flex items-center gap-1"><Coins className="w-3 h-3 text-[#3182ce]/70" /> 算力配额: <strong className="text-slate-700 font-bold font-mono">{(workspaceQuotas[selectedWorkspace?.id || ""] || 0).toLocaleString()}</strong></span>
+                    <span className="flex items-center gap-1"><Coins className="w-3 h-3 text-[#3182ce]/70" /> 资源配额: <strong className="text-slate-700 font-bold font-mono">{(workspaceQuotas[selectedWorkspace?.id || ""] || 0).toLocaleString()}</strong></span>
                     <span className="flex items-center gap-1"><Cpu className="w-3 h-3 text-[#3182ce]/70" /> 状态: 
                       {isBound ? (
                         <strong className="text-emerald-600 font-black">已引进</strong>
@@ -616,7 +626,7 @@ export default function ComponentDispatcherPanel({
                 
                 <button
                   onClick={handleQuickUse}
-                  className="w-full h-8.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-blue-700 text-white text-[10px] font-black rounded shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1 cursor-pointer shrink-0 z-10"
+                  className="w-full h-8.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#2b6cb0] text-white text-[10px] font-black rounded shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1 cursor-pointer shrink-0 z-10"
                 >
                   <Layers className="w-3.5 h-3.5 fill-current text-white/20" />
                   <span>立即使用 (一键转场)</span>
@@ -631,7 +641,7 @@ export default function ComponentDispatcherPanel({
                 </h3>
 
                 {!isLoggedIn ? (
-                  <div className="bg-amber-50/20 border border-amber-150 rounded-xl p-5 text-center shadow-sm space-y-3">
+                  <div className="bg-amber-50/20 border border-amber-100 rounded-xl p-5 text-center shadow-sm space-y-3">
                     <p className="text-[10.5px] text-amber-800 font-bold">您当前为游客模式，无法绑定空间。</p>
                     <p className="text-[9.5px] text-slate-400 font-medium">请登录系统以在开发沙盒中装配此效能资产。</p>
                     <button

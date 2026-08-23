@@ -45,9 +45,12 @@ export async function GET(request: NextRequest) {
         ? "OWNER"
         : member?.role ?? "MEMBER";
 
-    const [componentCount, memberCount, completedTasks, inProgressTasks] =
+    const [usages, memberCount, completedTasks, inProgressTasks] =
       await Promise.all([
-        prisma.componenttask.count({ where: { tenantId: workspaceId } }),
+        prisma.componentusage.findMany({
+          where: { workspaceId },
+          select: { componentId: true, metadata: true },
+        }),
         prisma.workspacemember.count({ where: { workspaceId } }),
         prisma.componenttask.count({
           where: { tenantId: workspaceId, status: "COMPLETED" },
@@ -56,6 +59,24 @@ export async function GET(request: NextRequest) {
           where: { tenantId: workspaceId, status: "IN_PROGRESS" },
         }),
       ]);
+
+    const boundIdSet = new Set<string>();
+    usages.forEach((u) => {
+      if (!u.metadata) return;
+      try {
+        const meta =
+          typeof u.metadata === "string" ? JSON.parse(u.metadata) : (u.metadata as any);
+        if (meta && typeof meta.enabled === "boolean") {
+          if (meta.enabled) boundIdSet.add(u.componentId);
+        }
+      } catch {
+        boundIdSet.add(u.componentId);
+      }
+    });
+    if (boundIdSet.size === 0) {
+      usages.forEach((u) => boundIdSet.add(u.componentId));
+    }
+    const componentCount = boundIdSet.size;
 
     const topTasks = await prisma.componenttask.groupBy({
       by: ["type"],

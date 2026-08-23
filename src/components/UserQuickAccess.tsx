@@ -10,6 +10,7 @@ import {
   Box,
   ArrowRight,
 } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
 
 export default function UserQuickAccess() {
   const router = useRouter();
@@ -17,8 +18,7 @@ export default function UserQuickAccess() {
   const [userName, setUserName] = useState("");
 
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    if (userId) {
+    if (getAuthToken()) {
       setIsLoggedIn(true);
       // 获取用户名
       fetchUserInfo();
@@ -27,11 +27,12 @@ export default function UserQuickAccess() {
 
   const fetchUserInfo = async () => {
     try {
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/auth/me", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       if (res.ok) {
@@ -50,7 +51,7 @@ export default function UserQuickAccess() {
   return (
     <section className="py-16 bg-gradient-to-br from-white via-blue-50/30 to-white relative overflow-hidden">
       {/* 装饰背景 */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-gradient-to-r from-[#3182ce]/10 to-[#2563eb]/10 opacity-50 blur-[80px] pointer-events-none"></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 opacity-50 blur-[80px] pointer-events-none"></div>
 
       <div className="max-w-6xl mx-auto px-6 relative z-10">
         {/* 标题区 */}
@@ -128,7 +129,7 @@ export default function UserQuickAccess() {
             className="group p-6 bg-white rounded-2xl shadow-lg shadow-[#8b5cf6]/10 border border-slate-200 hover:shadow-xl hover:shadow-[#8b5cf6]/20 hover:border-[#8b5cf6]/30 transition-all duration-300 hover:-translate-y-1 text-left"
           >
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] flex items-center justify-center group-hover:scale-110 transition-transform">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#8b5cf6] to-[#805ad5] flex items-center justify-center group-hover:scale-110 transition-transform">
                 <FolderOpen className="w-6 h-6 text-white" />
               </div>
               <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-[#8b5cf6] group-hover:translate-x-1 transition-all" />

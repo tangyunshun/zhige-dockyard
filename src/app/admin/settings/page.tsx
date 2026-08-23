@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { getAuthToken } from "@/utils/auth";
 import {
   Settings,
   Mail,
@@ -25,9 +26,9 @@ export default function AdminSettingsPage() {
   const loadCooldownConfig = useCallback(async () => {
     try {
       setCooldownLoading(true);
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/admin/account-deletion-config", {
-        headers: userId ? { Authorization: `Bearer ${userId}` } : {},
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
       if (res.ok) {
         const data = await res.json();
@@ -55,12 +56,12 @@ export default function AdminSettingsPage() {
     setCooldownSaving(true);
     setCooldownMessage(null);
     try {
-      const userId = localStorage.getItem("userId");
+      const authToken = getAuthToken();
       const res = await fetch("/api/admin/account-deletion-config", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          ...(userId ? { Authorization: `Bearer ${userId}` } : {}),
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({ cooldownDays: days }),
       });
@@ -389,9 +390,9 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-                <div className="flex items-start gap-3 p-3 bg-orange-50 border border-orange-100 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-orange-600 font-medium leading-relaxed">
+                <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-600 font-medium leading-relaxed">
                     冷静期结束后，账号将被永久注销（逻辑删除 + 匿名化邮箱/手机号 +
                     清空个人配置 + 销毁全部会话），该操作不可恢复。
                   </p>
@@ -413,7 +414,7 @@ export default function AdminSettingsPage() {
                     />
                     <span className="text-sm text-slate-500 font-medium">天</span>
                     {cooldownLoading && (
-                      <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-500 rounded-full animate-spin"></div>
+                      <div className="w-4 h-4 border-2 border-[#63b3ed] border-t-blue-500 rounded-full animate-spin"></div>
                     )}
                   </div>
                   <p className="text-xs text-slate-400 font-medium mt-2">

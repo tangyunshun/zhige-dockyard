@@ -82,7 +82,7 @@ export default function AdminAnalyticsPage() {
                   </div>
                   <div className="flex-1 h-10 bg-slate-50/80 rounded-xl flex items-center px-2">
                     <div
-                      className="h-5 bg-gradient-to-r from-[#3182ce] to-[#2563eb] rounded-lg shadow-sm"
+                      className="h-5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] rounded-lg shadow-sm"
                       style={{ width: `${(item.users / 2000) * 100}%` }}
                     ></div>
                   </div>
@@ -97,7 +97,7 @@ export default function AdminAnalyticsPage() {
 
         {/* 组件使用趋势 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-green-500/5 to-emerald-500/5 opacity-50 blur-3xl"></div>
+          <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-emerald-500/5 to-emerald-500/5 opacity-50 blur-3xl"></div>
 
           <div className="relative">
             <div className="flex items-center gap-2 mb-6">
@@ -130,7 +130,7 @@ export default function AdminAnalyticsPage() {
 
       {/* 用户行为分析 */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-        <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-purple-500/5 to-pink-500/5 opacity-50 blur-3xl"></div>
+        <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-purple-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
 
         <div className="relative">
           <div className="flex items-center gap-2 mb-6">
@@ -151,7 +151,7 @@ export default function AdminAnalyticsPage() {
                 <div className="text-xs text-slate-400 mt-1">25 分钟/用户</div>
               </div>
             </div>
-            <div className="relative p-6 bg-gradient-to-br from-[#10b981]/5 to-green-500/5 rounded-2xl border border-[#10b981]/10">
+            <div className="relative p-6 bg-gradient-to-br from-[#10b981]/5 to-emerald-500/5 rounded-2xl border border-[#10b981]/10">
               <div className="text-center">
                 <div className="text-4xl font-black text-[#10b981] mb-2">
                   12.3

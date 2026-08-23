@@ -1,8 +1,10 @@
-﻿﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Users, Plus, Edit2, Trash2, Save, X, UserPlus, Shield } from "lucide-react";
+import { getAuthToken } from "@/utils/auth";
+import { useToast } from "@/components/Toast";
 
 interface Post {
   id: string;
@@ -34,6 +36,7 @@ interface User {
 export default function AdminPostsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const toast = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -75,7 +78,7 @@ export default function AdminPostsPage() {
 
       setCurrentWorkspaceId(workspaceId);
 
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       
       const res = await fetch(`/api/admin/posts?workspaceId=${workspaceId}`, {
         headers: {
@@ -99,12 +102,12 @@ export default function AdminPostsPage() {
   // 创建岗位
   const handleCreatePost = async () => {
     if (!newPostName.trim()) {
-      alert("请输入岗位名称");
+      toast.warning("请输入岗位名称");
       return;
     }
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       const res = await fetch("/api/admin/posts", {
         method: "POST",
         headers: {
@@ -121,7 +124,7 @@ export default function AdminPostsPage() {
 
       if (res.ok) {
         const data = await res.json();
-        alert(data.message || "岗位创建成功");
+        toast.success(data.message || "岗位创建成功");
         setShowCreateModal(false);
         setNewPostName("");
         setNewPostDescription("");
@@ -129,22 +132,20 @@ export default function AdminPostsPage() {
         loadPosts();
       } else {
         const error = await res.json();
-        alert(error.error || "创建失败");
+        toast.error(error.error || "创建失败");
       }
     } catch (error) {
       console.error("Create post error:", error);
-      alert("创建失败");
+      toast.error("创建失败");
     }
   };
 
   // 删除岗位
   const handleDeletePost = async (postId: string, postName: string) => {
-    if (!confirm(`确定要删除岗位 "${postName}" 吗？`)) {
-      return;
-    }
+    toast.info(`正在成功请求删除岗位 "${postName}"...`, 1500);
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       const res = await fetch(`/api/admin/posts/${postId}`, {
         method: "DELETE",
         headers: {
@@ -153,15 +154,15 @@ export default function AdminPostsPage() {
       });
 
       if (res.ok) {
-        alert("岗位已删除");
+        toast.success("岗位已成功删除");
         loadPosts();
       } else {
         const error = await res.json();
-        alert(error.error || "删除失败");
+        toast.error(error.error || "删除失败");
       }
     } catch (error) {
       console.error("Delete post error:", error);
-      alert("删除失败");
+      toast.error("删除失败");
     }
   };
 
@@ -179,12 +180,12 @@ export default function AdminPostsPage() {
   // 分配成员
   const handleAssignMembers = async (selectedUserIds: string[]) => {
     if (!selectedPost || selectedUserIds.length === 0) {
-      alert("请选择用户");
+      toast.warning("请选择要分配的用户");
       return;
     }
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       const res = await fetch(`/api/admin/posts/${selectedPost.id}/members`, {
         method: "POST",
         headers: {
@@ -199,16 +200,16 @@ export default function AdminPostsPage() {
 
       if (res.ok) {
         const data = await res.json();
-        alert(data.message || "成员分配成功");
+        toast.success(data.message || "成员分配成功");
         setShowMemberModal(false);
         loadPosts();
       } else {
         const error = await res.json();
-        alert(error.error || "分配失败");
+        toast.error(error.error || "分配失败");
       }
     } catch (error) {
       console.error("Assign members error:", error);
-      alert("分配失败");
+      toast.error("分配失败");
     }
   };
 
@@ -217,7 +218,7 @@ export default function AdminPostsPage() {
     if (!selectedPost) return;
 
     try {
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       const res = await fetch(
         `/api/admin/posts/${selectedPost.id}/members?userId=${userId}`,
         {
@@ -229,15 +230,15 @@ export default function AdminPostsPage() {
       );
 
       if (res.ok) {
-        alert("成员已移除");
+        toast.success("成员已成功移除");
         loadPosts();
       } else {
         const error = await res.json();
-        alert(error.error || "移除失败");
+        toast.error(error.error || "移除失败");
       }
     } catch (error) {
       console.error("Remove member error:", error);
-      alert("移除失败");
+      toast.error("移除失败");
     }
   };
 
@@ -525,7 +526,7 @@ function MemberManagementModal({
 
   const loadAvailableUsers = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       const res = await fetch(`/api/admin/users?workspaceId=${workspaceId}`, {
         headers: {
           Authorization: `Bearer ${token}`,

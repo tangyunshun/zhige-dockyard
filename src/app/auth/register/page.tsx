@@ -550,7 +550,7 @@ function RegisterContent() {
 
   return (
     <div 
-      className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center p-4 overflow-hidden relative"
+      className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4 overflow-hidden relative"
       style={{
         backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.08) 1.5px, transparent 1.5px)",
         backgroundSize: "24px 24px",
@@ -558,11 +558,11 @@ function RegisterContent() {
     >
       <div className="w-full max-w-4xl grid md:grid-cols-5 gap-0 rounded-[24px] overflow-hidden shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50 relative z-10">
         {/* 左侧品牌区 - 固定 */}
-        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1e3a8a] p-6 text-white relative overflow-hidden">
+        <div className="hidden md:flex md:col-span-2 flex-col justify-center items-center bg-gradient-to-br from-[#3182ce] to-[#1a365d] p-6 text-white relative overflow-hidden">
           {/* 装饰背景 */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl" />
-            <div className="absolute bottom-10 right-10 w-40 h-40 bg-blue-300 rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-40 h-40 bg-[#63b3ed] rounded-full blur-3xl" />
           </div>
 
           <div className="relative z-10 text-center">
@@ -582,15 +582,15 @@ function RegisterContent() {
 
             <div className="space-y-3 text-left">
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
                 <span className="text-xs">企业级安全架构</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
-                <span className="text-xs">智能驱动</span>
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
+                <span className="text-xs">自动化驱动</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                <CheckCircle className="w-4 h-4 text-green-300" />
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
                 <span className="text-xs">全链路提效 300%</span>
               </div>
             </div>
@@ -691,7 +691,7 @@ function RegisterContent() {
               {/* 账号已注册提示 */}
               {accountCheckStatus.registered && (
                 <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs text-red-700">
+                  <p className="text-xs text-red-600">
                     ⚠️ 该账号已被注册，请
                     <Link
                       href="/auth/login"
@@ -705,8 +705,8 @@ function RegisterContent() {
               {accountCheckStatus.registered === false &&
                 formData.account &&
                 validateAccount(formData.account).valid && (
-                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-xs text-green-700">✅ 该账号可以注册</p>
+                  <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <p className="text-xs text-emerald-600">✅ 该账号可以注册</p>
                   </div>
                 )}
             </div>
@@ -741,14 +741,14 @@ function RegisterContent() {
                 )}
                 {phoneCheckStatus.registered && (
                   <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-xs text-red-700">⚠️ 该手机号已被注册</p>
+                    <p className="text-xs text-red-600">⚠️ 该手机号已被注册</p>
                   </div>
                 )}
                 {phoneCheckStatus.registered === false &&
                   formData.phone &&
                   validatePhone(formData.phone).valid && (
-                    <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-xs text-green-700">
+                    <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <p className="text-xs text-emerald-600">
                         ✅ 该手机号可以绑定
                       </p>
                     </div>
@@ -801,7 +801,7 @@ function RegisterContent() {
                 </button>
               </div>
               {smsMessage && (
-                <p className="mt-1 text-xs text-green-600">{smsMessage}</p>
+                <p className="mt-1 text-xs text-emerald-600">{smsMessage}</p>
               )}
               {errors.smsCode && (
                 <p className="mt-1 text-xs text-red-500">{errors.smsCode}</p>
@@ -855,11 +855,11 @@ function RegisterContent() {
                       className={`flex-1 h-1.5 rounded-full transition-all duration-300 ease-in-out ${
                         level <= passwordStrength.score
                           ? passwordStrength.score === 5
-                            ? "bg-green-500"
+                            ? "bg-emerald-500"
                             : level <= 2
                               ? "bg-red-500"
                               : level <= 4
-                                ? "bg-orange-500"
+                                ? "bg-amber-500"
                                 : "bg-yellow-500"
                           : "bg-slate-200"
                       }`}
@@ -971,7 +971,7 @@ function RegisterContent() {
             <button
               type="submit"
               disabled={loading || !agreedToTerms}
-              className="w-full bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white py-3 rounded-xl font-black text-sm hover:shadow-lg hover:shadow-[#3182ce]/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -1055,7 +1055,7 @@ function RegisterContent() {
                   setShowDocumentModal(false);
                   setDocumentModalCategory(null);
                 }}
-                className="zg-btn px-6 py-2 text-xs font-black bg-gradient-to-r from-[#3182ce] to-[#2563eb] text-white hover:shadow-md hover:shadow-[#3182ce]/15 transition-all rounded-lg cursor-pointer"
+                className="zg-btn px-6 py-2 text-xs font-black bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-md hover:shadow-[#3182ce]/15 transition-all rounded-lg cursor-pointer"
               >
                 我已阅读并关闭
               </button>
@@ -1072,7 +1072,7 @@ export default function RegisterPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gradient-to-br from-[#eaf4fc] via-[#f0f8ff] to-[#e6f4f1] flex items-center justify-center">
+        <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center">
           <div className="text-[#3182ce] text-lg">加载中...</div>
         </div>
       }

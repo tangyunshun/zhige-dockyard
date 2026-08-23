@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { getAuthToken } from "@/utils/auth";
 import {
   Search,
   Plus,
@@ -117,6 +118,9 @@ export default function AdminComponentsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   const [types, setTypes] = useState<string[]>([]);
+  const [categories, setCategories] = useState<
+    Array<{ key: string; name: string; color?: string }>
+  >([]);
   const [formData, setFormData] = useState<
     ComponentFormData & { errors?: Record<string, string> }
   >({
@@ -157,8 +161,7 @@ export default function AdminComponentsPage() {
   const loadComponents = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -172,7 +175,7 @@ export default function AdminComponentsPage() {
 
       const res = await fetch(`/api/admin/components?${params}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -180,6 +183,7 @@ export default function AdminComponentsPage() {
         const data = await res.json();
         setComponents(data.data.components);
         setTypes(data.data.stages || []);
+        setCategories(data.data.categories || []);
         setTotalPages(data.data.totalPages);
         setTotal(data.data.total);
       } else {
@@ -197,12 +201,11 @@ export default function AdminComponentsPage() {
   // 加载全局统计数据（不受筛选影响）
   const loadStats = async () => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch("/api/admin/components/stats", {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -226,14 +229,13 @@ export default function AdminComponentsPage() {
       type: "warning",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
           const res = await fetch("/api/admin/components/batch-publish", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
             body: JSON.stringify({ ids: selectedIds }),
           });
@@ -266,14 +268,13 @@ export default function AdminComponentsPage() {
       type: "warning",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
           const res = await fetch("/api/admin/components/batch-unpublish", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
             body: JSON.stringify({ ids: selectedIds }),
           });
@@ -306,14 +307,13 @@ export default function AdminComponentsPage() {
       type: "danger",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
           const res = await fetch("/api/admin/components/batch-delete", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
             body: JSON.stringify({ ids: selectedIds }),
           });
@@ -478,10 +478,8 @@ export default function AdminComponentsPage() {
       type: "info",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
-          console.log("Toggle published - userId:", userId);
           console.log("Toggle published - component id:", id);
           console.log("Toggle published - isPublished:", isPublished);
 
@@ -489,7 +487,7 @@ export default function AdminComponentsPage() {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
             body: JSON.stringify({
               id,
@@ -549,13 +547,12 @@ export default function AdminComponentsPage() {
       type: "danger",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
           const res = await fetch(`/api/admin/components?id=${id}`, {
             method: "DELETE",
             headers: {
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
           });
 
@@ -607,7 +604,7 @@ export default function AdminComponentsPage() {
         setFormData({
           name: component.name,
           description: component.description || "",
-          type: component.type,
+          type: component.category || component.type || "",
           icon: component.icon || "",
           category: component.category || "",
           tags: component.tags || "",
@@ -629,8 +626,8 @@ export default function AdminComponentsPage() {
       newErrors.name = "请输入组件名称";
     }
 
-    if (!formData.type || !formData.type.trim()) {
-      newErrors.type = "请输入组件阶段";
+    if (!formData.category || !formData.category.trim()) {
+      newErrors.category = "请选择组件分类";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -641,8 +638,7 @@ export default function AdminComponentsPage() {
     setSubmitting(true);
 
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const url = editingComponent
         ? `/api/admin/components?id=${editingComponent.id}`
         : "/api/admin/components";
@@ -653,7 +649,7 @@ export default function AdminComponentsPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(formData),
       });
@@ -676,7 +672,7 @@ export default function AdminComponentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-8">
       {/* 顶部标题区 */}
       <div className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
         <div className="max-w-7xl mx-auto px-6 py-6">
@@ -957,11 +953,14 @@ export default function AdminComponentsPage() {
                             {renderComponentIcon(component.icon)}
                           </div>
                           <div className="min-w-0">
-                            <div
-                              className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
-                              title={component.name}
-                            >
-                              {component.name}
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0">{component.id}</span>
+                              <div
+                                className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                                title={component.name}
+                              >
+                                {component.name}
+                              </div>
                             </div>
                             <div
                               className="text-xs text-slate-500 font-medium truncate"
@@ -1023,7 +1022,7 @@ export default function AdminComponentsPage() {
                               className="p-2.5 hover:bg-red-50 rounded-xl transition-all duration-300 group/btn"
                               title="删除"
                             >
-                              <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-700" />
+                              <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-600" />
                             </button>
                           )}
                           {component.isPublished && (
@@ -1186,7 +1185,7 @@ export default function AdminComponentsPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, name: e.target.value })
                       }
-                      placeholder="如：标书智能解析"
+                      placeholder="如：标书自动化解析"
                       className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
                         formData.errors?.name
                           ? "border-red-500"
@@ -1218,43 +1217,32 @@ export default function AdminComponentsPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      类型/阶段 <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.type}
-                      onChange={(e) =>
-                        setFormData({ ...formData, type: e.target.value })
-                      }
-                      placeholder="如：第一阶段：商机捕获与售前打单"
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
-                        formData.errors?.type
-                          ? "border-red-500"
-                          : "border-slate-200"
-                      }`}
-                    />
-                    {formData.errors?.type && (
-                      <p className="mt-1 text-xs text-red-500">
-                        {formData.errors.type}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      分类
+                      类型/分类（阶段） <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={formData.category}
                       onChange={(e) =>
-                        setFormData({ ...formData, category: e.target.value })
+                        setFormData({
+                          ...formData,
+                          category: e.target.value,
+                          type: e.target.value,
+                          errors: { ...(formData.errors || {}), category: "" },
+                        })
                       }
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                     >
                       <option value="">请选择分类</option>
-                      <option value="分析类">分析类</option>
-                      <option value="生成类">生成类</option>
-                      <option value="工具类">工具类</option>
+                      {categories.map((cat) => (
+                        <option key={cat.key} value={cat.key}>
+                          {cat.name}
+                        </option>
+                      ))}
                     </select>
+                    {formData.errors?.category && (
+                      <p className="mt-1 text-xs text-red-500">
+                        {formData.errors.category}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">

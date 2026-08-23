@@ -63,11 +63,11 @@ export async function GET(request: NextRequest) {
       // 2. 工作空间总数
       prisma.workspace.count(),
 
-      // 3. 组件总数
-      prisma.componenttask.count(),
+      // 3. 组件总数（组件目录）
+      prisma.componentcatalog.count(),
 
       // 4. 已发布组件数
-      prisma.componenttask.count({
+      prisma.componentcatalog.count({
         where: { isPublished: true },
       }),
 

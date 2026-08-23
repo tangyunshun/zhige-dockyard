@@ -86,18 +86,18 @@ export default function QuotaUpgradeModal({
             </div>
 
             {/* Benefit 2 */}
-            <div className="p-3.5 bg-slate-50/60 border border-slate-200/30 rounded-xl hover:border-orange-200/50 hover:bg-orange-50/5 hover:shadow-sm transition-all duration-300">
+            <div className="p-3.5 bg-slate-50/60 border border-slate-200/30 rounded-xl hover:border-amber-200/50 hover:bg-amber-50/5 hover:shadow-sm transition-all duration-300">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 bg-orange-50 rounded-lg flex items-center justify-center text-[#dd6b20]">
+                <div className="w-7 h-7 bg-amber-50 rounded-lg flex items-center justify-center text-[#d97706]">
                   <Server className="w-4 h-4" />
                 </div>
-                <h5 className="text-xs font-black text-slate-800">每月 Token 额度</h5>
+                <h5 className="text-xs font-black text-slate-800">每月调用额度</h5>
               </div>
               <p className="text-[11px] text-slate-500 font-semibold leading-relaxed mb-2.5">
-                提供更多的 AI 算力 Token，避免组件运行额度不足。
+                提供更多的组件调用额度，避免组件运行额度不足。
               </p>
-              <div className="text-[10px] text-[#dd6b20] font-extrabold font-mono bg-orange-50/50 px-2 py-0.5 rounded inline-block">
-                1,000 ➔ 100,000 Token
+              <div className="text-[10px] text-[#d97706] font-extrabold font-mono bg-amber-50/50 px-2 py-0.5 rounded inline-block">
+                1,000 ➔ 100,000 额度
               </div>
             </div>
 
@@ -120,7 +120,7 @@ export default function QuotaUpgradeModal({
             {/* Benefit 4 */}
             <div className="p-3.5 bg-slate-50/60 border border-slate-200/30 rounded-xl hover:border-emerald-200/50 hover:bg-emerald-50/5 hover:shadow-sm transition-all duration-300">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 bg-emerald-50 rounded-lg flex items-center justify-center text-[#38a169]">
+                <div className="w-7 h-7 bg-emerald-50 rounded-lg flex items-center justify-center text-[#059669]">
                   <Box className="w-4 h-4" />
                 </div>
                 <h5 className="text-xs font-black text-slate-800">解锁高级组件</h5>
@@ -128,7 +128,7 @@ export default function QuotaUpgradeModal({
               <p className="text-[11px] text-slate-500 font-semibold leading-relaxed mb-2.5">
                 全量解锁全部 53 个高级分析和生产力组件。
               </p>
-              <div className="text-[10px] text-[#38a169] font-extrabold font-mono bg-emerald-50/50 px-2 py-0.5 rounded inline-block">
+              <div className="text-[10px] text-[#059669] font-extrabold font-mono bg-emerald-50/50 px-2 py-0.5 rounded inline-block">
                 6 个 ➔ 53 个全部组件
               </div>
             </div>

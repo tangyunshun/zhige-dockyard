@@ -144,7 +144,7 @@ function ToastItem({
   const icons = {
     success: (
       <svg
-        className="w-5 h-5 text-green-500"
+        className="w-5 h-5 text-emerald-500"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -174,7 +174,7 @@ function ToastItem({
     ),
     warning: (
       <svg
-        className="w-5 h-5 text-orange-500"
+        className="w-5 h-5 text-amber-500"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -220,17 +220,17 @@ function ToastItem({
   };
 
   const bgColors = {
-    success: "bg-green-50",
+    success: "bg-emerald-50",
     error: "bg-red-50",
-    warning: "bg-orange-50",
+    warning: "bg-amber-50",
     info: "bg-blue-50",
     "sms-code": "bg-blue-50",
   };
 
   const borderColors = {
-    success: "border-green-200",
+    success: "border-emerald-200",
     error: "border-red-200",
-    warning: "border-orange-200",
+    warning: "border-amber-200",
     info: "border-blue-200",
     "sms-code": "border-blue-200",
   };
@@ -249,7 +249,7 @@ function ToastItem({
         {/* 成功图标 */}
         <div className="flex-shrink-0 flex items-center justify-center">
           <svg
-            className="w-5 h-5 text-green-500"
+            className="w-5 h-5 text-emerald-500"
             fill="currentColor"
             viewBox="0 0 20 20"
           >

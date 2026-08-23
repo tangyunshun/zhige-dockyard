@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { Key, Trash2, Search, Clock, Shield, AlertCircle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { getAuthToken } from "@/utils/auth";
 
 interface ApiKey {
   id: string;
@@ -66,7 +67,7 @@ export default function AdminApiKeysPage() {
 
       const res = await fetch(`/api/admin/api-keys?${params}`, {
         headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
       });
 
@@ -94,7 +95,7 @@ export default function AdminApiKeysPage() {
             method: "DELETE",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("userId") : ""}`,
+              Authorization: `Bearer ${getAuthToken()}`,
             },
             body: JSON.stringify({ id }),
           });
@@ -129,7 +130,7 @@ export default function AdminApiKeysPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-8">
       {/* 页面标题 */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 overflow-hidden">
         <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
@@ -166,7 +167,7 @@ export default function AdminApiKeysPage() {
           <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-sm">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-sm">
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <Clock className="w-5 h-5 text-[#10b981]" />
@@ -183,7 +184,7 @@ export default function AdminApiKeysPage() {
           <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-sm">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-sm">
                 <Clock className="w-6 h-6 text-white" />
               </div>
               <Clock className="w-5 h-5 text-[#f59e0b]" />
@@ -405,7 +406,7 @@ export default function AdminApiKeysPage() {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-sm flex-shrink-0">
             <AlertCircle className="w-5 h-5 text-white" />
           </div>
-          <div className="text-sm text-blue-700 font-medium">
+          <div className="text-sm text-[#2b6cb0] font-medium">
             <p className="font-black mb-2 text-base">安全提示</p>
             <ul className="list-disc list-inside space-y-1.5">
               <li>API 密钥具有完整的 API 访问权限，请谨慎管理</li>

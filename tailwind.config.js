@@ -14,6 +14,18 @@ export default {
           indigo: '#5a67d8',
           purple: '#805ad5',
         },
+        // 语义色阶：500 为主色，600 为深阶（渐变终点/hover/深色文字），50 为浅底
+        semantic: {
+          success: '#10b981',
+          'success-600': '#059669',
+          'success-light': '#ecfdf5',
+          warning: '#f59e0b',
+          'warning-600': '#d97706',
+          'warning-light': '#fffbeb',
+          danger: '#ef4444',
+          'danger-600': '#dc2626',
+          'danger-light': '#fef2f2',
+        },
         slate: {
           50: '#f8fafc',
           100: '#f1f5f9',

@@ -5,7 +5,7 @@ import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft, ChevronRight } from "lucide-react";
-import { COMPONENTS } from "@/constants/components";
+import { getAuthToken } from "@/utils/auth";
 
 // 引入组件浏览器大厅
 import ComponentBrowser from "@/components/studio/ComponentBrowser";
@@ -63,9 +63,9 @@ function StudioContent() {
         return;
       }
       try {
-        const userId = localStorage.getItem("userId") || userState.userInfo?.id;
-        if (!userId) return;
-        const headers: Record<string, string> = { Authorization: `Bearer ${userId}` };
+        const authToken = getAuthToken();
+        if (!authToken) return;
+        const headers: Record<string, string> = { Authorization: `Bearer ${authToken}` };
 
         // 并行发起数据拉取
         const [resRestricted, resQuota] = await Promise.all([

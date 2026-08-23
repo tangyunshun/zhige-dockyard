@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
+import { getAuthToken } from "@/utils/auth";
 import {
   Search,
   Plus,
@@ -87,8 +88,7 @@ export default function AdminStagesPage() {
   const loadStages = async () => {
     try {
       setLoading(true);
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -101,7 +101,7 @@ export default function AdminStagesPage() {
 
       const res = await fetch(`/api/admin/stages?${params}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -161,14 +161,13 @@ export default function AdminStagesPage() {
 
   const doToggleActive = async (id: string, isActive: boolean) => {
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
 
       const res = await fetch(`/api/admin/stages?id=${id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           id,
@@ -208,13 +207,12 @@ export default function AdminStagesPage() {
       type: "danger",
       onConfirm: async () => {
         try {
-          const userId =
-            typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+          const authToken = getAuthToken();
 
           const res = await fetch(`/api/admin/stages?id=${id}`, {
             method: "DELETE",
             headers: {
-              Authorization: `Bearer ${userId}`,
+              Authorization: `Bearer ${authToken}`,
             },
           });
 
@@ -287,8 +285,7 @@ export default function AdminStagesPage() {
     setSubmitting(true);
 
     try {
-      const userId =
-        typeof window !== "undefined" ? localStorage.getItem("userId") : "";
+      const authToken = getAuthToken();
       const url = editingStage
         ? `/api/admin/stages?id=${editingStage.id}`
         : "/api/admin/stages";
@@ -299,7 +296,7 @@ export default function AdminStagesPage() {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(formData),
       });
@@ -332,7 +329,7 @@ export default function AdminStagesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f8ff] via-[#e6f4f1] to-[#f5f3ff] pb-8">
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-8">
       {/* 顶部标题区 */}
       <div className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
         <div className="max-w-7xl mx-auto px-6 py-6">
@@ -609,7 +606,7 @@ export default function AdminStagesPage() {
                               className="p-2.5 hover:bg-red-50 rounded-xl transition-all duration-300 group/btn"
                               title="删除"
                             >
-                              <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-700" />
+                              <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-600" />
                             </button>
                           )}
                         </div>
