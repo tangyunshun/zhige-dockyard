@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Workspace } from "./useWorkspaceHubData";
 import { getAuthToken } from "@/utils/auth";
+import { safeJsonResponse } from "@/utils/api-helpers";
 
 interface UseDeleteWorkspaceProps {
   refresh: () => void;
@@ -53,15 +54,14 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
         },
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        const errorMsg = errorData.error || errorData.message || "检查失败";
+      const parsed = await safeJsonResponse(res, "检查失败");
+      if (!parsed.success) {
         setCheckingDelete(false);
         setWorkspaceToDelete(null);
-        throw new Error(errorMsg);
+        throw new Error(parsed.error);
       }
 
-      const checkData = await res.json();
+      const checkData = parsed.data;
       setDeleteCheckResult(checkData);
 
       if (checkData.issues && checkData.issues.length > 0) {
@@ -110,10 +110,9 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
         }),
       });
 
-      if (!deleteRes.ok) {
-        const errorData = await deleteRes.json();
-        const errorMsg = errorData.error || errorData.message || "注销失败";
-        throw new Error(errorMsg);
+      const deleteParsed = await safeJsonResponse(deleteRes, "注销失败");
+      if (!deleteParsed.success) {
+        throw new Error(deleteParsed.error);
       }
 
       toast.success("空间已注销");
@@ -170,9 +169,10 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
         },
       });
 
-      if (!workspacesRes.ok) throw new Error("获取空间信息失败");
-      const listData = await workspacesRes.json();
-      const personal = listData.workspaces.find((w: Workspace) => w.type === "PERSONAL");
+      const workspacesParsed = await safeJsonResponse(workspacesRes, "获取空间信息失败");
+      if (!workspacesParsed.success) throw new Error(workspacesParsed.error);
+      const listData = workspacesParsed.data;
+      const personal = listData?.workspaces?.find((w: Workspace) => w.type === "PERSONAL");
 
       if (!personal) {
         toast.error("个人空间不存在");
@@ -195,7 +195,8 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
         }
       );
 
-      if (deleteRes.ok) {
+      const deleteParsed = await safeJsonResponse(deleteRes, "注销失败");
+      if (deleteParsed.success) {
         localStorage.setItem("personalWorkspaceDeleted", "true");
         localStorage.setItem("personalWorkspaceUpgraded", "false");
         localStorage.removeItem("upgradeMode");
@@ -206,9 +207,7 @@ export function useDeleteWorkspace({ refresh }: UseDeleteWorkspaceProps) {
         
         refresh();
       } else {
-        const errorData = await deleteRes.json();
-        const errorMsg = errorData.error || errorData.message || "注销失败";
-        throw new Error(errorMsg);
+        throw new Error(deleteParsed.error);
       }
     } catch (error) {
       console.error("注销个人空间失败:", error);

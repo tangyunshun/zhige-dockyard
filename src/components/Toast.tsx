@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -311,7 +311,7 @@ function ToastItem({
       <div className="flex-shrink-0 flex items-center justify-center">
         {icons[toast.type]}
       </div>
-      <div className="flex-1 text-[14px] font-bold text-slate-800 tracking-wide leading-snug">
+      <div className="flex-1 text-xs md:text-[13px] font-extrabold text-slate-800 tracking-tight leading-none whitespace-nowrap truncate max-w-[70vw]">
         {toast.message}
       </div>
       <button

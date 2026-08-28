@@ -4,6 +4,9 @@ import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
 import { ensureDefaultComponents, getBoundComponentCount } from "@/lib/workspaceInit";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // P1-2 优化：自愈逻辑节流缓存，避免每次 list 都触发大量写操作
 // 同一用户 5 分钟内只跑一次自愈
 const SELF_HEAL_THROTTLE_MS = 5 * 60 * 1000;
@@ -99,20 +102,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 添加作为所有者的工作空间（如果不存在则添加）
     ownedWorkspaces.forEach((workspace: any) => {
-      if (!workspaceMap.has(workspace.id)) {
-        workspaceMap.set(workspace.id, {
-          id: workspace.id,
-          name: workspace.name,
-          type: workspace.type as "PERSONAL" | "ENTERPRISE",
-          role: "OWNER" as const,
-          logo: workspace.logo,
-          description: workspace.description,
-          createdAt: workspace.createdAt,
-          updatedAt: workspace.updatedAt,
-        });
-      }
+      const existing = workspaceMap.get(workspace.id);
+      workspaceMap.set(workspace.id, {
+        id: workspace.id,
+        name: workspace.name,
+        type: workspace.type as "PERSONAL" | "ENTERPRISE",
+        role: (existing?.role || "OWNER") as any,
+        logo: workspace.logo,
+        description: workspace.description,
+        createdAt: workspace.createdAt,
+        updatedAt: workspace.updatedAt || existing?.updatedAt,
+      });
     });
 
     // P1-2 优化：自愈与自动创建逻辑加 5 分钟节流，避免每次 list 都触发大量写操作

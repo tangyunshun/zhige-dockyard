@@ -122,6 +122,9 @@ export default function EnterpriseWorkspaceCard({
           </div>
           <div className="text-xs text-slate-500 font-semibold mt-2 leading-none">
             {workspace.memberCount || 0} 名成员 · {workspace.componentCount || 0} 个已授权组件
+            {workspace.createdAt && (
+              <span> · 创建于 {new Date(workspace.createdAt).toLocaleDateString("zh-CN")}</span>
+            )}
           </div>
         </div>
       </div>

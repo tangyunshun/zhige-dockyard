@@ -29,6 +29,10 @@ import DeleteConfirmModal from "@/components/workspace-hub/modals/DeleteConfirmM
 import CreateEnterpriseModal from "@/components/workspace-hub/modals/CreateEnterpriseModal";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
 import QuotaUpgradeModal from "@/components/workspace-hub/modals/QuotaUpgradeModal";
+import { DissolveWorkspaceCheckModal } from "@/components/workspace/DissolveWorkspaceCheckModal";
+import { DissolvePersonalWorkspaceModal } from "@/components/workspace/DissolvePersonalWorkspaceModal";
+import { ResetPersonalWorkspaceModal } from "@/components/workspace/ResetPersonalWorkspaceModal";
+import Footer from "@/components/Footer";
 
 export default function WorkspaceHub() {
   const router = useRouter();
@@ -38,6 +42,7 @@ export default function WorkspaceHub() {
   const {
     user,
     personalWorkspace,
+    setPersonalWorkspace,
     enterpriseWorkspace,
     enterpriseData,
     quota,
@@ -51,6 +56,9 @@ export default function WorkspaceHub() {
   } = useWorkspaceHubData();
 
   const [enterpriseSearchQuery, setEnterpriseSearchQuery] = useState("");
+  const [dissolveCheckWorkspace, setDissolveCheckWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [dissolvePersonalWorkspace, setDissolvePersonalWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [showResetPersonalWorkspaceModal, setShowResetPersonalWorkspaceModal] = useState(false);
 
   // 2. 个人空间核心 CRUD Hook
   const {
@@ -319,8 +327,8 @@ export default function WorkspaceHub() {
         }
       }
 
-      // 跳转并携带最新装配组件 ID
-      router.push(`/workspace/${workspaceId}?newBoundComponentId=${componentId}`);
+      // 跳转并携带最新装配组件 ID 与精确目标空间 ID
+      router.push(`/workspace/${workspaceId}?newBoundComponentId=${componentId}&boundTargetWs=${workspaceId}`);
       toast.success("组件装配成功，已就位！");
     } catch (err: any) {
       console.error("装配组件失败:", err);
@@ -335,8 +343,7 @@ export default function WorkspaceHub() {
   };
 
   const handleOpenResetPersonal = () => {
-    setShowPersonalResetModal(true);
-    setResetConfirmText("");
+    setShowResetPersonalWorkspaceModal(true);
   };
 
   const handleConfirmResetPersonal = async (token?: string) => {
@@ -420,45 +427,44 @@ export default function WorkspaceHub() {
       return;
     }
 
-    const names = componentWorkspaceBoundNames[componentId] || [];
-    const totalCount = allWorkspaces.length;
-
-    // 逻辑一：如果当前组件已经在我的所有空间中都已装配绑定，则直接前往第一个装载空间，无需再弹出选择绑定 Modal
-    if (names.length > 0 && names.length === totalCount) {
-      const boundWs = allWorkspaces.find(ws => {
-        if (ws.type === "PERSONAL") return true;
-        return names.includes(ws.name);
-      });
-      if (boundWs) {
-        navigateToWorkspaceComponent(boundWs.id, boundWs.type, componentId);
-        return;
-      }
-    }
-
-    // 逻辑二：如果只有一个空间，调用智能装配跳转分流函数
+    // 如果只有一个空间，调用智能装配跳转分流函数
     if (allWorkspaces.length === 1) {
       navigateToWorkspaceComponent(allWorkspaces[0].id, allWorkspaces[0].type, componentId);
       return;
     }
 
-    // 逻辑三：如果拥有多个空间且还存在未装配的空间，则弹出选择空间弹窗进行装配
+    // 拥有多个空间时（不论单空间已配或全空间已配），均弹出目标空间选择弹窗，供用户自由选择前往或装配
     setSelectedComponentId(componentId);
     setShowSelectWorkspaceModal(true);
   };
 
-  // 高危企业空间解散数据前置校验拦截逻辑 (Guard Logic)
+  // 高危企业空间解散数据前置校验与合规审计弹窗逻辑
   const handleWorkspaceDeleteClick = (workspaceId: string) => {
-    const workspace = enterpriseData?.workspaces?.find((ws: any) => ws.id === workspaceId);
-    if (workspace) {
-      const componentCount = workspace.componentCount || 0;
-      const memberCount = workspace.memberCount || 0;
-      // 拦截规则：存有授权组件资产或有其他协作成员 (成员数 > 1)，说明有协作数据，禁止直接删除
-      if (componentCount > 0 || memberCount > 1) {
-        toast.error("当前企业空间内仍存有授权组件资产或协作团队成员，请先将其清空/移出后再申请解散。");
-        return;
-      }
-    }
-    // 满足空空间要求，进入原本的二次鉴权注销流程
+    const workspace =
+      enterpriseData?.workspaces?.find((ws: any) => ws.id === workspaceId) ||
+      allWorkspaces?.find((ws: any) => ws.id === workspaceId);
+    setDissolveCheckWorkspace({
+      id: workspaceId,
+      name: workspace?.name || "企业空间",
+    });
+  };
+
+  const handleDissolveCheckPassed = (workspaceId: string) => {
+    setDissolveCheckWorkspace(null);
+    handleDeleteWorkspace(workspaceId);
+  };
+
+  // 个人空间注销数据前置校验与沙箱检测弹窗逻辑
+  const handlePersonalDeleteClick = (workspaceId: string) => {
+    const wsName = personalWorkspace?.name || "个人开发沙箱";
+    setDissolvePersonalWorkspace({
+      id: workspaceId,
+      name: wsName,
+    });
+  };
+
+  const handleDissolvePersonalPassed = (workspaceId: string) => {
+    setDissolvePersonalWorkspace(null);
     handleDeleteWorkspace(workspaceId);
   };
 
@@ -592,7 +598,7 @@ export default function WorkspaceHub() {
   }
 
   return (
-    <div className="w-full relative pb-8">
+    <div className="min-h-screen flex flex-col relative">
       {/* 背景效果 (系统浅蓝底纹，单一主色光晕，保持克制不喧宾夺主) */}
       <div className="absolute inset-0 bg-[#f0f8ff] pointer-events-none overflow-hidden">
         <div
@@ -607,7 +613,7 @@ export default function WorkspaceHub() {
       </div>
 
       {/* 主核心区 */}
-      <main className="relative z-10 max-w-[1440px] mx-auto px-6 pt-8 pb-0 space-y-6">
+      <main className="relative z-10 max-w-[1440px] mx-auto px-6 pt-8 pb-0 space-y-6 flex-1">
         
         {/* 1. UserGreeting (100% 宽度大顶通栏) */}
         <div className="w-full">
@@ -642,7 +648,7 @@ export default function WorkspaceHub() {
               onRecreate={handleRecreatePersonal}
               onRename={(id) => router.push(`/workspace/${id}?tab=settings`)}
               onReset={handleOpenResetPersonal}
-              onDelete={handleDeleteUpgradedPersonal}
+              onDelete={handlePersonalDeleteClick}
               onUpgrade={() => setShowUpgradeModal(true)}
               onViewEnterprise={() => {
                 if (enterpriseWorkspace) {
@@ -681,7 +687,12 @@ export default function WorkspaceHub() {
               onJoinClick={() => setShowJoinModal(true)}
             />
             
-            <ResourceOverview user={user} dashboardData={dashboardData} quota={quota} />
+            <ResourceOverview
+              user={user}
+              dashboardData={dashboardData}
+              quota={quota}
+              onUpgrade={() => setShowQuotaUpgradeModal(true)}
+            />
           </div>
         </div>
 
@@ -694,6 +705,8 @@ export default function WorkspaceHub() {
           />
         </div>
       </main>
+
+      <Footer />
 
       {/* 8. 声明式挂载外部 Modals 组件 */}
       <CreateEnterpriseModal
@@ -842,17 +855,35 @@ export default function WorkspaceHub() {
       {/* 选择空间装配弹窗 */}
       {showSelectWorkspaceModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[20px] border border-white/90 shadow-xl max-w-sm w-full p-6 text-left animate-in fade-in zoom-in duration-200">
-            <h3 className="text-sm font-extrabold text-slate-800 mb-2">选择装配的目标空间</h3>
+          <div className="bg-white rounded-[20px] border border-slate-100 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.18)] max-w-sm w-full p-6 text-left animate-in fade-in zoom-in-95 duration-200 relative">
+            {/* 右上角关闭按钮 */}
+            <button
+              onClick={() => {
+                setShowSelectWorkspaceModal(false);
+                setSelectedComponentId(null);
+              }}
+              className="absolute top-4 right-4 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all border-none bg-transparent cursor-pointer"
+              title="关闭"
+            >
+              ✕
+            </button>
+
+            <h3 className="text-sm font-extrabold text-slate-800 mb-2.5 flex items-center gap-1.5">
+              <span>选择装配的目标空间</span>
+            </h3>
+            
             {selectedCompInfo && (
-              <div className="mb-4 px-3 py-2.5 bg-blue-50/60 border border-blue-100 rounded-lg flex items-center gap-2 text-xs">
-                <span className="font-mono font-black text-[#2b6cb0] shrink-0">{selectedCompInfo.id}</span>
+              <div className="mb-4 px-3 py-2.5 bg-blue-50/70 border border-blue-100/90 rounded-xl flex items-center gap-2 text-xs">
+                <span className="font-mono font-black text-[#2b6cb0] shrink-0 bg-white/80 px-1.5 py-0.5 rounded border border-blue-200/60 shadow-2xs">
+                  {selectedCompInfo.id}
+                </span>
                 <span className="font-bold text-slate-700 truncate">{selectedCompInfo.name || "组件"}</span>
               </div>
             )}
+            
             <p className="text-xs text-slate-400 font-semibold mb-4 leading-normal">请选择要将该组件装配并运行的目标空间环境：</p>
             
-            <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
               {/* 个人空间 */}
               {personalWorkspace && (
                 <button
@@ -860,18 +891,23 @@ export default function WorkspaceHub() {
                     setShowSelectWorkspaceModal(false);
                     navigateToWorkspaceComponent(personalWorkspace.id, "PERSONAL", selectedComponentId!);
                   }}
-                  className="w-full p-3.5 text-left border border-slate-200/50 hover:border-[#2b6cb0] hover:bg-blue-50/20 rounded-lg flex items-center justify-between transition-all group cursor-pointer"
+                  className="w-full p-3.5 text-left border border-slate-200/60 hover:border-[#2b6cb0] hover:bg-blue-50/30 rounded-xl flex items-center justify-between transition-all duration-150 group cursor-pointer"
                 >
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-bold text-slate-700 block leading-none">{personalWorkspace.name}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100/60 rounded font-black shrink-0 leading-none">
+                      <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100/80 rounded font-black shrink-0 leading-none flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block animate-pulse"></span>
                         已装载
                       </span>
                     </div>
-                    <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-none">个人空间</span>
+                    <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-none flex items-center gap-1">
+                      <span>👤</span> 个人空间
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-[#2b6cb0] transition-opacity">直接前往 ➔</span>
+                  <span className="text-xs font-bold text-[#2b6cb0] transition-transform group-hover:translate-x-0.5">
+                    直接前往 ➔
+                  </span>
                 </button>
               )}
               
@@ -885,20 +921,23 @@ export default function WorkspaceHub() {
                       setShowSelectWorkspaceModal(false);
                       navigateToWorkspaceComponent(ws.id, "ENTERPRISE", selectedComponentId!);
                     }}
-                    className="w-full p-3.5 text-left border border-slate-200/50 hover:border-[#2b6cb0] hover:bg-blue-50/20 rounded-lg flex items-center justify-between transition-all group cursor-pointer"
+                    className="w-full p-3.5 text-left border border-slate-200/60 hover:border-[#2b6cb0] hover:bg-blue-50/30 rounded-xl flex items-center justify-between transition-all duration-150 group cursor-pointer"
                   >
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-bold text-slate-700 block leading-none">{ws.name}</span>
                         {isBound && (
-                          <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100/60 rounded font-black shrink-0 leading-none">
+                          <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100/80 rounded font-black shrink-0 leading-none flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span>
                             已装载
                           </span>
                         )}
                       </div>
-                      <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-none">企业空间</span>
+                      <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-none flex items-center gap-1">
+                        <span>🏢</span> 企业空间
+                      </span>
                     </div>
-                    <span className="text-xs font-bold text-[#2b6cb0] transition-opacity">
+                    <span className="text-xs font-bold text-[#2b6cb0] transition-transform group-hover:translate-x-0.5">
                       {isBound ? "直接前往 ➔" : "装配 ➔"}
                     </span>
                   </button>
@@ -1043,6 +1082,47 @@ export default function WorkspaceHub() {
             ) : null}
           </div>
         </div>
+      )}
+
+      {/* 企业空间解散合规检测前置弹窗 */}
+      {dissolveCheckWorkspace && (
+        <DissolveWorkspaceCheckModal
+          isOpen={!!dissolveCheckWorkspace}
+          workspaceId={dissolveCheckWorkspace.id}
+          workspaceName={dissolveCheckWorkspace.name}
+          onClose={() => setDissolveCheckWorkspace(null)}
+          onPassed={handleDissolveCheckPassed}
+        />
+      )}
+
+      {/* 个人空间注销合规检测前置弹窗 */}
+      {dissolvePersonalWorkspace && (
+        <DissolvePersonalWorkspaceModal
+          isOpen={!!dissolvePersonalWorkspace}
+          workspaceId={dissolvePersonalWorkspace.id}
+          workspaceName={dissolvePersonalWorkspace.name}
+          onClose={() => setDissolvePersonalWorkspace(null)}
+          onPassed={handleDissolvePersonalPassed}
+        />
+      )}
+
+      {/* 个人空间重置前置盘点与真实复位 Modal */}
+      {showResetPersonalWorkspaceModal && personalWorkspace && (
+        <ResetPersonalWorkspaceModal
+          isOpen={showResetPersonalWorkspaceModal}
+          workspaceId={personalWorkspace.id}
+          workspaceName={personalWorkspace.name}
+          onClose={() => setShowResetPersonalWorkspaceModal(false)}
+          onSuccess={(resetAt) => {
+            if (resetAt && personalWorkspace) {
+              setPersonalWorkspace({
+                ...personalWorkspace,
+                updatedAt: resetAt,
+              });
+            }
+            refresh();
+          }}
+        />
       )}
     </div>
   );

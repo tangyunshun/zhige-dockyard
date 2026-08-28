@@ -278,11 +278,11 @@ function LoginForm() {
       const data = await res.json();
 
       if (!data.exists) {
-        // 账号不存在：仅标记，引导手动点击注册，不自动跳转以免劫持登录
-        // 该标识不存在，不应保持之前的锁定界面
+        // 账号不存在：标记状态并启动 3 秒倒计时自动跳转到注册页面
         setAccountCheckStatus({
           exists: false,
         });
+        setRedirectCountdown(3);
         setLockUntil(null);
         setLockedIdentifiers([]);
       } else if (data.status === "locked") {

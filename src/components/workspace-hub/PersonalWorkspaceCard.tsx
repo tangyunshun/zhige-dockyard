@@ -197,9 +197,28 @@ export default function PersonalWorkspaceCard({
             </div>
             <p className="text-xs text-slate-500 font-semibold mt-1">
               个人开发专属环境 · 已绑定 {workspace?.componentCount || 0} 个组件
-              {workspace?.createdAt && (
-                <span> · 创建于 {new Date(workspace.createdAt).toLocaleDateString("zh-CN")}</span>
-              )}
+              {(() => {
+                if (!workspace) return null;
+                const createdDateStr = workspace.createdAt ? new Date(workspace.createdAt).toLocaleDateString("zh-CN") : "";
+                const updatedRaw = workspace.updatedAt || (workspace as any).updated_at;
+                const updatedDateStr = updatedRaw ? new Date(updatedRaw).toLocaleDateString("zh-CN") : "";
+
+                const createdTime = workspace.createdAt ? new Date(workspace.createdAt).getTime() : 0;
+                const updatedTime = updatedRaw ? new Date(updatedRaw).getTime() : 0;
+
+                // 规则 1：日期不同 (例如 "2026/8/24" !== "2026/7/5")
+                const isDifferentDay = updatedDateStr !== "" && createdDateStr !== "" && updatedDateStr !== createdDateStr;
+                // 规则 2：updatedTime 大于 createdTime 1000ms 以上
+                const isResetTime = updatedTime > 0 && createdTime > 0 && (updatedTime - createdTime) > 1000;
+
+                if ((isResetTime || isDifferentDay) && updatedDateStr) {
+                  return <span> · 重置于 {updatedDateStr}</span>;
+                }
+                if (createdDateStr) {
+                  return <span> · 创建于 {createdDateStr}</span>;
+                }
+                return null;
+              })()}
             </p>
           </div>
 

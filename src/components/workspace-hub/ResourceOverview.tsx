@@ -8,12 +8,14 @@ interface ResourceOverviewProps {
   user: any;
   dashboardData: any;
   quota: any;
+  onUpgrade?: () => void;
 }
 
 export default function ResourceOverview({
   user,
   dashboardData,
   quota,
+  onUpgrade,
 }: ResourceOverviewProps) {
   const router = useRouter();
 
@@ -46,6 +48,14 @@ export default function ResourceOverview({
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (tokenRatio / 100) * circumference;
 
+  const handleUpgradeClick = () => {
+    if (onUpgrade) {
+      onUpgrade();
+    } else {
+      router.push("/pricing");
+    }
+  };
+
   return (
     <div className="bg-white/80 border border-white/90 rounded-[20px] p-6 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full text-left">
       {/* 头部信息 */}
@@ -63,8 +73,8 @@ export default function ResourceOverview({
         
         {/* 升级额度右上角小文字链 */}
         <button
-          onClick={() => router.push("/pricing")}
-          className="text-xs font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors cursor-pointer flex items-center gap-0.5"
+          onClick={handleUpgradeClick}
+          className="text-xs font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors cursor-pointer flex items-center gap-0.5 border-none bg-transparent"
         >
           <span>提升配额</span>
           <ArrowUpRight className="w-3.5 h-3.5" />

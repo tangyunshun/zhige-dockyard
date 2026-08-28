@@ -43,13 +43,38 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "无权删除该工作空间" }, { status: 403 });
     }
 
-    // 检查是否有其他成员
+    // 检查工作空间依赖 (区分企业空间与个人空间，对齐真实装配口径)
     const otherMembers = workspace.workspacemember.filter((m: any) => m.userId !== userId);
-    if (otherMembers.length > 0) {
-      return NextResponse.json(
-        { error: "工作空间还有其他成员，请先移除所有成员后再删除" },
-        { status: 400 }
-      );
+    const rawUsages = await prisma.componentusage.findMany({
+      where: { workspaceId },
+      select: { metadata: true },
+    });
+    const assetCount = rawUsages.filter((u: any) => {
+      if (!u.metadata) return false;
+      try {
+        const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : u.metadata;
+        if (meta && typeof meta.enabled === "boolean") return meta.enabled === true;
+      } catch {}
+      return false;
+    }).length;
+
+    if (workspace.type === "ENTERPRISE") {
+      if (otherMembers.length > 0 || assetCount > 0) {
+        return NextResponse.json(
+          { error: "当前企业空间内仍存有授权组件资产或协作团队成员，请先将其清空/移出后再申请解散。" },
+          { status: 400 }
+        );
+      }
+    } else if (workspace.type === "PERSONAL") {
+      const activeTaskCount = await prisma.componenttask.count({
+        where: { tenantId: workspaceId, status: { in: ["IN_PROGRESS", "PENDING"] } },
+      });
+      if (assetCount > 0 || activeTaskCount > 0) {
+        return NextResponse.json(
+          { error: "当前个人空间内仍存有未解绑组件资产或未完成任务，请先将其清空后再申请注销。" },
+          { status: 400 }
+        );
+      }
     }
 
     // 根据 action 执行不同的操作

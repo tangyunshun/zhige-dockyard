@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Settings, Shield, Users, Save, RefreshCw, AlertTriangle, Upload, ArrowLeft, Copy } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { DissolveWorkspaceCheckModal } from "@/components/workspace/DissolveWorkspaceCheckModal";
 
 export default function WorkspaceSettingsPage() {
   const params = useParams();
@@ -22,6 +23,7 @@ export default function WorkspaceSettingsPage() {
   const [clearConfirmText, setClearConfirmText] = useState("");
   const [clearing, setClearing] = useState(false);
   
+  const [showDissolveCheck, setShowDissolveCheck] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -157,16 +159,7 @@ export default function WorkspaceSettingsPage() {
       contactPhone: !phoneValid,
     });
 
-    if (!nameValid) {
-      toast.error("空间名称为必填项");
-      return;
-    }
-    if (!emailValid) {
-      toast.error("请输入正确的电子邮箱格式");
-      return;
-    }
-    if (!phoneValid) {
-      toast.error("请输入正确的 11 位手机号码");
+    if (!nameValid || !emailValid || !phoneValid) {
       return;
     }
 
@@ -441,7 +434,7 @@ export default function WorkspaceSettingsPage() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <form onSubmit={handleSave} className="space-y-4">
+            <form onSubmit={handleSave} noValidate className="space-y-4">
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
                 
@@ -453,7 +446,6 @@ export default function WorkspaceSettingsPage() {
                   <input
                     type="text"
                     name="name"
-                    required
                     placeholder="请输入简洁的工作空间名称（如：研发一组空间）"
                     value={workspace.name || ""}
                     onChange={handleInputChange}
@@ -629,10 +621,10 @@ export default function WorkspaceSettingsPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowDeleteConfirm(true)}
+                    onClick={() => setShowDissolveCheck(true)}
                     className="px-3.5 py-2 text-xs bg-red-600 hover:bg-red-750 text-white rounded-lg transition-all font-bold cursor-pointer shrink-0 self-start sm:self-center shadow-sm"
                   >
-                    停用此工作空间
+                    申请解散/停用此工作空间
                   </button>
                 </div>
               )}
@@ -748,6 +740,20 @@ export default function WorkspaceSettingsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 企业空间解散合规检测 Modal */}
+      {showDissolveCheck && (
+        <DissolveWorkspaceCheckModal
+          isOpen={showDissolveCheck}
+          workspaceId={workspaceId}
+          workspaceName={workspace?.name || "当前企业空间"}
+          onClose={() => setShowDissolveCheck(false)}
+          onPassed={() => {
+            setShowDissolveCheck(false);
+            setShowDeleteConfirm(true);
+          }}
+        />
       )}
     </WorkspaceInternalLayout>
   );

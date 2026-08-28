@@ -569,4 +569,13 @@ export const COMPONENT_CATALOG_SEED = [
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
     isPublished: false, sortOrder: 0, usageCount: 0,
   },
+  {
+    id: "BACKEND_CORE", name: "后端核心接口组件",
+    description: "提供标准化 Restful API 与后端数据接口自动化开发服务",
+    category: "BACKEND_CORE", icon: "server", tags: ["后端", "API", "接口"],
+    isPremium: false, estimatedTokens: 10,
+    previewData: { inputMock: "输入后端接口需求", outputMock: "自动输出后端 Controller 与 API 契约代码", roiText: "后端接口自动化开发" },
+    inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
+    isPublished: false, sortOrder: 0, usageCount: 0,
+  },
 ];

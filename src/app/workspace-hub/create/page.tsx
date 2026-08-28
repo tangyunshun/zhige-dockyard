@@ -61,6 +61,13 @@ function CreateEnterpriseWorkspaceForm() {
     useState<MembershipLevel>("FREE");
   const [uploadedIcon, setUploadedIcon] = useState<string | null>(null);
   const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [errors, setErrors] = useState<{
+    name?: string;
+    slug?: string;
+    teamSize?: string;
+    industry?: string;
+    contactEmail?: string;
+  }>({});
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
@@ -257,38 +264,33 @@ function CreateEnterpriseWorkspaceForm() {
   };
 
   const handleCreate = async () => {
+    const newErrors: typeof errors = {};
+
     if (!formData.name.trim()) {
-      toast.error("请输入空间名称");
-      return;
+      newErrors.name = "请输入空间名称";
     }
 
     // 创建模式下需要更多验证
     if (mode === "create") {
       if (!formData.slug.trim()) {
-        toast.error("请输入空间标识");
-        return;
+        newErrors.slug = "请输入空间标识";
       }
 
       if (!formData.teamSize) {
-        toast.error("请选择团队规模");
-        return;
+        newErrors.teamSize = "请选择团队规模";
       }
 
       if (!formData.industry) {
-        toast.error("请选择所属行业");
-        return;
+        newErrors.industry = "请选择所属行业";
       }
 
       if (!formData.contactEmail.trim()) {
-        toast.error("请输入联系邮箱");
-        return;
-      }
-
-      // 邮箱格式验证
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.contactEmail)) {
-        toast.error("请输入正确的邮箱格式");
-        return;
+        newErrors.contactEmail = "请输入联系邮箱";
+      } else {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.contactEmail)) {
+          newErrors.contactEmail = "请输入正确的邮箱格式";
+        }
       }
 
       // 检查配额
@@ -301,17 +303,20 @@ function CreateEnterpriseWorkspaceForm() {
     // 编辑或扩容模式下的验证
     if (mode === "edit" || mode === "expand") {
       if (!formData.contactEmail.trim()) {
-        toast.error("请输入联系邮箱");
-        return;
-      }
-
-      // 邮箱格式验证
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.contactEmail)) {
-        toast.error("请输入正确的邮箱格式");
-        return;
+        newErrors.contactEmail = "请输入联系邮箱";
+      } else {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.contactEmail)) {
+          newErrors.contactEmail = "请输入正确的邮箱格式";
+        }
       }
     }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
 
     setLoading(true);
     try {
@@ -656,15 +661,25 @@ function CreateEnterpriseWorkspaceForm() {
                       <input
                         type="text"
                         value={formData.name}
-                        onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
-                        }
+                        onChange={(e) => {
+                          setFormData({ ...formData, name: e.target.value });
+                          if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
+                        }}
                         placeholder="例如：知阁研发中心"
-                        className="zg-input bg-white/95"
+                        className={`zg-input bg-white/95 ${
+                          errors.name ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100" : ""
+                        }`}
                       />
-                      <p className="text-xs text-slate-500 mt-1">
-                        用于标识您的工作空间，后续可修改
-                      </p>
+                      {errors.name ? (
+                        <p className="text-xs text-red-500 font-bold flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                          {errors.name}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500 mt-1">
+                          用于标识您的工作空间，后续可修改
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -677,20 +692,29 @@ function CreateEnterpriseWorkspaceForm() {
                           type="text"
                           value={formData.slug}
                           onChange={(e) => {
-                            // 自动格式化：转小写、空格转连字符、过滤非法字符
                             const formatted = e.target.value
                               .toLowerCase()
                               .replace(/\s+/g, "-")
                               .replace(/[^a-z0-9-]/g, "");
                             setFormData({ ...formData, slug: formatted });
+                            if (errors.slug) setErrors((prev) => ({ ...prev, slug: undefined }));
                           }}
                           placeholder="zhige-research"
-                          className="zg-input pl-9 bg-white/95"
+                          className={`zg-input pl-9 bg-white/95 ${
+                            errors.slug ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100" : ""
+                          }`}
                         />
                       </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        唯一标识，用于 URL 和 API 调用，创建后不可修改
-                      </p>
+                      {errors.slug ? (
+                        <p className="text-xs text-red-500 font-bold flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                          {errors.slug}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500 mt-1">
+                          唯一标识，用于 URL 和 API 调用，创建后不可修改
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -702,10 +726,13 @@ function CreateEnterpriseWorkspaceForm() {
                       </label>
                       <select
                         value={formData.teamSize}
-                        onChange={(e) =>
-                          setFormData({ ...formData, teamSize: e.target.value })
-                        }
-                        className="zg-input bg-white/95"
+                        onChange={(e) => {
+                          setFormData({ ...formData, teamSize: e.target.value });
+                          if (errors.teamSize) setErrors((prev) => ({ ...prev, teamSize: undefined }));
+                        }}
+                        className={`zg-input bg-white/95 ${
+                          errors.teamSize ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100" : ""
+                        }`}
                       >
                         <option value="">请选择团队规模</option>
                         {getAvailableTeamSizeOptions(membershipLevel).map(
@@ -716,6 +743,12 @@ function CreateEnterpriseWorkspaceForm() {
                           ),
                         )}
                       </select>
+                      {errors.teamSize && (
+                        <p className="text-xs text-red-500 font-bold flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                          {errors.teamSize}
+                        </p>
+                      )}
                       <div className="mt-2 flex items-center justify-between">
                         <div className="flex items-center gap-2 text-xs text-slate-600">
                           <Crown className="w-3 h-3" />
@@ -749,10 +782,13 @@ function CreateEnterpriseWorkspaceForm() {
                       </label>
                       <select
                         value={formData.industry}
-                        onChange={(e) =>
-                          setFormData({ ...formData, industry: e.target.value })
-                        }
-                        className="zg-input bg-white/95"
+                        onChange={(e) => {
+                          setFormData({ ...formData, industry: e.target.value });
+                          if (errors.industry) setErrors((prev) => ({ ...prev, industry: undefined }));
+                        }}
+                        className={`zg-input bg-white/95 ${
+                          errors.industry ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100" : ""
+                        }`}
                       >
                         <option value="">请选择所属行业</option>
                         <option value="互联网/软件">互联网/软件</option>
@@ -766,9 +802,16 @@ function CreateEnterpriseWorkspaceForm() {
                         <option value="服务业">服务业</option>
                         <option value="其他">其他</option>
                       </select>
-                      <p className="text-xs text-slate-500 mt-1">
-                        选择您所在的主要行业领域
-                      </p>
+                      {errors.industry ? (
+                        <p className="text-xs text-red-500 font-bold flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                          {errors.industry}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500 mt-1">
+                          选择您所在的主要行业领域
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -974,18 +1017,28 @@ function CreateEnterpriseWorkspaceForm() {
                       <input
                         type="email"
                         value={formData.contactEmail}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setFormData({
                             ...formData,
                             contactEmail: e.target.value,
-                          })
-                        }
+                          });
+                          if (errors.contactEmail) setErrors((prev) => ({ ...prev, contactEmail: undefined }));
+                        }}
                         placeholder="name@company.com"
-                        className="zg-input bg-white/95"
+                        className={`zg-input bg-white/95 ${
+                          errors.contactEmail ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100" : ""
+                        }`}
                       />
-                      <p className="text-xs text-slate-500 mt-1">
-                        用于接收重要通知和系统更新
-                      </p>
+                      {errors.contactEmail ? (
+                        <p className="text-xs text-red-500 font-bold flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                          {errors.contactEmail}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500 mt-1">
+                          用于接收重要通知和系统更新
+                        </p>
+                      )}
                     </div>
 
                     <div>

@@ -8,11 +8,23 @@ const JWT_SECRET = new TextEncoder().encode(
 
 // 仅对需要鉴权的页面/接口做预校验，放行登录、登出、静态资源与公开接口
 // 说明：/api/auth 下除 me / touch 外均属于未登录即可访问的认证流程接口
+// 说明：/solutions /security /pricing /developers /docs 为公共营销页面，未登录可直接浏览，
+//      仅页面内的操作（工单、诊断、升级、配置等）由各自 API 鉴权拦截
 const PUBLIC_PREFIXES = [
   "/auth",
   "/api/auth",
   "/api/health",
   "/api/components",
+  // 公共营销页面 - 未登录可查看（与客户端 AuthCheck / RouterGuards 保持一致）
+  "/solutions",
+  "/security",
+  "/pricing",
+  "/developers",
+  "/docs",
+  "/init",
+  // 营销页面未登录展示所需的公开数据接口
+  "/api/membership/levels",
+  "/api/documents/list",
   "/studio",
   "/_next",
   "/favicon",

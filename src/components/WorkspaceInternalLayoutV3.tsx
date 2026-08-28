@@ -1352,6 +1352,15 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
   // 监听新绑定的组件参数以弹出 Banner 提示和自聚焦
   useEffect(() => {
     const newBoundId = searchParams.get("newBoundComponentId");
+    const boundTargetWs = searchParams.get("boundTargetWs");
+
+    // 防跨空间误呈现：若传递了目标空间 ID 且与当前实际空间 ID 不匹配，严禁在该空间显示
+    if (boundTargetWs && boundTargetWs !== workspaceId) {
+      setShowNewBoundBanner(false);
+      setNewBoundComp(null);
+      return;
+    }
+
     if (newBoundId) {
       const comp = componentCatalog.find(c => c.id === newBoundId);
       if (comp) {
@@ -1363,6 +1372,14 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
         const stageId = categoryToStageId[comp.category];
         if (stageId) {
           setSelectedStageId(stageId);
+        }
+
+        // 一次性消费：干净抹除 URL 中的 newBoundComponentId 与 boundTargetWs 参数，防止后续切换空间残留误弹
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("newBoundComponentId");
+          url.searchParams.delete("boundTargetWs");
+          window.history.replaceState({}, "", url.toString());
         }
 
         // 启动一分钟自动消失的定时器
@@ -2609,13 +2626,15 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
           return `(还剩 ${diffHours} 小时)`;
         };
 
-        // 计算排序和过滤后的协同成员
+        // 计算排序和过滤后的协同成员 (与数据库 workspacepost 岗位代码 100% 联动过滤)
         const filteredMembers = membersList
           .filter(m => {
             const nameMatch = (m.name || "").toLowerCase().includes(memberSearchTerm.toLowerCase());
             const emailMatch = (m.email || "").toLowerCase().includes(memberSearchTerm.toLowerCase());
-            const roleMatch = memberRoleFilter === "ALL" || (m.role || "").toUpperCase() === memberRoleFilter.toUpperCase();
-            return (nameMatch || emailMatch) && roleMatch;
+            const memberPosCode = ((m as any).positionCode || m.role || "").toUpperCase();
+            const filterPosCode = memberRoleFilter.toUpperCase();
+            const positionMatch = memberRoleFilter === "ALL" || memberPosCode === filterPosCode || (m.role || "").toUpperCase() === filterPosCode;
+            return (nameMatch || emailMatch) && positionMatch;
           })
           .sort((a, b) => {
             const timeA = new Date(a.joinedAt).getTime();
@@ -2680,6 +2699,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
                       />
                     </div>
                     <div className="flex items-center gap-3.5 w-full sm:w-auto shrink-0 justify-end flex-wrap">
+                      {/* 岗位筛选下拉框：动态读取全局岗位列表与数据库 workspacepost 岗位，实现真正 100% 岗位联动 */}
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-400 font-bold">岗位筛选:</span>
                         <select
@@ -2687,10 +2707,17 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
                           onChange={(e) => setMemberRoleFilter(e.target.value)}
                           className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-[11px] font-extrabold text-slate-600 cursor-pointer focus:outline-none focus:border-[#3182ce]"
                         >
-                          <option value="ALL">全部角色</option>
-                          <option value="OWNER">👑 Owner (所有者)</option>
-                          <option value="ADMIN">🔧 Admin (管理员)</option>
-                          <option value="MEMBER">👤 Member (普通成员)</option>
+                          <option value="ALL">全部岗位</option>
+                          {(() => {
+                            const posMap = new Map<string, PositionDefinition>();
+                            (presetPositions || []).forEach(p => posMap.set(p.code, p));
+                            customPositions.forEach(p => posMap.set(p.code, p));
+                            return Array.from(posMap.values()).map(pos => (
+                              <option key={pos.code} value={pos.code}>
+                                {pos.icon} {pos.name}
+                              </option>
+                            ));
+                          })()}
                         </select>
                       </div>
 
@@ -2770,7 +2797,7 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
                                   <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-50 text-emerald-600 border border-emerald-100">我</span>
                                 )}
                                 <span className={`px-1.5 py-0.5 text-[9px] rounded font-bold border ${roleBadgeCls}`}>
-                                  {isTargetOwner ? "Owner" : isTargetAdmin ? "Admin" : "Member"}
+                                  {isTargetOwner ? "所有者" : isTargetAdmin ? "管理员" : "协同成员"}
                                 </span>
                               </div>
                               <p className="text-[11px] text-slate-400 mt-0.5 truncate">{m.email || "未绑定邮箱"}</p>
@@ -3787,7 +3814,29 @@ export default function WorkspaceInternalLayout({ children }: WorkspaceInternalL
               )}
               {workspaceType === "ENTERPRISE" && (
                 <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full border border-slate-200 font-bold">
-                  岗位角色: {userRole === "Owner" ? "👑 所有者" : userRole === "Admin" ? "🔧 管理员" : userRole === "ComponentManager" ? "🧩 组件管理员" : userRole === "KnowledgeManager" ? "📚 规范库管理员" : "👤 协作成员"}
+                  岗位角色: {(() => {
+                    const myId = getCurrentUserId();
+                    const myMember = (membersList || []).find((m: any) => m.userId === myId || m.isSelf);
+                    if (myMember) {
+                      const posCode = (myMember as any).positionCode || myMember.role;
+                      const posMap = new Map<string, PositionDefinition>();
+                      (presetPositions || []).forEach(p => posMap.set(p.code, p));
+                      (customPositions || []).forEach(p => posMap.set(p.code, p));
+                      const matchedPos = posMap.get(posCode);
+                      if (matchedPos) {
+                        return `${matchedPos.icon} ${matchedPos.name}`;
+                      }
+                    }
+                    return userRole === "Owner" || userRole === "OWNER"
+                      ? "👑 空间所有者"
+                      : userRole === "Admin" || userRole === "ADMIN"
+                      ? "🔧 空间管理员"
+                      : userRole === "ComponentManager"
+                      ? "🧩 组件管理员"
+                      : userRole === "KnowledgeManager"
+                      ? "📚 规范库管理员"
+                      : "👤 协同成员";
+                  })()}
                 </span>
               )}
             </div>

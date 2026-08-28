@@ -474,6 +474,12 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
             </p>
             <button
               onClick={() => {
+                // 架构与安全诊断需登录后方可操作（诊断报告生成与下载需绑定账号）
+                if (!userState.isLoggedIn) {
+                  toast.info("架构与安全诊断需先登录");
+                  router.push("/auth/login?redirect=" + encodeURIComponent(window.location.pathname));
+                  return;
+                }
                 setWizardStep(0);
                 setDiagnoseProgress(0);
                 setShowDiagnoseWizard(true);

@@ -9,6 +9,7 @@ import { getAuthToken } from "@/utils/auth";
 
 // 引入组件浏览器大厅
 import ComponentBrowser from "@/components/studio/ComponentBrowser";
+import Footer from "@/components/Footer";
 
 export default function StudioPage() {
   return (
@@ -142,6 +143,7 @@ function StudioContent() {
           onTokenUpdate={(newToken) => setWorkspaceToken(newToken)}
         />
       </main>
+      <Footer />
     </div>
   );
 }

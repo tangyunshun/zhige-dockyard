@@ -82,7 +82,7 @@ export function useWorkspaceHubData() {
           localStorage.removeItem("personalWorkspaceDeleted");
           localStorage.removeItem("personalWorkspaceUpgraded");
           localStorage.removeItem("upgradeMode");
-          
+
           setTimeout(() => {
             // 保留当前 URL 参数（如 invitationCode），登录后可回到原页面
             const currentPath = window.location.pathname + window.location.search;
@@ -102,9 +102,10 @@ export function useWorkspaceHubData() {
       if (!data) return;
       setUser(data.user);
 
-      // 加载所有的工作空间列表
-      const workspacesRes = await fetch("/api/workspace/list", {
+      // 加载所有的工作空间列表 (禁用 HTTP/Next 强缓存)
+      const workspacesRes = await fetch(`/api/workspace/list?_t=${Date.now()}`, {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        cache: "no-store",
       });
 
       if (workspacesRes.ok) {
@@ -133,10 +134,11 @@ export function useWorkspaceHubData() {
         }
       }
 
-      // 获取用户主工作区看板聚合数据
-      const dashboardRes = await fetch("/api/user/workspace-hub/dashboard", {
+      // 获取用户主工作区看板聚合数据 (禁用 HTTP/Next 强缓存)
+      const dashboardRes = await fetch(`/api/user/workspace-hub/dashboard?_t=${Date.now()}`, {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
+        cache: "no-store",
       });
 
       if (dashboardRes.ok) {
@@ -148,57 +150,57 @@ export function useWorkspaceHubData() {
             setDashboardData(bentoData);
             setNeedsPersonalWorkspace(!!bentoData.needsPersonalWorkspace);
 
-          if (bentoData.user) {
-            setUser(bentoData.user);
-          }
-          if (bentoData.personalWorkspace) {
-            setPersonalWorkspace(bentoData.personalWorkspace);
-            setPersonalWorkspaceDeleted(false);
-            localStorage.setItem("personalWorkspaceDeleted", "false");
-          }
-          if (bentoData.enterpriseWorkspaces) {
-            setEnterpriseWorkspace(bentoData.enterpriseWorkspaces[0] || null);
-            setEnterpriseData({
-              success: true,
-              workspaces: bentoData.enterpriseWorkspaces,
-              statistics: {
-                totalWorkspaces: bentoData.enterpriseWorkspaces.length,
-                totalComponents: bentoData.enterpriseWorkspaces.reduce(
-                  (acc: number, ws: any) => acc + (ws.componentCount || 0),
-                  0
-                ),
-                totalMembers:
-                  typeof bentoData.uniqueEnterpriseMemberCount === "number"
-                    ? bentoData.uniqueEnterpriseMemberCount
-                    : bentoData.enterpriseWorkspaces.reduce(
+            if (bentoData.user) {
+              setUser(bentoData.user);
+            }
+            if (bentoData.personalWorkspace) {
+              setPersonalWorkspace(bentoData.personalWorkspace);
+              setPersonalWorkspaceDeleted(false);
+              localStorage.setItem("personalWorkspaceDeleted", "false");
+            }
+            if (bentoData.enterpriseWorkspaces) {
+              setEnterpriseWorkspace(bentoData.enterpriseWorkspaces[0] || null);
+              setEnterpriseData({
+                success: true,
+                workspaces: bentoData.enterpriseWorkspaces,
+                statistics: {
+                  totalWorkspaces: bentoData.enterpriseWorkspaces.length,
+                  totalComponents: bentoData.enterpriseWorkspaces.reduce(
+                    (acc: number, ws: any) => acc + (ws.componentCount || 0),
+                    0
+                  ),
+                  totalMembers:
+                    typeof bentoData.uniqueEnterpriseMemberCount === "number"
+                      ? bentoData.uniqueEnterpriseMemberCount
+                      : bentoData.enterpriseWorkspaces.reduce(
                         (acc: number, ws: any) => acc + (ws.memberCount || 0),
                         0
                       ),
-              },
-            });
-          }
+                },
+              });
+            }
 
-          if (bentoData.userQuota) {
-            const quotas = bentoData.userQuota.quotas;
-            setQuota({
-              hasEnterprise: quotas.enterpriseSlots.used > 0,
-              enterpriseCount: quotas.enterpriseSlots.used,
-              maxEnterprise: quotas.enterpriseSlots.total,
-              isMember:
-                quotas.enterpriseSlots.total > 1 ||
-                bentoData.user?.role === "admin" ||
-                bentoData.user?.role === "super_admin",
-            });
+            if (bentoData.userQuota) {
+              const quotas = bentoData.userQuota.quotas;
+              setQuota({
+                hasEnterprise: quotas.enterpriseSlots.used > 0,
+                enterpriseCount: quotas.enterpriseSlots.used,
+                maxEnterprise: quotas.enterpriseSlots.total,
+                isMember:
+                  quotas.enterpriseSlots.total > 1 ||
+                  bentoData.user?.role === "admin" ||
+                  bentoData.user?.role === "super_admin",
+              });
 
-            setUsageStats({
-              monthlyTokens: quotas.tokenBalance.used,
-              totalTokens: quotas.tokenBalance.historyTotalUsed || quotas.tokenBalance.used,
-            });
+              setUsageStats({
+                monthlyTokens: quotas.tokenBalance.used,
+                totalTokens: quotas.tokenBalance.historyTotalUsed || quotas.tokenBalance.used,
+              });
+            }
           }
         }
       }
-    }
-  } catch (error) {
+    } catch (error) {
       console.error("加载聚合数据失败:", error);
     } finally {
       setIsLoading(false);
@@ -258,5 +260,6 @@ export function useWorkspaceHubData() {
     needsPersonalWorkspace,
     redirecting,
     refresh: loadUserInfo,
+    setPersonalWorkspace,
   };
 }

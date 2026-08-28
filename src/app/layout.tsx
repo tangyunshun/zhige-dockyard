@@ -21,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -31,7 +31,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased min-h-screen w-full flex flex-col overflow-y-auto">
+      <body className="antialiased min-h-screen w-full flex flex-col overflow-y-auto" suppressHydrationWarning>
         <AppLayout>{children}</AppLayout>
       </body>
     </html>

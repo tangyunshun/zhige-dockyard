@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Pagination from "@/components/Pagination";
 import { Plus, Trash2, ShieldCheck, Check, Lock, Edit3, Save, Crown } from "lucide-react";
 import { useToast } from "@/components/Toast";
 
@@ -624,33 +625,15 @@ export default function PositionsConfigTab({
             </div>
           </div>
 
-          {/* 左侧 10 条/页 分页控制 Bar (底部固定，水平齐平) */}
-          <div className="pt-3 border-t border-slate-100 px-1 shrink-0 flex items-center justify-between h-9">
-            <span className="text-[11px] text-slate-400 font-bold">
-              第 {posCurrentPage} / {totalPosPages} 页 (共 {filteredPositions.length} 个岗位)
-            </span>
-            {totalPosPages > 1 ? (
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  disabled={posCurrentPage === 1}
-                  onClick={() => setPosCurrentPage((p) => Math.max(1, p - 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  ◀ 上一页
-                </button>
-                <button
-                  type="button"
-                  disabled={posCurrentPage === totalPosPages}
-                  onClick={() => setPosCurrentPage((p) => Math.min(totalPosPages, p + 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  下一页 ▶
-                </button>
-              </div>
-            ) : (
-              <span className="text-[11px] text-slate-300 font-medium font-mono">1/1 单页全量</span>
-            )}
+          {/* 全系统统一标准动态分页控制组件 */}
+          <div className="pt-3 border-t border-slate-100 px-1 shrink-0">
+            <Pagination
+              currentPage={safePosPage}
+              totalItems={filteredPositions.length}
+              pageSize={posPageSize}
+              onPageChange={(page) => setPosCurrentPage(page)}
+              itemLabel="个岗位"
+            />
           </div>
         </div>
 
@@ -782,33 +765,15 @@ export default function PositionsConfigTab({
             </div>
           </div>
 
-          {/* 右侧 10 条/页 分页控制 Bar (第 1 页 10 条，第 2 页 5 条，与左侧完全在同一水平线齐平对齐) */}
-          <div className="pt-3 border-t border-slate-100 px-1 shrink-0 flex items-center justify-between h-9">
-            <span className="text-[11px] text-slate-400 font-bold">
-              第 {compCurrentPage} / {totalCompPages} 页 (共 {filteredComponents.length} 个组件，每页 10 条)
-            </span>
-            {totalCompPages > 1 ? (
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  disabled={compCurrentPage === 1}
-                  onClick={() => setCompCurrentPage((p) => Math.max(1, p - 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  ◀ 上一页
-                </button>
-                <button
-                  type="button"
-                  disabled={compCurrentPage === totalCompPages}
-                  onClick={() => setCompCurrentPage((p) => Math.min(totalCompPages, p + 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  下一页 ▶
-                </button>
-              </div>
-            ) : (
-              <span className="text-[11px] text-slate-300 font-medium font-mono">1/1 单页全量</span>
-            )}
+          {/* 全系统统一标准动态分页控制组件 */}
+          <div className="pt-3 border-t border-slate-100 px-1 shrink-0">
+            <Pagination
+              currentPage={safeCompPage}
+              totalItems={filteredComponents.length}
+              pageSize={compPageSize}
+              onPageChange={(page) => setCompCurrentPage(page)}
+              itemLabel="个组件"
+            />
           </div>
         </div>
       </div>

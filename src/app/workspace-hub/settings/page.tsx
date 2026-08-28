@@ -81,6 +81,9 @@ export default function PersonalWorkspaceSettings() {
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [currentIntegration, setCurrentIntegration] = useState<string>("");
   const [tokenValue, setTokenValue] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [tokenError, setTokenError] = useState("");
+  const [upgradeError, setUpgradeError] = useState("");
 
   // 升级申请表单
   const [upgradeForm, setUpgradeForm] = useState({
@@ -133,9 +136,10 @@ export default function PersonalWorkspaceSettings() {
 
   const handleSaveOverview = async () => {
     if (!workspaceData.name.trim()) {
-      toast.error("请输入空间名称");
+      setNameError("请输入空间名称");
       return;
     }
+    setNameError("");
 
     if (!workspaceData.id) {
       toast.error("工作空间 ID 不存在");
@@ -206,9 +210,10 @@ export default function PersonalWorkspaceSettings() {
 
   const confirmTokenConfig = async () => {
     if (!tokenValue.trim()) {
-      toast.error("请输入有效的 Token");
+      setTokenError("请输入有效的 Token");
       return;
     }
+    setTokenError("");
 
     const integration = integrations.find((i) => i.id === currentIntegration);
     if (!integration) return;
@@ -543,15 +548,26 @@ export default function PersonalWorkspaceSettings() {
                         <input
                           type="text"
                           value={workspaceData.name}
-                          onChange={(e) =>
+                          onChange={(e) => {
                             setWorkspaceData({
                               ...workspaceData,
                               name: e.target.value,
-                            })
-                          }
-                          className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                            });
+                            if (nameError) setNameError("");
+                          }}
+                          className={`w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] bg-white transition-all outline-none ${
+                            nameError
+                              ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                              : "border-[#e2e8f0] focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10"
+                          }`}
                           placeholder="请输入空间名称"
                         />
+                        {nameError && (
+                          <p className="text-xs text-red-500 font-bold flex items-center gap-1 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                            {nameError}
+                          </p>
+                        )}
                       </div>
 
                       {/* 空间简介 */}
@@ -1163,9 +1179,20 @@ export default function PersonalWorkspaceSettings() {
             </div>
 
             {/* 底部按钮 */}
+            {upgradeError && (
+              <div className="px-6 pt-2">
+                <p className="text-xs text-red-500 font-bold flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  {upgradeError}
+                </p>
+              </div>
+            )}
             <div className="px-6 py-4 border-t border-[#e2e8f0] bg-white flex-shrink-0 flex justify-end gap-3">
               <button
-                onClick={() => setShowUpgradeModal(false)}
+                onClick={() => {
+                  setShowUpgradeModal(false);
+                  setUpgradeError("");
+                }}
                 className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#e2e8f0] text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
               >
                 取消
@@ -1173,13 +1200,14 @@ export default function PersonalWorkspaceSettings() {
               <button
                 onClick={() => {
                   if (
-                    !upgradeForm.companyName ||
-                    !upgradeForm.contactName ||
-                    !upgradeForm.contactPhone
+                    !upgradeForm.companyName.trim() ||
+                    !upgradeForm.contactName.trim() ||
+                    !upgradeForm.contactPhone.trim()
                   ) {
-                    toast.error("请填写所有必填项");
+                    setUpgradeError("请填写所有必填项（公司名称、联系人、联系电话）");
                     return;
                   }
+                  setUpgradeError("");
                   confirmUpgrade();
                 }}
                 disabled={loading}

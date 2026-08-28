@@ -2,6 +2,18 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
+// 自动清除废弃的 src/app/middleware.ts 冲突文件（避免 App Router 节点匹配乱码引发 404）
+const deprecatedMiddlewarePath = path.join(__dirname, '../src/app/middleware.ts');
+if (fs.existsSync(deprecatedMiddlewarePath)) {
+  try {
+    fs.unlinkSync(deprecatedMiddlewarePath);
+    console.log('[Cleanup] 成功清除废弃的 src/app/middleware.ts 冲突文件');
+  } catch (e) {
+    console.error('[Cleanup] 清除 src/app/middleware.ts 失败:', e);
+  }
+}
+
+
 // 多边形包含判定算法 Point-in-polygon
 function pointInPoly(px, py, polygon) {
   let inside = false;

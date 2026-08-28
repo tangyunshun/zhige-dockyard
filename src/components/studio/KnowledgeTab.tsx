@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import Pagination from "@/components/Pagination";
 import { BookOpen, Search, Plus, CheckCircle2, AlertTriangle, FileText, ExternalLink, ShieldCheck, Download, Eye, Layers, Clock, Calendar, Zap, Tag, X } from "lucide-react";
 
 export interface KnowledgeItem {
@@ -212,12 +213,12 @@ export default function KnowledgeTab({
           </div>
           <div>
             <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-              全空间团队研发知识库
+              工作空间 SOP 规约与团队知识库
             </h3>
             <p className="text-xs text-slate-500 font-semibold mt-0.5 flex items-center gap-2">
-              <span>共收录 {knowledges.length} 项知识沉淀</span>
+              <span>共收录 {knowledges.length} 项 SOP 规约与知识沉淀</span>
               <span>·</span>
-              <span className="text-emerald-600 font-bold">{approvedCount} 项已归档发布</span>
+              <span className="text-emerald-600 font-bold">{approvedCount} 项已归档生效</span>
               {workspaceType === "ENTERPRISE" && (
                 <>
                   <span>·</span>
@@ -236,7 +237,7 @@ export default function KnowledgeTab({
             className="h-9 px-4 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#1a365d] text-white text-xs font-black rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>沉淀/录入新知识</span>
+            <span>+ 沉淀/录入新规约</span>
           </button>
         )}
       </div>
@@ -443,33 +444,15 @@ export default function KnowledgeTab({
             })}
           </div>
 
-          {/* 6 条/页 分页 Bar */}
-          <div className="pt-3 border-t border-slate-100 px-1 shrink-0 flex items-center justify-between h-9">
-            <span className="text-[11px] text-slate-400 font-bold">
-              第 {currentPage} / {totalPages} 页 (共 {filtered.length} 项知识，每页 6 条)
-            </span>
-            {totalPages > 1 ? (
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  ◀ 上一页
-                </button>
-                <button
-                  type="button"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  下一页 ▶
-                </button>
-              </div>
-            ) : (
-              <span className="text-[11px] text-slate-300 font-medium font-mono">1/1 单页全量</span>
-            )}
+          {/* 全系统统一标准动态分页控制组件 */}
+          <div className="pt-3 border-t border-slate-100 px-1 shrink-0">
+            <Pagination
+              currentPage={safeCurrentPage}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={(page) => setCurrentPage(page)}
+              itemLabel="条知识"
+            />
           </div>
         </div>
       )}

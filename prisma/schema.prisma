@@ -899,3 +899,21 @@ model position {
   @@index([sortOrder], map: "Position_sortOrder_idx")
   @@map("position")
 }
+
+// Webhook 事件订阅实体表：支持 Webhooks 真实订阅与事件推发日志
+model webhooksubscription {
+  id             String    @id @default(uuid())
+  userId         String
+  url            String
+  secret         String
+  events         Json      // string[] 存订阅事件
+  active         Boolean   @default(true)
+  successRate    String    @default("100%")
+  lastTriggered  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId], map: "Webhook_userId_idx")
+  @@index([active], map: "Webhook_active_idx")
+  @@map("webhooksubscription")
+}

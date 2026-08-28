@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import Pagination from "@/components/Pagination";
 import { CheckCircle2, Search, RefreshCw, Layers, LayoutGrid, Clock, AlertTriangle, ArrowUpRight, BookOpen, Eye, Calendar } from "lucide-react";
 
 // 全量标准组件库元数据字典 (用于在 componentName 与 ID 重复时，从数据库/字典精准反查真实组件名称)
@@ -163,13 +164,15 @@ export default function TasksTab({
     });
   }, [finalTasks, tasksFilterTab, searchQuery, timeRangeFilter, customStartDate, customEndDate, allComponents]);
 
-  // 5 条/页 分页切片
+  // 5 条/页 分页切片与安全页码容错计算
   const pageSize = 5;
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const safeCurrentPage = Math.min(Math.max(currentPage, 1), totalPages);
+
   const paginatedTasks = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
+    const start = (safeCurrentPage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage]);
+  }, [filtered, safeCurrentPage]);
 
   const successCount = finalTasks.filter(t => t.status === "SUCCESS").length;
   const failedCount = finalTasks.filter(t => t.status === "FAILED").length;
@@ -382,33 +385,15 @@ export default function TasksTab({
             </table>
           </div>
 
-          {/* 4. 5 条/页 分页控制 Bar (标准齐平对齐) */}
-          <div className="pt-3 border-t border-slate-100 px-1 shrink-0 flex items-center justify-between h-9">
-            <span className="text-[11px] text-slate-400 font-bold">
-              第 {currentPage} / {totalPages} 页 (共 {filtered.length} 条记录，每页 5 条)
-            </span>
-            {totalPages > 1 ? (
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  ◀ 上一页
-                </button>
-                <button
-                  type="button"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors cursor-pointer"
-                >
-                  下一页 ▶
-                </button>
-              </div>
-            ) : (
-              <span className="text-[11px] text-slate-300 font-medium font-mono">1/1 单页全量</span>
-            )}
+          {/* 全系统统一标准动态分页控制组件 */}
+          <div className="pt-3 border-t border-slate-100 px-1 shrink-0">
+            <Pagination
+              currentPage={safeCurrentPage}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={(page) => setCurrentPage(page)}
+              itemLabel="条记录"
+            />
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@ import ActivityMonitor from "@/components/ActivityMonitor";
 import { ResponsiveProvider } from "@/contexts/ResponsiveContext";
 import { DeviceProvider } from "@/contexts/DeviceContext";
 import MobileBottomNav from "@/components/platform/MobileBottomNav";
+import GlobalFeedbackModal from "@/components/GlobalFeedbackModal";
 
 export default function AppLayout({
   children,
@@ -28,6 +29,10 @@ export default function AppLayout({
     pathname.startsWith("/auth") ||
     pathname.startsWith("/workspace/") ||
     pathname.startsWith("/user/");
+
+  // 仅在文档中心页显示全局“提交官方工单”悬浮入口（其余页面不显示）
+  const shouldShowGlobalFeedback =
+    pathname === "/docs" || pathname.startsWith("/docs/");
 
   useEffect(() => {
     if (shouldHideGlobalHeader) return;
@@ -73,14 +78,14 @@ export default function AppLayout({
                           width: `${scrollProgress}%`,
                         }}
                       />
-                      <div className="pt-[60px] pb-20 md:pb-0">
+                      <div className="pt-[60px]">
                         {children}
                       </div>
                       {/* 全局悬浮回到顶部按钮 */}
                       <button
                         onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
                         aria-label="回到顶部"
-                        className={`fixed bottom-8 right-8 z-50 w-12 h-12 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center cursor-pointer border border-[#3182ce]/20 ${
+                        className={`fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[90] w-12 h-12 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center cursor-pointer border border-white/30 hover:scale-110 active:scale-95 ${
                           scrollProgress > 5
                             ? "opacity-100 translate-y-0"
                             : "opacity-0 translate-y-4 pointer-events-none"
@@ -98,6 +103,7 @@ export default function AppLayout({
                 </RouterGuards>
               </AuthCheck>
               <ActivityMonitor />
+              {shouldShowGlobalFeedback && <GlobalFeedbackModal />}
             </ToastProvider>
           </WorkspaceProvider>
         </AppProvider>

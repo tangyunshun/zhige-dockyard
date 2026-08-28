@@ -233,10 +233,7 @@ export default function PricingPage() {
       if (!userState.isLoggedIn) {
         return {
           text: "立即登录升级",
-          onClick: () => {
-            setSelectedPlan({ name: "SILVER", displayName: "岗位专业版" });
-            setShowRequestModal(true);
-          },
+          onClick: () => router.push("/auth/login?redirect=/pricing"),
           className: `${baseBtnStyle} bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-md hover:shadow-blue-500/10 hover:-translate-y-0.5`,
           showCheck: false,
         };

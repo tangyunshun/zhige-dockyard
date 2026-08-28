@@ -457,17 +457,48 @@ export async function GET(request: NextRequest) {
         }, { status: 403 });
       }
 
+      const limitParam = searchParams.get("limit");
+      const take = limitParam ? parseInt(limitParam, 10) : undefined;
+
       const tasks = await prisma.componenttask.findMany({
         where: { tenantId: workspaceId },
         orderBy: { createdAt: "desc" },
-        take: 10
+        ...(take ? { take } : {}),
       });
 
-      const formattedTasks = tasks.map(t => ({
-        ...t,
-        config: t.config ? JSON.parse(JSON.stringify(t.config)) : null,
-        result: t.result ? JSON.parse(JSON.stringify(t.result)) : null,
-      }));
+      // 从数据库 componentcatalog (组件表) 和 componentcategory (分类表) 统一反查真实中文名称字典
+      const [allComponents, allCategories] = await Promise.all([
+        prisma.componentcatalog.findMany({ select: { id: true, name: true } }),
+        prisma.componentcategory.findMany({ select: { key: true, name: true } }),
+      ]);
+
+      const compNameMap = new Map<string, string>();
+      // 1. 注入数据库 componentcategory 分类的中文名称 (如 BACKEND_CORE -> 后端开发与接口)
+      allCategories.forEach((cat) => {
+        if (cat.key && cat.name) {
+          compNameMap.set(cat.key.trim().toUpperCase(), cat.name);
+        }
+      });
+      // 2. 注入数据库 componentcatalog 组件的中文名称
+      allComponents.forEach((comp) => {
+        if (comp.id && comp.name) {
+          compNameMap.set(comp.id.trim().toUpperCase(), comp.name);
+        }
+      });
+
+      const formattedTasks = tasks.map((t) => {
+        const cId = (t.type || "").trim().toUpperCase();
+        // 100% 从数据库 compNameMap (componentcatalog / componentcategory) 动态获取中文名称，拒绝硬编码
+        const dbCompName = compNameMap.get(cId) || t.componentName || t.type || "";
+
+        return {
+          ...t,
+          componentId: t.type,
+          componentName: dbCompName,
+          config: t.config ? JSON.parse(JSON.stringify(t.config)) : null,
+          result: t.result ? JSON.parse(JSON.stringify(t.result)) : null,
+        };
+      });
 
       return NextResponse.json({ success: true, data: formattedTasks });
     }
@@ -1675,6 +1706,29 @@ export async function DELETE(request: NextRequest) {
         },
       });
       return NextResponse.json({ success: true });
+    }
+
+    // 删除知识库文档记录 (支持 delete_knowledge 与 deleteDocument)
+    if (action === "delete_knowledge" || action === "deleteDocument") {
+      const documentId = searchParams.get("documentId") || searchParams.get("id");
+      const workspaceId = searchParams.get("workspaceId");
+
+      if (!documentId) {
+        return NextResponse.json({ success: false, error: "缺少 documentId 参数" }, { status: 400 });
+      }
+
+      if (workspaceId) {
+        const accessCheck = await checkWorkspaceAccess(userId, workspaceId);
+        if (accessCheck.error) {
+          return NextResponse.json({ success: false, error: accessCheck.error.message }, { status: accessCheck.error.status });
+        }
+      }
+
+      await prisma.document.delete({
+        where: { id: documentId },
+      });
+
+      return NextResponse.json({ success: true, message: "知识记录已成功删除" });
     }
 
     return NextResponse.json({ 

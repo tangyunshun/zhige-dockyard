@@ -182,7 +182,7 @@ export default function OverviewTab({
     { label: "受限组件数量", count: restrictedCount, color: "text-amber-600", icon: <Lock className="w-4 h-4" />, iconBg: "bg-amber-500/10 text-amber-600" },
     { label: "执行中任务", count: runningCount, color: "text-[#059669]", icon: <Activity className="w-4 h-4" />, iconBg: "bg-[#059669]/10 text-[#059669]" },
     { label: "成功报告", count: successCount, color: "text-emerald-500", icon: <CheckCircle2 className="w-4 h-4" />, iconBg: "bg-emerald-500/10 text-emerald-500" },
-    { label: "资料数量", count: documentsLoaded ? finalDocuments.length : "未知", color: "text-purple-500", icon: <FileText className="w-4 h-4" />, iconBg: "bg-purple-500/10 text-purple-500" },
+    { label: "资料数量", count: documentsLoaded ? finalDocuments.length : (documents?.length ?? 0), color: "text-purple-500", icon: <FileText className="w-4 h-4" />, iconBg: "bg-purple-500/10 text-purple-500" },
     { label: "知识库数量", count: knowledges.length, color: "text-indigo-500", icon: <BookOpen className="w-4 h-4" />, iconBg: "bg-indigo-500/10 text-indigo-500" },
   ];
 
