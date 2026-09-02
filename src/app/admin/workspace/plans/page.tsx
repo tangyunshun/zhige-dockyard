@@ -62,6 +62,10 @@ const DEFAULT_PLAN: Partial<WorkspacePlan> = {
 
 const SYSTEM_KEYS = ["STANDARD", "PRO", "ENTERPRISE", "CUSTOM"];
 
+// 红色「禁止」鼠标指针（替换浏览器默认的黑色 not-allowed 圈）
+const RED_NO_CURSOR =
+  "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Ccircle%20cx='12'%20cy='12'%20r='9'%20fill='none'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3Cline%20x1='5'%20y1='5'%20x2='19'%20y2='19'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3C/svg%3E\") 12 12, not-allowed";
+
 export default function WorkspacePlansAdminPage() {
   const { success, error: toastError } = useToast();
 
@@ -504,6 +508,7 @@ export default function WorkspacePlansAdminPage() {
                           onClick={() => !plan.isActive && openEdit(plan)}
                           disabled={plan.isActive}
                           title={plan.isActive ? "启用中的套餐不可编辑，请先停用" : "编辑套餐"}
+                          style={plan.isActive ? { cursor: RED_NO_CURSOR } : undefined}
                           className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1 ${
                             plan.isActive
                               ? "bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed"
@@ -530,6 +535,7 @@ export default function WorkspacePlansAdminPage() {
                               onClick={() => !disabled && setDeleteTarget(plan)}
                               disabled={disabled}
                               title={title}
+                              style={disabled ? { cursor: RED_NO_CURSOR } : undefined}
                               className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 ${
                                 disabled
                                   ? "bg-red-50/60 border border-red-200 text-red-400 cursor-not-allowed hover:ring-2 hover:ring-red-300/50"
