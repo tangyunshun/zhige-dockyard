@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 interface WorkspacePlan {
@@ -67,7 +68,7 @@ export default function WorkspacePlansAdminPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkspacePlan | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+  const token = getAuthToken();
   const { success, error } = useToast();
 
   const fetchPlans = async () => {
