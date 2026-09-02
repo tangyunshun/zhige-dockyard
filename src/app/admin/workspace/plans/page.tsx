@@ -501,31 +501,46 @@ export default function WorkspacePlansAdminPage() {
                     <td className="px-6 py-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => openEdit(plan)}
-                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1"
+                          onClick={() => !plan.isActive && openEdit(plan)}
+                          disabled={plan.isActive}
+                          title={plan.isActive ? "启用中的套餐不可编辑，请先停用" : "编辑套餐"}
+                          className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1 ${
+                            plan.isActive
+                              ? "bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed"
+                              : "bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"
+                          }`}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                           编辑
                         </button>
-                        {!SYSTEM_KEYS.includes(plan.key) &&
-                          (plan.isActive ? (
+
+                        {(() => {
+                          const isSystem = SYSTEM_KEYS.includes(plan.key);
+                          let disabled = false;
+                          let title = "删除套餐";
+                          if (plan.isActive) {
+                            disabled = true;
+                            title = "启用中的套餐不可删除，请先停用";
+                          } else if (isSystem) {
+                            disabled = true;
+                            title = "系统默认套餐不可删除，仅可停用";
+                          }
+                          return (
                             <button
-                              disabled
-                              title="请先将套餐停用后再删除"
-                              className="px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-300 font-bold text-xs rounded-xl cursor-not-allowed inline-flex items-center gap-1"
+                              onClick={() => !disabled && setDeleteTarget(plan)}
+                              disabled={disabled}
+                              title={title}
+                              className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1 ${
+                                disabled
+                                  ? "bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed"
+                                  : "bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 cursor-pointer"
+                              }`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               删除
                             </button>
-                          ) : (
-                            <button
-                              onClick={() => setDeleteTarget(plan)}
-                              className="px-3 py-1.5 bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              删除
-                            </button>
-                          ))}
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>
