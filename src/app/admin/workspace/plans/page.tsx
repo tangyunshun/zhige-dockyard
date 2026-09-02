@@ -530,9 +530,9 @@ export default function WorkspacePlansAdminPage() {
                               onClick={() => !disabled && setDeleteTarget(plan)}
                               disabled={disabled}
                               title={title}
-                              className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1 ${
+                              className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 ${
                                 disabled
-                                  ? "bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed"
+                                  ? "bg-red-50/60 border border-red-200 text-red-400 cursor-not-allowed hover:ring-2 hover:ring-red-300/50"
                                   : "bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 cursor-pointer"
                               }`}
                             >
