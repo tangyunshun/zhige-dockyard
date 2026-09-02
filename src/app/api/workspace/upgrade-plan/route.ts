@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
 import {
-  getPlanConfig,
-  normalizePlan,
-  isPlanUpgrade,
-  storageMbToBytes,
-  PURCHASABLE_PLANS,
-  WORKSPACE_PLANS,
-  type WorkspacePlanKey,
-} from "@/constants/workspace-plans";
+  getWorkspacePlans,
+  getWorkspacePlanByKey,
+} from "@/lib/workspace-plan-service";
 
 const generateId = (prefix: string) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
@@ -47,13 +43,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "仅空间所有者可管理空间套餐" }, { status: 403 });
     }
 
-    const currentPlan = normalizePlan(workspace.plan);
-    const currentConfig = getPlanConfig(currentPlan);
+    const currentConfig = await getWorkspacePlanByKey(workspace.plan);
+    const currentPlan = currentConfig.key;
 
     // 可在线购买的全部套餐（前端需要展示完整阶梯：当前、低阶禁用、高阶可升级）
-    const allPlans = PURCHASABLE_PLANS;
+    const allPlans = await getWorkspacePlans({ onlyActive: true, onlyPurchasable: true });
     // 仅阶梯高于当前套餐的选项，用于判断是否可以在线升级
-    const availablePlans = PURCHASABLE_PLANS.filter(
+    const availablePlans = allPlans.filter(
       (p) => p.sortOrder > currentConfig.sortOrder
     );
 
@@ -104,11 +100,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "缺少目标套餐" }, { status: 400 });
     }
 
-    const targetKey = String(targetPlan).toUpperCase() as WorkspacePlanKey;
-    if (!WORKSPACE_PLANS[targetKey]) {
-      return NextResponse.json({ error: "目标套餐不存在" }, { status: 400 });
-    }
-    const targetConfig = WORKSPACE_PLANS[targetKey];
+    const targetConfig = await getWorkspacePlanByKey(targetPlan);
     if (!targetConfig.purchasable) {
       return NextResponse.json(
         { error: "该套餐为线下定制方案，请联系专属架构师" },
@@ -134,11 +126,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "仅空间所有者可升级空间套餐" }, { status: 403 });
     }
 
-    const currentPlan = normalizePlan(workspace.plan);
-    if (currentPlan === targetKey) {
+    const currentConfig = await getWorkspacePlanByKey(workspace.plan);
+    const currentPlan = currentConfig.key;
+    if (currentPlan === targetConfig.key) {
       return NextResponse.json({ error: "当前已是该套餐" }, { status: 400 });
     }
-    if (!isPlanUpgrade(currentPlan, targetKey)) {
+    if (currentConfig.sortOrder >= targetConfig.sortOrder) {
       return NextResponse.json(
         { error: "不支持降级，如需调整请联系专属架构师" },
         { status: 400 }
@@ -149,7 +142,7 @@ export async function POST(request: NextRequest) {
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: {
-        plan: targetKey,
+        plan: targetConfig.key,
         quota: {
           maxComponents: targetConfig.maxComponents,
           maxMembers: targetConfig.maxMembers,
@@ -211,7 +204,7 @@ export async function POST(request: NextRequest) {
         details: {
           workspaceName: workspace.name,
           fromPlan: currentPlan,
-          toPlan: targetKey,
+          toPlan: targetConfig.key,
           planName: targetConfig.name,
         },
       },
@@ -235,7 +228,7 @@ export async function POST(request: NextRequest) {
         metadata: {
           workspaceName: workspace.name,
           fromPlan: currentPlan,
-          toPlan: targetKey,
+          toPlan: targetConfig.key,
           planName: targetConfig.name,
         },
         updatedAt: new Date(),
@@ -247,7 +240,7 @@ export async function POST(request: NextRequest) {
       message: `空间套餐已升级为${targetConfig.name}`,
       data: {
         plan: targetConfig,
-        previousPlan: getPlanConfig(currentPlan),
+        previousPlan: currentConfig,
       },
     });
   } catch (error) {

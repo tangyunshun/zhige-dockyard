@@ -3,11 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { getMembershipConfig, isTeamSizeExceeded, formatTeamSize } from "@/lib/membership";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
-import {
-  getPlanConfig,
-  getQuotaConfig,
-  normalizePlan,
-} from "@/constants/workspace-plans";
+import { storageMbToBytes } from "@/constants/workspace-plans";
+import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,9 +94,15 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取计划配置（取自共享套餐模块，与空间套餐升级保持同一数据源）
-    const planUpper = normalizePlan(plan);
-    const planConfig = getPlanConfig(planUpper);
-    const quotaConfig = getQuotaConfig(planUpper);
+    const planUpper = (plan || "STANDARD").toString().toUpperCase();
+    const planConfig = await getWorkspacePlanByKey(planUpper);
+    const quotaConfig = {
+      maxMembers: planConfig.maxMembers,
+      maxComponents: planConfig.maxComponents,
+      maxStorage: planConfig.maxStorage,
+      maxApiCalls: planConfig.maxApiCalls,
+      features: planConfig.features,
+    };
 
     // 根据套餐配置规划初始 Token 点数（ml / mlId 已在上方统一查询，此处不再重复查库）
     const tokenLimit = planConfig.tokenLimit;
@@ -138,6 +141,8 @@ export async function POST(request: NextRequest) {
             workspaceId: workspaceId,
             membershipLevelId: mlId,
             tokenBalance: BigInt(tokenLimit + 100), // 新开通企业空间免费赠送 100 算力点
+            storageLimit: BigInt(storageMbToBytes(planConfig.maxStorage)),
+            apiCallsLimit: BigInt(planConfig.maxApiCalls),
             updatedAt: new Date(),
           }
         }

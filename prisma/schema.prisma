@@ -1060,6 +1060,30 @@ model documentversion {
   @@index([documentId, createdAt], map: "DocumentVersion_documentId_createdAt_idx")
 }
 
+// 空间级套餐配置表：供空间创建初始化与空间套餐升级使用，后台可配置
+model workspaceplan {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  name          String
+  description   String
+  priceMonthly  Int      @default(0)
+  priceYearly   Int      @default(0)
+  maxComponents Int      @default(0)
+  maxMembers    Int      @default(0)
+  maxStorage    Int      @default(0)
+  maxApiCalls   Int      @default(0)
+  tokenLimit    Int      @default(0)
+  features      Json?
+  sortOrder     Int      @default(0)
+  purchasable   Boolean  @default(true)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([sortOrder], map: "WorkspacePlan_sortOrder_idx")
+  @@index([isActive], map: "WorkspacePlan_isActive_idx")
+}
+
 // 资料评论：支持楼中楼回复
 model documentcomment {
   id          String   @id

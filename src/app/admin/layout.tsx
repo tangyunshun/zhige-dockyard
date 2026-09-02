@@ -18,6 +18,7 @@ import {
   Crown,
   Coins,
   Package,
+  Boxes,
   Building2,
   AlertCircle,
   TrendingUp,
@@ -67,6 +68,13 @@ const adminMenuItems: AdminMenuItem[] = [
     href: "/admin/workspaces",
     description: "工作空间审查与资源配额",
     requiredPermission: "workspace:read",
+  },
+  {
+    icon: Boxes,
+    label: "空间套餐管理",
+    href: "/admin/workspace/plans",
+    description: "配置企业空间套餐价格与配额",
+    requiredPermission: "workspace:plan_manage",
   },
   {
     icon: Package,

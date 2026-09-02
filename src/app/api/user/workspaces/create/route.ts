@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
-import {
-  getPlanConfig,
-  getQuotaConfig,
-  normalizePlan,
-  storageMbToBytes,
-  type WorkspacePlanKey,
-} from "@/constants/workspace-plans";
+import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
+import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
 
 /**
  * 创建工作空间
@@ -85,8 +80,8 @@ export async function POST(request: NextRequest) {
 
     // 套餐与配额：个人空间固定 STANDARD，企业空间取请求指定的套餐
     const planKey: WorkspacePlanKey =
-      type === "ENTERPRISE" ? normalizePlan(plan) : "STANDARD";
-    const planConfig = getPlanConfig(planKey);
+      type === "ENTERPRISE" ? ((plan || "STANDARD").toString().toUpperCase() as WorkspacePlanKey) : "STANDARD";
+    const planConfig = await getWorkspacePlanByKey(planKey);
 
     // 创建工作空间（同步写入套餐快照与空间配额记录）
     const generateId = (prefix: string) =>
@@ -104,7 +99,13 @@ export async function POST(request: NextRequest) {
         contactPhone: contactPhone || null,
         ownerId: userId,
         plan: planKey,
-        quota: getQuotaConfig(planKey),
+        quota: {
+          maxMembers: planConfig.maxMembers,
+          maxComponents: planConfig.maxComponents,
+          maxStorage: planConfig.maxStorage,
+          maxApiCalls: planConfig.maxApiCalls,
+          features: planConfig.features,
+        },
         updatedAt: new Date(),
         workspacemember: {
           create: {
