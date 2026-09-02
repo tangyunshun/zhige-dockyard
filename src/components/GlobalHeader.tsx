@@ -337,8 +337,10 @@ export default function GlobalHeader() {
                               <div 
                                 key={notify.id}
                                 onClick={() => {
-                                  // 携带跳转链接时直接前往目标页，否则标记已读
+                                  // 点击消息：未读则先标记已读（消除红点提醒标识，记录仍保留）；
+                                  // 携带跳转链接时标记已读后再前往目标页。
                                   if (notify.link) {
+                                    if (!notify.isRead) handleMarkAsRead(notify.id);
                                     setShowNotifications(false);
                                     router.push(notify.link);
                                   } else if (!notify.isRead) {

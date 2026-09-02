@@ -64,6 +64,40 @@ function LoginForm() {
     smsCode?: string;
   }>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [appealButtonInfo, setAppealButtonInfo] = useState<{
+    text: string;
+    isDepleted: boolean;
+    hasAppeal: boolean;
+    banReason?: string | null;
+  }>({ text: "去申诉 →", isDepleted: false, hasAppeal: false });
+
+  // 自动检测用户申诉状态以渲染正确的按钮
+  const checkAppealButtonMeta = async (accName: string) => {
+    if (!accName || !accName.trim()) return;
+    try {
+      const res = await fetch(`/api/account-appeal/my-appeal?account=${encodeURIComponent(accName.trim())}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.isDepleted) {
+          setAppealButtonInfo({ text: "查看销户倒计时 →", isDepleted: true, hasAppeal: true, banReason: json.userBanMeta?.banReason });
+        } else if (json.hasAppeal && json.data?.status === "pending") {
+          setAppealButtonInfo({ text: " 查看申诉进度 →", isDepleted: false, hasAppeal: true, banReason: json.userBanMeta?.banReason });
+        } else if (json.hasRejected) {
+          setAppealButtonInfo({ text: " 查看审核结果/再次申诉 →", isDepleted: false, hasAppeal: true, banReason: json.userBanMeta?.banReason });
+        } else {
+          setAppealButtonInfo({ text: " 去申诉 →", isDepleted: false, hasAppeal: false, banReason: json.userBanMeta?.banReason });
+        }
+      }
+    } catch (e) {
+      console.error("Check appeal meta error:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (formData.account) {
+      checkAppealButtonMeta(formData.account);
+    }
+  }, [formData.account]);
   const [accountType, setAccountType] = useState<
     "phone" | "email" | "username" | "unknown"
   >("unknown");
@@ -385,6 +419,7 @@ function LoginForm() {
         return;
       }
       checkAccount(formData.account);
+      checkAppealButtonMeta(formData.account);
     } else {
       // 清空则移除账号错误
       if (errors.account) setErrors({ ...errors, account: undefined });
@@ -831,8 +866,11 @@ function LoginForm() {
           // 账号字段错误
           setErrors({ account: data.message || "账号错误" });
         } else {
-          // 全局错误（服务器错误、登录失败等）显示在登录按钮上方
-          setGlobalError(data.message || "登录失败");
+          const msg = data.message || "登录失败";
+          setGlobalError(msg);
+          if (msg.includes("封禁") || msg.includes("禁用") || msg.includes("锁定")) {
+            checkAppealButtonMeta(formData.account);
+          }
         }
       }
     } catch (error) {
@@ -844,7 +882,7 @@ function LoginForm() {
   };
 
   return (
-    <div 
+    <div
       className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] flex items-center justify-center p-4 overflow-hidden relative"
       style={{
         backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.08) 1.5px, transparent 1.5px)",
@@ -1164,9 +1202,24 @@ function LoginForm() {
                   </div>
                 </div>
 
-                {/* 登录按钮上方的错误提示（服务器错误、网络错误等全局错误） */}
+                {/* 登录按钮上方的错误提示（包含封禁拦截与【去申诉】/【查看申诉进度】/【查看销户倒计时】按钮） */}
                 {globalError && (
-                  <p className="mt-3 text-xs text-red-500 font-bold">{globalError}</p>
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200/80 rounded-xl flex items-center justify-between animate-in fade-in duration-200">
+                    <p className="text-xs text-red-600 font-bold flex-1 leading-snug">{globalError}</p>
+                    {(globalError.includes("封禁") || globalError.includes("禁用") || globalError.includes("锁定")) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAppealModal(true)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ml-2 shadow-2xs whitespace-nowrap ${appealButtonInfo.isDepleted
+                          ? "bg-slate-900 text-amber-400 hover:bg-black"
+                          : "bg-red-600 text-white hover:bg-red-700"
+                          }`}
+                        title="点击查看解封申诉进度或风控销户状态"
+                      >
+                        {appealButtonInfo.text}
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* 登录按钮 */}
@@ -1357,48 +1410,48 @@ function LoginForm() {
 
           {/* 第三方登录：锁定状态下隐藏 */}
           {!isLocked && (
-          <div className="mt-6 mb-4">
-            <div className="relative mb-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200"></div>
+            <div className="mt-6 mb-4">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200"></div>
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="px-4 bg-white text-slate-500 text-xs">
+                    第三方账号登录
+                  </span>
+                </div>
               </div>
-              <div className="relative flex justify-center">
-                <span className="px-4 bg-white text-slate-500 text-xs">
-                  第三方账号登录
-                </span>
+              <div className="flex items-center justify-center gap-8">
+                <button
+                  type="button"
+                  onClick={handleWechatLogin}
+                  className="transition-all hover:scale-110"
+                  title="微信扫码登录"
+                >
+                  <Image
+                    src="/icons/wechat.png"
+                    alt="微信"
+                    width={32}
+                    height={32}
+                    className="w-8 h-8"
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQQLogin}
+                  className="transition-all hover:scale-110"
+                  title="QQ 登录"
+                >
+                  <Image
+                    src="/icons/QQ.png"
+                    alt="QQ"
+                    width={32}
+                    height={32}
+                    className="w-8 h-8"
+                  />
+                </button>
               </div>
             </div>
-            <div className="flex items-center justify-center gap-8">
-              <button
-                type="button"
-                onClick={handleWechatLogin}
-                className="transition-all hover:scale-110"
-                title="微信扫码登录"
-              >
-                <Image
-                  src="/icons/wechat.png"
-                  alt="微信"
-                  width={32}
-                  height={32}
-                  className="w-8 h-8"
-                />
-              </button>
-              <button
-                type="button"
-                onClick={handleQQLogin}
-                className="transition-all hover:scale-110"
-                title="QQ 登录"
-              >
-                <Image
-                  src="/icons/QQ.png"
-                  alt="QQ"
-                  width={32}
-                  height={32}
-                  className="w-8 h-8"
-                />
-              </button>
-            </div>
-          </div>
           )}
 
           <div className="text-center text-sm text-slate-600">
@@ -1417,6 +1470,7 @@ function LoginForm() {
       {showAppealModal && (
         <AppealModal
           account={formData.account}
+          initialBanReason={appealButtonInfo.banReason || undefined}
           onClose={() => setShowAppealModal(false)}
         />
       )}

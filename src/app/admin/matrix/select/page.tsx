@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -161,7 +161,7 @@ export default function SelectWorkspaceForMatrixPage() {
           <div className="space-y-2">
             <h4 className="text-sm font-bold text-slate-700">2. 配置岗位</h4>
             <p className="text-xs text-slate-600">
-              为各岗位配置 53 个组件的访问权限，支持阶段全选和权限复制
+              为各岗位配置 60 个组件的访问权限，支持阶段全选和权限复制
             </p>
           </div>
           <div className="space-y-2">

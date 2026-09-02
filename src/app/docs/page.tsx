@@ -428,33 +428,67 @@ export default function DocsPage() {
     }
   ];
 
-  // 融合数据库获取的真实动态文档
+  // 融合数据库获取的真实动态文档 (优先以数据库 systemdocument 最新记录为准，支持实时更新)
   const docSections = useMemo(() => {
+    // 将数据库文档转化为 DocArticle 格式
+    const dbArticleMap = new Map<string, DocArticle>();
+    dbDocuments.forEach((doc: any) => {
+      const articleItem: DocArticle = {
+        id: doc.id,
+        title: doc.title,
+        summary: doc.content ? doc.content.slice(0, 120) + (doc.content.length > 120 ? "..." : "") : "最新数据库更新文档",
+        category: doc.category || "系统文档",
+        contentCode: doc.contentCode || undefined,
+        fullContent: doc.content,
+        updateTime: doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString() : (doc.effectiveDate || "最新"),
+        helpfulCount: doc.helpfulCount || 100,
+        relatedLink: doc.relatedLink ? (typeof doc.relatedLink === "string" ? JSON.parse(doc.relatedLink) : doc.relatedLink) : undefined,
+      };
+      dbArticleMap.set(doc.id, articleItem);
+      if (doc.title) {
+        dbArticleMap.set(doc.title, articleItem);
+      }
+    });
+
     return defaultSections.map(section => {
-      const dbArticles = dbDocuments
-        .filter(doc => {
-          if (section.id === "start") return doc.category === "user-guide" || doc.category === "start";
-          if (section.id === "developer") return doc.category === "api-doc" || doc.category === "developer";
-          if (section.id === "workspace") return doc.category === "workspace";
-          if (section.id === "enterprise") return doc.category === "system-doc" || doc.category === "enterprise";
-          if (section.id === "knowledge") return doc.category === "knowledge";
-          if (section.id === "faq") return doc.category === "faq";
-          return false;
-        })
-        .map(doc => ({
-          id: doc.id,
-          title: doc.title,
-          summary: doc.content || "暂无详情说明",
-          category: doc.tags || "动态归档",
-          contentCode: doc.contentCode,
-          fullContent: doc.content,
-          updateTime: doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString() : "近期",
-          helpfulCount: 12
-        }));
+      // 筛选出符合该分类的数据库最新发版文档
+      const matchedDbDocs = dbDocuments.filter(doc => {
+        if (section.id === "start") return doc.category === "user-guide" || doc.category === "start" || doc.type === "start";
+        if (section.id === "developer") return doc.category === "api-doc" || doc.category === "developer" || doc.type === "developer";
+        if (section.id === "workspace") return doc.category === "workspace" || doc.type === "workspace";
+        if (section.id === "enterprise") return doc.category === "system-doc" || doc.category === "terms-of-service" || doc.category === "privacy-policy" || doc.category === "enterprise";
+        if (section.id === "knowledge") return doc.category === "knowledge" || doc.type === "knowledge";
+        if (section.id === "faq") return doc.category === "faq" || doc.type === "faq";
+        return false;
+      }).map(doc => ({
+        id: doc.id,
+        title: doc.title,
+        summary: doc.content ? doc.content.slice(0, 150) + "..." : "最新数据库实时更新文档",
+        category: doc.category || "系统发版",
+        contentCode: doc.contentCode || undefined,
+        fullContent: doc.content,
+        updateTime: doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString() : "最新",
+        helpfulCount: doc.helpfulCount || 88,
+      }));
+
+      // 如果数据库中存在覆盖文章，以数据库记录为准进行替换
+      const updatedArticles = section.articles.map(article => {
+        if (dbArticleMap.has(article.id)) {
+          return dbArticleMap.get(article.id)!;
+        }
+        if (dbArticleMap.has(article.title)) {
+          return dbArticleMap.get(article.title)!;
+        }
+        return article;
+      });
+
+      // 将数据库中独有的全新发版文档去重后追加在前
+      const existingIds = new Set(updatedArticles.map(a => a.id));
+      const extraDbArticles = matchedDbDocs.filter(d => !existingIds.has(d.id));
 
       return {
         ...section,
-        articles: [...section.articles, ...dbArticles]
+        articles: [...extraDbArticles, ...updatedArticles]
       };
     });
   }, [dbDocuments]);

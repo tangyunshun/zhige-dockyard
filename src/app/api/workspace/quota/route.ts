@@ -1,6 +1,7 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { getMembershipTokenLimit } from "@/lib/quota-token";
 
 export async function GET(request: NextRequest) {
   try {
@@ -87,10 +88,71 @@ export async function GET(request: NextRequest) {
 
     const availableApiCalls = Number(membershipLevel.maxApiCalls) - apiCallsUsed;
 
+    // 解析 URL 参数中的 workspaceId
+    const url = new URL(request.url);
+    const workspaceIdParam = url.searchParams.get("workspaceId");
+
+    let workspaceQuotaRecord: any = null;
+    if (workspaceIdParam) {
+      workspaceQuotaRecord = await prisma.workspacequota.findUnique({
+        where: { workspaceId: workspaceIdParam },
+      }).catch(() => null);
+    } else {
+      // 若未传 workspaceId，获取用户拥有的首个工作空间的配额
+      const firstWs = await prisma.workspace.findFirst({
+        where: { ownerId: userId },
+      }).catch(() => null);
+      if (firstWs) {
+        workspaceQuotaRecord = await prisma.workspacequota.findUnique({
+          where: { workspaceId: firstWs.id },
+        }).catch(() => null);
+      }
+    }
+
+    // 无配额记录时回退到会员等级真实 tokenLimit，不再写死 10000
+    const currentTokenBalance = workspaceQuotaRecord
+      ? Number(workspaceQuotaRecord.tokenBalance)
+      : Number(await getMembershipTokenLimit(user.membershipLevel));
+
+    // 累计历史算力消耗（真实统计）：各组件使用次数 × 组件目录 estimatedTokens 基准
+    const usageTokenBase = await prisma.componentcatalog.findMany({
+      select: { id: true, estimatedTokens: true },
+    });
+    const usageTokenMap = new Map(usageTokenBase.map((c) => [c.id, Number(c.estimatedTokens)]));
+    const usageRows = await prisma.componentusage.findMany({
+      where: workspaceIdParam ? { workspaceId: workspaceIdParam } : { userId },
+      select: { componentId: true },
+    });
+    const totalUsedTokens = usageRows.reduce(
+      (sum, r) => sum + (usageTokenMap.get(r.componentId) ?? 0),
+      0
+    );
+
+    // 算力重置日期：优先取空间配额真实的 resetAt，缺省返回 null 交由前端动态推算次月 1 日
+    const resetAt = workspaceQuotaRecord?.resetAt
+      ? workspaceQuotaRecord.resetAt.toISOString()
+      : null;
+    const membershipLevelName = membershipLevel?.nameZh || user.membershipLevel;
+
     return NextResponse.json({
       success: true,
+      tokenBalance: currentTokenBalance,
+      membershipLevel: user.membershipLevel,
+      membershipLevelName,
+      totalUsedTokens,
+      resetAt,
+      quota: workspaceQuotaRecord ? {
+        workspaceId: workspaceQuotaRecord.workspaceId,
+        tokenBalance: Number(workspaceQuotaRecord.tokenBalance),
+        cycleResetDay: workspaceQuotaRecord.cycleResetDay,
+        resetAt,
+      } : { tokenBalance: currentTokenBalance, resetAt },
       data: {
         membershipLevel: user.membershipLevel,
+        membershipLevelName,
+        tokenBalance: currentTokenBalance,
+        totalUsedTokens,
+        resetAt,
         quotas: {
           enterpriseSlots: {
             total: Number(membershipLevel.maxEnterpriseWorkspaces),

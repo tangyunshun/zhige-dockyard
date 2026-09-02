@@ -1,10 +1,12 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
+import { getMembershipTokenLimit, UNLIMITED_TOKEN, isUnlimitedTokenLimit } from "@/lib/quota-token";
 
 // 与 /api/workspace/list 自愈创建逻辑保持一致的配额初始化：
-// FREE=10000、GOLD=50000、其余等级=100000，membershipLevelId 指向真实会员等级记录。
+// tokenLimit 一律从 membershiplevel 表读取真实值（不再写死 FREE=10000/GOLD=50000/其它=100000），
+// membershipLevelId 指向真实会员等级记录。
 async function ensureWorkspaceQuota(
   userId: string,
   workspaceId: string,
@@ -22,8 +24,8 @@ async function ensureWorkspaceQuota(
     ml = await prisma.membershiplevel.findFirst();
   }
   const mlId = ml?.id || "FREE";
-  const tokenLimit =
-    membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+  // tokenLimit 一律从 membershiplevel 表读取真实值，不再写死档位数值
+  const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
 
   await prisma.workspacequota.create({
     data: {
@@ -184,20 +186,23 @@ export async function POST(request: NextRequest) {
         ml = await tx.membershiplevel.findFirst();
       }
       const mlId = ml?.id || "FREE";
-      const tokenLimit =
-        membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+      const tierTokenLimit = await getMembershipTokenLimit(membershipLevel);
+      // 免费赠送 100 算力点仅对有限额度档位生效；无限额度（-1）保持 -1，不做加法
+      const tokenBalance = isUnlimitedTokenLimit(tierTokenLimit)
+        ? UNLIMITED_TOKEN
+        : tierTokenLimit + BigInt(100);
 
       await tx.workspacequota.create({
         data: {
           id: crypto.randomUUID(),
           workspaceId: workspace.id,
           membershipLevelId: mlId,
-          tokenBalance: BigInt(tokenLimit),
+          tokenBalance,
           updatedAt: now,
         },
       });
 
-      console.log("WorkspaceQuota 创建成功，tokenLimit:", tokenLimit);
+      console.log("WorkspaceQuota 创建成功，tierTokenLimit:", tierTokenLimit);
 
       // 更新用户的 lastWorkspaceId
       await tx.user.update({

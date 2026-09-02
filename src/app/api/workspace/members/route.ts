@@ -215,7 +215,14 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      member: updatedMember,
+      member: {
+        id: updatedMember.id,
+        userId: updatedMember.userId,
+        workspaceId: updatedMember.workspaceId,
+        role: updatedMember.role,
+        monthlyTokenLimit: updatedMember.monthlyTokenLimit !== null && updatedMember.monthlyTokenLimit !== undefined ? Number(updatedMember.monthlyTokenLimit) : null,
+        monthlyTokenUsed: Number(updatedMember.monthlyTokenUsed || 0),
+      },
     });
   } catch (error: any) {
     console.error("Update workspace member role error:", error);

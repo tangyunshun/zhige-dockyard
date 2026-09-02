@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { workspace_type } from '@prisma/client';
 import { validateWorkspaceName } from '@/lib/workspace-validators';
 import { validateUser } from '@/lib/auth';
+import { getMembershipTokenLimit, UNLIMITED_TOKEN, isUnlimitedTokenLimit } from '@/lib/quota-token';
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,7 +52,11 @@ export async function POST(request: NextRequest) {
       ml = await prisma.membershiplevel.findFirst();
     }
     const mlId = ml?.id || "FREE";
-    const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+    // tokenLimit 一律从 membershiplevel 表读取真实值；免费赠送 100 算力点仅对有限额度生效
+    const tierTokenLimit = await getMembershipTokenLimit(membershipLevel);
+    const tokenBalance = isUnlimitedTokenLimit(tierTokenLimit)
+      ? UNLIMITED_TOKEN
+      : tierTokenLimit + BigInt(100);
 
     const workspaceId = `ws-custom-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
@@ -76,7 +81,7 @@ export async function POST(request: NextRequest) {
             id: `wsq_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
             workspaceId: workspaceId,
             membershipLevelId: mlId,
-            tokenBalance: BigInt(tokenLimit),
+            tokenBalance,
             updatedAt: new Date(),
           }
         }

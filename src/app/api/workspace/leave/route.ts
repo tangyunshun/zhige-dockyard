@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 
 /**
  * 协同成员主动退出工作空间 (退群) 接口
@@ -65,6 +66,9 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // 记录成员主动退群审计日志（非阻断式）
+    await writeAuditLog(userId, "member:leave", { workspaceId, workspaceName: workspace.name }, workspaceId, null, request).catch((e) => console.warn("[审计] 成员退群日志写入失败:", e));
 
     console.log(`[主动退出空间] 用户 ${userId} 成功退出了空间 ${workspaceId}(${workspace.name})`);
 

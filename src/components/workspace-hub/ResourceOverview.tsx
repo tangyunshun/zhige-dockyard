@@ -1,14 +1,16 @@
 "use client";
 
 import React from "react";
-import { Cpu, ArrowUpRight, HardDrive, Building2 } from "lucide-react";
+import { Layers, ArrowUpRight, HardDrive, Building2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import type { UpgradeHighlight } from "./modals/QuotaUpgradeModal";
 
 interface ResourceOverviewProps {
   user: any;
   dashboardData: any;
   quota: any;
-  onUpgrade?: () => void;
+  /** 唤起统一升级中枢，入参用于锚定需要高亮的权益维度 */
+  onUpgrade?: (highlight: UpgradeHighlight) => void;
 }
 
 export default function ResourceOverview({
@@ -24,8 +26,10 @@ export default function ResourceOverview({
   // === 算力 Token 统计与 SVG 圆环计算 ===
   const tokenQuota = dashboardData?.userQuota?.quotas?.tokenBalance;
   const tokenUsed = tokenQuota?.used || 0;
-  const tokenTotal = tokenQuota?.total || 10000;
-  const tokenRatio = tokenTotal > 0 ? Math.min(100, Math.round((tokenUsed / tokenTotal) * 100)) : 0;
+  // 无限额度（total = -1）：不进入比率计算，单独标记
+  const tokenUnlimited = (tokenQuota?.total ?? 0) === -1;
+  const tokenTotal = tokenUnlimited ? -1 : (tokenQuota?.total || 10000);
+  const tokenRatio = tokenUnlimited ? 0 : (tokenTotal > 0 ? Math.min(100, Math.round((tokenUsed / tokenTotal) * 100)) : 0);
 
   // 根据会员级别设置圆环颜色 (唯一真理系统 V6.0 配色体系)
   const getGradientId = () => {
@@ -48,9 +52,23 @@ export default function ResourceOverview({
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (tokenRatio / 100) * circumference;
 
+  /**
+   * 智能锚定：优先高亮最紧迫的瓶颈维度。
+   * - 企业空间数量已满 ➔ 锚定空间数量
+   * - 算力使用率 >= 80% ➔ 锚定算力 Token
+   * - 其余情况展示权益全景
+   */
+  const resolveHighlight = (): UpgradeHighlight => {
+    const workspaceFull =
+      quota && quota.maxEnterprise !== -1 && quota.enterpriseCount >= quota.maxEnterprise;
+    if (workspaceFull) return "workspace";
+    if (tokenRatio >= 80) return "token";
+    return null;
+  };
+
   const handleUpgradeClick = () => {
     if (onUpgrade) {
-      onUpgrade();
+      onUpgrade(resolveHighlight());
     } else {
       router.push("/pricing");
     }
@@ -63,7 +81,7 @@ export default function ResourceOverview({
         <div className="flex items-center gap-2">
           {/* 金色/橙色高质感指示图标 */}
           <div className="w-7.5 h-7.5 rounded bg-amber-50 border border-amber-100 flex items-center justify-center shadow-sm">
-            <Cpu className="w-4 h-4 text-amber-500" />
+            <Layers className="w-4 h-4 text-amber-500" />
           </div>
           <div>
             <h3 className="text-sm font-extrabold text-slate-700">{getVipTitle()}</h3>
@@ -71,12 +89,12 @@ export default function ResourceOverview({
           </div>
         </div>
         
-        {/* 升级额度右上角小文字链 */}
+        {/* 升级会员套餐右上角小文字链（账号级订阅，与空间级套餐区分） */}
         <button
           onClick={handleUpgradeClick}
           className="text-xs font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors cursor-pointer flex items-center gap-0.5 border-none bg-transparent"
         >
-          <span>提升配额</span>
+          <span>升级会员套餐</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -133,12 +151,12 @@ export default function ResourceOverview({
 
         {/* 消耗数值 */}
         <div className="min-w-0 flex-1">
-          <span className="text-xs text-slate-400 font-bold block mb-1">额度消耗</span>
+          <span className="text-xs text-slate-400 font-bold block mb-1">本月算力 Token</span>
           <div className="text-sm font-bold text-slate-800 truncate leading-none">
-            {tokenUsed.toLocaleString("zh-CN")} <span className="text-xs font-semibold text-slate-400">/ {tokenTotal.toLocaleString("zh-CN")}</span>
+            {tokenUsed.toLocaleString("zh-CN")} <span className="text-xs font-semibold text-slate-400">/ {tokenUnlimited ? "无限" : tokenTotal.toLocaleString("zh-CN")}</span>
           </div>
           <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-normal">
-            {level === "FREE" ? "额度用尽后可提升套餐" : "当前配额充沛"}
+            {level === "FREE" ? "算力不足时可升级会员套餐" : tokenUnlimited ? "当前算力无限制" : "当前算力充沛"}
           </span>
         </div>
       </div>
@@ -167,7 +185,7 @@ export default function ResourceOverview({
           <div className="flex justify-between items-center text-xs font-bold text-slate-500 mb-1.5">
             <div className="flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-slate-400" />
-              <span>企业协作空间配额</span>
+              <span>企业空间数量</span>
             </div>
             <span>{quota?.enterpriseCount || 0} / {quota?.maxEnterprise || 1} 个</span>
           </div>

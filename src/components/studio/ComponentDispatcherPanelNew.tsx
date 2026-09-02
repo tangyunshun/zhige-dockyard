@@ -26,34 +26,6 @@ const getDispatcherStageIcon = (category: string, categoryToStageId: Record<stri
   }
 };
 
-// 辅助映射函数：获取各个阶段的输入材料与输出成果的物理载体描述
-const getPhysicalDataMedia = (category: string) => {
-  switch (category) {
-    case "BID_PREP":
-      return { inputMedia: "政府招标 PDF / 原始竞品文档", outputMedia: "结构化 Excel 偏离表 / 对比矩阵" };
-    case "REQ_DESIGN":
-      return { inputMedia: "会议纪要 / 用户故事原始叙述", outputMedia: "结构化 Markdown PRD / WBS 脑图" };
-    case "BACKEND_CORE":
-      return { inputMedia: "Swagger JSON / REST 协议文档", outputMedia: "TypeScript API 源码 / Swagger 契约" };
-    case "DATABASE_ENG":
-      return { inputMedia: "SQL DDL 脚本 / 实体描述", outputMedia: "数据库实体 ER 关系拓扑图" };
-    case "FRONTEND_DEV":
-      return { inputMedia: "Figma 设计稿元素 / UI 交互原型", outputMedia: "React TypeScript / Tailwind 组件源码" };
-    case "TEST_QA":
-      return { inputMedia: "业务代码源文件 / 功能描述", outputMedia: "Jest / Cypress 自动化单元测试用例" };
-    case "DEVOPS":
-      return { inputMedia: "项目配置文件 / 环境诉求说明", outputMedia: "Dockerfile 镜像构建 / CI-CD YAML 管道" };
-    case "SECURITY":
-      return { inputMedia: "源码仓库 / 数据库安全合规清单", outputMedia: "等保安全审计分析报告 / 修复指令集" };
-    case "PROJ_MGMT":
-      return { inputMedia: "团队排期任务 / WBS 节点描述", outputMedia: "动态甘特图 / WBS 进度任务物理排期表" };
-    case "KNOWLEDGE":
-      return { inputMedia: "项目源码注释 / 业务遗留文档", outputMedia: "自动对齐的 API 开发者中枢白皮书" };
-    default:
-      return { inputMedia: "原始参数输入 / JSON / 物理文档", outputMedia: "自动加工产出 / 代码 / 架构成果" };
-  }
-};
-
 interface ComponentDispatcherPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -115,6 +87,8 @@ export default function ComponentDispatcherPanel({
   const selectedWorkspaceName = selectedWorkspace ? selectedWorkspace.name : "默认空间";
   const isBound = selectedWorkspace ? (bindingStatusMap[selectedWorkspace.id] || false) : false;
 
+  const comp = componentCatalog.find((c) => c.id === componentId) || null;
+
   // 立即装配/使用中枢函数 (支持登录拦截与一键秒级装配跳转)
   const handleQuickUse = async () => {
     if (!comp) return;
@@ -157,46 +131,6 @@ export default function ComponentDispatcherPanel({
         toast.error("网络异常，请稍后重试");
       }
     }
-  };
-
-  // 新增：契约沙箱仿真模拟器状态
-  const [simState, setSimState] = useState<"idle" | "running" | "success">("idle");
-  const [simLogs, setSimLogs] = useState<string[]>([]);
-
-  const comp = componentCatalog.find((c) => c.id === componentId) || null;
-
-  // 监听组件切换，重置沙箱状态
-  useEffect(() => {
-    setSimState("idle");
-    setSimLogs([]);
-  }, [componentId]);
-
-  // 启动仿真器运行模拟日志流
-  const runSimulator = () => {
-    if (simState === "running" || !comp) return;
-    setSimState("running");
-    setSimLogs([]);
-
-    const logs = [
-      `[${new Date().toLocaleTimeString()}] [INFO] 初始化数据流测试环境，正为组件 ${comp.id} 加载输入协议定义...`,
-      `[${new Date().toLocaleTimeString()}] [INFO] 正在对输入协议 (Input Schema) 执行格式验证与结构比对...`,
-      `[${new Date().toLocaleTimeString()}] [INFO] 验证通过：输入数据格式符合规范，未检测到校验异常。`,
-      `[${new Date().toLocaleTimeString()}] [INFO] 执行引擎核心逻辑计算中，正在进行数据转换与逻辑处理...`,
-      `[${new Date().toLocaleTimeString()}] [INFO] 数据处理与边界校验已完成，各项逻辑检查通过。`,
-      `[${new Date().toLocaleTimeString()}] [SUCCESS] 模拟运行成功！成果文件已就绪，等待装配发布。`
-    ];
-
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i < logs.length) {
-        setSimLogs((prev) => [...prev, logs[i]]);
-        i++;
-      } else {
-        clearInterval(interval);
-        setSimState("success");
-        toast.success("沙箱模拟运行成功！");
-      }
-    }, 250);
   };
 
   // 1. 获取各个空间对于该组件的绑定状态，并同步拉取配额
@@ -262,7 +196,6 @@ export default function ComponentDispatcherPanel({
 
   const categoryInfo = comp ? componentCategories[comp.category as ComponentCategory] : null;
   const isFav = favorites.includes(comp.id);
-  const media = getPhysicalDataMedia(comp.category);
 
   // 2. 处理绑定/解绑切换动作
   const handleToggleBind = async (workspaceId: string, workspaceName: string) => {
@@ -372,7 +305,7 @@ export default function ComponentDispatcherPanel({
         {/* 极客双列 Bento 内容区分栏 */}
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
           
-          {/* 左侧详情与沙箱仿真栏 (占 7 列) - 纯白大气底色 */}
+          {/* 左侧详情与数据契约栏 (占 7 列) - 纯白大气底色 */}
           <div className="lg:col-span-7 h-full overflow-y-auto p-5 space-y-5 scrollbar-thin">
             
             {/* 1. 基本信息看板 - 扁平无边框设计 */}
@@ -431,7 +364,7 @@ export default function ComponentDispatcherPanel({
                         输入材料规范 (Input)
                       </div>
                       <div className="font-mono text-[9.5px] text-slate-400 leading-relaxed bg-slate-900/50 p-2 rounded border border-slate-800/80 min-h-[40px] flex items-center">
-                        {comp.previewData.inputMock}
+                        {comp.previewData?.inputMock || comp.contract || "输入材料"}
                       </div>
                       <div className="mt-1 flex items-center gap-1 text-[8px] font-bold text-slate-500">
                         <span>输入方式:</span>
@@ -450,8 +383,8 @@ export default function ComponentDispatcherPanel({
                     </div>
                     <div className="mt-2 pt-1.5 border-t border-slate-900 flex items-center gap-1 text-[8.5px] font-bold text-slate-500">
                       <span>载体:</span>
-                      <span className="text-[#63b3ed] bg-blue-950/40 border border-blue-900/20 px-1 py-0.2 rounded truncate max-w-[100px]">
-                        {media.inputMedia}
+                      <span className="text-[#63b3ed] bg-blue-950/40 border border-blue-900/20 px-1 py-0.2 rounded truncate max-w-[140px]">
+                        {comp.previewData?.inputMock || comp.contract || comp.hint || "输入材料"}
                       </span>
                     </div>
                   </div>
@@ -472,13 +405,13 @@ export default function ComponentDispatcherPanel({
                         输出成果契约 (Output)
                       </div>
                       <div className="font-mono text-[9.5px] text-slate-400 leading-relaxed bg-slate-900/50 p-2 rounded border border-slate-800/80 min-h-[40px] flex items-center">
-                        {comp.previewData.outputMock}
+                        {comp.previewData?.outputMock || comp.contract || "输出成果"}
                       </div>
                     </div>
                     <div className="mt-2 pt-1.5 border-t border-slate-900 flex items-center gap-1 text-[8.5px] font-bold text-slate-500">
                       <span>产出:</span>
-                      <span className="text-emerald-300 bg-emerald-950/40 border border-emerald-900/20 px-1 py-0.2 rounded truncate max-w-[100px]">
-                        {media.outputMedia}
+                      <span className="text-emerald-300 bg-emerald-950/40 border border-emerald-900/20 px-1 py-0.2 rounded truncate max-w-[140px]">
+                        {comp.previewData?.outputMock || comp.contract || comp.hint || "输出成果"}
                       </span>
                     </div>
                   </div>
@@ -486,89 +419,14 @@ export default function ComponentDispatcherPanel({
 
                 {/* 契约基本属性 */}
                 <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between flex-wrap gap-2 text-[8px] font-bold text-slate-500">
-                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 沙箱安全校验</span>
+                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 服务端安全校验</span>
                   <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 隔离安全加密</span>
                   <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 吞吐率对齐 100%</span>
                 </div>
               </div>
             </section>
 
-            {/* 3. 契约沙箱仿真模拟器 */}
-            <section className="bg-slate-50/50 rounded-xl p-4.5 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-slate-800 flex items-center gap-1.5">
-                  <FlaskConical className="w-3.5 h-3.5 text-[#059669]" />
-                  <span>契约加工沙箱仿真模拟 (Sandbox Simulator)</span>
-                </span>
-                {simState === "running" ? (
-                  <span className="text-[8px] font-black text-blue-500 animate-pulse bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
-                    仿真中...
-                  </span>
-                ) : simState === "success" ? (
-                  <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                    通过
-                  </span>
-                ) : (
-                  <span className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                    空闲
-                  </span>
-                )}
-              </div>
-
-              {simState === "idle" ? (
-                <div className="bg-white border border-slate-200 p-3.5 rounded-lg text-center space-y-2.5">
-                  <p className="text-[9.5px] text-slate-500 font-semibold leading-normal">
-                    想查看该组件如何进行数据比对并转换输出吗？一键启动数据沙箱测试，预览运行日志流。
-                  </p>
-                  <button
-                    onClick={runSimulator}
-                    className="h-7.5 px-3.5 bg-slate-800 hover:bg-slate-900 text-white text-[9.5px] font-black rounded-lg shadow-sm transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                  >
-                    <span>启动数据沙盒测试</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2.5 animate-in fade-in duration-250">
-                  <div className="bg-slate-900 text-slate-400 rounded-lg p-3 border border-slate-800 shadow-inner font-mono text-[9px] leading-relaxed space-y-1.5 max-h-[110px] overflow-y-auto scrollbar-thin">
-                    {simLogs.map((log, index) => (
-                      <div key={index} className="transition-all">
-                        {log}
-                      </div>
-                    ))}
-                    {simState === "running" && (
-                      <div className="flex items-center gap-1 text-slate-500">
-                        <span>[系统运行] 📡 运算中</span>
-                        <span className="w-1 h-3 bg-slate-400 animate-pulse"></span>
-                      </div>
-                    )}
-                  </div>
-
-                  {simState === "success" && (
-                    <div className="bg-emerald-50/10 border border-emerald-200/50 rounded-lg p-3 space-y-1.5 animate-in slide-in-from-top-1 duration-200">
-                      <div className="text-[8.5px] font-black text-emerald-600 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        <span>仿真调试成果物验证完毕 (Checksum Validated)</span>
-                      </div>
-                      <div className="bg-slate-900/5 rounded p-2 text-[9.5px] font-bold text-slate-600 font-mono leading-relaxed border border-emerald-100/30">
-                        {comp.previewData.outputMock}
-                      </div>
-                      <div className="flex items-center justify-between text-[8px] text-slate-400 font-bold pt-0.5">
-                        <span>仿真环境: ZhiGe Sandboxed Cluster v1.2</span>
-                        <button
-                          onClick={() => setSimState("idle")}
-                          className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                        >
-                          重置仿真
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* 4. 可视化 ROI 商业提效滑轨 - 轻量化 */}
+            {/* 3. 可视化 ROI 商业提效滑轨 - 轻量化 */}
             <section className="bg-gradient-to-r from-emerald-50/40 via-blue-50/10 to-emerald-50/30 border border-emerald-100/60 rounded-xl p-3.5 flex items-center gap-3 justify-between">
               <div className="space-y-0.5 min-w-0 flex-1">
                 <span className="text-[10px] font-black text-emerald-600 flex items-center gap-1">
@@ -576,7 +434,7 @@ export default function ComponentDispatcherPanel({
                   <span>商业级投入产出比 (ROI Efficiency)</span>
                 </span>
                 <span className="text-[9.5px] text-slate-500 font-semibold block truncate leading-relaxed">
-                  {comp.previewData.roiText}
+                  {comp.previewData?.roiText || "显著提升企业级研发效率"}
                 </span>
               </div>
               <div className="bg-white rounded-lg border border-slate-200 p-2 shadow-inner shrink-0 w-[100px] text-center space-y-0.5">
@@ -613,8 +471,23 @@ export default function ComponentDispatcherPanel({
                   
                   {/* 配额与状态对齐展示 */}
                   <div className="flex items-center gap-3 pt-1 text-[9.5px] font-semibold text-slate-500 border-t border-slate-50 mt-2">
-                    <span className="flex items-center gap-1"><Coins className="w-3 h-3 text-[#3182ce]/70" /> 资源配额: <strong className="text-slate-700 font-bold font-mono">{(workspaceQuotas[selectedWorkspace?.id || ""] || 0).toLocaleString()}</strong></span>
-                    <span className="flex items-center gap-1"><Cpu className="w-3 h-3 text-[#3182ce]/70" /> 状态: 
+                    <span className="flex items-center gap-1">
+                      <Coins className="w-3 h-3 text-[#3182ce]/70" /> 资源配额: <strong className="text-slate-700 font-bold font-mono">{(workspaceQuotas[selectedWorkspace?.id || ""] || 0).toLocaleString()}</strong>
+                      {selectedWorkspace && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onNavigateToWorkspace) {
+                              onNavigateToWorkspace(selectedWorkspace.id, comp.id);
+                            }
+                          }}
+                          className="ml-1 text-[9px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 font-black hover:bg-amber-100 transition-colors border border-amber-200 cursor-pointer"
+                        >
+                          充值
+                        </button>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-1"><Server className="w-3 h-3 text-[#3182ce]/70" /> 状态: 
                       {isBound ? (
                         <strong className="text-emerald-600 font-black">已引进</strong>
                       ) : (

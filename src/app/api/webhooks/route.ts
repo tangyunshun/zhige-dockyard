@@ -31,7 +31,7 @@ async function getCurrentUser(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, role: true, status: true },
+    select: { id: true, email: true, name: true, role: true, status: true, lastWorkspaceId: true },
   });
   return user;
 }

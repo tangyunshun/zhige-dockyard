@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -105,9 +105,11 @@ export default function AdminDocumentsPage() {
     onConfirm: () => {},
   });
 
-  const loadDocuments = async () => {
+  const loadDocuments = async (isSilent: boolean = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) {
+        setLoading(true);
+      }
       const authToken = getAuthToken();
 
       const params = new URLSearchParams({
@@ -115,7 +117,7 @@ export default function AdminDocumentsPage() {
         limit: "10",
         ...(searchQuery && { search: searchQuery }),
         ...(filterCategory && { category: filterCategory }),
-        ...(filterPublished && { published: filterPublished }),
+        ...(filterPublished && { isPublished: filterPublished }),
       });
 
       const res = await fetch(`/api/admin/documents?${params}`, {
@@ -133,7 +135,6 @@ export default function AdminDocumentsPage() {
         setTotalPages(data.data.totalPages);
         setTotal(data.data.total);
       } else {
-        // 先获取响应文本，看看返回的到底是什么
         const errorText = await res.text();
         console.error("加载文档错误响应:", errorText);
         try {
@@ -165,6 +166,11 @@ export default function AdminDocumentsPage() {
       message: `${action}后，用户将${isPublished ? "无法" : "可以"}查看此文档。\n\n请确认是否继续？`,
       type: "info",
       onConfirm: async () => {
+        setDocuments((prev) =>
+          prev.map((doc) =>
+            doc.id === id ? { ...doc, isPublished: !isPublished } : doc
+          )
+        );
         try {
           const authToken = getAuthToken();
 
@@ -182,8 +188,13 @@ export default function AdminDocumentsPage() {
 
           if (res.ok) {
             toast.success(isPublished ? "已下架" : "已上架");
-            loadDocuments();
+            loadDocuments(true);
           } else {
+            setDocuments((prev) =>
+              prev.map((doc) =>
+                doc.id === id ? { ...doc, isPublished } : doc
+              )
+            );
             const error = await res.json();
             toast.error(error.message || "操作失败");
           }
@@ -548,30 +559,42 @@ export default function AdminDocumentsPage() {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => openEditModal(doc)}
-                              className="p-2.5 hover:bg-[#3182ce]/10 rounded-xl transition-all duration-300 group/btn"
-                              title="编辑"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
+                              title="编辑该文档的内容与设置"
                             >
-                              <Edit className="w-4.5 h-4.5 text-slate-600 group-hover/btn:text-[#3182ce]" />
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>编辑</span>
                             </button>
                             <button
                               onClick={() =>
                                 handleTogglePublished(doc.id, doc.isPublished)
                               }
-                              className="p-2.5 hover:bg-[#f59e0b]/10 rounded-xl transition-all duration-300 group/btn"
-                              title={doc.isPublished ? "下架" : "上架"}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs ${
+                                doc.isPublished
+                                  ? "bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white"
+                                  : "bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white"
+                              }`}
+                              title={doc.isPublished ? "撤回并下架该文档" : "发布上线该文档"}
                             >
                               {doc.isPublished ? (
-                                <EyeOff className="w-4.5 h-4.5 text-[#f59e0b] group-hover/btn:text-[#d97706]" />
+                                <>
+                                  <EyeOff className="w-3.5 h-3.5" />
+                                  <span>下架</span>
+                                </>
                               ) : (
-                                <Eye className="w-4.5 h-4.5 text-[#10b981] group-hover/btn:text-[#059669]" />
+                                <>
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>发布</span>
+                                </>
                               )}
                             </button>
                             <button
                               onClick={() => handleDelete(doc.id)}
-                              className="p-2.5 hover:bg-red-50 rounded-xl transition-all duration-300 group/btn"
-                              title="删除"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
+                              title="永久删除该文档"
                             >
-                              <Trash2 className="w-4.5 h-4.5 text-red-600 group-hover/btn:text-red-600" />
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>删除</span>
                             </button>
                           </div>
                         </td>

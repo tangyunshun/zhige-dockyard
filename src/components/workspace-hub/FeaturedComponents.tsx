@@ -1,27 +1,29 @@
 "use client";
 
 import React from "react";
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, Box, Eye } from "lucide-react";
 import { useAppContext } from "@/contexts/AppContext";
+import { iconMap } from "@/components/ComponentShowcase";
 
 interface FeaturedComponentsProps {
   topComponents?: any[];
   onComponentClick: (componentId: string) => void;
   boundNames?: Record<string, string[]>;
   totalMyWorkspacesCount?: number;
+  onViewDetail?: (comp: any) => void;
 }
 
 const categoryEmojis: Record<string, string> = {
-  BID_PREP: "📄",
-  REQ_DESIGN: "🧩",
-  BACKEND_CORE: "💻",
-  DATABASE_ENG: "🗄️",
-  FRONTEND_DEV: "📐",
-  TEST_QA: "✅",
-  DEVOPS: "🐳",
-  SECURITY: "🔒",
-  PROJ_MGMT: "👥",
-  KNOWLEDGE: "📚",
+  BID_PREP: "",
+  REQ_DESIGN: "",
+  BACKEND_CORE: "",
+  DATABASE_ENG: "",
+  FRONTEND_DEV: "",
+  TEST_QA: "",
+  DEVOPS: "",
+  SECURITY: "",
+  PROJ_MGMT: "",
+  KNOWLEDGE: "",
 };
 
 export default function FeaturedComponents({
@@ -29,6 +31,7 @@ export default function FeaturedComponents({
   onComponentClick,
   boundNames = {},
   totalMyWorkspacesCount = 1,
+  onViewDetail
 }: FeaturedComponentsProps) {
 
   // 映射真实历史数据（30 天调用频次与全网装载数均来自数据库聚合）
@@ -124,8 +127,8 @@ export default function FeaturedComponents({
                 <div className="space-y-2">
                   {/* 图标与推荐因由标签 */}
                   <div className="flex items-center justify-between gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-slate-100/80 flex items-center justify-center shrink-0">
-                      <span className="text-base leading-none">{categoryEmojis[realComp.category] || "⚙️"}</span>
+                    <div className="w-8 h-8 rounded-lg bg-blue-50/80 text-[#3182ce] flex items-center justify-center shrink-0">
+                      {(() => { const Ico = iconMap[realComp.icon || ""] || Box; return <Ico className="w-4 h-4" />; })()}
                     </div>
                     <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border-none ${item.tagColor} shadow-sm`}>
                       {item.tag}
@@ -166,16 +169,31 @@ export default function FeaturedComponents({
                   </div>
                 </div>
 
-                {/* 装配操作 */}
-                <div className="text-xs font-bold text-[#2b6cb0] group-hover:text-[#3182ce] text-right mt-1.5 flex items-center justify-end gap-0.5 transition-colors">
-                  <span>
-                    {names.length === 0 
-                      ? "立即装配" 
-                      : names.length < totalMyWorkspacesCount 
-                        ? "装配到其他空间" 
-                        : "直接前往使用"
-                    } →
-                  </span>
+                {/* 装配操作与查看详情 */}
+                <div className="text-xs font-bold pt-2 border-t border-slate-100 mt-1 flex items-center justify-between gap-1 transition-colors">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onViewDetail) onViewDetail(realComp);
+                    }}
+                    className="px-2 py-1 text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200/90 border border-slate-200 rounded-md transition-all cursor-pointer inline-flex items-center gap-1 shrink-0"
+                    title="查看该组件的契约与详细说明文档"
+                  >
+                    <Eye className="w-3 h-3 text-slate-500" />
+                    <span>详情</span>
+                  </button>
+
+                  <div className="text-xs font-bold text-[#2b6cb0] group-hover:text-[#3182ce] flex items-center gap-0.5">
+                    <span>
+                      {names.length === 0 
+                        ? "立即装配" 
+                        : names.length < totalMyWorkspacesCount 
+                          ? "装配到其他空间" 
+                          : "直接前往使用"
+                      } →
+                    </span>
+                  </div>
                 </div>
               </div>
             );

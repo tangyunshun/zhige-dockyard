@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { getMembershipTokenLimit } from "@/lib/quota-token";
 
 /**
  * 获取用户配额信息
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
-    const tokenLimit = levelData ? Number(levelData.tokenLimit) : 10000;
+    const tokenLimit = levelData ? Number(levelData.tokenLimit) : Number(await getMembershipTokenLimit(membershipLevel));
 
     const availableEnterpriseSlots = maxEnterpriseWorkspaces === -1 
       ? -1 

@@ -101,6 +101,13 @@ export async function POST(request: NextRequest) {
         user.status = "active";
         user.bannedUntil = null;
       } else {
+        // 查询最新封禁凭证，用于在 user.banReason 缺失时兜底（兼容修复前封禁的历史数据）
+        const banAppeal = await prisma.accountappeal.findFirst({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+        });
+        const effectiveBanReason =
+          user.banReason || banAppeal?.banReason || "系统检测到账号存在违规行为，已被限制使用";
         // 检查是否为临时封禁
         let message = "账号已被永久封禁，无法登录";
         if (user.bannedUntil) {
@@ -116,6 +123,7 @@ export async function POST(request: NextRequest) {
             message: message,
             accountExists: true,
             status: user.status,
+            banReason: effectiveBanReason,
             bannedUntil: user.bannedUntil?.toISOString(),
           },
           { status: 403 },

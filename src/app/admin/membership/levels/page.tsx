@@ -1,4 +1,4 @@
-﻿﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -20,10 +20,18 @@ import {
   ArrowLeft,
   Check,
   X,
+  Zap,
 } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
+import {
+  POINT_RATE_HINT,
+  POINT_RATE_TEXT,
+  monthlyCentsFromPoints,
+  yearlyCentsFromPoints,
+} from "@/lib/point-rate";
 
 interface MembershipLevel {
+  id: string;
   name: string;
   nameZh: string;
   icon: string;
@@ -36,6 +44,7 @@ interface MembershipLevel {
   maxStorage: number;
   maxApiCalls: number;
   features: string[];
+  tokenLimit: number;
   priceMonthly: number;
   priceYearly: number;
   trialDays: number;
@@ -57,6 +66,7 @@ interface LevelFormData {
   maxTeamSize: number;
   maxStorage: number;
   maxApiCalls: number;
+  tokenLimit: number;
   features: string;
   priceMonthly: number;
   priceYearly: number;
@@ -88,6 +98,7 @@ export default function AdminMembershipLevelsPage() {
     maxTeamSize: 5,
     maxStorage: 1,
     maxApiCalls: 1000,
+    tokenLimit: 1000,
     features: "",
     priceMonthly: 0,
     priceYearly: 0,
@@ -122,9 +133,11 @@ export default function AdminMembershipLevelsPage() {
     loadLevels();
   }, [searchQuery, filterPrice, filterStatus]);
 
-  const loadLevels = async () => {
-    try {
+  const loadLevels = async (isSilent: boolean = false) => {
+    if (!isSilent) {
       setLoading(true);
+    }
+    try {
       const authToken = getAuthToken();
 
       console.log("Loading levels with authToken:", authToken);
@@ -183,7 +196,7 @@ export default function AdminMembershipLevelsPage() {
       onConfirm: async () => {
         try {
           const authToken = getAuthToken();
-          const res = await fetch(`/api/admin/membership/levels/${name}`, {
+          const res = await fetch(`/api/admin/membership/levels/${encodeURIComponent(name)}`, {
             method: "DELETE",
             headers: {
               Authorization: `Bearer ${authToken}`,
@@ -193,7 +206,10 @@ export default function AdminMembershipLevelsPage() {
 
           if (res.ok) {
             toast.success("删除成功");
-            loadLevels();
+            // 1. 局部无缝物理移除节点
+            setLevels((prev) => prev.filter((item) => item.name !== name && item.id !== name));
+            // 2. 静默后台数据对齐，绝不上锁全屏闪烁
+            loadLevels(true);
           } else {
             const error = await res.json();
             toast.error(error.message || "删除失败");
@@ -207,9 +223,18 @@ export default function AdminMembershipLevelsPage() {
   };
 
   const handleToggleActive = async (name: string, isActive: boolean) => {
+    // 1. 乐观局部更新组件 State (毫秒级无感知切换状态，拒绝白屏闪烁)
+    setLevels((prev) =>
+      prev.map((item) =>
+        item.name === name || item.id === name
+          ? { ...item, isActive: !isActive }
+          : item
+      )
+    );
+
     try {
       const authToken = getAuthToken();
-      const res = await fetch(`/api/admin/membership/levels/${name}`, {
+      const res = await fetch(`/api/admin/membership/levels/${encodeURIComponent(name)}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -222,13 +247,30 @@ export default function AdminMembershipLevelsPage() {
       });
 
       if (res.ok) {
-        toast.success(isActive ? "已禁用" : "已启用");
-        loadLevels();
+        toast.success(!isActive ? "已启用" : "已禁用");
+        // 2. 静默与后端数据库同频，绝不出骨架屏
+        loadLevels(true);
       } else {
+        // 请求失败回滚原状态
+        setLevels((prev) =>
+          prev.map((item) =>
+            item.name === name || item.id === name
+              ? { ...item, isActive }
+              : item
+          )
+        );
         toast.error("操作失败");
       }
     } catch (error) {
       console.error("Toggle active error:", error);
+      // 捕获异常回滚原状态
+      setLevels((prev) =>
+        prev.map((item) =>
+          item.name === name || item.id === name
+            ? { ...item, isActive }
+            : item
+        )
+      );
       toast.error("操作失败");
     }
   };
@@ -246,6 +288,7 @@ export default function AdminMembershipLevelsPage() {
       maxTeamSize: 5,
       maxStorage: 1,
       maxApiCalls: 1000,
+      tokenLimit: 1000,
       features: "",
       priceMonthly: 0,
       priceYearly: 0,
@@ -271,6 +314,7 @@ export default function AdminMembershipLevelsPage() {
       maxTeamSize: Number(level.maxTeamSize),
       maxStorage: Number(level.maxStorage) / 1073741824, // GB
       maxApiCalls: Number(level.maxApiCalls),
+      tokenLimit: Number(level.tokenLimit || 1000),
       features: Array.isArray(level.features) ? level.features.join("\n") : "",
       priceMonthly: level.priceMonthly,
       priceYearly: level.priceYearly,
@@ -397,13 +441,15 @@ export default function AdminMembershipLevelsPage() {
     setSubmitting(true);
 
     const authToken = getAuthToken();
+    const targetName = editingLevel ? (editingLevel.name || editingLevel.id) : "";
     const url = editingLevel
-      ? `/api/admin/membership/levels/${formData.name}`
+      ? `/api/admin/membership/levels/${encodeURIComponent(targetName)}`
       : "/api/admin/membership/levels";
 
     const method = editingLevel ? "PUT" : "POST";
 
     const requestBody = {
+      name: formData.name,
       nameZh: formData.nameZh,
       icon: formData.icon,
       color: formData.color,
@@ -414,6 +460,7 @@ export default function AdminMembershipLevelsPage() {
       maxTeamSize: Number(formData.maxTeamSize),
       maxStorage: Number(formData.maxStorage * 1073741824),
       maxApiCalls: Number(formData.maxApiCalls),
+      tokenLimit: Number(formData.tokenLimit),
       features: formData.features
         ? formData.features.split("\n").filter((f) => f.trim())
         : [],
@@ -446,10 +493,10 @@ export default function AdminMembershipLevelsPage() {
       // 先检查响应状态
       if (!res.ok) {
         // 尝试读取错误响应
-        let errorData;
+        let errorData: any = {};
         try {
           errorData = await res.json();
-          console.error("错误详情:", errorData);
+          console.error("错误详情:", JSON.stringify(errorData));
           if (errorData.debug) {
             console.error("调试信息:", errorData.debug);
           }
@@ -459,7 +506,8 @@ export default function AdminMembershipLevelsPage() {
           console.error("错误文本:", errorText);
           errorData = { message: errorText || "操作失败" };
         }
-        toast.error(errorData.message || "操作失败");
+        const errMsg = errorData.message || errorData.error || "操作失败";
+        toast.error(errMsg);
         setSubmitting(false);
         return;
       }
@@ -467,10 +515,29 @@ export default function AdminMembershipLevelsPage() {
       // 成功响应
       const data = await res.json();
       console.log("响应数据:", data);
-      console.log("✓ 更新成功");
+      console.log("✓ 保存成功");
+      
+      const updatedLevelItem = data.data;
+      if (updatedLevelItem) {
+        setLevels((prev) => {
+          const exists = prev.some(
+            (item) => item.id === updatedLevelItem.id || item.name === updatedLevelItem.name
+          );
+          if (exists) {
+            return prev.map((item) =>
+              item.id === updatedLevelItem.id || item.name === updatedLevelItem.name
+                ? { ...item, ...updatedLevelItem }
+                : item
+            );
+          }
+          return [updatedLevelItem, ...prev];
+        });
+      }
+      
       toast.success(editingLevel ? "更新成功" : "创建成功");
       setShowCreateModal(false);
-      loadLevels();
+      // 触发静默无感知后端对齐，绝不出全页骨架屏
+      loadLevels(true);
     } catch (error) {
       console.error("=== 捕获异常 ===");
       console.error("错误:", error);
@@ -483,278 +550,324 @@ export default function AdminMembershipLevelsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
-      {/* 顶部导航 */}
-      <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              <span className="font-medium">返回</span>
-            </button>
-            <h1 className="text-xl font-bold text-slate-800">会员等级管理</h1>
-            <div className="w-20" />
+    <div className="min-h-screen bg-[#f0f8ff] p-6 max-w-7xl mx-auto space-y-6 text-left font-sans">
+      {/* 顶部高颜值 Header 导航 */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
+        <div className="flex items-center gap-3.5 relative z-10">
+          <button
+            onClick={() => router.back()}
+            className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+            title="返回上一页"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center border border-blue-400/40 shadow-xs shrink-0">
+            <Crown className="w-5 h-5 fill-white/20" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
+              <span>会员等级与权益配置中心</span>
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              定制与编排各级会员的资源配额（个人/企业空间、存储上限、月度算力点等）与价格阶梯
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0 relative z-10">
+          <button
+            onClick={() => loadLevels(false)}
+            disabled={loading}
+            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+          >
+            <Search className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
+            <span>刷新列表</span>
+          </button>
+
+          <button
+            onClick={openCreateModal}
+            className="px-5 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>新增会员等级</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 算力点统一定价规则极简提示条 */}
+      <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs shadow-2xs">
+        <div className="flex items-center gap-2 text-amber-900 font-bold shrink-0">
+          <Zap className="w-4 h-4 text-amber-600 shrink-0" />
+          <span className="font-black text-amber-950">算力定价规则：</span>
+          <span className="font-mono text-amber-800">100 算力点 = 1 元</span>
+          <span className="text-amber-700 text-[11px] font-normal">(月付 = 算力点 ÷ 100，年付 = 月付 × 12)</span>
+        </div>
+        <div className="text-[11px] text-amber-700 font-medium shrink-0 hidden md:block">
+          💡 修改算力配额将自动重算价格，亦可手动修改或点击「按规则重算」恢复。
+        </div>
+      </div>
+
+      {/* 4 大 Bento 统计数据卡片 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">会员等级总数</div>
+            <div className="text-2xl font-black font-mono text-slate-900">{levels.length} <span className="text-xs font-normal text-slate-400">个方案</span></div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
+            <Crown className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">当前在用/已启用</div>
+            <div className="text-2xl font-black font-mono text-emerald-600">{levels.filter((l) => l.isActive).length} <span className="text-xs font-normal text-slate-400">个激活</span></div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+            <Check className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">热门/推荐标记</div>
+            <div className="text-2xl font-black font-mono text-amber-600">{levels.filter((l) => l.isPopular || l.isRecommended).length} <span className="text-xs font-normal text-slate-400">个热销</span></div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">免费与付费梯队</div>
+            <div className="text-2xl font-black font-mono text-purple-600">
+              {levels.filter((l) => l.priceMonthly === 0).length} / {levels.filter((l) => l.priceMonthly > 0).length}
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+            <Box className="w-5 h-5" />
           </div>
         </div>
       </div>
 
-      {/* 主内容区 */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* 操作栏 */}
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 mb-6 overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
-          <div className="relative flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <SearchInput
-                value={searchQuery}
-                onChange={setSearchQuery}
-                placeholder="搜索会员等级..."
-                debounceMs={300}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* 价格筛选 */}
-              <select
-                value={filterPrice}
-                onChange={(e) => setFilterPrice(e.target.value)}
-                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
-              >
-                <option value="all">所有价格</option>
-                <option value="free">免费</option>
-                <option value="paid">付费</option>
-              </select>
-
-              {/* 状态筛选 */}
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
-              >
-                <option value="all">所有状态</option>
-                <option value="active">已启用</option>
-                <option value="inactive">已禁用</option>
-              </select>
-
-              <button
-                onClick={openCreateModal}
-                className="px-5 h-11 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-bold text-sm hover:shadow-xl hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>新增会员等级</span>
-              </button>
-            </div>
-          </div>
+      {/* 筛选与搜索控制栏 */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="w-full md:w-80">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="搜索会员等级标识、中文名..."
+            debounceMs={300}
+          />
         </div>
 
-        {/* 会员等级列表 */}
-        {loading ? (
-          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-12 overflow-hidden">
-            <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-slate-100 opacity-50 blur-3xl"></div>
-            <div className="flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-slate-600 font-medium">加载会员等级中...</p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
-            <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
-            <div className="relative overflow-x-auto">
-              <table className="w-full table-auto">
-                <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                      等级信息
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                      配额配置
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                      价格
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                      状态
-                    </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                      操作
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {levels.map((level) => (
-                    <tr
-                      key={level.name}
-                      className="group hover:bg-white/60 transition-all duration-300"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-xl shadow-sm group-hover:scale-110 transition-transform duration-300"
-                            style={{ backgroundColor: `${level.color}20` }}
-                          >
-                            {level.icon || "👤"}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="font-black text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
-                                title={level.nameZh}
-                              >
-                                {level.nameZh}
-                              </div>
-                              {level.isRecommended && (
-                                <span className="text-xs bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm whitespace-nowrap">
-                                  <TrendingUp className="w-3 h-3 shrink-0" />
-                                  推荐
-                                </span>
-                              )}
-                              {level.isPopular && (
-                                <span className="text-xs bg-gradient-to-r from-[#f59e0b]/10 to-[#f59e0b]/10 text-[#f59e0b] px-2 py-1 rounded-full font-bold flex items-center gap-1 shadow-sm whitespace-nowrap">
-                                  <Crown className="w-3 h-3 shrink-0" />
-                                  热门
-                                </span>
-                              )}
-                            </div>
-                            <div
-                              className="text-xs text-slate-500 font-medium mt-0.5 truncate"
-                              title={level.name}
-                            >
-                              {level.name}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-slate-600 space-y-1 font-medium">
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <Database className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                            <span className="whitespace-nowrap">
-                              企业空间：
-                              {Number(level.maxEnterpriseWorkspaces) === -1
-                                ? "无限制"
-                                : `${Number(level.maxEnterpriseWorkspaces)}个`}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <Box className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                            <span className="whitespace-nowrap">
-                              组件：
-                              {Number(level.maxComponents) === -1
-                                ? "无限制"
-                                : `${Number(level.maxComponents)}个`}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <Users className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                            <span className="whitespace-nowrap">
-                              团队：
-                              {Number(level.maxTeamSize) === -1
-                                ? "无限制"
-                                : `${Number(level.maxTeamSize)}人`}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <Database className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                            <span className="whitespace-nowrap">
-                              存储：
-                              {Number(level.maxStorage) === -1
-                                ? "无限制"
-                                : `${(Number(level.maxStorage) / 1073741824).toFixed(1)}GB`}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-slate-600 font-medium whitespace-nowrap">
-                          <div className="font-bold text-slate-700 whitespace-nowrap">
-                            月付：¥{level.priceMonthly / 100}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-0.5 whitespace-nowrap">
-                            年付：¥{level.priceYearly / 100}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() =>
-                            handleToggleActive(level.name, level.isActive)
-                          }
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-300 whitespace-nowrap ${
-                            level.isActive
-                              ? "bg-gradient-to-r from-[#10b981]/10 to-[#059669]/10 text-[#10b981] hover:shadow-md"
-                              : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                          }`}
-                        >
-                          {level.isActive ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 shrink-0" />
-                              已启用
-                            </>
-                          ) : (
-                            <>
-                              <X className="w-3.5 h-3.5 shrink-0" />
-                              已禁用
-                            </>
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => openEditModal(level)}
-                            className="p-2.5 hover:bg-[#3182ce]/10 hover:text-[#3182ce] rounded-xl transition-all duration-300 group-hover:scale-110 inline-flex items-center justify-center"
-                            title="编辑"
-                          >
-                            <Edit className="w-4 h-4 shrink-0" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(level.name)}
-                            className="p-2.5 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all duration-300 group-hover:scale-110 inline-flex items-center justify-center"
-                            title="删除"
-                          >
-                            <Trash2 className="w-4 h-4 shrink-0" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </main>
+        <div className="flex items-center gap-3 w-full md:w-auto shrink-0 justify-end">
+          <select
+            value={filterPrice}
+            onChange={(e) => setFilterPrice(e.target.value)}
+            className="h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+          >
+            <option value="all">所有价格分类</option>
+            <option value="free">仅看免费版</option>
+            <option value="paid">仅看付费版</option>
+          </select>
 
-      {/* 创建/编辑弹窗 */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+          >
+            <option value="all">所有启用状态</option>
+            <option value="active">已启用</option>
+            <option value="inactive">已禁用</option>
+          </select>
+        </div>
+      </div>
+
+      {/* 会员等级数据表格 */}
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-16 text-center text-xs font-bold text-slate-400">
+          <div className="w-8 h-8 border-3 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          正在读取会员等级与权益配置文件...
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                  <th className="px-6 py-4 min-w-[200px] shrink-0">等级与标识</th>
+                  <th className="px-6 py-4 min-w-[360px]">每月配额与参数</th>
+                  <th className="px-6 py-4 min-w-[150px] shrink-0">价格阶梯 (CNY)</th>
+                  <th className="px-6 py-4 w-28 shrink-0">状态</th>
+                  <th className="px-6 py-4 text-right w-40 shrink-0">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {levels.map((level) => (
+                  <tr
+                    key={level.name}
+                    className={`hover:bg-slate-50/80 transition-colors ${
+                      !level.isActive ? "opacity-60 bg-slate-50/30" : ""
+                    }`}
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap min-w-[200px] shrink-0">
+                      <div className="flex items-center gap-3.5 whitespace-nowrap">
+                        <div
+                          className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-xs border shrink-0"
+                          style={{ backgroundColor: `${level.color}15`, borderColor: `${level.color}30` }}
+                        >
+                          <span>{level.icon || "👤"}</span>
+                        </div>
+                        <div className="whitespace-nowrap">
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <span className="font-black text-slate-900 text-sm whitespace-nowrap">{level.nameZh}</span>
+                            {level.isRecommended && (
+                              <span className="px-2 py-0.5 bg-blue-50 text-[#3182ce] border border-blue-200 text-[10px] rounded-md font-black flex items-center gap-1 shrink-0 whitespace-nowrap">
+                                <TrendingUp className="w-3 h-3 shrink-0" /> 推荐
+                              </span>
+                            )}
+                            {level.isPopular && (
+                              <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] rounded-md font-black flex items-center gap-1 shrink-0 whitespace-nowrap">
+                                <Crown className="w-3 h-3 shrink-0" /> 热门
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-mono text-[11px] text-slate-400 font-bold mt-0.5 whitespace-nowrap">
+                            ID: {level.name}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 min-w-[360px]">
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
+                        <div className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap">
+                          <span className="text-slate-500 font-bold whitespace-nowrap">⚡ 月算力:</span>
+                          <strong className="font-mono text-slate-900 font-bold whitespace-nowrap">{Number(level.tokenLimit || 1000).toLocaleString()} 点</strong>
+                          {Number(level.tokenLimit) !== -1 && (
+                            <span className="font-mono text-[#3182ce] font-bold whitespace-nowrap">
+                              （¥{(monthlyCentsFromPoints(level.tokenLimit) / 100).toFixed(2)}）
+                            </span>
+                          )}
+                        </div>
+                        <div className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap">
+                          <span className="text-slate-500 font-bold whitespace-nowrap">企业空间:</span>
+                          <strong className="font-mono text-slate-900 font-bold whitespace-nowrap">
+                            {Number(level.maxEnterpriseWorkspaces) === -1 ? "无限制" : `${level.maxEnterpriseWorkspaces} 个`}
+                          </strong>
+                        </div>
+                        <div className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap">
+                          <span className="text-slate-500 font-bold whitespace-nowrap">组件上限:</span>
+                          <strong className="font-mono text-slate-900 font-bold whitespace-nowrap">
+                            {Number(level.maxComponents) === -1 ? "无限制" : `${level.maxComponents} 个`}
+                          </strong>
+                        </div>
+                        <div className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap">
+                          <span className="text-slate-500 font-bold whitespace-nowrap">团队人数:</span>
+                          <strong className="font-mono text-slate-900 font-bold whitespace-nowrap">
+                            {Number(level.maxTeamSize) === -1 ? "无限制" : `${level.maxTeamSize} 人`}
+                          </strong>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 font-mono whitespace-nowrap min-w-[150px] shrink-0">
+                      <div className="space-y-0.5 whitespace-nowrap">
+                        <div className="font-black text-slate-900 text-xs whitespace-nowrap">
+                          月付: <span className="text-[#3182ce] whitespace-nowrap">¥&nbsp;{(Number(level.priceMonthly) / 100).toFixed(2)}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-bold whitespace-nowrap">
+                          年付: ¥&nbsp;{(Number(level.priceYearly) / 100).toFixed(2)}
+                        </div>
+                        {Number(level.tokenLimit) !== -1 && (
+                          <div className={`text-[10px] font-bold whitespace-nowrap ${
+                            Number(level.priceMonthly) === monthlyCentsFromPoints(level.tokenLimit) ? "text-emerald-600" : "text-amber-600"
+                          }`}>
+                            规则应售 ¥{(monthlyCentsFromPoints(level.tokenLimit) / 100).toFixed(2)}
+                            {Number(level.priceMonthly) === monthlyCentsFromPoints(level.tokenLimit) ? " ✓" : " ⚠"}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap w-28 shrink-0">
+                      <button
+                        onClick={() => handleToggleActive(level.name, level.isActive)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center justify-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
+                          level.isActive
+                            ? "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"
+                            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                        }`}
+                      >
+                        {level.isActive ? <Check className="w-3.5 h-3.5 shrink-0" /> : <X className="w-3.5 h-3.5 shrink-0" />}
+                        <span className="whitespace-nowrap">{level.isActive ? "已启用" : "已禁用"}</span>
+                      </button>
+                    </td>
+
+                    <td className="px-6 py-4 text-right whitespace-nowrap w-40 shrink-0">
+                      <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                        <button
+                          onClick={() => openEditModal(level)}
+                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
+                        >
+                          <Edit className="w-3.5 h-3.5 shrink-0" />
+                          <span className="whitespace-nowrap">编辑</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDelete(level.name)}
+                          className="px-3 py-1.5 bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                          <span className="whitespace-nowrap">删除</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 创建/编辑弹窗 (防护响应式防截断 max-h-[90vh] flex flex-col) */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-800">
-                {editingLevel ? "编辑会员等级" : "新增会员等级"}
-              </h2>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden text-left font-sans">
+            {/* Header 吸顶 */}
+            <div className="bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] p-5 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Crown className="w-5 h-5 text-amber-300 fill-amber-300" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm">{editingLevel ? "编辑会员等级配置" : "新增会员等级配置"}</h3>
+                  <p className="text-[11px] text-blue-100">配置底层资源权限配额与价格，提交后实时保存落库</p>
+                </div>
+              </div>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors"
               >
-                <X className="w-6 h-6" />
+                <X className="w-4 h-4 text-white" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* 基本信息 */}
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  基本信息
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
+            <div className="p-6 space-y-6 flex-1 min-h-0 overflow-y-auto bg-slate-50/40">
+              {/* 1. 基本信息卡片 */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+                  <span className="w-2 h-2 rounded-full bg-[#3182ce]" />
+                  <span>基本信息配置</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      等级标识 <span className="text-red-500">*</span>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      等级标识 (ID) <span className="text-red-500 font-bold">*</span>
                     </label>
                     <input
                       type="text"
@@ -768,19 +881,20 @@ export default function AdminMembershipLevelsPage() {
                       disabled={!!editingLevel}
                       placeholder="如：FREE, BRONZE, SILVER"
                       data-error={!!formErrors.name}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] disabled:bg-slate-100 ${
+                      className={`w-full px-3.5 py-2.5 bg-slate-50/50 border rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] disabled:bg-slate-100 transition-all ${
                         formErrors.name ? "border-red-500" : "border-slate-200"
                       }`}
                     />
                     {formErrors.name && (
-                      <p className="mt-1 text-xs text-red-500">
+                      <p className="mt-1 text-[11px] text-red-500 font-bold">
                         {formErrors.name}
                       </p>
                     )}
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      中文名称 <span className="text-red-500">*</span>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      中文名称 <span className="text-red-500 font-bold">*</span>
                     </label>
                     <input
                       type="text"
@@ -788,23 +902,22 @@ export default function AdminMembershipLevelsPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, nameZh: e.target.value })
                       }
-                      placeholder="如：免费版，青铜版"
+                      placeholder="如：免费版，青铜会员"
                       data-error={!!formErrors.nameZh}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
-                        formErrors.nameZh
-                          ? "border-red-500"
-                          : "border-slate-200"
+                      className={`w-full px-3.5 py-2.5 bg-slate-50/50 border rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] transition-all ${
+                        formErrors.nameZh ? "border-red-500" : "border-slate-200"
                       }`}
                     />
                     {formErrors.nameZh && (
-                      <p className="mt-1 text-xs text-red-500">
+                      <p className="mt-1 text-[11px] text-red-500 font-bold">
                         {formErrors.nameZh}
                       </p>
                     )}
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      图标
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      图标 Emoji / Icon
                     </label>
                     <input
                       type="text"
@@ -813,12 +926,13 @@ export default function AdminMembershipLevelsPage() {
                         setFormData({ ...formData, icon: e.target.value })
                       }
                       placeholder="👑"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      主题色 <span className="text-red-500">*</span>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      主题识别色 <span className="text-red-500 font-bold">*</span>
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -827,7 +941,7 @@ export default function AdminMembershipLevelsPage() {
                         onChange={(e) =>
                           setFormData({ ...formData, color: e.target.value })
                         }
-                        className="w-12 h-10 border border-slate-200 rounded-lg cursor-pointer"
+                        className="w-12 h-10 border border-slate-200 rounded-xl cursor-pointer p-1 bg-white shrink-0"
                       />
                       <input
                         type="text"
@@ -837,22 +951,21 @@ export default function AdminMembershipLevelsPage() {
                         }
                         placeholder="#3182ce"
                         data-error={!!formErrors.color}
-                        className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
-                          formErrors.color
-                            ? "border-red-500"
-                            : "border-slate-200"
+                        className={`flex-1 px-3.5 py-2.5 bg-slate-50/50 border rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] ${
+                          formErrors.color ? "border-red-500" : "border-slate-200"
                         }`}
                       />
                     </div>
                     {formErrors.color && (
-                      <p className="mt-1 text-xs text-red-500">
+                      <p className="mt-1 text-[11px] text-red-500 font-bold">
                         {formErrors.color}
                       </p>
                     )}
                   </div>
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      描述
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      方案描述说明
                     </label>
                     <textarea
                       value={formData.description}
@@ -863,50 +976,100 @@ export default function AdminMembershipLevelsPage() {
                         })
                       }
                       rows={2}
-                      placeholder="会员等级描述"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      placeholder="简短描述该会员等级适合人群或核心优势..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* 配额配置 */}
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  配额配置
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      个人空间数量
+              {/* 2. 底层配额资源卡片 */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>底层资源与权限配额</span>
+                </h4>
+
+                {/* 算力点单独高亮卡片 */}
+                <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-blue-900 flex items-center gap-1.5">
+                      <span>⚡ 每月基础算力点配额 (tokenLimit)</span>
                     </label>
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="checkbox"
-                        id="unlimited-personal"
-                        checked={formData.maxPersonalWorkspaces === -1}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            maxPersonalWorkspaces: e.target.checked ? -1 : 1,
-                          })
-                        }
-                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
-                      />
-                      <label
-                        htmlFor="unlimited-personal"
-                        className="text-sm text-slate-600"
-                      >
-                        无限制
+                    <span className="text-[10px] text-blue-600 font-bold bg-blue-100/80 px-2 py-0.5 rounded-md">自然月首日重置</span>
+                  </div>
+                  <input
+                    type="number"
+                    value={formData.tokenLimit || 0}
+                    onChange={(e) => {
+                      const pts = parseInt(e.target.value) || 0;
+                      // 输入算力点即时折算价格：1 算力点 = 0.01 元 = 1 分
+                      // 无限制(-1) 无法按点数折算，保持原手动价格
+                      setFormData({
+                        ...formData,
+                        tokenLimit: pts,
+                        ...(pts !== -1
+                          ? {
+                              priceMonthly: monthlyCentsFromPoints(pts),
+                              priceYearly: yearlyCentsFromPoints(pts, 12),
+                            }
+                          : {}),
+                      });
+                    }}
+                    placeholder="如：1000, 20000, 100000"
+                    className="w-full px-3.5 py-2 bg-white border border-blue-300/80 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                  />
+
+                  {/* 即时折算结果：输入点数后立刻算出月付 / 年付 */}
+                  <div className="bg-white/80 border border-blue-200/70 rounded-lg px-2.5 py-2 text-[11px] font-bold text-blue-900 leading-relaxed">
+                    {(() => {
+                      const pts = Number(formData.tokenLimit) || 0;
+                      if (pts === -1) {
+                        return (
+                          <span className="text-amber-600">
+                            ⚠ 当前为「无限制」配额，无法按算力点规则折算，请手动填写月付 / 年付价格
+                          </span>
+                        );
+                      }
+                      const mCents = monthlyCentsFromPoints(pts);
+                      const yCents = yearlyCentsFromPoints(pts, 12);
+                      return (
+                        <span>
+                          按 <span className="text-[#3182ce]">{POINT_RATE_TEXT}</span> 即时折算：
+                          {pts.toLocaleString()} 点 ÷ 100 ={" "}
+                          <strong className="text-[#3182ce]">¥{(mCents / 100).toFixed(2)}</strong> /月；
+                          年付 ×12 ={" "}
+                          <strong className="text-[#3182ce]">¥{(yCents / 100).toFixed(2)}</strong> /年
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-[10px] text-blue-600 font-bold">{POINT_RATE_HINT}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 个人空间 */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700">个人空间数量</label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500 font-bold">
+                        <input
+                          type="checkbox"
+                          checked={formData.maxPersonalWorkspaces === -1}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              maxPersonalWorkspaces: e.target.checked ? -1 : 1,
+                            })
+                          }
+                          className="w-3.5 h-3.5 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
+                        />
+                        <span>无限制</span>
                       </label>
                     </div>
                     <input
                       type="number"
-                      value={
-                        formData.maxPersonalWorkspaces === -1
-                          ? ""
-                          : formData.maxPersonalWorkspaces
-                      }
+                      value={formData.maxPersonalWorkspaces === -1 ? "" : formData.maxPersonalWorkspaces}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
@@ -914,90 +1077,67 @@ export default function AdminMembershipLevelsPage() {
                         })
                       }
                       disabled={formData.maxPersonalWorkspaces === -1}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
-                        formData.maxPersonalWorkspaces === -1
-                          ? "bg-slate-100 text-slate-400"
-                          : ""
-                      } ${formErrors.maxPersonalWorkspaces ? "border-red-500" : "border-slate-200"}`}
+                      placeholder={formData.maxPersonalWorkspaces === -1 ? "无限制 (-1)" : "数量"}
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      企业空间数量
-                    </label>
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="checkbox"
-                        id="unlimited-enterprise"
-                        checked={formData.maxEnterpriseWorkspaces === -1}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            maxEnterpriseWorkspaces: e.target.checked ? -1 : 1,
-                          })
-                        }
-                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
-                      />
-                      <label
-                        htmlFor="unlimited-enterprise"
-                        className="text-sm text-slate-600"
-                      >
-                        无限制
+
+                  {/* 企业空间 */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700">企业空间数量</label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500 font-bold">
+                        <input
+                          type="checkbox"
+                          checked={formData.maxEnterpriseWorkspaces === -1}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              maxEnterpriseWorkspaces: e.target.checked ? -1 : 1,
+                            })
+                          }
+                          className="w-3.5 h-3.5 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
+                        />
+                        <span>无限制</span>
                       </label>
                     </div>
                     <input
                       type="number"
-                      value={
-                        formData.maxEnterpriseWorkspaces === -1
-                          ? ""
-                          : formData.maxEnterpriseWorkspaces
-                      }
+                      value={formData.maxEnterpriseWorkspaces === -1 ? "" : formData.maxEnterpriseWorkspaces}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          maxEnterpriseWorkspaces:
-                            parseInt(e.target.value) || 0,
+                          maxEnterpriseWorkspaces: parseInt(e.target.value) || 0,
                         })
                       }
                       disabled={formData.maxEnterpriseWorkspaces === -1}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
-                        formData.maxEnterpriseWorkspaces === -1
-                          ? "bg-slate-100 text-slate-400"
-                          : ""
-                      } ${formErrors.maxEnterpriseWorkspaces ? "border-red-500" : "border-slate-200"}`}
+                      placeholder={formData.maxEnterpriseWorkspaces === -1 ? "无限制 (-1)" : "数量"}
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      组件数量上限
-                    </label>
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="checkbox"
-                        id="unlimited-components"
-                        checked={formData.maxComponents === -1}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            maxComponents: e.target.checked ? -1 : 100,
-                          })
-                        }
-                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
-                      />
-                      <label
-                        htmlFor="unlimited-components"
-                        className="text-sm text-slate-600"
-                      >
-                        无限制
+
+                  {/* 组件上限 */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700">组件上限 (个)</label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500 font-bold">
+                        <input
+                          type="checkbox"
+                          checked={formData.maxComponents === -1}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              maxComponents: e.target.checked ? -1 : 100,
+                            })
+                          }
+                          className="w-3.5 h-3.5 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
+                        />
+                        <span>无限制</span>
                       </label>
                     </div>
                     <input
                       type="number"
-                      value={
-                        formData.maxComponents === -1
-                          ? ""
-                          : formData.maxComponents
-                      }
+                      value={formData.maxComponents === -1 ? "" : formData.maxComponents}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
@@ -1005,42 +1145,33 @@ export default function AdminMembershipLevelsPage() {
                         })
                       }
                       disabled={formData.maxComponents === -1}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
-                        formData.maxComponents === -1
-                          ? "bg-slate-100 text-slate-400"
-                          : ""
-                      } ${formErrors.maxComponents ? "border-red-500" : "border-slate-200"}`}
+                      placeholder={formData.maxComponents === -1 ? "无限制 (-1)" : "数量"}
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      团队规模上限（人）
-                    </label>
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="checkbox"
-                        id="unlimited-team"
-                        checked={formData.maxTeamSize === -1}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            maxTeamSize: e.target.checked ? -1 : 5,
-                          })
-                        }
-                        className="w-4 h-4 text-[#3182ce] border-slate-300 rounded focus:ring-[#3182ce]"
-                      />
-                      <label
-                        htmlFor="unlimited-team"
-                        className="text-sm text-slate-600"
-                      >
-                        无限制
+
+                  {/* 团队规模 */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700">团队规模 (人)</label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500 font-bold">
+                        <input
+                          type="checkbox"
+                          checked={formData.maxTeamSize === -1}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              maxTeamSize: e.target.checked ? -1 : 5,
+                            })
+                          }
+                          className="w-3.5 h-3.5 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
+                        />
+                        <span>无限制</span>
                       </label>
                     </div>
                     <input
                       type="number"
-                      value={
-                        formData.maxTeamSize === -1 ? "" : formData.maxTeamSize
-                      }
+                      value={formData.maxTeamSize === -1 ? "" : formData.maxTeamSize}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
@@ -1048,17 +1179,14 @@ export default function AdminMembershipLevelsPage() {
                         })
                       }
                       disabled={formData.maxTeamSize === -1}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce] ${
-                        formData.maxTeamSize === -1
-                          ? "bg-slate-100 text-slate-400"
-                          : ""
-                      } ${formErrors.maxTeamSize ? "border-red-500" : "border-slate-200"}`}
+                      placeholder={formData.maxTeamSize === -1 ? "无限制 (-1)" : "人数"}
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      存储空间（GB）
-                    </label>
+
+                  {/* 存储空间 */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">存储空间 (GB)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -1069,13 +1197,13 @@ export default function AdminMembershipLevelsPage() {
                           maxStorage: parseFloat(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      每月 API 调用次数
-                    </label>
+
+                  {/* 每月 API 调用 */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">每月 API 调用次数</label>
                     <input
                       type="number"
                       value={formData.maxApiCalls}
@@ -1085,21 +1213,22 @@ export default function AdminMembershipLevelsPage() {
                           maxApiCalls: parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* 价格配置 */}
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  价格配置
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
+              {/* 3. 价格与策略卡片 */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  <span>价格阶梯与策略配置</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      月付价格（元）
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      月付价格 (元/月)
                     </label>
                     <input
                       type="number"
@@ -1110,12 +1239,17 @@ export default function AdminMembershipLevelsPage() {
                           priceMonthly: (parseFloat(e.target.value) || 0) * 100,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      placeholder="0.00"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
+                    <p className="mt-1 text-[10px] font-bold text-slate-400">
+                      按规则应售 ¥{(monthlyCentsFromPoints(formData.tokenLimit) / 100).toFixed(2)} /月
+                    </p>
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      年付价格（元）
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      年付价格 (元/年)
                     </label>
                     <input
                       type="number"
@@ -1126,12 +1260,32 @@ export default function AdminMembershipLevelsPage() {
                           priceYearly: (parseFloat(e.target.value) || 0) * 100,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      placeholder="0.00"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-bold text-slate-400">
+                        按规则应售 ¥{(yearlyCentsFromPoints(formData.tokenLimit, 12) / 100).toFixed(2)} /年（月付 ×12）
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            priceMonthly: monthlyCentsFromPoints(formData.tokenLimit),
+                            priceYearly: yearlyCentsFromPoints(formData.tokenLimit, 12),
+                          })
+                        }
+                        className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-black rounded-md border border-amber-200 cursor-pointer shrink-0"
+                      >
+                        按规则重算
+                      </button>
+                    </div>
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      试用天数
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      免费试用天数
                     </label>
                     <input
                       type="number"
@@ -1142,12 +1296,14 @@ export default function AdminMembershipLevelsPage() {
                           trialDays: parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      placeholder="如 0, 7, 14"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      排序
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      排序权重 (数字越大越靠前)
                     </label>
                     <input
                       type="number"
@@ -1158,35 +1314,38 @@ export default function AdminMembershipLevelsPage() {
                           sortOrder: parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                      placeholder="0"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* 功能权益 */}
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  功能权益
-                </h3>
+              {/* 4. 功能权益列表 */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span>功能权益说明</span>
+                </h4>
                 <textarea
                   value={formData.features}
                   onChange={(e) =>
                     setFormData({ ...formData, features: e.target.value })
                   }
-                  rows={4}
-                  placeholder="每行一个功能权益描述"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+                  rows={3}
+                  placeholder="每行一个权益描述（例如：支持导出高分辨率矢量图、专属客服一对一解答...）"
+                  className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                 />
               </div>
 
-              {/* 标记 */}
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  特殊标记
-                </h3>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
+              {/* 5. 运营标记与状态 */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span>运营标记与状态</span>
+                </h4>
+                <div className="flex flex-wrap items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
                     <input
                       type="checkbox"
                       checked={formData.isRecommended}
@@ -1196,13 +1355,12 @@ export default function AdminMembershipLevelsPage() {
                           isRecommended: e.target.checked,
                         })
                       }
-                      className="w-4 h-4 text-[#3182ce] rounded focus:ring-[#3182ce]"
+                      className="w-4 h-4 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
                     />
-                    <span className="text-sm font-medium text-slate-700">
-                      推荐等级（显示推荐标签）
-                    </span>
+                    <span>推荐方案 (标记“推荐”标签)</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
+
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
                     <input
                       type="checkbox"
                       checked={formData.isPopular}
@@ -1212,52 +1370,43 @@ export default function AdminMembershipLevelsPage() {
                           isPopular: e.target.checked,
                         })
                       }
-                      className="w-4 h-4 text-[#f59e0b] rounded focus:ring-[#f59e0b]"
+                      className="w-4 h-4 text-amber-500 rounded border-slate-300 focus:ring-amber-500"
                     />
-                    <span className="text-sm font-medium text-slate-700">
-                      最受欢迎（显示最受欢迎标签）
-                    </span>
+                    <span>最受欢迎 (标记“热门”标签)</span>
                   </label>
-                  <p className="text-xs text-slate-500 mt-2">
-                    提示：推荐和最受欢迎标记会显示在前端页面的会员卡片上，每个标记只能设置一个等级
-                  </p>
-                </div>
-              </div>
 
-              {/* 状态 */}
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.isActive}
-                    onChange={(e) =>
-                      setFormData({ ...formData, isActive: e.target.checked })
-                    }
-                    className="w-4 h-4 text-[#3182ce] rounded focus:ring-[#3182ce]"
-                  />
-                  <span className="text-sm font-medium text-slate-700">
-                    启用该会员等级
-                  </span>
-                </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 border-l border-slate-200 pl-6">
+                    <input
+                      type="checkbox"
+                      checked={formData.isActive}
+                      onChange={(e) =>
+                        setFormData({ ...formData, isActive: e.target.checked })
+                      }
+                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-600"
+                    />
+                    <span className="text-emerald-700">立即启用该等级配置</span>
+                  </label>
+                </div>
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-end gap-3">
+            {/* Action 按钮吸底 */}
+            <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex items-center justify-end gap-3 shrink-0">
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
+                className="px-5 py-2.5 text-slate-600 hover:bg-slate-200/60 rounded-xl font-bold text-xs transition-colors cursor-pointer"
               >
                 取消
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="px-6 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-lg font-bold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-6 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer active:scale-95"
               >
                 {submitting && (
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 )}
-                {editingLevel ? "更新" : "创建"}
+                {editingLevel ? "保存更新" : "创建等级"}
               </button>
             </div>
           </div>

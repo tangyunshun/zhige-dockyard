@@ -10,6 +10,10 @@ try {
 
 const nextConfig = {
   reactStrictMode: true,
+  // Prisma 必须作为外部依赖交由 Node.js 运行时直接加载。
+  // Next.js 16 默认使用 Turbopack，若将其打包会导致原生查询引擎无法解析，
+  // 运行时报 "Cannot find module '@prisma/client-<hash>'"（表现为所有访问数据库的接口 500）。
+  serverExternalPackages: ["@prisma/client", ".prisma/client"],
 }
 
 module.exports = nextConfig

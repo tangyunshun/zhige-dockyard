@@ -200,7 +200,7 @@ export default function PersonalWorkspaceCard({
               {(() => {
                 if (!workspace) return null;
                 const createdDateStr = workspace.createdAt ? new Date(workspace.createdAt).toLocaleDateString("zh-CN") : "";
-                const updatedRaw = workspace.updatedAt || (workspace as any).updated_at;
+                const updatedRaw = (workspace as any).updatedAt || (workspace as any).updated_at;
                 const updatedDateStr = updatedRaw ? new Date(updatedRaw).toLocaleDateString("zh-CN") : "";
 
                 const createdTime = workspace.createdAt ? new Date(workspace.createdAt).getTime() : 0;

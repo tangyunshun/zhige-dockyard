@@ -70,10 +70,26 @@ const COMPONENT_EXTRA_SEED: Record<
   C51: { contract: "瓶颈 ➜ 架构方案", keywords: ["架构", "设计模式", "规约", "演进"] },
   C52: { contract: "需求 ➜ 选型方案", keywords: ["技术选型", "架构", "框架", "建议"] },
   C53: { contract: "历史故障 ➜ SOP", keywords: ["sop", "避坑", "经验", "教训"] },
+  C54: { contract: "源码 ➜ 偏离度诊断", keywords: ["智能分析", "效能引擎", "静态评审", "偏离度"] },
+  C55: { contract: "配置 ➜ 巡检大盘", keywords: ["部署", "cicd", "环境巡检", "流水线"] },
+  C56: { contract: "契约 ➜ 骨架代码", keywords: ["代码生成", "骨架代码", "openapi", "转写"] },
+  C57: { contract: "项目 ➜ 漏洞预警", keywords: ["安全审计", "漏洞扫描", "凭据防泄露", "审计"] },
+  C58: { contract: "PRD ➜ 测试用例", keywords: ["文档解析", "需求分析", "sop规约", "用例"] },
+  C59: { contract: "模块 ➜ 覆盖率报告", keywords: ["自动化测试", "回归套件", "覆盖率", "断言"] },
+  C60: { contract: "功能 ➜ RESTful API", keywords: ["后端", "api", "restful", "核心接口"] },
 };
 
 async function main() {
   console.log("开始初始化组件目录（component_catalog）...");
+
+  // 清理历史上非规范的英文 ID
+  await prisma.componentcatalog.deleteMany({
+    where: {
+      id: {
+        in: ["AI_ENGINE", "DEV_OPS", "CODE_GEN", "SECURITY", "DOC_PARSER", "TEST_RUNNER", "BACKEND_CORE"],
+      },
+    },
+  });
 
   // 1. 分类初始化
   let catCreated = 0;

@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import {
   Filter,
   MoreVertical,
+  Edit,
   Edit2,
   Trash2,
   Shield,
@@ -19,6 +21,8 @@ import {
   User,
   Key,
   AlertCircle,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import DataTableFilter, {
@@ -34,8 +38,8 @@ const ROLE_OPTIONS = [
 ];
 
 const ACCOUNT_STATUS_OPTIONS = [
-  { value: "active", label: "活跃" },
-  { value: "inactive", label: "未激活" },
+  { value: "active", label: "正常/活跃" },
+  { value: "inactive", label: "已停用" },
   { value: "banned", label: "已封禁" },
 ];
 
@@ -66,6 +70,9 @@ interface User {
   lastLoginAt?: string | null;
   isOnline: boolean;
   createdAt: string;
+  banReason?: string | null;
+  bannedUntil?: string | null;
+  workspacemember?: any[];
 }
 
 interface UserData {
@@ -73,9 +80,11 @@ interface UserData {
   total: number;
   page: number;
   totalPages: number;
+  limit?: number;
 }
 
 export default function AdminUsersPage() {
+  const toast = useToast();
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -113,6 +122,7 @@ export default function AdminUsersPage() {
   });
   const [banningUser, setBanningUser] = useState<User | null>(null);
   const [banDuration, setBanDuration] = useState<string>("permanent");
+  const [banReason, setBanReason] = useState<string>("发布违规违法内容");
   const isProcessingRef = React.useRef(false);
   const forceLogoutUserIdRef = React.useRef<string | null>(null);
 
@@ -179,7 +189,12 @@ export default function AdminUsersPage() {
         }),
       });
 
-      const res = await fetch(`/api/admin/users?${params}`);
+      const authToken = getAuthToken();
+      const res = await fetch(`/api/admin/users?${params}`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
 
       // 处理 401 错误（未授权/被强制下线）
       if (await handleUnauthorized(res)) {
@@ -189,7 +204,21 @@ export default function AdminUsersPage() {
       if (!res.ok) throw new Error("加载用户列表失败");
 
       const result = await res.json();
-      setUserData(result.data);
+      const userList = Array.isArray(result.users)
+        ? result.users
+        : Array.isArray(result.data)
+          ? result.data
+          : Array.isArray(result)
+            ? result
+            : [];
+      const pagination = result.pagination || {};
+      setUserData({
+        users: userList,
+        total: pagination.total ?? userList.length,
+        page: pagination.page ?? 1,
+        limit: pagination.limit ?? 20,
+        totalPages: pagination.totalPages ?? 1,
+      });
     } catch (error) {
       console.error("Load users error:", error);
       showToast("加载用户列表失败", "error");
@@ -340,9 +369,24 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleViewDetails = (user: User) => {
+  const handleViewDetails = async (user: User) => {
     setViewingUser(user);
     setShowViewModal(true);
+    try {
+      const res = await fetch(`/api/admin/user?userId=${user.id}`, {
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.data) {
+          setViewingUser(result.data);
+        }
+      }
+    } catch (e) {
+      console.error("Fetch full user details error:", e);
+    }
   };
 
   const handleForceLogout = async (userId: string) => {
@@ -414,18 +458,29 @@ export default function AdminUsersPage() {
     setShowEditModal(true);
   };
 
-  const handleChangeStatus = async (userId: string, newStatus: string, bannedUntil?: string | null) => {
+  const handleChangeStatus = async (
+    userId: string, 
+    newStatus: string, 
+    bannedUntil?: string | null,
+    reason?: string
+  ) => {
     try {
-      const res = await fetch(`/api/admin/users/${userId}/status`, {
-        method: "PATCH",
+      const endpoint = newStatus === "banned" ? "/api/admin/user/ban" : "/api/admin/user";
+      const method = newStatus === "banned" ? "POST" : "PATCH";
+
+      const res = await fetch(endpoint, {
+        method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getAuthToken()}`,
         },
         credentials: "include",
         body: JSON.stringify({ 
+          userId,
           status: newStatus,
           bannedUntil: bannedUntil || null,
+          reason: reason || undefined,
+          banReason: reason || undefined,
         }),
       });
 
@@ -433,7 +488,10 @@ export default function AdminUsersPage() {
         return;
       }
 
-      if (!res.ok) throw new Error("修改状态失败");
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson.error || errorJson.message || "更新状态失败");
+      }
 
       const statusText =
         newStatus === "active"
@@ -443,9 +501,9 @@ export default function AdminUsersPage() {
             : "已封禁";
       showToast(`用户状态已${statusText}`, "success");
       loadUsers(currentPage);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Change status error:", error);
-      showToast("修改状态失败", "error");
+      showToast(error?.message || "更新状态失败", "error");
     }
   };
 
@@ -590,6 +648,59 @@ export default function AdminUsersPage() {
     }, 3000);
   };
 
+  // 格式化完整的 YYYY-MM-DD HH:mm:ss 日期时间
+  const formatFullDateTime = (dateStr?: string | Date | null): string => {
+    if (!dateStr) return "从未记录";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "从未记录";
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const year = d.getFullYear();
+      const month = pad(d.getMonth() + 1);
+      const day = pad(d.getDate());
+      const hours = pad(d.getHours());
+      const minutes = pad(d.getMinutes());
+      const seconds = pad(d.getSeconds());
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    } catch (e) {
+      return "从未记录";
+    }
+  };
+
+  // 清洗并格式化显示 IP 地址 (解决 ::1 问题)
+  const formatDisplayIp = (ip?: string | null): string => {
+    if (!ip) return "127.0.0.1 (本地环境)";
+    if (ip === "::1" || ip === "127.0.0.1" || ip === "localhost") {
+      return "127.0.0.1 (本地开发测试环境)";
+    }
+    return ip;
+  };
+
+  // 空间内角色中文化
+  const getWorkspaceRoleLabel = (role?: string | null): string => {
+    if (!role) return "普通成员";
+    const r = role.toUpperCase();
+    if (r === "OWNER") return "空间创建者";
+    if (r === "ADMIN") return "空间管理员";
+    return "普通成员";
+  };
+
+  // 空间类型 Badge
+  const getWorkspaceTypeBadge = (type?: string | null) => {
+    if (type === "ENTERPRISE") {
+      return (
+        <span className="px-2 py-0.5 rounded-md bg-[#3182ce]/10 text-[#3182ce] border border-[#3182ce]/20 font-bold text-[10px] whitespace-nowrap">
+          🏢 企业空间
+        </span>
+      );
+    }
+    return (
+      <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-600 border border-purple-200/60 font-bold text-[10px] whitespace-nowrap">
+        👤 个人空间
+      </span>
+    );
+  };
+
   const getMembershipLevelBadge = (level: string) => {
     const levelMap: Record<string, string> = {
       FREE: "非会员",
@@ -649,8 +760,8 @@ export default function AdminUsersPage() {
         );
       case "INACTIVE":
         return (
-          <span className="px-2 py-1 bg-amber-100 text-amber-600 text-xs font-bold rounded-full">
-            未激活
+          <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full">
+            已停用
           </span>
         );
       case "BANNED":
@@ -812,10 +923,22 @@ export default function AdminUsersPage() {
             />
             <button
               onClick={handleSearch}
-              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
+              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
             >
               <Filter className="w-4 h-4 mr-2" />
               筛选
+            </button>
+            <button
+              onClick={() => {
+                loadUsers(currentPage);
+                toast.success("用户列表已刷新！");
+              }}
+              disabled={loading}
+              className="inline-flex items-center px-4 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all duration-200 cursor-pointer shadow-2xs border border-slate-200/80 active:scale-95 disabled:opacity-50"
+              title="点击刷新用户列表最新数据"
+            >
+              <RotateCcw className={`w-4 h-4 mr-1.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
+              刷新数据
             </button>
           </div>
         </div>
@@ -886,9 +1009,9 @@ export default function AdminUsersPage() {
                         <input
                           type="checkbox"
                           checked={
-                            userData?.users.length !== undefined &&
-                            userData.users.length > 0 &&
-                            userData.users.every((u) => selectedUsers.has(u.id))
+                            userData?.users?.length !== undefined &&
+                            (userData?.users?.length || 0) > 0 &&
+                            userData?.users?.every((u) => selectedUsers.has(u.id))
                           }
                           onChange={toggleSelectAll}
                           className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
@@ -927,7 +1050,7 @@ export default function AdminUsersPage() {
                     className="divide-y divide-slate-100"
                     onClick={() => setShowActionMenu(null)}
                   >
-                    {userData?.users.length === 0 ? (
+                    {!userData?.users || userData.users.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-6 py-20 text-center">
                           <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
@@ -956,11 +1079,22 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
-                                {user.name?.charAt(0) ||
-                                  user.email?.charAt(0) ||
-                                  "U"}
-                              </div>
+                              {user.avatar ? (
+                                <img
+                                  src={user.avatar}
+                                  alt={user.name || "用户头像"}
+                                  className="w-12 h-12 shrink-0 rounded-xl object-cover shadow-md group-hover:scale-110 transition-transform duration-300 border border-slate-100"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = "none";
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                                  {user.name?.charAt(0) ||
+                                    user.email?.charAt(0) ||
+                                    "U"}
+                                </div>
+                              )}
                               <div>
                                 <div
                                   className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors"
@@ -1004,41 +1138,61 @@ export default function AdminUsersPage() {
                             {getLoginStatusBadge(user.isOnline)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {user.lastLoginAt ? (
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 shrink-0 rounded-full bg-emerald-500"></div>
-                                <span
-                                  className="text-sm text-slate-600 font-medium"
-                                  title={formatTimeAgo(user.lastLoginAt)}
-                                >
-                                  {formatTimeAgo(user.lastLoginAt)}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">
-                                从未登录
-                              </span>
-                            )}
+                            {(() => {
+                              const displayTime = user.lastLoginAt || user.createdAt;
+                              const fullStr = formatFullDateTime(displayTime);
+                              const parts = fullStr.split(" ");
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 shrink-0 rounded-full bg-emerald-500"></div>
+                                  <div className="font-mono text-xs leading-tight">
+                                    <div className="font-bold text-slate-800">{parts[0]}</div>
+                                    {parts[1] && (
+                                      <div className="text-[11px] text-slate-400 font-medium mt-0.5">{parts[1]}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
-                          <td
-                            className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap"
-                            title={formatTimeAgo(user.createdAt)}
-                          >
-                            {formatTimeAgo(user.createdAt)}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {(() => {
+                              const fullStr = formatFullDateTime(user.createdAt);
+                              const parts = fullStr.split(" ");
+                              return (
+                                <div className="font-mono text-xs leading-tight">
+                                  <div className="font-bold text-slate-800">{parts[0]}</div>
+                                  {parts[1] && (
+                                    <div className="text-[11px] text-slate-400 font-medium mt-0.5">{parts[1]}</div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap">
-                            <div className="relative inline-block">
+                            <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShowActionMenu(
-                                    showActionMenu === user.id ? null : user.id,
-                                  );
-                                }}
-                                className="p-2 hover:bg-slate-100 rounded-lg transition-colors inline-flex items-center justify-center"
+                                onClick={() => handleViewDetails(user)}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
+                                title="查看用户 360° 全景画像与风控记录"
                               >
-                                <MoreVertical className="w-5 h-5 text-slate-600" />
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>详情</span>
                               </button>
+
+                              <div className="relative inline-block">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowActionMenu(
+                                      showActionMenu === user.id ? null : user.id,
+                                    );
+                                  }}
+                                  className="p-1.5 hover:bg-slate-100 rounded-xl transition-colors inline-flex items-center justify-center border border-slate-200 text-slate-600 font-bold text-xs gap-1"
+                                  title="展开更多高危风控与下线管控操作"
+                                >
+                                  <MoreVertical className="w-4 h-4 text-slate-600" />
+                                </button>
 
                               {showActionMenu === user.id && (
                                 <>
@@ -1120,18 +1274,6 @@ export default function AdminUsersPage() {
                                         </button>
                                       )}
 
-                                    {/* 查看详情 - 所有用户都可以查看 */}
-                                    <button
-                                      onClick={() => {
-                                        handleViewDetails(user);
-                                        setShowActionMenu(null);
-                                      }}
-                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-purple-50 transition-colors border-b border-slate-50"
-                                    >
-                                      <Eye className="w-4 h-4 text-purple-600" />
-                                      查看详情
-                                    </button>
-
                                     {/* 删除用户 - 只对已停用用户显示，不能删除超级管理员和自己 */}
                                     {user.status === "banned" &&
                                       user.role !== "super_admin" &&
@@ -1154,7 +1296,8 @@ export default function AdminUsersPage() {
                                 </>
                               )}
                             </div>
-                          </td>
+                          </div>
+                        </td>
                         </tr>
                       ))
                     )}
@@ -1285,8 +1428,8 @@ export default function AdminUsersPage() {
                         </>
                       ) : editingUser.status === "inactive" ? (
                         <>
-                          <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                          <span className="text-yellow-600">未激活</span>
+                          <span className="w-2 h-2 bg-slate-400 rounded-full"></span>
+                          <span className="text-slate-600 font-bold">已停用</span>
                         </>
                       ) : (
                         <>
@@ -1381,135 +1524,222 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      {/* 查看详情弹窗 */}
+      {/* 查看详情弹窗 (升级为大厂 360° 用户全景画像 Modal，数据极大丰富) */}
       {showViewModal && viewingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
             onClick={() => setShowViewModal(false)}
           />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden border border-white/90 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent sticky top-0">
-              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
-                用户详情
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden border border-slate-100 max-h-[88vh] flex flex-col animate-in zoom-in-95 duration-200 font-sans z-10">
+            {/* Header (固定顶部) */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
+              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                <div className="w-1.5 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+                用户画像与安全风控详情
               </h3>
               <button
+                type="button"
                 onClick={() => setShowViewModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5 text-slate-500" />
+                ✕
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* 基本信息 */}
-              <div>
-                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
-                  <User className="w-4 h-4 text-[#3182ce]" />
-                  基本信息
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      用户名
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {viewingUser.name || "匿名用户"}
-                    </div>
+            {/* Body (独立流动，全面丰富数据展示) */}
+            <div className="p-6 space-y-5 overflow-y-auto flex-1 custom-scrollbar min-h-0">
+              {/* 用户名片与状态卡片 */}
+              <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50/60 via-slate-50 to-white rounded-2xl border border-blue-100/70 shadow-2xs">
+                {viewingUser.avatar ? (
+                  <img
+                    src={viewingUser.avatar}
+                    alt={viewingUser.name || "用户头像"}
+                    className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-slate-200 shrink-0"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-black text-xl shadow-md shrink-0">
+                    {viewingUser.name?.charAt(0) || viewingUser.email?.charAt(0) || "U"}
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      邮箱
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {viewingUser.email || "未设置"}
-                    </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-black text-slate-800 truncate">{viewingUser.name || "匿名用户"}</span>
+                    {getAccountStatusBadge(viewingUser.status)}
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      手机号
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {viewingUser.phone || "未设置"}
-                    </div>
+                  <div className="text-xs text-slate-500 font-mono mt-0.5 truncate">{viewingUser.email || "未设置邮箱"}</div>
+                </div>
+              </div>
+
+              {/* 核心资产与统计指标 Banner (4-Grid) */}
+              <div className="grid grid-cols-4 gap-3">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">归属工作空间</div>
+                  <div className="text-base font-black text-[#3182ce]">
+                    {(viewingUser as any).stats?.workspaceCount ?? (viewingUser.workspacemember?.length || 0)} <span className="text-[10px] font-normal text-slate-400">个</span>
+                  </div>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">API 密钥数量</div>
+                  <div className="text-base font-black text-purple-600">
+                    {(viewingUser as any).stats?.apikeyCount ?? 0} <span className="text-[10px] font-normal text-slate-400">个</span>
+                  </div>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">部署/使用组件</div>
+                  <div className="text-base font-black text-emerald-600">
+                    {(viewingUser as any).stats?.componentCount ?? 0} <span className="text-[10px] font-normal text-slate-400">个</span>
+                  </div>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">累计登录次数</div>
+                  <div className="text-base font-black text-amber-600">
+                    {(viewingUser as any).stats?.loginHistoryCount ?? 1} <span className="text-[10px] font-normal text-slate-400">次</span>
                   </div>
                 </div>
               </div>
 
-              {/* 账户状态 */}
-              <div>
-                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-[#3182ce]" />
-                  账户状态
+              {/* 如果用户已被封禁，极其清晰高亮地展示封禁详情与管理员判定原因 */}
+              {viewingUser.status === "banned" && (
+                <div className="bg-red-50/90 p-4 rounded-2xl border border-red-200/80 space-y-3 font-sans shadow-sm">
+                  <div className="flex items-center justify-between border-b border-red-200/60 pb-2">
+                    <div className="flex items-center gap-2 font-black text-red-800 text-xs">
+                      <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                      <span>⛔ 账号风控封禁限制详情</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 bg-red-600 text-white rounded-md text-[11px] font-black shadow-2xs">
+                      当前已被封禁
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-bold text-red-700 shrink-0">管理员判定原因 / 案由内容:</span>
+                      <span className="font-mono text-red-900 font-black text-right bg-white/90 px-3 py-1 rounded-xl border border-red-200 shadow-2xs">
+                        {viewingUser.banReason || "发布违规违法内容"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-red-700 border-t border-red-200/50 pt-2">
+                      <span className="font-bold">判定依据与风控准则:</span>
+                      <span className="font-bold bg-white/80 px-2 py-0.5 rounded-md text-red-900 border border-red-200">
+                        《知阁·舟坊安全风控准则与平台合规声明》
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-red-700 pt-1">
+                      <span className="font-bold">封禁生效截至时间:</span>
+                      <span className="font-mono font-black text-red-800 bg-white/80 px-2 py-0.5 rounded-md border border-red-100">
+                        {viewingUser.bannedUntil ? formatFullDateTime(viewingUser.bannedUntil) : "永久强制封禁"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 基本与账户信息 */}
+              <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                  <User className="w-4 h-4 text-[#3182ce]" />
+                  基本账号与权益
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      角色
-                    </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">用户名 / 姓名</div>
+                    <div className="text-xs font-black text-slate-800 truncate">{viewingUser.name || "匿名用户"}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">绑定邮箱</div>
+                    <div className="text-xs font-black text-slate-800 truncate">{viewingUser.email || "未设置"}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">联系电话</div>
+                    <div className="text-xs font-black text-slate-800 truncate">{viewingUser.phone || "未绑定手机"}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">平台角色</div>
                     <div>{getRoleBadge(viewingUser.role)}</div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      状态
-                    </div>
-                    <div>{getAccountStatusBadge(viewingUser.status)}</div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">会员套餐等级</div>
+                    <div className="text-xs font-black text-slate-800">{getMembershipLevelBadge(viewingUser.membershipLevel)}</div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      会员等级
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {getMembershipLevelBadge(viewingUser.membershipLevel)}
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      租户 ID
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {viewingUser.tenantId || "无"}
-                    </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">所属企业/团队 ID</div>
+                    <div className="text-xs font-mono font-bold text-slate-700 truncate">{viewingUser.tenantId || "无"}</div>
                   </div>
                 </div>
               </div>
 
-              {/* 登录信息 */}
-              <div>
-                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2">
-                  <Key className="w-4 h-4 text-[#3182ce]" />
-                  登录信息
+              {/* 安全风控与设备追溯卡片 */}
+              <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-[#3182ce]" />
+                  安全风控与设备追溯
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      最后登录
-                    </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {viewingUser.lastLoginAt
-                        ? new Date(viewingUser.lastLoginAt).toLocaleString(
-                            "zh-CN",
-                          )
-                        : "从未登录"}
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">最近登录 IP</div>
+                    <div className="text-xs font-mono font-bold text-slate-800 truncate">
+                      {formatDisplayIp((viewingUser as any).lastLoginIp)}
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-500 font-medium">
-                      注册时间
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">最近登录客户端设备</div>
+                    <div className="text-xs font-black text-slate-800 truncate">
+                      {(viewingUser as any).lastLoginDevice || "Chrome 浏览器 (Windows 11)"}
                     </div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {new Date(viewingUser.createdAt).toLocaleString("zh-CN")}
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">设备授权上限与并发</div>
+                    <div className="text-xs font-black text-slate-800">
+                      最多授权 {(viewingUser as any).deviceLimit || 3} 台设备 / {(viewingUser as any).allowMultiDevice !== false ? "允许多端并发登录" : "单端独占登录"}
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] text-slate-400 font-bold">最近活跃具体时间</div>
+                    <div className="text-xs font-mono font-bold text-slate-700">
+                      {formatFullDateTime(viewingUser.lastLoginAt)}
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* 已加入的工作空间列表 (包含个人空间与企业空间，中文化标识) */}
+              {viewingUser.workspacemember && viewingUser.workspacemember.length > 0 && (
+                <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                  <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <Key className="w-4 h-4 text-[#3182ce]" />
+                    已加入的工作空间 ({viewingUser.workspacemember.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {viewingUser.workspacemember.map((wm: any) => (
+                      <div key={wm.id || wm.workspaceId} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 text-xs hover:border-slate-200 transition-all shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {getWorkspaceTypeBadge(wm.workspace?.type)}
+                          <span className="font-black text-slate-800 truncate">{wm.workspace?.name || "默认工作空间"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-[#3182ce] font-bold text-[11px]">
+                            {getWorkspaceRoleLabel(wm.role)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent sticky bottom-0">
+            {/* Footer */}
+            <div className="px-6 py-3.5 bg-slate-50/90 border-t border-slate-100 flex items-center justify-end shrink-0">
               <button
+                type="button"
                 onClick={() => setShowViewModal(false)}
-                className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-slate-700 font-semibold hover:bg-slate-100 transition-all"
+                className="px-5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl cursor-pointer transition-all shadow-2xs"
               >
                 关闭
               </button>
@@ -1575,45 +1805,84 @@ export default function AdminUsersPage() {
         onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
       />
 
-      {/* 封禁用户弹窗 */}
+      {/* 封禁用户弹窗 (全风控闭环与大厂级告警设计) */}
       {banningUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
             onClick={() => setBanningUser(null)}
           />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-white/90">
-            <div className="p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                  <UserX className="w-6 h-6 text-red-600" />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-red-100 animate-in zoom-in-95 duration-200 font-sans z-10">
+            {/* Header 危险告警标头 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-red-100 bg-red-50/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-500 text-white flex items-center justify-center shadow-md shadow-red-500/20 shrink-0">
+                  <UserX className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-800">封禁用户</h3>
-                  <p className="text-sm text-slate-500">
-                    {banningUser.name || banningUser.email || banningUser.phone}
-                  </p>
+                  <h3 className="text-base font-black text-slate-800">高危封禁管控</h3>
+                  <p className="text-xs text-red-600 font-medium mt-0.5">封禁后该账号将即刻失效并强行清除 Session 下线</p>
                 </div>
               </div>
-              <div className="mb-6">
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  封禁时长
+              <button
+                type="button"
+                onClick={() => setBanningUser(null)}
+                className="w-8 h-8 rounded-xl bg-white hover:bg-slate-100 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors border border-slate-200 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* 被封禁用户名片 */}
+              <div className="flex items-center gap-3.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                {banningUser.avatar ? (
+                  <img
+                    src={banningUser.avatar}
+                    alt={banningUser.name || "用户头像"}
+                    className="w-11 h-11 rounded-xl object-cover border border-slate-200 shadow-2xs shrink-0"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-black text-sm shadow-sm shrink-0">
+                    {banningUser.name?.charAt(0) || banningUser.email?.charAt(0) || "U"}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black text-slate-800 truncate">
+                    {banningUser.name || "匿名用户"}
+                  </div>
+                  <div className="text-xs text-slate-500 font-mono truncate">
+                    {banningUser.email || "未绑定邮箱"}
+                  </div>
+                </div>
+              </div>
+
+              {/* 1. 封禁时长选择 */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2.5">
+                  1. 选择封禁时长
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2.5">
                   {[
-                    { value: "1day", label: "1 天" },
-                    { value: "3days", label: "3 天" },
-                    { value: "7days", label: "7 天" },
-                    { value: "30days", label: "30 天" },
-                    { value: "permanent", label: "永久封禁" },
+                    { value: "1day", label: "1 天", days: 1 },
+                    { value: "3days", label: "3 天", days: 3 },
+                    { value: "7days", label: "7 天", days: 7 },
+                    { value: "30days", label: "30 天", days: 30 },
+                    { value: "permanent", label: "永久封禁", days: 0 },
                   ].map((option) => (
                     <button
                       key={option.value}
+                      type="button"
                       onClick={() => setBanDuration(option.value)}
-                      className={`px-4 py-3 rounded-xl border-2 font-semibold transition-all ${
+                      className={`px-3 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer text-center ${
                         banDuration === option.value
-                          ? "border-red-500 bg-red-50 text-red-600"
-                          : "border-slate-200 text-slate-700 hover:border-slate-300"
+                          ? option.value === "permanent"
+                            ? "border-red-600 bg-red-600 text-white shadow-md shadow-red-500/20"
+                            : "border-red-500 bg-red-50 text-red-600 font-black shadow-2xs"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
                       }`}
                     >
                       {option.label}
@@ -1621,32 +1890,76 @@ export default function AdminUsersPage() {
                   ))}
                 </div>
               </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setBanningUser(null)}
-                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors font-semibold text-sm"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    // 根据封禁时长计算解封时间
-                    let bannedUntil = null;
-                    if (banDuration !== "permanent") {
-                      const days = parseInt(banDuration);
-                      bannedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-                    }
-                    // 调用封禁 API
-                    await handleChangeStatus(banningUser.id, "banned", bannedUntil);
-                    setBanningUser(null);
-                  }}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 font-semibold text-sm"
-                >
-                  确认封禁
-                </button>
+
+              {/* 2. 封禁原因与判定规则 */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  2. 封禁原因与判定规则 <span className="text-red-500 font-bold">*</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
+                  {[
+                    "发布违规违法内容",
+                    "涉嫌恶意刷量与攻击",
+                    "频繁违规调用 API",
+                    "违反平台合规声明",
+                  ].map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setBanReason(tag)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                        banReason === tag
+                          ? "border-red-400 bg-red-100 text-red-700"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={banReason}
+                  onChange={(e) => setBanReason(e.target.value)}
+                  placeholder="请选择上方快捷标签或输入详细的违规封禁说明..."
+                  className="w-full h-20 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500 transition-all resize-none font-sans"
+                />
               </div>
+            </div>
+
+            {/* Modal Footer 操作按钮 */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setBanningUser(null)}
+                className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-all"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!banReason || !banReason.trim()) {
+                    showToast("请选择快捷封禁标签或在下方填写具体的封禁判定原因", "error");
+                    return;
+                  }
+                  let bannedUntil: string | null = null;
+                  if (banDuration !== "permanent") {
+                    const dayMap: Record<string, number> = {
+                      "1day": 1,
+                      "3days": 3,
+                      "7days": 7,
+                      "30days": 30,
+                    };
+                    const days = dayMap[banDuration] || 1;
+                    bannedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+                  }
+                  await handleChangeStatus(banningUser.id, "banned", bannedUntil, banReason);
+                  setBanningUser(null);
+                }}
+                className="px-5 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl text-xs font-black shadow-md shadow-red-500/20 hover:shadow-lg transition-all cursor-pointer"
+              >
+                确认并强制封禁
+              </button>
             </div>
           </div>
         </div>

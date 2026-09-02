@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { getMembershipConfig, isTeamSizeExceeded, formatTeamSize } from "@/lib/membership";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
+import {
+  getPlanConfig,
+  getQuotaConfig,
+  normalizePlan,
+} from "@/constants/workspace-plans";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,14 +43,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "请输入联系邮箱" }, { status: 400 });
     }
 
-    // 检查用户的会员等级
+    // 检查用户的会员等级（配额一律以数据库 membershiplevel 为准，杜绝硬编码）
     const dbUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { membershipLevel: true },
     });
     const userMembershipLevel = (dbUser?.membershipLevel || 'FREE') as keyof typeof getMembershipConfig;
     const membershipConfig = getMembershipConfig(userMembershipLevel);
-    
+
+    let ml = await prisma.membershiplevel.findUnique({
+      where: { id: userMembershipLevel as string },
+    });
+    if (!ml) {
+      ml = await prisma.membershiplevel.findFirst();
+    }
+    const mlId = ml?.id || "FREE";
+    // 企业空间上限取自数据库真实配额，-1 表示无限制
+    const maxEnterpriseAllowed = ml ? Number(ml.maxEnterpriseWorkspaces) : 1;
+
     // 检查企业空间数量限制
     const enterpriseWorkspaces = await prisma.workspace.findMany({
       where: {
@@ -54,13 +69,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const isVip = userMembershipLevel !== "FREE";
-    const allowedLimit = isVip ? 3 : 1;
-
-    if (enterpriseWorkspaces.length >= allowedLimit) {
+    if (maxEnterpriseAllowed !== -1 && enterpriseWorkspaces.length >= maxEnterpriseAllowed) {
       return NextResponse.json(
         { 
-          error: `${membershipConfig.nameZh}最多可创建${allowedLimit}个企业空间，已达到上限`,
+          error: `${membershipConfig.nameZh}最多可创建${maxEnterpriseAllowed}个企业空间，已达到上限`,
+          currentLevel: mlId,
+          maxEnterprise: maxEnterpriseAllowed,
         },
         { status: 403 }
       );
@@ -82,27 +96,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 获取计划配置
-    const quotaConfig = getQuotaConfig(plan);
+    // 获取计划配置（取自共享套餐模块，与空间套餐升级保持同一数据源）
+    const planUpper = normalizePlan(plan);
+    const planConfig = getPlanConfig(planUpper);
+    const quotaConfig = getQuotaConfig(planUpper);
 
-    // 查询用户的 membershipLevel 并决定 mlId 关联
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { membershipLevel: true },
-    });
-    const membershipLevel = user?.membershipLevel || 'FREE';
-    
-    let ml = await prisma.membershiplevel.findUnique({
-      where: { id: membershipLevel }
-    });
-    if (!ml) {
-      ml = await prisma.membershiplevel.findFirst();
-    }
-    const mlId = ml?.id || "FREE";
-
-    // 根据计划规划初始 Token 点数
-    const planUpper = plan.toUpperCase();
-    const tokenLimit = planUpper === "STANDARD" ? 20000 : planUpper === "PRO" ? 100000 : planUpper === "ENTERPRISE" ? 500000 : 1000000;
+    // 根据套餐配置规划初始 Token 点数（ml / mlId 已在上方统一查询，此处不再重复查库）
+    const tokenLimit = planConfig.tokenLimit;
 
     const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     const workspaceId = generateId("ws");
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
             id: generateId("wsq"),
             workspaceId: workspaceId,
             membershipLevelId: mlId,
-            tokenBalance: BigInt(tokenLimit),
+            tokenBalance: BigInt(tokenLimit + 100), // 新开通企业空间免费赠送 100 算力点
             updatedAt: new Date(),
           }
         }
@@ -200,38 +200,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 获取计划配置
-function getQuotaConfig(plan: string) {
-  const configs = {
-    STANDARD: {
-      maxComponents: 100,
-      maxMembers: 10,
-      maxStorage: 1024,
-      maxApiCalls: 1000,
-      features: ["basic_components", "standard_support"],
-    },
-    PRO: {
-      maxComponents: 500,
-      maxMembers: 50,
-      maxStorage: 10240,
-      maxApiCalls: 10000,
-      features: ["all_components", "priority_support", "analytics", "custom_theme"],
-    },
-    ENTERPRISE: {
-      maxComponents: -1,
-      maxMembers: -1,
-      maxStorage: 102400,
-      maxApiCalls: 100000,
-      features: ["all_components", "dedicated_support", "advanced_analytics", "full_customization", "sla"],
-    },
-    CUSTOM: {
-      maxComponents: -1,
-      maxMembers: -1,
-      maxStorage: -1,
-      maxApiCalls: -1,
-      features: ["all"],
-    },
-  };
-
-  return configs[plan.toUpperCase() as keyof typeof configs] || configs.STANDARD;
-}
+// 套餐配置已统一迁移至 @/constants/workspace-plans，由套餐升级接口共用，此处不再重复定义

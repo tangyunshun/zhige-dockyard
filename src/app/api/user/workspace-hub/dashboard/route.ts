@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
+import { getMembershipTokenLimit } from "@/lib/quota-token";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
-    const tokenLimit = levelData ? Number(levelData.tokenLimit) : 10000;
+    const tokenLimit = levelData ? Number(levelData.tokenLimit) : Number(await getMembershipTokenLimit(membershipLevel));
 
     // 3. 并行查询工作空间列表、Token 消耗以及系统管理员指标（若为管理员）
     const startOfMonth = new Date();
@@ -288,10 +289,11 @@ export async function GET(request: NextRequest) {
         storageUsed,
         storageLimit: storageLimitAgg > 0 ? storageLimitAgg : maxStorage,
         maxApiCalls,
+        // 无限额度（tokenLimit = -1）：available 同样标记为 -1，避免被 Math.max(0, ...) 折叠成「0」
         tokenBalance: {
           total: tokenLimit,
           used: monthTokenUsed, // 本月 Token 消耗（真实统计）
-          available: Math.max(0, tokenLimit - monthTokenUsed),
+          available: tokenLimit === -1 ? -1 : Math.max(0, tokenLimit - monthTokenUsed),
           historyTotalUsed: totalTokenUsed, // 历史累计 Token 消耗（真实统计）
         }
       }

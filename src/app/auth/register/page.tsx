@@ -514,20 +514,27 @@ function RegisterContent() {
       console.log("注册 API 响应:", res.status, data);
 
       if (res.ok) {
-        // 显示完整成功提示，智能计算显示时间后跳转
-        const message = data.message || "注册成功，请登录";
-        // 智能计算显示时间：保证用户能看完完整提示，又不会太长
-        // 基础时间 600ms + 每字符 100ms，最长不超过 1.5 秒
-        const duration = Math.min(600 + message.length * 100, 1500);
-        toast.success(message, duration);
+        // 彻底清除可能残留的旧登录凭证与 Cookie，确保状态绝对纯净
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("userId");
+        localStorage.removeItem("userRole");
+        sessionStorage.removeItem("hasActiveSession");
+
+        // 显式清理响应 Cookie 残留
+        document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "userId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+        const message = "注册成功，请使用新账号登录！";
+        toast.success(message, 1200);
+
         setTimeout(() => {
           // 如果有 redirect 参数（如协同邀请链路），透传给登录页
           const redirectParam = searchParams.get("redirect");
           const loginUrl = redirectParam
             ? `/auth/login?redirect=${encodeURIComponent(redirectParam)}`
             : "/auth/login";
-          router.push(data.redirectUrl || loginUrl);
-        }, duration);
+          router.push(loginUrl);
+        }, 1000);
       } else {
         console.log("注册失败，错误数据:", data);
         // 根据错误字段显示
@@ -963,7 +970,7 @@ function RegisterContent() {
                     openDocumentModal("privacy-policy");
                   }}
                 >
-                  隐私政策
+                  隐私协议
                 </span>
               </label>
             </div>
@@ -999,7 +1006,7 @@ function RegisterContent() {
         </div>
       </div>
 
-      {/* 条款与政策弹窗 (SaaS大厂风范，无需离开注册页面) */}
+      {/* 条款与协议弹窗 (SaaS大厂风范，无需离开注册页面) */}
       {showDocumentModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-5xl w-full max-h-[85vh] flex flex-col animate-scaleUp overflow-hidden">
@@ -1009,7 +1016,7 @@ function RegisterContent() {
                 <svg className="w-4 h-4 text-[#3182ce]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                {documentModalCategory === "terms" ? "服务条款" : "隐私政策"}
+                {documentModalCategory === "terms" ? "服务条款" : "隐私协议"}
               </h3>
               <button
                 onClick={() => {
@@ -1032,17 +1039,54 @@ function RegisterContent() {
                   <p className="text-xs text-slate-400 font-medium animate-pulse">正在加载条款内容...</p>
                 </div>
               ) : (
-                <div className="prose prose-slate max-w-none">
+                <div className="prose prose-slate max-w-none space-y-1 text-left">
                   {(() => {
                     if (!documentContent) return null;
-                    let rendered = documentContent;
-                    // 替换大标题
-                    rendered = rendered.replace(/^# (.*$)/gim, '<h1 class="text-base font-black text-slate-800 mb-4 pb-2 border-b border-slate-100">$1</h1>');
-                    // 替换二级标题
-                    rendered = rendered.replace(/^## (.*$)/gim, '<h2 class="text-xs font-black text-slate-800 mt-5 mb-2.5 flex items-center gap-1.5"><span class="w-1 h-3 bg-[#3182ce] rounded-full inline-block"></span>$1</h2>');
-                    // 替换段落 (非 h1/h2 且非列表开始)
-                    rendered = rendered.replace(/^(?!<h\d|<div|<p|<li|<ul)(.*$)/gim, '<p class="mb-3 text-slate-600 text-xs leading-relaxed font-semibold">$1</p>');
-                    return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+                    const lines = documentContent.split("\n");
+                    return lines.map((line, idx) => {
+                      const trimmed = line.trim();
+                      if (!trimmed) return null; // 物理消除空行过大间距
+
+                      // 大标题
+                      if (trimmed.startsWith("“知阁·舟坊”")) {
+                        return <h1 key={idx} className="text-sm font-black text-slate-900 pb-1.5 border-b border-slate-200 mb-2">{trimmed}</h1>;
+                      }
+                      // 章节标题 (紧凑高密度)
+                      if (/^第[一二三四五六七八九十]+章/.test(trimmed)) {
+                        return (
+                          <h2 key={idx} className="text-xs font-black text-[#2b6cb0] mt-3 mb-1 flex items-center gap-1.5 bg-blue-50/80 px-2.5 py-1 rounded-md border-l-3 border-[#3182ce]">
+                            {trimmed}
+                          </h2>
+                        );
+                      }
+                      // 版本与时间标记
+                      if (trimmed.startsWith("【版本号】") || trimmed.startsWith("【更新日期】") || trimmed.startsWith("【生效日期】")) {
+                        return <span key={idx} className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded inline-block mr-1.5 mb-1">{trimmed}</span>;
+                      }
+                      // 【重点关注/警告/着重高亮色区块】
+                      if (trimmed.includes("【核心提示") || trimmed.includes("【严禁红线】") || trimmed.includes("【违规处理") || trimmed.includes("【重要提示】")) {
+                        return (
+                          <div key={idx} className="bg-amber-50/90 text-amber-900 border-l-4 border-amber-500 font-bold p-2.5 rounded-r-lg text-xs leading-relaxed my-1.5 shadow-2xs">
+                            <span className="inline-block mr-1">⚠️</span> {trimmed}
+                          </div>
+                        );
+                      }
+                      // 【用户权益/安全保障/数据保密着重色区块】
+                      if (trimmed.includes("【用户成果所有权】") || trimmed.includes("【AI 生成内容权利归属】") || trimmed.includes("【数据保密承诺】") || trimmed.includes("【账号安全") || trimmed.includes("【数据保留")) {
+                        return (
+                          <div key={idx} className="bg-blue-50/90 text-blue-900 border-l-4 border-blue-500 font-bold p-2.5 rounded-r-lg text-xs leading-relaxed my-1.5 shadow-2xs">
+                            <span className="inline-block mr-1">🛡️</span> {trimmed}
+                          </div>
+                        );
+                      }
+
+                      // 普通段落 (字号紧凑排版)
+                      return (
+                        <p key={idx} className="text-xs text-slate-700 leading-snug font-medium mb-1">
+                          {trimmed}
+                        </p>
+                      );
+                    });
                   })()}
                 </div>
               )}

@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   Crown,
+  Coins,
   Package,
   Building2,
   AlertCircle,
@@ -25,6 +26,7 @@ import {
   UserCheck,
   Key,
   Wrench,
+  ShieldAlert,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
@@ -53,6 +55,13 @@ const adminMenuItems: AdminMenuItem[] = [
     requiredPermission: "user:read",
   },
   {
+    icon: ShieldAlert,
+    label: "风控与审核",
+    href: "/admin/account-appeals",
+    description: "平台安全风控管控与全域审核中枢",
+    requiredPermission: "user:update",
+  },
+  {
     icon: FolderKanban,
     label: "企业空间管理",
     href: "/admin/workspaces",
@@ -71,6 +80,12 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "会员套餐管理",
     href: "/admin/membership",
     description: "配置空间套餐计费策略",
+  },
+  {
+    icon: Coins,
+    label: "算力加油包管理",
+    href: "/admin/membership/token-packs",
+    description: "后台维护与上下架充值算力包",
   },
   {
     icon: ClipboardList,
@@ -388,9 +403,21 @@ export default function AdminLayout({
         {/* 用户信息 */}
         <div className="p-4 border-t border-slate-200 shrink-0">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
-              {user?.name?.charAt(0).toUpperCase() || "A"}
-            </div>
+            {user?.avatar ? (
+              <img
+                src={user.avatar}
+                alt={user.name || "管理员头像"}
+                className="w-10 h-10 shrink-0 rounded-lg object-cover shadow-md border border-slate-200"
+                onError={(e) => {
+                  // 图片加载失败降级展示渐变字母框
+                  (e.target as HTMLElement).style.display = "none";
+                }}
+              />
+            ) : (
+              <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
+                {user?.name?.charAt(0).toUpperCase() || "A"}
+              </div>
+            )}
             <div className="flex-1 min-w-0 text-left">
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-sm font-extrabold text-slate-800 truncate">
@@ -501,9 +528,20 @@ export default function AdminLayout({
 
             <div className="p-4 border-t border-slate-200 shrink-0 bg-white">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
-                  {user?.name?.charAt(0).toUpperCase() || "A"}
-                </div>
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || "管理员头像"}
+                    className="w-10 h-10 shrink-0 rounded-lg object-cover shadow-md border border-slate-200"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
+                    {user?.name?.charAt(0).toUpperCase() || "A"}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="text-sm font-extrabold text-slate-800 truncate">
@@ -539,7 +577,7 @@ export default function AdminLayout({
           <div className="flex items-center gap-4 min-w-0">
             <h1 className="text-xl font-bold text-slate-800 truncate">
               {pathname === "/admin" 
-                ? (isSuperAdmin ? "超级管理员治理大盘" : "平台管理工作台")
+                ? (isSuperAdmin ? "超级管理员工作台" : "平台管理工作台")
                 : (adminMenuItems.find((item) => item.href === pathname)?.label || "管理员后台")}
             </h1>
           </div>

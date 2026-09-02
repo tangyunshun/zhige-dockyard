@@ -12,7 +12,7 @@ export default function WorkspaceSettingsPage() {
   const params = useParams();
   const router = useRouter();
   const toast = useToast();
-  const workspaceId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const workspaceId = (Array.isArray(params.id) ? params.id[0] : params.id) || "";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -76,16 +76,18 @@ export default function WorkspaceSettingsPage() {
   const loadWorkspaceInfo = async () => {
     try {
       setLoading(true);
-      const authToken = localStorage.getItem("auth_token");
+      const authToken = getAuthToken();
       const res = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
       if (res.ok) {
         const data = await res.json();
         if (data.workspace) {
-          setWorkspace(data.workspace);
+          setWorkspace({
+            ...data.workspace,
+            contactEmail: data.workspace.contactEmail || data.workspace.ownerEmail || "",
+            contactPhone: data.workspace.contactPhone || data.workspace.ownerPhone || "",
+          });
         }
       } else {
         const err = await res.json();

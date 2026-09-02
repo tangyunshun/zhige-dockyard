@@ -26,24 +26,65 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "缺少用户 ID" }, { status: 400 });
     }
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: targetUserId },
-      include: {
-        workspacemember: {
-          include: {
-            workspace: true,
+    const [targetUser, apikeyCount, componentCount, loginHistoryCount] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: targetUserId },
+        include: {
+          workspacemember: {
+            include: {
+              workspace: true,
+            },
+            take: 5,
           },
         },
-      },
-    });
+      }),
+      prisma.apikey.count({
+        where: { userId: targetUserId },
+      }),
+      prisma.componenttask.count({
+        where: { userId: targetUserId },
+      }),
+      prisma.loginhistory.count({
+        where: { userId: targetUserId },
+      }),
+    ]);
 
     if (!targetUser) {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
     }
 
+    let effectiveLastLoginAt = targetUser.lastLoginAt;
+    if (!effectiveLastLoginAt && (targetUser.sessionToken || targetUser.sessionExpiresAt)) {
+      effectiveLastLoginAt = targetUser.sessionExpiresAt
+        ? new Date(new Date(targetUser.sessionExpiresAt).getTime() - 7 * 24 * 60 * 60 * 1000)
+        : new Date();
+      prisma.user.update({
+        where: { id: targetUser.id },
+        data: { lastLoginAt: effectiveLastLoginAt },
+      }).catch(() => {});
+    }
+
+    // 连表查询最新的封禁案由凭证记录
+    const latestAppealMeta = await prisma.accountappeal.findFirst({
+      where: { userId: targetUser.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const banReasonText = targetUser.banReason || latestAppealMeta?.banReason || "系统检测到账号存在违规行为，已被限制使用";
+
     return NextResponse.json({
       success: true,
-      data: targetUser,
+      data: {
+        ...targetUser,
+        banReason: banReasonText,
+        lastLoginAt: effectiveLastLoginAt,
+        stats: {
+          workspaceCount: targetUser.workspacemember.length,
+          apikeyCount,
+          componentCount,
+          loginHistoryCount,
+        },
+      },
     });
   } catch (error) {
     console.error("Get user error:", error);
@@ -58,7 +99,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, status, role } = body;
+    const { userId, status, role, bannedUntil, banReason } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "缺少用户 ID" }, { status: 400 });
@@ -86,9 +127,9 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "权限不足，不能对超级管理员执行编辑或限制操作" }, { status: 403 });
     }
 
-    // 不能操作自己
-    if (userId === adminId) {
-      return NextResponse.json({ error: "不能操作自己" }, { status: 403 });
+    // 不能操作自己 (针对非角色变更的 status 调整安全放行)
+    if (userId === adminId && role !== undefined && role !== targetUser.role) {
+      return NextResponse.json({ error: "不能修改自己的账户角色" }, { status: 403 });
     }
 
     // 2. 角色修改限制：修改用户平台角色仅 SuperAdmin 允许
@@ -105,6 +146,18 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
       }
       updateData.status = status;
+      if (status === "banned") {
+        // 如果是封禁状态，更新解封时间与即时强制下线时间戳
+        updateData.bannedUntil = bannedUntil ? new Date(bannedUntil) : null;
+        updateData.lastForcedLogoutAt = new Date();
+        // 将管理员选择/输入的封禁原因落库到用户表（权威来源）
+        if (banReason) {
+          updateData.banReason = banReason;
+        }
+      } else if (status === "active") {
+        // 解封时清空封禁原因
+        updateData.banReason = null;
+      }
     }
     if (role !== undefined) {
       if (role === "admin") {

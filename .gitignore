@@ -48,3 +48,14 @@ public/uploads/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Local debug / temp outputs
+dev.err
+tsc_out.txt
+
+# Test evidence artifacts
+.p2a-evidence/
+.p2b-evidence/
+
+# User runtime uploads (data, not source)
+uploads/

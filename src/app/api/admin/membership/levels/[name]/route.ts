@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 
@@ -33,12 +33,12 @@ export async function GET(request: NextRequest) {
     // 构建查询条件
     const where: any = {};
 
-    // 搜索过滤
+    // 搜索过滤 (符合 MySQL contains 兼容语法)
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { nameZh: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
+        { name: { contains: search } },
+        { nameZh: { contains: search } },
+        { description: { contains: search } },
       ];
     }
 
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
  * PUT /api/admin/membership/levels/:name
  * 更新会员等级
  */
-export async function PUT(request: NextRequest) {
+export async function PUT(request: NextRequest, context?: any) {
   try {
     // 验证管理员权限
     const authHeader = request.headers.get("authorization");
@@ -227,9 +227,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "无权访问" }, { status: 403 });
     }
 
-    // 获取 URL 中的 name 参数
-    const { pathname } = new URL(request.url);
-    const name = pathname.split("/").pop() || "";
+    // 安全解构与获取 URL 中的 name 参数并进行 URL 解码
+    const paramsResolved = context?.params ? await context.params : null;
+    const rawName = paramsResolved?.name || new URL(request.url).pathname.split("/").pop() || "";
+    const name = decodeURIComponent(rawName);
 
     if (!name) {
       return NextResponse.json({ message: "缺少会员等级名称" }, { status: 400 });
@@ -248,6 +249,7 @@ export async function PUT(request: NextRequest) {
       maxTeamSize,
       maxStorage,
       maxApiCalls,
+      tokenLimit,
       features,
       priceMonthly,
       priceYearly,
@@ -258,21 +260,32 @@ export async function PUT(request: NextRequest) {
       isPopular,
     } = body;
 
-    // 检查会员等级是否存在
-    const existing = await prisma.membershiplevel.findUnique({
-      where: { name },
+    // 检查会员等级是否存在 (优先以 id / name 查询)
+    let existing = await prisma.membershiplevel.findUnique({
+      where: { id: name },
     });
 
     if (!existing) {
+      existing = await prisma.membershiplevel.findFirst({
+        where: {
+          OR: [
+            { name: { equals: name } },
+            { id: { equals: name.toUpperCase() } }
+          ]
+        }
+      });
+    }
+
+    if (!existing) {
       return NextResponse.json(
-        { message: "会员等级不存在" },
+        { message: `未查找到编码为 [${name}] 的会员等级` },
         { status: 404 },
       );
     }
 
     // 更新会员等级
     const level = await prisma.membershiplevel.update({
-      where: { name },
+      where: { id: existing.id },
       data: {
         nameZh: nameZh !== undefined ? nameZh : existing.nameZh,
         icon: icon !== undefined ? icon : existing.icon,
@@ -284,6 +297,7 @@ export async function PUT(request: NextRequest) {
         maxTeamSize: maxTeamSize !== undefined ? BigInt(maxTeamSize) : existing.maxTeamSize,
         maxStorage: maxStorage !== undefined ? BigInt(maxStorage) : existing.maxStorage,
         maxApiCalls: maxApiCalls !== undefined ? BigInt(maxApiCalls) : existing.maxApiCalls,
+        tokenLimit: tokenLimit !== undefined ? BigInt(tokenLimit) : existing.tokenLimit,
         features: features !== undefined ? features : existing.features,
         priceMonthly: priceMonthly !== undefined ? priceMonthly : Number(existing.priceMonthly),
         priceYearly: priceYearly !== undefined ? priceYearly : Number(existing.priceYearly),
@@ -296,28 +310,35 @@ export async function PUT(request: NextRequest) {
       },
     });
 
-    // 将 BigInt 转换为 Number 以便 JSON 序列化
+    // 将 BigInt 安全转换为 Number 以便 JSON 序列化，防止 500 崩溃
     const serializedLevel = {
       ...level,
-      maxPersonalWorkspaces: Number(level.maxPersonalWorkspaces),
-      maxEnterpriseWorkspaces: Number(level.maxEnterpriseWorkspaces),
-      maxComponents: Number(level.maxComponents),
-      maxTeamSize: Number(level.maxTeamSize),
-      maxStorage: Number(level.maxStorage),
-      maxApiCalls: Number(level.maxApiCalls),
-      priceMonthly: Number(level.priceMonthly),
-      priceYearly: Number(level.priceYearly),
-      trialDays: Number(level.trialDays),
-      sortOrder: Number(level.sortOrder),
+      maxPersonalWorkspaces: Number(level.maxPersonalWorkspaces || 0),
+      maxEnterpriseWorkspaces: Number(level.maxEnterpriseWorkspaces || 0),
+      maxComponents: Number(level.maxComponents || 0),
+      maxTeamSize: Number(level.maxTeamSize || 0),
+      maxStorage: Number(level.maxStorage || 0),
+      maxApiCalls: Number(level.maxApiCalls || 0),
+      tokenLimit: Number(level.tokenLimit || 0),
+      priceMonthly: Number(level.priceMonthly || 0),
+      priceYearly: Number(level.priceYearly || 0),
+      trialDays: Number(level.trialDays || 0),
+      sortOrder: Number(level.sortOrder || 0),
     };
 
     return NextResponse.json({
       success: true,
       data: serializedLevel,
-      message: "更新成功",
+      message: "更新会员等级成功",
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Update membership level error:", error);
-    return NextResponse.json({ message: "更新会员等级失败" }, { status: 500 });
+    return NextResponse.json(
+      {
+        message: "更新会员等级失败",
+        error: error?.message || String(error),
+      },
+      { status: 500 },
+    );
   }
 }

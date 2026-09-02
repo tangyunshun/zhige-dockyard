@@ -20,6 +20,7 @@ import {
   GitFork as GithubIcon,
   Box as GitlabIcon,
   AlertTriangle,
+  AlertCircle,
   Loader2,
   Award,
   Lightbulb,
@@ -36,11 +37,20 @@ export default function PersonalWorkspaceSettings() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // 空间数据
-  const [workspaceData, setWorkspaceData] = useState({
+  const [workspaceData, setWorkspaceData] = useState<{
+    id: string;
+    name: string;
+    description: string;
+    emoji: string;
+    contactEmail?: string;
+    contactPhone?: string;
+  }>({
     id: "",
     name: "",
     description: "",
     emoji: "🚀",
+    contactEmail: "",
+    contactPhone: "",
   });
 
   // 研发偏好
@@ -121,10 +131,25 @@ export default function PersonalWorkspaceSettings() {
           (w: any) => w.type === "PERSONAL",
         );
         if (personalWorkspace) {
+          // 调用 detail API 自动提取并自愈空间所有者的手机号与邮箱
+          const detailRes = await fetch(`/api/workspace/update?workspaceId=${personalWorkspace.id}`, {
+            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+            credentials: "include",
+          });
+          let contactEmail = "";
+          let contactPhone = "";
+          if (detailRes.ok) {
+            const detailData = await detailRes.json();
+            contactEmail = detailData.workspace?.contactEmail || detailData.workspace?.ownerEmail || "";
+            contactPhone = detailData.workspace?.contactPhone || detailData.workspace?.ownerPhone || "";
+          }
+
           setWorkspaceData({
             id: personalWorkspace.id,
             name: personalWorkspace.name || `个人空间 - ${userName}`,
             description: personalWorkspace.description || "",
+            contactEmail: contactEmail,
+            contactPhone: contactPhone,
             emoji: personalWorkspace.emoji || "🚀",
           });
         }
@@ -148,14 +173,18 @@ export default function PersonalWorkspaceSettings() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/workspace/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const authToken = getAuthToken();
+      const res = await fetch(`/api/workspace/update?workspaceId=${workspaceData.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
-          workspaceId: workspaceData.id,
           name: workspaceData.name,
           description: workspaceData.description,
-          emoji: workspaceData.emoji,
+          contactEmail: workspaceData.contactEmail,
+          contactPhone: workspaceData.contactPhone,
         }),
       });
 
@@ -584,9 +613,54 @@ export default function PersonalWorkspaceSettings() {
                             })
                           }
                           placeholder="简要描述您的个人空间用途（选填）"
-                          rows={4}
+                          rows={3}
                           className="w-full px-[14px] py-[12px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none resize-none"
                         />
+                      </div>
+
+                      {/* 联系电话与联系邮箱 (自动抽取所有者信息 & 支持手动修改) */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">
+                            联系电话 (手机号)
+                          </label>
+                          <input
+                            type="text"
+                            value={workspaceData.contactPhone || ""}
+                            onChange={(e) =>
+                              setWorkspaceData({
+                                ...workspaceData,
+                                contactPhone: e.target.value,
+                              })
+                            }
+                            className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                            placeholder="自动提取空间所有者手机号"
+                          />
+                          <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                            已自动联动空间所有者绑定手机，可在此随时编辑更新
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">
+                            联系电子邮箱
+                          </label>
+                          <input
+                            type="email"
+                            value={workspaceData.contactEmail || ""}
+                            onChange={(e) =>
+                              setWorkspaceData({
+                                ...workspaceData,
+                                contactEmail: e.target.value,
+                              })
+                            }
+                            className="w-full h-[38px] px-[14px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none"
+                            placeholder="自动提取空间所有者邮箱"
+                          />
+                          <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                            已自动联动空间所有者邮箱，用于接收通知与账单
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>

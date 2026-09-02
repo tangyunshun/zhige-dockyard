@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Workspace, EnterpriseQuota } from "@/hooks/useWorkspaceHubData";
 import EnterpriseWorkspaceCard from "./EnterpriseWorkspaceCard";
+import type { UpgradeHighlight } from "./modals/QuotaUpgradeModal";
 
 interface EnterpriseWorkspaceListProps {
   workspaces: Workspace[];
@@ -22,7 +23,8 @@ interface EnterpriseWorkspaceListProps {
   onUpgradePackage: (id: string) => void;
   onViewStats: (id: string) => void;
   onDelete: (id: string) => void;
-  onUpgrade?: () => void;
+  /** 唤起统一升级中枢，入参用于锚定需要高亮的权益维度 */
+  onUpgrade?: (highlight: UpgradeHighlight) => void;
   onJoinClick: () => void;
   onLeave?: (id: string) => void;
 }
@@ -119,7 +121,8 @@ export default function EnterpriseWorkspaceList({
               <button
                 onClick={() => {
                   if (isOverQuota) {
-                    onUpgrade?.();
+                    // 锚定「企业空间数量」维度，让用户直观看到升级后可增加的空间数
+                    onUpgrade?.("workspace");
                     return;
                   }
                   onCreateClick();
@@ -129,10 +132,10 @@ export default function EnterpriseWorkspaceList({
                     ? "bg-[#fef2f2] text-red-600 border border-red-200 hover:bg-red-50"
                     : "zg-btn-primary bg-gradient-to-b from-[#4299e1] to-[#3182ce] hover:brightness-105 border-t border-[#63b3ed] text-white"
                 }`}
-                title={isOverQuota ? "企业空间数量已达上限，点击升级会员" : "新建企业空间"}
+                title={isOverQuota ? "企业空间数量已达上限，点击升级会员以增加数量" : "新建企业空间"}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>{isOverQuota ? "提升空间配额" : "新建企业空间"}</span>
+                <span>{isOverQuota ? "增加空间数量" : "新建企业空间"}</span>
               </button>
             </div>
           )}
@@ -161,10 +164,8 @@ export default function EnterpriseWorkspaceList({
               <button
                 onClick={() => {
                   if (isOverQuota) {
-                    toast.info("您的协作空间配额已满。正在为您跳转到升级会员服务...");
-                    setTimeout(() => {
-                      router.push("/settings/billing");
-                    }, 1000);
+                    toast.info("您的企业空间创建配额已满，正在打开会员升级对比...");
+                    onUpgrade?.("workspace");
                     return;
                   }
                   onCreateClick();

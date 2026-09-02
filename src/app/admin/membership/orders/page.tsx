@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -9,13 +9,15 @@ import {
   Plus,
   ArrowLeft,
   FileText,
-  DollarSign,
+  Building2,
   User,
   Calendar,
   CheckCircle,
   XCircle,
   Clock,
   CreditCard,
+  Receipt,
+  Sparkles,
 } from "lucide-react";
 
 interface Order {
@@ -113,6 +115,7 @@ export default function AdminMembershipOrdersPage() {
     const badges: Record<string, string> = {
       PENDING: "bg-yellow-100 text-yellow-700",
       PAID: "bg-emerald-100 text-emerald-600",
+      SUCCESS: "bg-emerald-100 text-emerald-600",
       REFUNDED: "bg-blue-100 text-[#2b6cb0]",
       CANCELLED: "bg-red-100 text-red-600",
     };
@@ -120,6 +123,7 @@ export default function AdminMembershipOrdersPage() {
     const labels: Record<string, string> = {
       PENDING: "待支付",
       PAID: "已支付",
+      SUCCESS: "成功",
       REFUNDED: "已退款",
       CANCELLED: "已取消",
     };
@@ -131,6 +135,7 @@ export default function AdminMembershipOrdersPage() {
         }`}
       >
         {status === "PAID" && <CheckCircle className="w-3 h-3" />}
+        {status === "SUCCESS" && <CheckCircle className="w-3 h-3" />}
         {status === "PENDING" && <Clock className="w-3 h-3" />}
         {status === "CANCELLED" && <XCircle className="w-3 h-3" />}
         {labels[status] || status}
@@ -151,9 +156,10 @@ export default function AdminMembershipOrdersPage() {
     const icons: Record<string, any> = {
       WECHAT: CreditCard,
       ALIPAY: CreditCard,
-      BANK_TRANSFER: DollarSign,
+      BANK_TRANSFER: Building2,
+      SIMULATED: Sparkles,
     };
-    const Icon = icons[method] || DollarSign;
+    const Icon = icons[method] || Receipt;
     return <Icon className="w-4 h-4" />;
   };
 
@@ -205,6 +211,7 @@ export default function AdminMembershipOrdersPage() {
                 <option value="">全部状态</option>
                 <option value="PENDING">待支付</option>
                 <option value="PAID">已支付</option>
+                <option value="SUCCESS">已成功</option>
                 <option value="REFUNDED">已退款</option>
                 <option value="CANCELLED">已取消</option>
               </select>
@@ -341,13 +348,20 @@ export default function AdminMembershipOrdersPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-slate-600 font-medium">
+                          <div className="flex items-center gap-2 font-medium">
                             {getPaymentMethodIcon(order.paymentMethod)}
-                            <span className="text-sm whitespace-nowrap">
+                            <span
+                              className={`text-sm whitespace-nowrap ${
+                                order.paymentMethod === "SIMULATED"
+                                  ? "text-amber-600 font-bold"
+                                  : "text-slate-600"
+                              }`}
+                            >
                               {order.paymentMethod === "WECHAT" && "微信支付"}
                               {order.paymentMethod === "ALIPAY" && "支付宝"}
                               {order.paymentMethod === "BANK_TRANSFER" &&
                                 "银行转账"}
+                              {order.paymentMethod === "SIMULATED" && "模拟支付"}
                             </span>
                           </div>
                         </td>

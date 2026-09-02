@@ -8,6 +8,8 @@ import { useAppContext } from "@/contexts/AppContext";
 import AvatarDropdown from "@/components/AvatarDropdown";
 import Pagination from "@/components/Pagination";
 import Footer from "@/components/Footer";
+import { ResultViewer } from "@/components/studio/ResultViewer";
+import { formatYuanFromPoints, POINT_RATE_TEXT } from "@/lib/point-rate";
 
 import {
   CheckCircle2 as CheckIcon, Search as SearchIcon, RefreshCw as RefreshIcon,
@@ -251,7 +253,7 @@ export default function PersonalTasksManagementPage() {
     return data.data.map((t: any) => formatTask(t, ws));
   };
 
-  // 加载全部空间并并行聚合各空间任务
+  // 加载全部空间并聚合任务档案 (优先调用服务端 /api/tasks 聚合接口，失败时降级逐空间拉取)
   const fetchUserTasks = async () => {
     setLoading(true);
     setLoadError(null);
@@ -262,7 +264,7 @@ export default function PersonalTasksManagementPage() {
         return;
       }
 
-      // 当前用户参与的全部工作空间（响应无 success 字段，直接读 workspaces）
+      // 1. 获取空间列表（下拉菜单与新建任务弹窗用）
       const wsRes = await fetch("/api/workspace/list", {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
@@ -274,15 +276,39 @@ export default function PersonalTasksManagementPage() {
           wsList = wsData.workspaces;
         }
       }
+      setWorkspaces(wsList);
+      if (wsList.length > 0) {
+        setCreateTaskWorkspaceId((prev) => (prev && wsList.some((w) => w.id === prev) ? prev : wsList[0].id));
+      }
+
+      // 2. 优先尝试服务端一次性聚合接口 GET /api/tasks
+      try {
+        const tasksRes = await fetch("/api/tasks", {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+
+        if (tasksRes.ok) {
+          const tasksData = await tasksRes.json();
+          if (tasksData?.success && Array.isArray(tasksData.data)) {
+            const formattedAll = tasksData.data.map((t: any) =>
+              formatTask(t, { id: t.workspaceId, name: t.workspaceName, type: t.workspaceType })
+            );
+            formattedAll.sort((a: UserTaskRecord, b: UserTaskRecord) => b.createdAt - a.createdAt);
+            setTasks(formattedAll);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (aggErr) {
+        console.warn("[fetchUserTasks] /api/tasks 接口调用失败，自动降级为逐空间数据拉取:", aggErr);
+      }
+
+      // 3. 服务端聚合不可用时的降级处理：逐空间拉取
       if (wsList.length === 0) {
-        setWorkspaces([]);
         setTasks([]);
         return;
       }
-      setWorkspaces(wsList);
-      setCreateTaskWorkspaceId((prev) => (prev && wsList.some((w) => w.id === prev) ? prev : wsList[0].id));
-
-      // 并行聚合所有空间任务（单空间失败不影响整体）
       const settled = await Promise.allSettled(wsList.map((ws) => fetchTasksForWorkspace(ws)));
       const all: UserTaskRecord[] = [];
       settled.forEach((r) => {
@@ -450,32 +476,37 @@ export default function PersonalTasksManagementPage() {
     }
   };
 
-  // 真实数据库物理擦除删除任务
-  const handleDeleteTask = async (taskId: string, taskName: string) => {
+  // 任务归档替代原有的物理擦除 (调用 POST /api/studio, action: archive_task)
+  const handleArchiveTask = async (task: UserTaskRecord) => {
+    if (!task || !task.id || !task.workspaceId) return;
     try {
       const token = getAuthToken();
-      const res = await fetch(`/api/studio?action=delete_task&taskId=${encodeURIComponent(taskId)}`, {
+      const res = await fetch("/api/studio", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         credentials: "include",
-        body: JSON.stringify({ action: "delete_task", taskId }),
+        body: JSON.stringify({
+          action: "archive_task",
+          workspaceId: task.workspaceId,
+          taskId: task.id,
+        }),
       });
       const data = await res.json().catch(() => ({ success: false, error: "接口响应异常" }));
       if (res.ok && data.success) {
-        toast.success(`任务「${taskName || taskId}」已从数据库真正物理擦除！`);
-        setTasks((prev) => prev.filter((t) => t.id !== taskId));
+        toast.success("任务已归档，记录保留可审计");
+        setTasks((prev) => prev.filter((t) => t.id !== task.id));
       } else {
-        throw new Error(data.error || data.message || "从数据库删除任务失败");
+        throw new Error(data.error || data.message || "任务归档失败");
       }
     } catch (e: any) {
-      toast.error(e.message || "删除任务失败，请稍后重试");
+      toast.error(e.message || "任务归档失败，请稍后重试");
     }
   };
 
-  // 提交新建任务（simulate 真实执行：扣减点数 + 服务端判定产出）
+  // 提交新建任务（simulate 真实执行：依据数据库 componentCatalog 成本扣减）
   const handleCreateTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createTaskWorkspaceId) {
@@ -491,6 +522,31 @@ export default function PersonalTasksManagementPage() {
       return;
     }
     if (isSubmittingTask) return;
+
+    const targetComp = componentCatalog.find((c) => c.id === createTaskComponentId);
+    const estimatedCost = Number(targetComp?.estimatedTokens) || 5;
+
+    // 统一任务输入契约：按组件 inputMode 校验输入来源（文本 / 文件任一满足即可）
+    const tInputMode = targetComp?.inputMode || "text";
+    const tHasText = createTaskMaterial.trim().length > 0;
+    const tHasFile = !!taskUploadedFile;
+    let tInputErr = "";
+    if (tInputMode === "file") {
+      if (!tHasFile) tInputErr = "该组件需要上传文件作为主材料，请先上传文件再执行";
+    } else if (tInputMode === "text") {
+      if (!tHasText) tInputErr = "请输入任务所需的文本材料";
+    } else {
+      if (!tHasText && !tHasFile) tInputErr = "请输入文本或上传文件作为任务主材料";
+    }
+    if (tInputErr) {
+      toast.warning(tInputErr);
+      return;
+    }
+
+    // 组装统一 inputSource 结构（任务中心当前仅支持文本 / 文件）
+    const createInputSource: Record<string, any> = taskUploadedFile
+      ? { sourceType: "file", sourceId: null, fileName: taskUploadedFile.name, fileSize: taskUploadedFile.size }
+      : { sourceType: "text", sourceId: null, fileName: null, fileSize: null };
 
     setIsSubmittingTask(true);
     try {
@@ -508,6 +564,8 @@ export default function PersonalTasksManagementPage() {
           componentId: createTaskComponentId,
           taskName: createTaskName.trim() || undefined,
           inputMaterial: createTaskMaterial.trim() || undefined,
+          inputSource: createInputSource,
+          tokens: estimatedCost,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -517,6 +575,7 @@ export default function PersonalTasksManagementPage() {
         const taskNameCreated = createTaskName.trim() || `任务 #${String(data.task?.id || "").substring(0, 6)}`;
         setCreateTaskName("");
         setCreateTaskMaterial("");
+        setTaskUploadedFile(null);
 
         await fetchUserTasks();
 
@@ -538,7 +597,15 @@ export default function PersonalTasksManagementPage() {
         });
         setShowPreviewModal(true);
       } else {
-        toast.error(data?.error || "任务创建失败，请重试");
+        const errMsg = data?.error || "任务创建失败，请重试";
+        toast.error(errMsg);
+        if (errMsg.includes("算力") || errMsg.includes("配额") || errMsg.includes("余额不足")) {
+          setTimeout(() => {
+            if (confirm("当前工作空间算力点余额不足，是否立即前往工作控制台充值算力包？")) {
+              router.push(`/workspace/${createTaskWorkspaceId}/members`);
+            }
+          }, 500);
+        }
       }
     } catch (err) {
       toast.error("网络请求异常");
@@ -629,7 +696,9 @@ export default function PersonalTasksManagementPage() {
               <div className="text-2xl font-black text-[#3182ce] font-mono tracking-tight">
                 {loading ? "···" : totalTokensUsed} <span className="text-xs font-bold text-slate-400">点</span>
               </div>
-              <p className="text-[10px] text-slate-400 font-medium">任务执行累计消耗</p>
+              <p className="text-[10px] text-slate-400 font-medium">
+                折算 {loading ? "···" : formatYuanFromPoints(totalTokensUsed)}（{POINT_RATE_TEXT}）
+              </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-[#3182ce] flex items-center justify-center shadow-xs">
               <ZapIcon className="w-5 h-5" />
@@ -841,6 +910,7 @@ export default function PersonalTasksManagementPage() {
 
                         <td className="py-3.5 px-3 font-mono font-black text-slate-800">
                           {t.tokenUsed} <span className="text-[10px] text-slate-400 font-normal">点</span>
+                          <div className="text-[10px] text-slate-400 font-normal">{formatYuanFromPoints(t.tokenUsed)}</div>
                         </td>
 
                         <td className="py-3.5 px-3">
@@ -888,10 +958,10 @@ export default function PersonalTasksManagementPage() {
                           <span className="text-slate-200">|</span>
                           <button
                             type="button"
-                            onClick={() => handleDeleteTask(t.id, t.name)}
-                            className="text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                            onClick={() => handleArchiveTask(t)}
+                            className="text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
                           >
-                            删除
+                            归档
                           </button>
                         </td>
                       </tr>
@@ -987,11 +1057,11 @@ export default function PersonalTasksManagementPage() {
                             存知识库
                           </button>
                           <button
-                            onClick={() => handleDeleteTask(t.id, t.name)}
-                            className="px-2 py-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg font-bold cursor-pointer transition-colors whitespace-nowrap shrink-0"
-                            title="清理删除任务"
+                            onClick={() => handleArchiveTask(t)}
+                            className="px-2 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg font-bold cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                            title="归档任务记录"
                           >
-                            删除
+                            归档
                           </button>
                         </div>
                       </div>
@@ -1398,10 +1468,18 @@ export default function PersonalTasksManagementPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-1.5 bg-blue-50/80 border border-blue-100 rounded-xl px-3 py-2">
-                <ZapIcon className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
-                <p className="text-[10px] font-bold text-[#3182ce]">每次创建任务消耗 5 点资源，从该空间配额中扣除</p>
-              </div>
+              {(() => {
+                const selectedCatalogComp = componentCatalog.find((c) => c.id === createTaskComponentId);
+                const cost = Number(selectedCatalogComp?.estimatedTokens) || 5;
+                return (
+                  <div className="flex items-center gap-1.5 bg-blue-50/80 border border-blue-100 rounded-xl px-3 py-2">
+                    <ZapIcon className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
+                    <p className="text-[10px] font-bold text-[#3182ce]">
+                      本次任务预计消耗 {cost} 点资源（当前空间余额见顶部）。
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
@@ -1430,51 +1508,12 @@ export default function PersonalTasksManagementPage() {
         </div>
       )}
 
-      {/* 查看结果 Modal */}
-      {showPreviewModal && previewTask && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 text-left space-y-4 relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 min-w-0">
-                <FileCheckIcon className="w-5 h-5 text-[#3182ce] shrink-0" />
-                <h3 className="text-base font-black text-slate-900 truncate" title={previewTask.name}>
-                  {previewTask.name} - 执行结果
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer shrink-0"
-              >
-                <XIcon className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-xl text-xs font-mono leading-relaxed text-slate-700 max-h-96 overflow-y-auto border border-slate-200/70 whitespace-pre-wrap">
-              {!previewTask.outputData || previewTask.outputData === "null" || previewTask.outputData === "undefined" ? (
-                <div className="text-slate-400 font-sans italic py-4 text-center">
-                  ✨ 暂无详细输出结果数据（该自动化任务已成功处理完成）
-                </div>
-              ) : typeof previewTask.outputData === "string" ? (
-                previewTask.outputData
-              ) : (
-                JSON.stringify(previewTask.outputData, null, 2)
-              )}
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <span className="text-[11px] font-bold text-slate-500">
-                组件: {getUnifiedComponentLabel(previewTask.componentId, previewTask.componentName).fullLabel} · {previewTask.workspaceName}
-              </span>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 查看结果 Modal (共享 ResultViewer 组件) */}
+      <ResultViewer
+        task={previewTask}
+        open={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+      />
 
       <Footer />
     </div>

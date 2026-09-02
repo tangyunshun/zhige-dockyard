@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useRef, useMemo } from "react";
-import { Layers } from "lucide-react";
+import { Layers, Box, Eye } from "lucide-react";
 import type { ComponentCategory } from "@/constants/components";
 import { useAppContext } from "@/contexts/AppContext";
+import { iconMap } from "@/components/ComponentShowcase";
 import { useDevice } from "@/contexts/DeviceContext";
+import { categoryIconsMap } from "@/components/WorkspaceInternalLayoutV3";
 
 // 阶段定义
 interface Stage {
@@ -17,16 +19,16 @@ interface Stage {
 }
 
 const categoryEmojis: Record<string, string> = {
-  BID_PREP: "📄",
-  REQ_DESIGN: "🧩",
-  BACKEND_CORE: "💻",
-  DATABASE_ENG: "🗄️",
-  FRONTEND_DEV: "📐",
-  TEST_QA: "✅",
-  DEVOPS: "🐳",
-  SECURITY: "🔒",
-  PROJ_MGMT: "👥",
-  KNOWLEDGE: "📚",
+  BID_PREP: "",
+  REQ_DESIGN: "",
+  BACKEND_CORE: "",
+  DATABASE_ENG: "",
+  FRONTEND_DEV: "",
+  TEST_QA: "",
+  DEVOPS: "",
+  SECURITY: "",
+  PROJ_MGMT: "",
+  KNOWLEDGE: "",
 };
 
 interface ComponentsTabProps {
@@ -41,6 +43,7 @@ interface ComponentsTabProps {
   handleComponentClick: (comp: any) => void;
   handleToggleComponentActive: (comp: any, enabled: boolean) => Promise<void>;
   onNavigateToStudio: () => void;
+  onViewDetail?: (comp: any) => void;
 }
 
 export default function ComponentsTab({
@@ -54,7 +57,8 @@ export default function ComponentsTab({
   handleRequestUninstall,
   handleComponentClick,
   handleToggleComponentActive,
-  onNavigateToStudio
+  onNavigateToStudio,
+  onViewDetail
 }: ComponentsTabProps) {
   const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
   const { isTouch, isMobile } = useDevice();
@@ -71,7 +75,7 @@ export default function ComponentsTab({
   }, [COMPONENT_CATEGORIES]);
 
   // 阶段列表由数据库分类动态构造，不依赖代码写死的分类
-  const stages: Stage[] = useMemo(() => {
+  const stages: (Stage & { categoryKey: string })[] = useMemo(() => {
     return Object.entries(COMPONENT_CATEGORIES).map(([key, value]) => {
       const cat = key as ComponentCategory;
       return {
@@ -79,7 +83,8 @@ export default function ComponentsTab({
         name: value.name,
         color: value.color,
         bgColor: `from-[${value.color}]/10 to-[${value.color}]/20`,
-        emoji: categoryEmojis[cat] || "📦",
+        emoji: "",
+        categoryKey: cat,
         flowText: value.name,
       };
     }).sort((a, b) => a.id - b.id);
@@ -140,7 +145,12 @@ export default function ComponentsTab({
             >
               <div className="w-full">
                 <div className="flex justify-between items-center w-full">
-                  <span className="text-lg leading-none">{stage.emoji || "⚙️"}</span>
+                  <span className="leading-none">
+                    {(() => {
+                      const CatIco = categoryIconsMap[stage.categoryKey] || Layers;
+                      return <CatIco className={`w-5 h-5 ${isSelected ? "text-white" : "text-[#3182ce]"}`} />;
+                    })()}
+                  </span>
                   {boundCount > 0 && (
                     <span className="text-[9px] px-1.5 py-0.5 rounded-full font-black leading-none bg-red-600 text-white shadow-sm shrink-0">
                       {boundCount}
@@ -215,8 +225,8 @@ export default function ComponentsTab({
                 >
                   <div>
                     <div className="flex justify-between items-start mb-3">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100/80 flex items-center justify-center shrink-0">
-                        <span className="text-lg leading-none">{categoryEmojis[comp.category] || "⚙️"}</span>
+                      <div className="w-9 h-9 rounded-lg bg-blue-50/80 text-[#3182ce] flex items-center justify-center shrink-0">
+                        {(() => { const Ico = iconMap[comp.icon || ""] || Box; return <Ico className="w-5 h-5" />; })()}
                       </div>
                       <div className="flex gap-1.5 items-center">
                         {isNewlyBound && (
@@ -272,6 +282,15 @@ export default function ComponentsTab({
                     <span className="text-xs text-slate-400 font-mono font-bold">{comp.id}</span>
                     
                     <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onViewDetail && onViewDetail(comp)}
+                        className="h-8 px-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-lg shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1"
+                        title="查看该组件的核心功能契约与详细文档"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                        <span>详情</span>
+                      </button>
                       {isManager && (
                         <button
                           type="button"

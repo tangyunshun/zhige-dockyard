@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback, Fragment } from "react";
 import {
@@ -50,6 +50,17 @@ const ACTION_META: Record<string, { label: string; color: string }> = {
   "component:execute": { label: "执行组件", color: "bg-purple-100 text-[#805ad5]" },
   "BIND_COMPONENT": { label: "绑定组件", color: "bg-blue-100 text-[#2b6cb0]" },
   "UNBIND_COMPONENT": { label: "解绑组件", color: "bg-amber-100 text-amber-600" },
+  "asset:remove_private": { label: "移除私密资料", color: "bg-red-100 text-red-600" },
+  "asset:remove": { label: "移除公开资料", color: "bg-red-100 text-red-600" },
+  "asset:removal_request": { label: "资料删除申请", color: "bg-amber-100 text-amber-600" },
+  "asset:removal_approve": { label: "删除申请通过", color: "bg-emerald-100 text-emerald-600" },
+  "asset:removal_reject": { label: "删除申请驳回", color: "bg-amber-100 text-amber-600" },
+  "asset:removal_record_delete": { label: "彻底删除资料", color: "bg-red-100 text-red-600" },
+  "asset:private_review_request": { label: "私密资料治理要求", color: "bg-blue-100 text-[#2b6cb0]" },
+  "asset:upload": { label: "上传资料", color: "bg-cyan-100 text-cyan-600" },
+  "asset:approve": { label: "审核通过公开资料", color: "bg-emerald-100 text-emerald-600" },
+  "asset:reject": { label: "审核驳回公开申请", color: "bg-amber-100 text-amber-600" },
+  "asset:restore": { label: "恢复已移除资料", color: "bg-blue-100 text-[#2b6cb0]" },
   // 工作空间相关
   "workspace:create": { label: "创建空间", color: "bg-emerald-100 text-emerald-600" },
   "workspace:update": { label: "更新空间", color: "bg-blue-100 text-[#2b6cb0]" },
@@ -65,6 +76,17 @@ const ACTION_META: Record<string, { label: string; color: string }> = {
 
 // 未知英文 action 的兜底翻译（避免直接暴露原始英文串）
 const ACTION_FALLBACK_LABELS: Record<string, string> = {
+  "asset:remove_private": "移除私密资料",
+  "asset:remove": "移除公开资料",
+  "asset:removal_request": "资料删除申请",
+  "asset:removal_approve": "删除申请通过",
+  "asset:removal_reject": "删除申请驳回",
+  "asset:removal_record_delete": "彻底删除资料",
+  "asset:private_review_request": "私密资料治理要求",
+  "asset:upload": "上传资料",
+  "asset:approve": "审核通过公开资料",
+  "asset:reject": "审核驳回公开申请",
+  "asset:restore": "恢复已移除资料",
   BIND_COMPONENT: "绑定组件",
   UNBIND_COMPONENT: "解绑组件",
   JOIN_WORKSPACE: "加入空间",

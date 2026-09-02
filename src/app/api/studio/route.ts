@@ -1,14 +1,38 @@
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"; // Trigger Turbopack Cache Rebuild 2026-08-31
 
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { isAdminRole } from "@/lib/auth-admin";
+import { buildComponentResult } from "@/lib/component-result";
 import {
   requireWorkspaceMembership,
   getLogicalWorkspaceRole,
   requireWorkspacePermission,
   writeAuditLog,
 } from "@/lib/security";
+import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
+import { isProbablyBinaryContent, sanitizeTextContent } from "@/lib/text-utils";
+import { scanSensitiveWords } from "@/lib/sensitive-words";
+import {
+  notifyAssetRemoved,
+  notifyAssetsBatchRemoved,
+  notifyAssetRestored,
+  notifyRestoreRequested,
+  notifyDeletionRequested,
+  notifyDeletionRejected,
+  notifyPrivateReviewRequest,
+  reasonLabel,
+  type AssetUsage,
+} from "@/lib/asset-notify";
+import { getAssetPermissions } from "@/lib/asset-permission";
+import { getFileTypeLabel, resolveAssetSize } from "@/lib/file-type";
+import { generateSmartSummary } from "@/lib/smart-summary";
+import { saveAssetFile, deleteAssetFile } from "@/lib/file-store";
+import { getFileExtension } from "@/lib/file-type";
+import { extractTextFromBuffer } from "@/lib/text-extract";
+import { UNLIMITED_TOKEN, isUnlimitedTokenLimit, getMembershipTokenLimit } from "@/lib/quota-token";
 
 // 获取真实用户 ID：统一走 validateUser 的合法 JWT 校验
 // （Authorization Bearer JWT 或 Cookie auth_token 均强制验签，
@@ -38,9 +62,18 @@ async function checkWorkspaceAccess(
     return { error: { message: "越权警告：您不属于该工作空间，无权访问其数据", status: 403 } };
   }
   return {};
-}
+  }
 
-// 空间管理权限强校验：仅 OWNER / ADMIN / COMPONENT_MANAGER 可执行组件绑定、
+  // 治理中心管理者判定：仅认空间角色——空间 ADMIN/OWNER 视为治理管理员，
+  // 可查看并管理全空间移除单与操作日志（含私密文档）。
+  // 注意：平台全局管理员若非本空间成员，则在本空间内无任何治理权限（普通成员视角），
+  // 治理权限严格跟随「空间成员 + 空间角色」，与 list_removals 过滤口径一致。
+  async function isGovernanceAdminRole(userId: string, workspaceId: string): Promise<boolean> {
+    const role = await getLogicalWorkspaceRole(userId, workspaceId);
+    return role === "ADMIN" || role === "OWNER";
+  }
+
+  // 空间管理权限强校验：仅 OWNER / ADMIN / COMPONENT_MANAGER 可执行组件绑定、
 // 解绑、启停、安全矩阵与岗位配置等管理操作；普通 MEMBER 一律 403。
 async function checkWorkspaceManager(
   userId: string,
@@ -145,7 +178,7 @@ export async function GET(request: NextRequest) {
     // 获取系统组件目录（唯一数据源：component_catalog / component_category 表）。
     // 组件大厅属于公开页面，目录只包含已发布组件元数据，无需登录即可读取。
     if (action === "catalog") {
-      const [components, categories, internalComponents, presetPositions] = await Promise.all([
+      const [components, categories, internalComponents, presetPositions, usageStats, taskStatsRows] = await Promise.all([
         prisma.componentcatalog.findMany({
           where: { isPublished: true },
           orderBy: { sortOrder: "asc" },
@@ -163,7 +196,43 @@ export async function GET(request: NextRequest) {
           where: { isPreset: true, status: "ACTIVE" },
           orderBy: { sortOrder: "asc" },
         }),
+        // 组件真实调用次数（component_stats.totalUses，由每次执行真实累加）
+        prisma.componentstats.findMany({
+          select: { componentId: true, totalUses: true },
+        }),
+        // 组件真实执行结果分布（用于计算真实成功率，无任何模拟数值）
+        prisma.componenttask.groupBy({
+          by: ["type", "status"],
+          _count: { _all: true },
+        }),
       ]);
+
+      // 真实调用次数映射（componentId → totalUses）
+      const usageMap = new Map<string, number>();
+      usageStats.forEach((s) => {
+        if (s.componentId) usageMap.set(s.componentId.trim().toUpperCase(), s.totalUses || 0);
+      });
+
+      // 真实成功率映射（componentId → { total, success }）
+      const taskStatsMap = new Map<string, { total: number; success: number }>();
+      taskStatsRows.forEach((row) => {
+        const key = (row.type || "").trim().toUpperCase();
+        if (!key) return;
+        const cur = taskStatsMap.get(key) || { total: 0, success: 0 };
+        cur.total += row._count._all;
+        if (row.status === "SUCCESS") cur.success += row._count._all;
+        taskStatsMap.set(key, cur);
+      });
+
+      // 附加真实统计，供前端展示（前端禁止再派生任何模拟数值）
+      const componentsWithStats = components.map((c) => {
+        const key = c.id.trim().toUpperCase();
+        return {
+          ...c,
+          realUsageCount: usageMap.get(key) ?? 0,
+          realTaskStats: taskStatsMap.get(key) ?? { total: 0, success: 0 },
+        };
+      });
 
       // 免费用户默认可用组件 = 非付费组件（由数据库 isPremium 字段推导，不再写死）
       const defaultAllowedIds = components.filter((c) => !c.isPremium).map((c) => c.id);
@@ -171,7 +240,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: {
-          components,
+          components: componentsWithStats,
           categories,
           internalComponents,
           defaultAllowedIds,
@@ -461,7 +530,10 @@ export async function GET(request: NextRequest) {
       const take = limitParam ? parseInt(limitParam, 10) : undefined;
 
       const tasks = await prisma.componenttask.findMany({
-        where: { tenantId: workspaceId },
+        where: {
+          tenantId: workspaceId,
+          status: { not: "ARCHIVED" },
+        },
         orderBy: { createdAt: "desc" },
         ...(take ? { take } : {}),
       });
@@ -489,7 +561,7 @@ export async function GET(request: NextRequest) {
       const formattedTasks = tasks.map((t) => {
         const cId = (t.type || "").trim().toUpperCase();
         // 100% 从数据库 compNameMap (componentcatalog / componentcategory) 动态获取中文名称，拒绝硬编码
-        const dbCompName = compNameMap.get(cId) || t.componentName || t.type || "";
+        const dbCompName = compNameMap.get(cId) || t.type || "";
 
         return {
           ...t,
@@ -503,6 +575,61 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: formattedTasks });
     }
 
+    // 获取指定工作空间下状态为 SUCCESS 的任务结果列表
+    if (action === "results") {
+      const workspaceId = searchParams.get("workspaceId");
+      if (!workspaceId) {
+        return NextResponse.json({
+          success: false,
+          error: "缺少 workspaceId 参数"
+        }, { status: 400 });
+      }
+
+      const isMember = await requireWorkspaceMembership(userId, workspaceId);
+      if (!isMember) {
+        return NextResponse.json({
+          success: false,
+          error: "越权警告：您不属于该工作空间，无权查看任务结果"
+        }, { status: 403 });
+      }
+
+      const limitParam = searchParams.get("limit");
+      const take = limitParam ? parseInt(limitParam, 10) : undefined;
+
+      const tasks = await prisma.componenttask.findMany({
+        where: {
+          tenantId: workspaceId,
+          status: "SUCCESS",
+        },
+        orderBy: { createdAt: "desc" },
+        ...(take ? { take } : {}),
+      });
+
+      const allComponents = await prisma.componentcatalog.findMany({ select: { id: true, name: true } });
+      const compNameMap = new Map<string, string>();
+      allComponents.forEach((comp) => {
+        if (comp.id && comp.name) {
+          compNameMap.set(comp.id.trim().toUpperCase(), comp.name);
+        }
+      });
+
+      const formattedResults = tasks.map((t) => {
+        const cId = (t.type || "").trim().toUpperCase();
+        const dbCompName = compNameMap.get(cId) || t.type || "";
+        return {
+          id: t.id,
+          name: t.name,
+          type: t.type,
+          componentName: dbCompName,
+          config: t.config ? JSON.parse(JSON.stringify(t.config)) : null,
+          result: t.result ? JSON.parse(JSON.stringify(t.result)) : null,
+          createdAt: t.createdAt,
+        };
+      });
+
+      return NextResponse.json({ success: true, data: formattedResults });
+    }
+
     // 获取指定工作空间下的文件资料
     if (action === "documents") {
       const workspaceId = searchParams.get("workspaceId");
@@ -513,23 +640,185 @@ export async function GET(request: NextRequest) {
         }, { status: 400 });
       }
 
-      const isMember = await requireWorkspaceMembership(userId, workspaceId);
-      if (!isMember) {
+      const accessCheck = await checkWorkspaceAccess(userId, workspaceId);
+      if (accessCheck.error) {
         return NextResponse.json({
           success: false,
-          error: "越权警告：您不属于该工作空间，无权查看文件资料"
-        }, { status: 403 });
+          error: accessCheck.error.message
+        }, { status: accessCheck.error.status });
       }
 
       const documents = await prisma.document.findMany({
         where: { 
           workspaceId,
-          status: "active" 
+          // 资料列表只返回仍可见的资料；REMOVED 资料由治理中心移除记录承载，不在此列表中出现
+          status: { in: ["active", "APPROVED", "PENDING", "REJECTED"] }
         },
         orderBy: { createdAt: "desc" }
       });
 
-      return NextResponse.json({ success: true, data: documents });
+      const wsRole = await getLogicalWorkspaceRole(userId, workspaceId);
+      const isManager = wsRole === "ADMIN" || wsRole === "OWNER";
+
+      // 资料权限与空间统一隔离规则：
+      // 1. 个人私密资料(PRIVATE)：严格仅上传人本人可见，空间管理员/所有者也不可见他人私密内容；
+      // 2. 企空间公开资料(PUBLIC)：全空间所有成员可见性与数量保持一致。
+      const visibleDocuments = documents.filter((d) => {
+        if (d.visibility === "PRIVATE" && d.uploaderId !== userId) {
+          return false;
+        }
+        return true;
+      });
+
+      // 当前用户本人发起的、待管理员审核的删除申请（用于资料列表展示“审核中”）
+      const myPendingRemovals = await prisma.documentremoval.findMany({
+        where: { workspaceId, status: "PENDING", removedBy: userId },
+      }).catch(() => []);
+      const myPendingMap = new Map(myPendingRemovals.map((r) => [r.documentId, r]));
+
+      // 解析真实上传者账号：根据 document.uploaderId 关联 user 表，
+      // 取昵称/邮箱/手机号中任意一个真实存在的账号标识（手机号注册用户无 name/email 也能正确显示），
+      // 绝不回退为硬编码占位字符串。历史存量文档无 uploaderId 时返回 null。
+      const uploaderIds = visibleDocuments
+        .map((d) => d.uploaderId)
+        .filter((id): id is string => Boolean(id));
+      const uploaderUsers = uploaderIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: uploaderIds } },
+            select: { id: true, name: true, email: true, phone: true },
+          })
+        : [];
+      const uploaderMap = new Map(uploaderUsers.map((u) => [u.id, u]));
+
+      const resolveUploaderName = (u: { name?: string | null; email?: string | null; phone?: string | null } | undefined) => {
+        if (!u) return null;
+        const name = (u.name || "").trim();
+        if (name) return name;
+        const email = (u.email || "").trim();
+        if (email) return email;
+        const phone = (u.phone || "").trim();
+        if (phone) return phone;
+        return null;
+      };
+
+      // 关联查询最近的操作/审计日志中的审核意见 comment
+      const auditLogs = await prisma.operationlog.findMany({
+        where: {
+          workspaceId,
+          action: { in: ["asset:approve", "asset:reject", "KNOWLEDGE_APPROVE", "KNOWLEDGE_REJECT"] }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 200
+      }).catch(() => []);
+
+      const commentMap = new Map<string, string>();
+      auditLogs.forEach((l) => {
+        if (!l.details) return;
+        let det: any = l.details;
+        if (typeof det === "string") {
+          try { det = JSON.parse(det); } catch (e) {}
+        }
+        if (det && typeof det === "object") {
+          const targetId = det.documentId || det.knowledgeId || det.assetId || det.id;
+          const commentStr = (det.comment || det.reviewComment || det.reason || "").trim();
+          if (targetId && commentStr && !commentMap.has(targetId)) {
+            commentMap.set(targetId, commentStr);
+          }
+        }
+      });
+
+      const data = visibleDocuments.map((d) => {
+        const uploader = d.uploaderId ? uploaderMap.get(d.uploaderId) : undefined;
+        // 兼容历史数据：迁移前审核意见曾被写入 content 的 JSON 包装中，
+        // 仅在独立字段为空时才回退解析，避免正文被误当作审核意见。
+        let contentComment = null;
+        if (!d.reviewComment && d.content) {
+          try {
+            const p = JSON.parse(d.content);
+            if (p && typeof p === "object" && p.reviewComment) {
+              contentComment = p.reviewComment;
+            }
+          } catch (e) {}
+        }
+        const logComment = commentMap.get(d.id);
+        // 优先取独立的 review_comment 字段，其次审计日志，最后兼容历史 content 写法
+        const resolvedReviewComment = d.reviewComment || logComment || contentComment || (d.status === "REJECTED" ? "请根据空间合规要求修正提要后再发起公开申请。" : null);
+
+        // 格式类型：由文件真实类型决定，输出中文类型名（Word 文档 / Excel 表格 / 图片 …）
+        const fileTypeLabel = getFileTypeLabel({
+          type: d.type,
+          ext: d.fileExt,
+          title: d.title,
+          content: d.content,
+        });
+        // 容量大小：优先真实字节数，历史数据缺失时按内容 UTF-8 字节数估算
+        const resolvedSizeStr = resolveAssetSize({
+          fileSize: d.fileSize,
+          content: d.content,
+        });
+
+        return {
+          ...d,
+          isMine: Boolean(d.uploaderId === userId),
+          fileUrl: d.filePath ? `/api/workspace/assets/${d.id}/file` : null,
+          mimeType: d.mimeType,
+          originalName: d.originalName,
+          uploaderName: resolveUploaderName(uploader),
+          uploaderEmail: uploader ? (uploader.email || null) : null,
+          uploaderPhone: uploader ? (uploader.phone || null) : null,
+          reviewComment: resolvedReviewComment,
+          fileTypeLabel,
+          sizeStr: resolvedSizeStr,
+          // 智能总结：优先取持久化的 summary；历史资料缺失时基于原文即时生成
+          summary: (d.summary && d.summary.trim()) ? d.summary : generateSmartSummary(d.content, d.title).overview,
+          // 当前用户本人发起、待审核的删除申请（仅 PENDING 且由本人提交时存在）
+          pendingRemoval: myPendingMap.get(d.id) || null,
+        };
+      });
+
+      // 治理中心入口红点：统计“非本人删除且已生效(APPROVED)”的未恢复移除单。
+      // - 仅计 APPROVED：待审核(PENDING)申请尚未真正移除，不计入红点；
+      // - 排除 removedBy === userId：删除人本人（无论管理员还是成员主动删除自己的资料）不再显示红点，
+      //   仅对删除人与审核人之外的其他成员提示“有资料被移除”。
+      const activeRemovalCount = await prisma.documentremoval.count({
+        where: { workspaceId, restoredAt: null, confirmedAt: null, status: "APPROVED", removedBy: { not: userId } },
+      }).catch(() => 0);
+
+      // 资料与知识库彻底分离：排除 type==="knowledge" 的知识库，兼容历史/新建立 type 为 null 的存量资料
+      const materialDocs = visibleDocuments.filter((d) => d.type !== "knowledge");
+
+      // 1. 公开资料数：全空间已生效发布的公开资料（排除待审核与已移除）
+      const publicCount = materialDocs.filter((d) => d.visibility === "PUBLIC" && d.status !== "PENDING" && d.status !== "REMOVED").length;
+
+      // 2. 本人私密资料数：严格统计当前登录用户上传的个人私密资料
+      const ownPrivateCount = materialDocs.filter((d) => d.visibility === "PRIVATE" && d.uploaderId === userId && d.status !== "PENDING" && d.status !== "REMOVED").length;
+
+      // 3. 其他成员私密资料数：严格隔离，不向任何空间角色泄露成员私密资料数量
+      const otherPrivateCount = 0;
+
+      // 4. 待审核资料数：管理员查看全空间待审核大盘，普通成员仅查看本人提交的待审核
+      const pendingCount = isManager
+        ? materialDocs.filter((d) => d.status === "PENDING").length
+        : materialDocs.filter((d) => d.status === "PENDING" && d.uploaderId === userId).length;
+
+      // 5. 资料总数：
+      // - 任何角色视角：空间公开 + 本人私密 + 本人可处理的待审核项（不泄漏任何其他成员私密数据）
+      const total = publicCount + ownPrivateCount + pendingCount;
+
+      return NextResponse.json({
+        success: true,
+        data,
+        removalStats: { activeCount: activeRemovalCount },
+        stats: {
+          publicCount,
+          ownPrivateCount,
+          otherPrivateCount,
+          pendingCount,
+          total,
+          isManager,
+          scope: isManager ? "governance-public" : "mine",
+        },
+      });
     }
 
     // 获取空间知识库：企业空间普通成员仅可见已发布(active)知识，管理角色可见全部含待审核
@@ -562,6 +851,31 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "desc" }
       });
 
+      const auditLogs = await prisma.operationlog.findMany({
+        where: {
+          workspaceId,
+          action: { in: ["KNOWLEDGE_APPROVE", "KNOWLEDGE_REJECT", "asset:approve", "asset:reject"] }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 200
+      }).catch(() => []);
+
+      const commentMap = new Map<string, string>();
+      auditLogs.forEach((l) => {
+        if (!l.details) return;
+        let det: any = l.details;
+        if (typeof det === "string") {
+          try { det = JSON.parse(det); } catch (e) {}
+        }
+        if (det && typeof det === "object") {
+          const targetId = det.knowledgeId || det.documentId || det.assetId || det.id;
+          const commentStr = (det.comment || det.reviewComment || det.reason || "").trim();
+          if (targetId && commentStr && !commentMap.has(targetId)) {
+            commentMap.set(targetId, commentStr);
+          }
+        }
+      });
+
       // 批量拉取来源任务与组件目录，避免 N+1 查询
       const parentIds = documents.map(d => d.parentId).filter((id): id is string => !!id);
       const [sourceTasks, componentCatalogs] = await Promise.all([
@@ -570,7 +884,7 @@ export async function GET(request: NextRequest) {
               where: { id: { in: parentIds } },
               select: { id: true, name: true, type: true }
             })
-          : Promise.resolve<typeof prisma.componenttask extends { findMany: infer F } ? Awaited<ReturnType<F>> : never>([]),
+          : Promise.resolve<Awaited<ReturnType<typeof prisma.componenttask.findMany>>>([]),
         prisma.componentcatalog.findMany({
           select: { id: true, name: true, category: true }
         })
@@ -582,6 +896,18 @@ export async function GET(request: NextRequest) {
         const task = d.parentId ? taskMap.get(d.parentId) : null;
         const componentId = task?.type || "";
         const catalog = componentId ? catalogMap.get(componentId) : null;
+        let contentComment = null;
+        if (d.content) {
+          try {
+            const p = JSON.parse(d.content);
+            if (p && typeof p === "object" && p.reviewComment) {
+              contentComment = p.reviewComment;
+            }
+          } catch (e) {}
+        }
+        const logComment = commentMap.get(d.id);
+        const resolvedReviewComment = logComment || contentComment || (d.status === "rejected" ? "请根据空间合规要求修正后重新发起申请。" : null);
+
         return {
           id: d.id,
           title: d.title,
@@ -593,10 +919,36 @@ export async function GET(request: NextRequest) {
           status: d.status === "active" ? "APPROVED" : d.status === "rejected" ? "REJECTED" : "PENDING",
           createdAt: d.createdAt,
           content: d.content,
+          reviewComment: resolvedReviewComment,
         };
       });
 
       return NextResponse.json({ success: true, data });
+    }
+
+    // ===== 拉取空间审计与操作日志列表 =====
+    if (action === "logs" || action === "operation_logs") {
+      const workspaceId = searchParams.get("workspaceId") || "";
+      if (!workspaceId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 参数" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const logs = await prisma.operationlog.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: "desc" },
+        take: 300,
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatar: true, role: true }
+          }
+        }
+      });
+
+      return NextResponse.json({ success: true, data: logs });
     }
 
     return NextResponse.json({ 
@@ -604,17 +956,15 @@ export async function GET(request: NextRequest) {
       error: "缺少 action 参数" 
     }, { status: 400 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Studio API GET error:", error);
     return NextResponse.json({ 
       success: false, 
       error: "服务器内部错误",
-      details: process.env.NODE_ENV === "development" && error instanceof Error
-        ? error.message
-        : undefined,
+      details: error?.message || undefined
     }, { status: 500 });
   }
-}
+} // HMR_FLUSH_REFRESH_2026_08_31
 
 // 兜底创建或获取 Workspace Quota 信息的辅助函数
 async function getOrCreateQuota(workspaceId: string, userId: string) {
@@ -630,8 +980,8 @@ async function getOrCreateQuota(workspaceId: string, userId: string) {
     });
     const membershipLevel = dbUser?.membershipLevel || "FREE";
     
-    // 不同会员等级对应的 Token 限额
-    const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+    // tokenLimit 一律从 membershiplevel 表读取真实值，不再写死档位数值
+    const tierTokenLimit = await getMembershipTokenLimit(membershipLevel);
     
     // 查询或匹配会员等级关联 ID
     let ml = await prisma.membershiplevel.findUnique({
@@ -641,13 +991,15 @@ async function getOrCreateQuota(workspaceId: string, userId: string) {
       ml = await prisma.membershiplevel.findFirst();
     }
     const mlId = ml?.id || "FREE";
+    // 无限额度（-1）保持 -1，不写死任何固定大数
+    const tokenBalance = isUnlimitedTokenLimit(tierTokenLimit) ? UNLIMITED_TOKEN : tierTokenLimit;
     
     quota = await prisma.workspacequota.create({
       data: {
         id: crypto.randomUUID(),
         workspaceId,
         membershipLevelId: mlId,
-        tokenBalance: BigInt(tokenLimit),
+        tokenBalance,
         updatedAt: new Date()
       }
     });
@@ -731,7 +1083,9 @@ export async function POST(request: NextRequest) {
     }
     
     const searchParams = request.nextUrl.searchParams;
-    const body = await request.json().catch(() => ({}));
+    const isMultipartRequest =
+      (request.headers.get("content-type") || "").includes("multipart/form-data");
+    const body = isMultipartRequest ? {} : await request.json().catch(() => ({}));
     const action = body.action || searchParams.get("action");
     const workspaceId = body.workspaceId || searchParams.get("workspaceId");
     const { componentId, rating, comment, content, parentId, tokens } = body;
@@ -792,211 +1146,1704 @@ export async function POST(request: NextRequest) {
 
     // 模拟运行（扣减当前空间算力 Token）
     if (action === "simulate") {
-      if (!workspaceId || !componentId) {
-        return NextResponse.json({ 
-          success: false, 
-          error: "缺少必要的 workspaceId 或 componentId 参数" 
-        }, { status: 400 });
-      }
+      try {
+        if (!workspaceId || !componentId) {
+          return NextResponse.json({ 
+            success: false, 
+            error: "缺少必要的 workspaceId 或 componentId 参数" 
+          }, { status: 400 });
+        }
 
-      // 验证空间归属与使用权限
-      const ws = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { type: true, ownerId: true, name: true }
-      });
-      if (!ws) {
-        return NextResponse.json({ success: false, error: "工作空间不存在" }, { status: 400 });
-      }
+        // 验证空间归属与使用权限
+        const ws = await prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { type: true, ownerId: true, name: true }
+        });
+        if (!ws) {
+          return NextResponse.json({ success: false, error: "工作空间不存在" }, { status: 400 });
+        }
 
-      const member = await prisma.workspacemember.findUnique({
-        where: { userId_workspaceId: { userId, workspaceId } }
-      });
-      if (ws.ownerId !== userId && !member) {
-        return NextResponse.json({ success: false, error: "越权警告：您不属于该工作空间，无组件运行权限" }, { status: 403 });
-      }
+        const member = await prisma.workspacemember.findUnique({
+          where: { userId_workspaceId: { userId, workspaceId } }
+        });
+        if (ws.ownerId !== userId && !member) {
+          return NextResponse.json({ success: false, error: "越权警告：您不属于该工作空间，无组件运行权限" }, { status: 403 });
+        }
 
-      const hasExecPermission = await requireWorkspacePermission(userId, workspaceId, "component:execute");
-      if (!hasExecPermission) {
-        return NextResponse.json({ success: false, error: "越权警告：您在当前空间下的岗位不支持此组件的执行" }, { status: 403 });
-      }
+        const hasExecPermission = await requireWorkspacePermission(userId, workspaceId, "component:execute");
+        if (!hasExecPermission) {
+          return NextResponse.json({ success: false, error: "越权警告：您在当前空间下的岗位不支持此组件的执行" }, { status: 403 });
+        }
 
-      // 企业空间权限验证 (安全防线)
-      const restrictedIds = await getRestrictedComponentIds(workspaceId, userId);
-      if (restrictedIds.includes(componentId)) {
+        // 企业空间权限验证 (安全防线)
+        const restrictedIds = await getRestrictedComponentIds(workspaceId, userId);
+        if (restrictedIds.includes(componentId)) {
+          return NextResponse.json({
+            success: false,
+            error: "您当前的岗位在当前企业空间下无此组件的执行权限，请联系管理员"
+          }, { status: 403 });
+        }
+
+        // 装配与启用校验：若未装配则自动极速补全装配记录；若显式禁用则拦截
+        const binding = await prisma.componentusage.findFirst({
+          where: { workspaceId, componentId },
+          orderBy: { usedAt: "desc" },
+          select: { metadata: true },
+        });
+        if (!binding) {
+          await prisma.componentusage.create({
+            data: {
+              id: crypto.randomUUID(),
+              userId,
+              componentId,
+              workspaceId,
+              usedAt: new Date(),
+              metadata: { enabled: true }
+            }
+          }).catch((e) => console.warn("[simulate] 自动补全组件装配非致命提示:", e));
+        } else if (binding.metadata) {
+          try {
+            const meta = typeof binding.metadata === "string" ? JSON.parse(binding.metadata) : (binding.metadata as any);
+            if (meta && typeof meta.enabled === "boolean" && meta.enabled === false) {
+              return NextResponse.json({ success: false, error: "该组件已被管理员禁用，暂时无法执行" }, { status: 403 });
+            }
+          } catch (e) {
+            console.error("解析组件 metadata 失败:", e);
+          }
+        }
+
+        // 1. 从 componentcatalog 读取组件信息与真实 estimatedTokens 成本（不信任客户端 body.tokens）
+        const comp = await prisma.componentcatalog.findUnique({
+          where: { id: componentId },
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            description: true,
+            contract: true,
+            previewData: true,
+            inputMode: true,
+            estimatedTokens: true,
+          },
+        });
+
+        if (!comp) {
+          return NextResponse.json({ success: false, error: "未找到对应组件，无法执行" }, { status: 404 });
+        }
+
+        const deductTokens = comp.estimatedTokens && Number(comp.estimatedTokens) > 0 ? Number(comp.estimatedTokens) : 5;
+
+        // 自然月跨月算力配额自动重置
+        await checkAndResetQuotaCycle(prisma, workspaceId, userId);
+
+        // 1. 校验空间算力余额
+        const quota = await getOrCreateQuota(workspaceId, userId);
+
+        // 无限额度（tokenBalance = -1）不限制扣费，直接放行
+        if (Number(quota.tokenBalance) !== -1 && Number(quota.tokenBalance) < deductTokens) {
+          return NextResponse.json({ 
+            success: false, 
+            error: "当前工作空间算力 Token 余额不足，请联系管理员充值" 
+          }, { status: 400 });
+        }
+
+        // 2. 校验成员月度算力额度 (若管理员显式为该成员配置了额度)
+        const currentMember = await prisma.workspacemember.findUnique({
+          where: { userId_workspaceId: { userId, workspaceId } },
+        });
+        if (currentMember && currentMember.monthlyTokenLimit !== null && currentMember.monthlyTokenLimit !== undefined) {
+          const memberLimit = Number(currentMember.monthlyTokenLimit);
+          const memberUsed = Number(currentMember.monthlyTokenUsed || 0);
+          if (memberUsed + deductTokens > memberLimit) {
+            return NextResponse.json({
+              success: false,
+              error: `您本月的个人算力点配额已用尽（当前已用 ${memberUsed}/${memberLimit}，本次需要 ${deductTokens}），请联系空间管理员提升配额`,
+            }, { status: 400 });
+          }
+        }
+
+        // 任务名称与输入材料来自请求体，但执行状态与产出结果一律由服务端判定
+        const taskName = body.taskName;
+        const rawInputMaterial = typeof body.inputMaterial === "string" ? body.inputMaterial : "";
+
+        // 输入清洗：阻止二进制乱码（如 PDF 被 readAsText 读出的 %PDF-1.7...）进入数据库
+        const inputMaterial = sanitizeTextContent(rawInputMaterial);
+        if (isProbablyBinaryContent(inputMaterial)) {
+          return NextResponse.json({
+            success: false,
+            error: "输入材料包含二进制乱码内容（如 PDF/Word 等被误当作文本读取）。请先提取纯文本后重试。",
+          }, { status: 400 });
+        }
+
+        // 统一任务输入契约：以数据库 component_catalog.inputMode 为唯一准绳校验输入来源，
+        // 文本 / 文件 / 空间资料只需满足其一即可，每个任务至多一个主材料。
+        const compInputMode: string = comp.inputMode || "text";
+        const reqInputSource = body.inputSource && typeof body.inputSource === "object" ? (body.inputSource as any) : null;
+        const reqSourceType: string | undefined = reqInputSource?.sourceType;
+        const hasText = inputMaterial.length > 0;
+
+        let inputError = "";
+        switch (compInputMode) {
+          case "text":
+            if (!hasText && reqSourceType !== "asset") {
+              inputError = "该组件要求文本输入：请粘贴文本材料，或选择空间资料作为主材料。";
+            }
+            break;
+          case "file":
+            if (reqSourceType !== "file" && reqSourceType !== "asset") {
+              inputError = "该组件需要上传文件或选择空间资料作为主材料：纯文本粘贴不允许执行。";
+            }
+            break;
+          case "both":
+          default:
+            if (!hasText && reqSourceType !== "file" && reqSourceType !== "asset") {
+              inputError = "该组件需要文本、文件或空间资料任一作为主材料。";
+            }
+            break;
+        }
+        if (inputError) {
+          return NextResponse.json({ success: false, error: inputError }, { status: 400 });
+        }
+
+        // 落库用标准化 inputSource 结构
+        const storedInputSource = {
+          sourceType: reqSourceType || "text",
+          sourceId: (typeof reqInputSource?.sourceId === "string" && reqInputSource.sourceId) ? reqInputSource.sourceId : null,
+          fileName: (typeof reqInputSource?.fileName === "string" && reqInputSource.fileName) ? reqInputSource.fileName : null,
+          fileSize: typeof reqInputSource?.fileSize === "number" ? reqInputSource.fileSize : null,
+        };
+
+        // 服务端感知组件属性（category, contract, previewData, inputMode）生成差异化结果
+        const outputData = buildComponentResult(comp, inputMaterial);
+        const taskStatus = "SUCCESS"; // 模拟执行已完成，服务端判定成功
+
+        // 事务化处理：扣减 Token + 更新组件统计 + 写入任务历史
+        const taskResult = await prisma.$transaction(async (tx) => {
+          // 确保租户记录存在，避免 componenttask.tenantId 外键约束失败导致 simulate 恒 500
+          await tx.tenant.upsert({
+            where: { id: workspaceId },
+            update: { name: ws?.name || workspaceId, updatedAt: new Date() },
+            create: { id: workspaceId, name: ws?.name || workspaceId, updatedAt: new Date() },
+          });
+
+          // 无限额度（tokenBalance = -1）不扣减，保持 -1 语义；其余正常递减
+          const updatedQuota = await tx.workspacequota.update({
+            where: { workspaceId },
+            data: Number(quota.tokenBalance) === -1
+              ? { updatedAt: new Date() }
+              : {
+                  tokenBalance: {
+                    decrement: BigInt(deductTokens)
+                  },
+                  updatedAt: new Date()
+                }
+          });
+
+          // 若存在成员记录，同时更新成员已使用额度
+          if (currentMember) {
+            await tx.workspacemember.update({
+              where: { id: currentMember.id },
+              data: {
+                monthlyTokenUsed: { increment: BigInt(deductTokens) },
+              },
+            }).catch((e) => console.warn("[算力扣费] 成员已用额度自增警告:", e));
+          }
+
+          await tx.componentstats.upsert({
+            where: { componentId },
+            update: {
+              totalUses: { increment: 1 },
+              lastUsedAt: new Date(),
+              updatedAt: new Date(),
+            },
+            create: {
+              id: crypto.randomUUID(),
+              componentId,
+              totalUses: 1,
+              lastUsedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+
+          // 原子更新组件字典库 componentcatalog 的全局真实调度次数自增 usageCount + 1
+          await tx.componentcatalog.update({
+            where: { id: componentId },
+            data: {
+              usageCount: { increment: 1 },
+              updatedAt: new Date(),
+            },
+          }).catch((e) => console.warn("[组件调度] componentcatalog usageCount 自增警告:", e));
+
+          const sensitivity = scanSensitiveWords(typeof inputMaterial === "string" ? inputMaterial : "");
+          const effectiveInputMaterial = sensitivity.hasSensitive ? sensitivity.sanitizedText : inputMaterial;
+
+          const rawMaterialStr = typeof effectiveInputMaterial === "string" ? effectiveInputMaterial.trim().replace(/\s+/g, " ") : "";
+          const materialSummary = rawMaterialStr ? (rawMaterialStr.length > 40 ? `${rawMaterialStr.slice(0, 40)}...` : rawMaterialStr) : "快捷输入";
+          const safeDescription = `使用【${comp.name || componentId}】处理任务 (${materialSummary})`.slice(0, 180);
+
+          const task = await tx.componenttask.create({
+            data: {
+              id: crypto.randomUUID(),
+              name: taskName || `${comp.name || componentId} 运行任务`,
+              description: safeDescription,
+              type: componentId,
+              status: taskStatus,
+              progress: 100,
+              config: { 
+                inputMaterial: effectiveInputMaterial || "", 
+                tokenCost: deductTokens, 
+                inputSource: storedInputSource,
+                hasSensitive: sensitivity.hasSensitive,
+                foundSensitiveWords: sensitivity.foundWords
+              },
+              result: { outputData: outputData as unknown as Prisma.InputJsonValue },
+              userId,
+              tenantId: workspaceId,
+              completedAt: new Date(),
+              isPublished: false,
+              icon: "Zap",
+              updatedAt: new Date(),
+            }
+          });
+
+          return { quota: updatedQuota, task };
+        });
+
+        // 记录真实的使用率日志
+        await touchComponentUsage(userId, componentId, workspaceId);
+
+        // 写入高危审计日志（非阻断式）
+        await writeAuditLog(userId, "component:execute", { componentId, tokens: deductTokens }, workspaceId).catch((e) => console.warn("写入审计日志非阻断式提示:", e));
+
+        return NextResponse.json({
+          success: true,
+          tokenBalance: Number(taskResult.quota.tokenBalance),
+          cost: deductTokens,
+          task: {
+            id: taskResult.task.id,
+            name: taskResult.task.name,
+            status: taskResult.task.status,
+            result: taskResult.task.result,
+            tokens: deductTokens,
+            createdAt: taskResult.task.createdAt,
+          },
+        });
+      } catch (simError: any) {
+        console.error("执行 simulate 分支发生内部异常:", simError);
         return NextResponse.json({
           success: false,
-          error: "您当前的岗位在当前企业空间下无此组件的执行权限，请联系管理员"
-        }, { status: 403 });
+          error: simError.message || "组件任务处理内部异常，请联系系统管理员"
+        }, { status: 500 });
       }
-
-      // 装配与启用校验：组件必须已装配到当前空间且处于启用状态
-      const binding = await prisma.componentusage.findFirst({
-        where: { workspaceId, componentId },
-        orderBy: { usedAt: "desc" },
-        select: { metadata: true },
-      });
-      if (!binding) {
-        return NextResponse.json({ success: false, error: "该组件尚未装配到当前空间，请先装配后再执行" }, { status: 400 });
-      }
-      let isEnabled = true;
-      if (binding.metadata) {
-        try {
-          const meta = typeof binding.metadata === "string" ? JSON.parse(binding.metadata) : (binding.metadata as any);
-          if (meta && typeof meta.enabled === "boolean") {
-            isEnabled = meta.enabled;
-          }
-        } catch (e) {
-          console.error("解析组件 metadata 失败:", e);
-        }
-      }
-      if (!isEnabled) {
-        return NextResponse.json({ success: false, error: "该组件已被管理员禁用，暂时无法执行" }, { status: 403 });
-      }
-
-      const deductTokens = tokens ? Number(tokens) : 5; // 默认扣减 5 个 Token
-
-      // 获取或创建 Quota
-      const quota = await getOrCreateQuota(workspaceId, userId);
-
-      if (Number(quota.tokenBalance) < deductTokens) {
-        return NextResponse.json({ 
-          success: false, 
-          error: "当前工作空间算力 Token 余额不足，请联系管理员充值" 
-        });
-      }
-
-      // 任务名称与输入材料来自请求体，但执行状态与产出结果一律由服务端判定，
-      // 不信任客户端传入的 status / outputData，保证前后端数据一致性。
-      const taskName = body.taskName;
-      const inputMaterial = body.inputMaterial;
-
-      // 服务端基于输入材料生成真实的结构化分析产出（模拟执行引擎结果）
-      const inputSnippet = (inputMaterial || "").toString().slice(0, 120);
-      const deviationCount = inputSnippet ? Math.max(1, Math.round(inputSnippet.length / 60)) : 1;
-      const outputData = {
-        summary: `系统已完成「${inputSnippet ? inputSnippet + "…" : "本次研发材料"}」的条款拆解，并与团队标准规范完成全量比对，产出结构化偏离分析结果。`,
-        conclusions: [
-          "已完成输入材料核心描述拆解，共识别 " + deviationCount + " 处关键交付点。",
-          "经与团队标准规范比对，接口协议对齐一致度 98.5%，核心流程整体合规。",
-          "本次运行已计入当前空间算力消耗，任务历史与统计已同步更新。",
-        ],
-        deviations: [
-          { item: "交付工期说明", rfp: "要求 90 天内交付", actual: "评估拟定 120 天，发生轻微偏离", risk: "偏离警告，建议调整交付排期" },
-          { item: "验收指标定义", rfp: "需明确验收通过率", actual: "现有描述缺失量化指标", risk: "轻微偏离，建议补充验收标准" },
-        ],
-        risks: ["由于历史代码耦合，存在调用溢出风险，请遵循最新 SOP 设计"],
-        advices: ["建议后续在此接口中引入自愈缓存", "在与合作方商议时使用本推荐条款模板"],
-      };
-      const taskStatus = "SUCCESS"; // 模拟执行已完成，服务端判定成功
-
-      // 事务化处理：扣减 Token + 更新组件统计 + 写入任务历史，任一步失败整体回滚，
-      // 确保后端失败时不会扣 Token，也不会残留“成功”任务。
-      const taskResult = await prisma.$transaction(async (tx) => {
-        // 确保租户记录存在，避免 componenttask.tenantId 外键约束失败导致 simulate 恒 500
-        await tx.tenant.upsert({
-          where: { id: workspaceId },
-          update: { name: ws?.name || workspaceId, updatedAt: new Date() },
-          create: { id: workspaceId, name: ws?.name || workspaceId, updatedAt: new Date() },
-        });
-
-        const updatedQuota = await tx.workspacequota.update({
-          where: { workspaceId },
-          data: {
-            tokenBalance: {
-              decrement: BigInt(deductTokens)
-            },
-            updatedAt: new Date()
-          }
-        });
-
-        await tx.componentstats.upsert({
-          where: { componentId },
-          update: {
-            totalUses: { increment: 1 },
-            lastUsedAt: new Date(),
-            updatedAt: new Date(),
-          },
-          create: {
-            id: crypto.randomUUID(),
-            componentId,
-            totalUses: 1,
-            lastUsedAt: new Date(),
-            updatedAt: new Date(),
-          },
-        });
-
-        const task = await tx.componenttask.create({
-          data: {
-            id: crypto.randomUUID(),
-            name: taskName || `${componentId} 运行任务`,
-            description: `使用组件在工作空间中运行任务。输入材料：${inputMaterial || "未上传"}`,
-            type: componentId, // 关联组件 ID，以作标识
-            status: taskStatus,
-            progress: 100,
-            config: { inputMaterial, tokenCost: deductTokens },
-            result: { outputData },
-            userId,
-            tenantId: workspaceId,
-            completedAt: new Date(),
-            isPublished: false,
-            icon: "Zap",
-            updatedAt: new Date(),
-          }
-        });
-
-        return { quota: updatedQuota, task };
-      });
-
-      // 记录真实的使用率日志（按 用户+组件+空间 隔离，复用既有记录，避免堆叠脏数据）
-      await touchComponentUsage(userId, componentId, workspaceId);
-
-      // 写入高危审计日志
-      await writeAuditLog(userId, "component:execute", { componentId, tokens: deductTokens }, workspaceId);
-
-      return NextResponse.json({
-        success: true,
-        tokenBalance: Number(taskResult.quota.tokenBalance),
-        task: {
-          id: taskResult.task.id,
-          name: taskResult.task.name,
-          status: taskResult.task.status,
-          result: taskResult.task.result,
-          outputData,
-          tokens: deductTokens,
-          createdAt: taskResult.task.createdAt,
-        },
-      });
     }
 
-    // 新增：上传文档/沉淀材料至知识库与原始文件库
+    // 新增：上传文档/沉淀材料至知识库与原始文件库（支持 multipart 真实文件与 JSON 文本兼容）
     if (action === "upload_doc") {
-      const { title, content, type } = body;
-      if (!workspaceId || !title) {
-        return NextResponse.json({ 
-          success: false, 
-          error: "缺少必要的 workspaceId 或 title 参数" 
+      const contentType = request.headers.get("content-type") || "";
+      const isMultipart = contentType.includes("multipart/form-data");
+
+      let title = "";
+      let content = "";
+      let type = "";
+      let visibility = "PUBLIC";
+      let fileSize: number | null = null;
+      let fileExt: string | null = null;
+      let summary: string | null = null;
+      let filePath: string | null = null;
+      let mimeType: string | null = null;
+      let originalName: string | null = null;
+      let targetWorkspaceId = workspaceId || "";
+
+      if (isMultipart) {
+        const formData = await request.formData();
+        const file = formData.get("file");
+        title = String(formData.get("title") || (file as any)?.name || "");
+        type = String(formData.get("type") || "");
+        visibility = String(formData.get("visibility") || "PUBLIC");
+        summary = String(formData.get("summary") || "") || null;
+        targetWorkspaceId = String(formData.get("workspaceId") || workspaceId || "");
+
+        if (!file || !(file instanceof Blob)) {
+          return NextResponse.json({ success: false, error: "缺少文件" }, { status: 400 });
+        }
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const MAX_FILE_SIZE = 50 * 1024 * 1024;
+        if (buffer.length > MAX_FILE_SIZE) {
+          return NextResponse.json({ success: false, error: "文件过大，请上传 50MB 以内的文件" }, { status: 400 });
+        }
+
+        originalName = (file as any).name || title;
+        fileExt = getFileExtension(originalName);
+        const saved = await saveAssetFile(targetWorkspaceId || "", originalName || title, buffer, fileExt);
+        filePath = saved.filePath;
+        fileSize = saved.size;
+        mimeType = saved.mimeType;
+
+        const imageExts = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"];
+        const isImage = (file as any).type?.startsWith("image/") || imageExts.includes(fileExt || "");
+        content = await Promise.race([
+          extractTextFromBuffer(buffer, originalName || "", (file as any).type || ""),
+          new Promise<string>((resolve) => setTimeout(() => resolve(""), 60000)),
+        ]).catch(() => "");
+        if (!summary) {
+          if (content) {
+            summary = generateSmartSummary(content, originalName).overview;
+          } else {
+            summary = `《${originalName || title}》${isImage ? "为图片文件，无可提取文字内容" : "解析超时或无可提取文字"}，可预览原文件或下载查看。`;
+          }
+        }
+      } else {
+        ({ title, content, type, visibility, fileSize, fileExt, summary } = body);
+        originalName = null;
+      }
+
+      if (!targetWorkspaceId || !title) {
+        return NextResponse.json({
+          success: false,
+          error: "缺少必要的 workspaceId 或 title 参数",
         }, { status: 400 });
       }
 
       // 空间归属强校验：空间不存在 → 404，非成员 → 403
-      const uploadAccess = await checkWorkspaceAccess(userId, workspaceId);
+      const uploadAccess = await checkWorkspaceAccess(userId, targetWorkspaceId);
       if (uploadAccess.error) {
         return NextResponse.json({ success: false, error: uploadAccess.error.message }, { status: uploadAccess.error.status });
       }
 
+      // RBAC 审核机制：
+      // 管理员/所有者上传公开资料、或者任何人上传私密资料 → 直接 APPROVED 自动合规通过
+      // 普通成员在企业空间上传公开资料 → 状态设为 PENDING 待审核
+      const userRole = await getLogicalWorkspaceRole(userId, targetWorkspaceId);
+      const isManager = userRole === "ADMIN" || userRole === "OWNER";
+      const isPrivate = visibility === "PRIVATE";
+      const initialStatus = (isPrivate || isManager) ? "APPROVED" : "PENDING";
+
+      // 查询 user 表解析真正的账号用户名/昵称
+      const uploaderUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true },
+      });
+      const resolvedUploaderName = uploaderUser?.name || uploaderUser?.email || "系统用户";
+
+      // 真实文件元信息：fileSize 取文件真实字节数（仅接受正整数），
+      // fileExt 规范化为小写无点扩展名，summary 为前端基于原文生成的智能总结。
+      const normalizedFileSize =
+        typeof fileSize === "number" && Number.isFinite(fileSize) && fileSize > 0
+          ? Math.round(fileSize)
+          : null;
+      const normalizedFileExt =
+        typeof fileExt === "string" && fileExt.trim()
+          ? fileExt.trim().toLowerCase().replace(/^\./, "").slice(0, 32)
+          : null;
+      const normalizedSummary =
+        typeof summary === "string" && summary.trim() ? summary.trim() : null;
+
       const doc = await prisma.document.create({
         data: {
           id: crypto.randomUUID(),
-          workspaceId,
+          workspaceId: targetWorkspaceId,
           title,
           content: content || "",
           type: type || "doc",
-          status: "active",
+          status: initialStatus,
+          uploaderId: userId,
+          visibility: visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+          fileSize: normalizedFileSize,
+          fileExt: normalizedFileExt,
+          summary: normalizedSummary,
+          filePath,
+          mimeType,
+          originalName,
+          updatedAt: new Date(),
+        },
+      });
+
+      // 资料上传同样需要留痕审计
+      await writeAuditLog(userId, "asset:upload", { title, type: doc.type, documentId: doc.id, status: initialStatus }, targetWorkspaceId)
+        .catch((e) => console.warn("[审计] 资料上传日志写入失败:", e));
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...doc,
+          uploaderName: resolvedUploaderName,
+          status: initialStatus,
+          fileUrl: doc.filePath ? `/api/workspace/assets/${doc.id}/file` : null,
+        },
+      });
+    }
+
+    // 新增：资料审核接口（空间管理员/所有者可对待审核公开资料进行【通过】或【驳回】）
+    if (action === "review_asset") {
+      const { assetId, approve, comment, reviewComment } = body;
+      const finalComment = (comment || reviewComment || "").trim();
+      if (!workspaceId || !assetId) {
+        return NextResponse.json({ success: false, error: "缺少必要的 workspaceId 或 assetId 参数" }, { status: 400 });
+      }
+
+      const reviewAccess = await checkWorkspaceAccess(userId, workspaceId);
+      if (reviewAccess.error) {
+        return NextResponse.json({ success: false, error: reviewAccess.error.message }, { status: reviewAccess.error.status });
+      }
+
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      const isManager = role === "ADMIN" || role === "OWNER";
+      if (!isManager) {
+        return NextResponse.json({ success: false, error: "权限不足，仅空间管理员或所有者可以审核公开资料" }, { status: 403 });
+      }
+
+      // 审核逻辑：通过 → 正式归档为 PUBLIC 空间公开；驳回 → 自动降级为上传者的 PRIVATE 个人私密资料（管理员列表中屏蔽，上传者自己保留使用）
+      const targetStatus = approve ? "APPROVED" : "REJECTED";
+      const targetVisibility = approve ? "PUBLIC" : "PRIVATE";
+
+      const existingAsset = await prisma.document.findUnique({ where: { id: assetId } });
+      if (!existingAsset) {
+        return NextResponse.json({ success: false, error: "未找到待审核的资料记录" }, { status: 404 });
+      }
+
+      // 审核意见独立落库到 review_comment 字段。
+      // 严禁再写入 content：否则正文会被包成 {"reviewComment":"...","text":"原文"}，
+      // 导致预览异常，且「带入快速任务」会把整段 JSON 当成材料喂给模型。
+      const updatedDoc = await prisma.document.update({
+        where: { id: assetId },
+        data: { 
+          status: targetStatus,
+          visibility: targetVisibility,
+          ...(finalComment ? { reviewComment: finalComment } : {}),
           updatedAt: new Date()
         }
       });
 
-      return NextResponse.json({ success: true, data: doc });
+      await writeAuditLog(userId, approve ? "asset:approve" : "asset:reject", { documentId: assetId, title: updatedDoc.title, comment: finalComment }, workspaceId)
+        .catch((e) => console.warn("[审计] 资料审核日志写入失败:", e));
+
+      return NextResponse.json({ 
+        success: true, 
+        data: {
+          ...updatedDoc,
+          status: targetStatus,
+          visibility: targetVisibility,
+          reviewComment: finalComment
+        } 
+      });
+    }
+
+    // ===== 资料治理 P0-1：管理员移除资料（软删除 + 移除单 + 全员通知） =====
+    if (action === "remove_asset") {
+      const { workspaceId, assetId, reasonCode, reasonDetail } = body;
+      if (!workspaceId || !assetId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 assetId 参数" }, { status: 400 });
+      }
+
+      const validReasons = ["VIOLATION", "EXPIRED", "COPYRIGHT", "OTHER"];
+      const finalReason = validReasons.includes(reasonCode) ? reasonCode : "OTHER";
+      const detail = (reasonDetail || "").trim();
+      if (finalReason === "OTHER" && detail.length < 5) {
+        return NextResponse.json({ success: false, error: "选择「其他原因」时必须填写不少于 5 个字的补充说明" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      const isManager = role === "ADMIN" || role === "OWNER";
+
+      const target = await prisma.document.findUnique({ where: { id: assetId } });
+      if (!target || target.workspaceId !== workspaceId) {
+        // 容错处理：若库中已被擦除或不存在，说明已处于移除状态，优雅返回成功
+        return NextResponse.json({ success: true, data: { assetId, notifiedCount: 0 } });
+      }
+
+      const isSelfUploaded = Boolean(target.uploaderId && target.uploaderId === userId);
+      if (!isManager && !isSelfUploaded) {
+        return NextResponse.json({ success: false, error: "权限不足，仅空间管理员或资料上传人可移除该资料" }, { status: 403 });
+      }
+
+      // 个人私密资料严格归上传人本人所有：空间管理员/所有者也不得查看或删除他人私密资料
+      if (target.visibility === "PRIVATE" && target.uploaderId !== userId) {
+        return NextResponse.json(
+          { success: false, error: "越权警告：个人私密资料仅上传人本人可删除，管理员无法访问他人私密资料" },
+          { status: 403 }
+        );
+      }
+
+      // —— 删除「本人上传的公开资料」前置校验：若仍被其他功能使用则禁止删除 ——
+      // 公开资料可能被分享链接 / 其他资料依赖，删除会破坏这些关联，必须先行解除使用关系。
+      if (isSelfUploaded && target.visibility === "PUBLIC") {
+        const usage = await getAssetUsageCounts(workspaceId, [assetId]);
+        const usedByOthers = usage.sharesActive > 0 || usage.childDocs > 0;
+        if (usedByOthers) {
+          const parts: string[] = [];
+          if (usage.sharesActive > 0) parts.push(`${usage.sharesActive} 条分享链接`);
+          if (usage.childDocs > 0) parts.push(`${usage.childDocs} 个子资料依赖`);
+          return NextResponse.json(
+            {
+              success: false,
+              error: `该公开资料正在被其他功能使用（${parts.join("、")}），请先解除使用后再删除`,
+              usage,
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      // 普通成员删除自己上传的公开资料：进入管理员审核流，不直接移除（文档保持 active），仅创建待审核申请
+      // 个人私密资料（PRIVATE）由用户本人直接删除/移除，无需管理员审核
+      if (!isManager && isSelfUploaded && target.visibility === "PUBLIC") {
+        const existing = await prisma.documentremoval.findFirst({
+          where: { documentId: assetId, workspaceId, status: "PENDING" },
+        });
+        if (existing) {
+          return NextResponse.json(
+            { success: false, error: "该资料已存在待审核的删除申请，请等待管理员处理" },
+            { status: 400 }
+          );
+        }
+
+        const requester = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true, email: true, phone: true },
+        });
+        const requesterName = requester?.name || requester?.email || requester?.phone || "空间成员";
+
+        const removal = await prisma.documentremoval.create({
+          data: {
+            id: `rm_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            documentId: assetId,
+            workspaceId,
+            titleSnapshot: target.title,
+            uploaderId: target.uploaderId || null,
+            removedBy: userId,
+            reasonCode: finalReason,
+            reasonDetail: detail || null,
+            status: "PENDING",
+            removedAt: new Date(),
+          },
+        });
+
+        await writeAuditLog(
+          userId,
+          "asset:removal_request",
+          {
+            documentId: assetId,
+            title: target.title,
+            reasonCode: finalReason,
+            reasonDetail: detail || null,
+            removalId: removal.id,
+          },
+          workspaceId
+        ).catch((e) => console.warn("[审计] 删除申请写入失败:", e));
+
+        // 通知空间管理员：有成员提交了删除申请，请在治理中心「删除申请」中审核
+        await notifyDeletionRequested({
+          workspaceId,
+          documentId: assetId,
+          title: target.title,
+          requesterName,
+          requesterId: userId,
+          reasonCode: finalReason,
+          reasonDetail: detail,
+        }).catch((e) => console.warn("[资料通知] 删除申请通知发送失败:", (e as Error)?.message));
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            pending: true,
+            removalId: removal.id,
+            status: "PENDING",
+            message: "删除申请已提交，等待管理员审核",
+          },
+        });
+      }
+
+      // —— 个人私密资料 (PRIVATE)：仅上传人本人可删除，直接彻底擦除，不在治理中心留存恢复记录，也不通知任何人 ——
+      if (target.visibility === "PRIVATE") {
+        try {
+          await prisma.document.delete({ where: { id: assetId } });
+          await deleteAssetFile(target.filePath);
+        } catch {
+          await prisma.document.update({
+            where: { id: assetId },
+            data: { status: "REMOVED", updatedAt: new Date() },
+          });
+        }
+
+        await writeAuditLog(userId, "asset:remove_private", {
+          documentId: assetId,
+          title: target.title,
+        }, workspaceId).catch(() => {});
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            id: assetId,
+            status: "REMOVED",
+            notifiedCount: 0,
+          },
+          message: "资料删除成功",
+        });
+      }
+
+      // —— 公开资料 (PUBLIC)：管理员/所有者直接移除，生成治理记录(documentremoval)并向全员发送站内通知 ——
+      const updated = await prisma.document.update({
+        where: { id: assetId },
+        data: { status: "REMOVED", updatedAt: new Date() },
+      });
+
+      const removedAt = new Date();
+      const removal = await prisma.documentremoval.create({
+        data: {
+          id: `rm_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          documentId: assetId,
+          workspaceId,
+          titleSnapshot: target.title,
+          uploaderId: target.uploaderId || null,
+          removedBy: userId,
+          reasonCode: finalReason,
+          reasonDetail: detail || null,
+          status: "APPROVED",
+          removedAt,
+        },
+      });
+
+      await writeAuditLog(userId, "asset:remove", {
+        documentId: assetId,
+        title: target.title,
+        reasonCode: finalReason,
+        reasonDetail: detail || null,
+        removalId: removal.id,
+      }, workspaceId).catch((e) => console.warn("[审计] 资料移除日志写入失败:", e));
+
+      // 仅对公开资料（PUBLIC）向全体成员发送移除通知；个人私密资料（PRIVATE）静默移除，不通知任何人
+      let notifyResult = { notified: 0, mailed: 0 };
+      if (target.visibility === "PUBLIC") {
+        const selfUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true, email: true, phone: true },
+        });
+        const removedByName = selfUser?.name || selfUser?.email || selfUser?.phone || "空间管理员";
+
+        const usage = await getAssetUsageCounts(workspaceId, [assetId]).catch(() => null);
+        notifyResult = await notifyAssetRemoved({
+          workspaceId,
+          documentId: assetId,
+          title: target.title,
+          reasonCode: finalReason,
+          reasonDetail: detail,
+          removedByName,
+          removedByUserId: userId,
+          uploaderId: target.uploaderId || null,
+          removedAt,
+          usage,
+        }).catch((e) => {
+          console.warn("[资料通知] 移除通知发送失败:", (e as Error)?.message);
+          return { notified: 0, mailed: 0 };
+        });
+      }
+
+      await prisma.documentremoval.update({
+        where: { id: removal.id },
+        data: { notifiedCount: notifyResult.notified },
+      }).catch(() => {});
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: updated.id,
+          status: "REMOVED",
+          removalId: removal.id,
+          reasonCode: finalReason,
+          reasonLabel: reasonLabel(finalReason),
+          notifiedCount: notifyResult.notified,
+          mailedCount: notifyResult.mailed,
+        },
+      });
+    }
+
+    // ===== 资料治理 P0-2：恢复被移除的资料（仅管理员 / 所有者） =====
+    if (action === "restore_asset") {
+      const { workspaceId, assetId } = body;
+      if (!workspaceId || !assetId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 assetId 参数" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      const isManager = role === "ADMIN" || role === "OWNER";
+      if (!isManager) {
+        return NextResponse.json({ success: false, error: "权限不足，仅空间管理员或所有者可恢复资料" }, { status: 403 });
+      }
+
+      const target = await prisma.document.findUnique({ where: { id: assetId } });
+      if (!target || target.workspaceId !== workspaceId) {
+        return NextResponse.json({ success: false, error: "未找到该资料" }, { status: 404 });
+      }
+      if (target.visibility === "PRIVATE" && target.uploaderId !== userId) {
+        return NextResponse.json(
+          { success: false, error: "越权警告：个人私密资料仅上传人本人可处理" },
+          { status: 403 }
+        );
+      }
+      if (target.status !== "REMOVED") {
+        return NextResponse.json({ success: false, error: "该资料未被移除，无需恢复" }, { status: 400 });
+      }
+
+      const updated = await prisma.document.update({
+        where: { id: assetId },
+        data: { status: "APPROVED", updatedAt: new Date() },
+      });
+
+      await prisma.documentremoval.updateMany({
+        where: { documentId: assetId, workspaceId, restoredAt: null },
+        data: { restoredAt: new Date(), restoredBy: userId },
+      });
+
+      await writeAuditLog(userId, "asset:restore", { documentId: assetId, title: target.title }, workspaceId)
+        .catch((e) => console.warn("[审计] 资料恢复日志写入失败:", e));
+
+      const selfUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true, phone: true },
+      });
+      await notifyAssetRestored({
+        workspaceId,
+        documentId: assetId,
+        title: target.title,
+        restoredByName: selfUser?.name || selfUser?.email || selfUser?.phone || "空间管理员",
+        restoredByUserId: userId,
+      }).catch((e) => console.warn("[资料通知] 恢复通知发送失败:", (e as Error)?.message));
+
+      return NextResponse.json({ success: true, data: { id: updated.id, status: "APPROVED" } });
+    }
+
+    // ===== 资料治理 P0-3：移除单列表（管理员查看历史移除记录，可据此恢复） =====
+    if (action === "list_removals") {
+      const workspaceId = body?.workspaceId || searchParams.get("workspaceId");
+      if (!workspaceId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 参数" }, { status: 400 });
+      }
+
+      // 仅企业空间成员可访问治理中心（空间管理员/所有者或普通成员）；全局管理员非成员无权限
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      // 移除记录只展示“已生效移除”的真实治理单（APPROVED），
+      // 待审核删除申请在删除申请 Tab 中展示；空数据时显示空列表，不注入演示记录。
+      const removals = await prisma.documentremoval.findMany({
+        where: { workspaceId, status: "APPROVED" },
+        orderBy: { removedAt: "desc" },
+        take: 100,
+      });
+
+      // 治理中心隐私保护：所有角色都只展示公开资料的移除单，私密资料不进入移除/恢复流程
+      const docIds = Array.from(new Set(removals.map((r) => r.documentId).filter(Boolean)));
+      const docs = docIds.length > 0
+        ? await prisma.document.findMany({ where: { id: { in: docIds } }, select: { id: true, visibility: true } })
+        : [];
+      const privateDocIdSet = new Set(docs.filter((d) => d.visibility === "PRIVATE").map((d) => d.id));
+      const publicRemovals = removals.filter((r) => !privateDocIdSet.has(r.documentId));
+
+      const removerIds = Array.from(new Set(publicRemovals.map((r) => r.removedBy)));
+      const removers = await prisma.user.findMany({
+        where: { id: { in: removerIds } },
+        select: { id: true, name: true, email: true, phone: true },
+      });
+      const removerMap = new Map(removers.map((u) => [u.id, u.name || u.email || u.phone || "空间管理员"]));
+
+      const data = publicRemovals.map((r) => ({
+        ...r,
+        reasonLabel: reasonLabel(r.reasonCode),
+        removedByName: removerMap.get(r.removedBy) || "空间管理员",
+      }));
+
+      return NextResponse.json({ success: true, data });
+    }
+
+    // ===== 资料治理 P0-4：删除申请列表（仅管理员可见待审核项） =====
+    if (action === "list_deletion_requests") {
+      const workspaceId = body?.workspaceId || searchParams.get("workspaceId");
+      if (!workspaceId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 参数" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      if (role !== "ADMIN" && role !== "OWNER") {
+        return NextResponse.json({ success: false, error: "仅空间管理员可审核删除申请" }, { status: 403 });
+      }
+
+      const removals = await prisma.documentremoval.findMany({
+        where: { workspaceId, status: "PENDING" },
+        orderBy: { removedAt: "desc" },
+        take: 100,
+      });
+
+      const requesterIds = Array.from(new Set(removals.map((r) => r.removedBy)));
+      const requesters = await prisma.user.findMany({
+        where: { id: { in: requesterIds } },
+        select: { id: true, name: true, email: true, phone: true },
+      });
+      const requesterMap = new Map(requesters.map((u) => [u.id, u.name || u.email || u.phone || "空间成员"]));
+
+      const data = removals.map((r) => ({
+        ...r,
+        reasonLabel: reasonLabel(r.reasonCode),
+        requesterName: requesterMap.get(r.removedBy) || "空间成员",
+      }));
+
+      return NextResponse.json({ success: true, data });
+    }
+
+    // ===== 资料治理 P0-4d：成员私密资料治理台账（仅元数据，不返回内容/预览地址） =====
+    if (action === "list_private_governance") {
+      const workspaceId = body?.workspaceId || searchParams.get("workspaceId");
+      if (!workspaceId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 参数" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      if (role !== "ADMIN" && role !== "OWNER") {
+        return NextResponse.json({ success: false, error: "仅空间管理员可查看私密治理台账" }, { status: 403 });
+      }
+
+      // 仅返回“其他成员”私密资料的元数据；绝不返回 content / summary / filePath / fileUrl
+      const docs = (await prisma.document.findMany({
+        where: {
+          workspaceId,
+          visibility: "PRIVATE",
+          status: { not: "REMOVED" },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          status: true,
+          uploaderId: true,
+          fileSize: true,
+          fileExt: true,
+          originalName: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })).filter((d) => d.uploaderId && d.uploaderId !== userId);
+
+      const uploaderIds = Array.from(new Set(docs.map((d) => d.uploaderId).filter((id): id is string => !!id)));
+      const uploaders = await prisma.user.findMany({
+        where: { id: { in: uploaderIds } },
+        select: { id: true, name: true, email: true, phone: true },
+      });
+      const uploaderMap = new Map(uploaders.map((u) => [u.id, u.name || u.email || u.phone || "空间成员"]));
+
+      const data = docs.map((d) => ({
+        id: d.id,
+        title: d.title,
+        type: d.type,
+        status: d.status,
+        uploaderId: d.uploaderId,
+        uploaderName: d.uploaderId ? uploaderMap.get(d.uploaderId) || "空间成员" : "空间成员",
+        fileSize: d.fileSize,
+        fileTypeLabel: getFileTypeLabel({
+          type: d.type,
+          ext: d.fileExt,
+          title: d.title,
+          content: "",
+        }),
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+      }));
+
+      return NextResponse.json({ success: true, data });
+    }
+
+    // ===== 资料治理 P0-4e：管理员对成员私密资料发起处理要求（不查看内容，仅通知上传人） =====
+    if (action === "notify_private_review") {
+      const { workspaceId, assetId, message } = body;
+      const reason = (message || "").trim();
+      if (!workspaceId || !assetId || !reason) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId、assetId 或处理要求说明" }, { status: 400 });
+      }
+      if (reason.length < 5) {
+        return NextResponse.json({ success: false, error: "处理要求说明不能少于 5 个字" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      if (role !== "ADMIN" && role !== "OWNER") {
+        return NextResponse.json({ success: false, error: "仅空间管理员可发起私密资料治理要求" }, { status: 403 });
+      }
+
+      const target = await prisma.document.findFirst({
+        where: { id: assetId, workspaceId, visibility: "PRIVATE" },
+      });
+      if (!target || !target.uploaderId || target.uploaderId === userId) {
+        return NextResponse.json(
+          { success: false, error: "未找到可治理的其他成员私密资料，或该资料已被处理" },
+          { status: 404 }
+        );
+      }
+
+      const requester = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true, phone: true },
+      });
+      const requesterName = requester?.name || requester?.email || requester?.phone || "空间治理人员";
+
+      await writeAuditLog(
+        userId,
+        "asset:private_review_request",
+        { documentId: target.id, title: target.title, message: reason },
+        workspaceId
+      ).catch((e) => console.warn("[审计] 私密资料治理要求写入失败:", e));
+
+      const notifyResult = await notifyPrivateReviewRequest({
+        workspaceId,
+        documentId: target.id,
+        title: target.title,
+        uploaderId: target.uploaderId,
+        requesterName,
+        message: reason,
+      }).catch((e) => {
+        console.warn("[资料通知] 私密资料治理要求通知失败:", (e as Error)?.message);
+        return { notified: 0, mailed: 0 };
+      });
+
+      return NextResponse.json({ success: true, data: { notified: notifyResult.notified } });
+    }
+
+    // ===== 资料治理 P0-4b：管理员同意删除申请 → 正式移除并通知其他成员 =====
+    if (action === "approve_deletion") {
+      const { workspaceId, removalId } = body;
+      if (!workspaceId || !removalId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 removalId 参数" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      if (role !== "ADMIN" && role !== "OWNER") {
+        return NextResponse.json({ success: false, error: "仅空间管理员可审核删除申请" }, { status: 403 });
+      }
+
+      const removal = await prisma.documentremoval.findUnique({ where: { id: removalId } });
+      if (!removal || removal.workspaceId !== workspaceId) {
+        return NextResponse.json({ success: false, error: "未找到对应的删除申请" }, { status: 404 });
+      }
+      if (removal.status !== "PENDING") {
+        return NextResponse.json({ success: false, error: "该删除申请已处理，请勿重复操作" }, { status: 400 });
+      }
+
+      // 正式移除文档（软删除）；若底层文档已被清理则只推进移除单状态，避免重复报错
+      const targetDoc = await prisma.document.findUnique({ where: { id: removal.documentId } });
+      if (targetDoc && targetDoc.workspaceId === workspaceId) {
+        await prisma.document.update({
+          where: { id: removal.documentId },
+          data: { status: "REMOVED", updatedAt: new Date() },
+        });
+      }
+      await prisma.documentremoval.update({
+        where: { id: removalId },
+        data: { status: "APPROVED", removedAt: new Date() },
+      });
+
+      await writeAuditLog(
+        userId,
+        "asset:removal_approve",
+        { documentId: removal.documentId, title: removal.titleSnapshot, removalId },
+        workspaceId
+      ).catch((e) => console.warn("[审计] 删除同意写入失败:", e));
+
+      // 通知除申请人本人外的其他成员（含原上传人）：资料已被移除
+      const selfUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true, phone: true },
+      });
+      const removedByName = selfUser?.name || selfUser?.email || selfUser?.phone || "空间管理员";
+      const usage = await getAssetUsageCounts(workspaceId, [removal.documentId]).catch(() => null);
+      const notifyResult = await notifyAssetRemoved({
+        workspaceId,
+        documentId: removal.documentId,
+        title: removal.titleSnapshot,
+        reasonCode: removal.reasonCode,
+        reasonDetail: removal.reasonDetail,
+        removedByName,
+        removedByUserId: userId,
+        uploaderId: removal.uploaderId,
+        removedAt: new Date(),
+        usage,
+        excludeUserIds: [removal.removedBy],
+      }).catch((e) => {
+        console.warn("[资料通知] 移除通知发送失败:", (e as Error)?.message);
+        return { notified: 0, mailed: 0 };
+      });
+
+      await prisma.documentremoval.update({
+        where: { id: removalId },
+        data: { notifiedCount: notifyResult.notified },
+      }).catch(() => {});
+
+      return NextResponse.json({ success: true, data: { status: "APPROVED" } });
+    }
+
+    // ===== 资料治理 P0-4c：管理员驳回删除申请（必须填写驳回意见） =====
+    if (action === "reject_deletion") {
+      const { workspaceId, removalId, rejectReason } = body;
+      if (!workspaceId || !removalId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 removalId 参数" }, { status: 400 });
+      }
+      const reason = (rejectReason || "").trim();
+      if (!reason) {
+        return NextResponse.json({ success: false, error: "驳回删除申请必须填写驳回意见" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      if (role !== "ADMIN" && role !== "OWNER") {
+        return NextResponse.json({ success: false, error: "仅空间管理员可审核删除申请" }, { status: 403 });
+      }
+
+      const removal = await prisma.documentremoval.findUnique({ where: { id: removalId } });
+      if (!removal || removal.workspaceId !== workspaceId) {
+        return NextResponse.json({ success: false, error: "未找到对应的删除申请" }, { status: 404 });
+      }
+      if (removal.status !== "PENDING") {
+        return NextResponse.json({ success: false, error: "该删除申请已处理，请勿重复操作" }, { status: 400 });
+      }
+
+      await prisma.documentremoval.update({
+        where: { id: removalId },
+        data: { status: "REJECTED", rejectReason: reason },
+      });
+
+      await writeAuditLog(
+        userId,
+        "asset:removal_reject",
+        { documentId: removal.documentId, title: removal.titleSnapshot, removalId, rejectReason: reason },
+        workspaceId
+      ).catch((e) => console.warn("[审计] 删除驳回写入失败:", e));
+
+      // 通知申请人：删除申请被驳回，并附驳回意见
+      await notifyDeletionRejected({
+        workspaceId,
+        documentId: removal.documentId,
+        title: removal.titleSnapshot,
+        requesterId: removal.removedBy,
+        rejectReason: reason,
+      }).catch((e) => console.warn("[资料通知] 驳回通知发送失败:", (e as Error)?.message));
+
+      return NextResponse.json({ success: true, data: { status: "REJECTED" } });
+    }
+
+    // 资料使用量统计：检测是否仍被分享/评论/版本/子资料引用
+    async function getAssetUsageCounts(workspaceId: string, ids: string[]): Promise<AssetUsage> {
+      if (!ids.length) return { sharesActive: 0, comments: 0, versions: 0, childDocs: 0 };
+      const now = new Date();
+      const [sharesActive, comments, versions, childDocs] = await Promise.all([
+        prisma.documentshare.count({
+          where: { workspaceId, documentId: { in: ids }, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        }),
+        prisma.documentcomment.count({ where: { workspaceId, documentId: { in: ids } } }),
+        prisma.documentversion.count({ where: { documentId: { in: ids } } }),
+        prisma.document.count({ where: { workspaceId, parentId: { in: ids }, status: { not: "REMOVED" } } }),
+      ]);
+      return { sharesActive, comments, versions, childDocs };
+    }
+
+    // ===== 资料治理 P0-4：检测资料是否被其他功能引用（分享/评论/版本/子资料） =====
+    if (action === "get_asset_usage") {
+      const workspaceId = body?.workspaceId || searchParams.get("workspaceId");
+      const ids: string[] = Array.isArray(body?.assetIds)
+        ? body.assetIds
+        : body?.documentId
+          ? [body.documentId]
+          : [];
+      if (!workspaceId || ids.length === 0) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 assetIds 参数" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+      const usage = await getAssetUsageCounts(workspaceId, ids);
+      return NextResponse.json({ success: true, data: usage });
+    }
+
+    // ===== 资料治理 P0-5：成员申请恢复被移除的资料（7 日窗口内，通知管理员） =====
+    if (action === "request_restore_asset") {
+      const { workspaceId, assetId, message } = body;
+      if (!workspaceId || !assetId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 assetId 参数" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const target = await prisma.document.findUnique({ where: { id: assetId } });
+      if (!target || target.workspaceId !== workspaceId) {
+        return NextResponse.json({ success: false, error: "未找到该资料" }, { status: 404 });
+      }
+      if (target.status !== "REMOVED") {
+        return NextResponse.json({ success: false, error: "该资料未被移除，无需申请恢复" }, { status: 400 });
+      }
+      const removal = await prisma.documentremoval.findFirst({
+        where: { documentId: assetId, workspaceId, restoredAt: null },
+        orderBy: { removedAt: "desc" },
+      });
+      if (!removal) {
+        return NextResponse.json({ success: false, error: "未找到对应的移除记录" }, { status: 404 });
+      }
+
+      const deadline = new Date(removal.removedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+      if (Date.now() > deadline.getTime()) {
+        return NextResponse.json({ success: false, error: "已超过 7 日恢复期，无法在线申请恢复，请联系管理员线下处理" }, { status: 400 });
+      }
+
+      const selfUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true, phone: true },
+      });
+      const requesterName = selfUser?.name || selfUser?.email || selfUser?.phone || "空间成员";
+      const dl = deadline;
+      const deadlineText = `${dl.getFullYear()}-${String(dl.getMonth() + 1).padStart(2, "0")}-${String(dl.getDate()).padStart(2, "0")} ${String(dl.getHours()).padStart(2, "0")}:${String(dl.getMinutes()).padStart(2, "0")} 前`;
+
+      const notifyResult = await notifyRestoreRequested({
+        workspaceId,
+        title: target.title,
+        requesterName,
+        requesterId: userId,
+        message: (message || "").trim() || null,
+        removedAt: removal.removedAt,
+        deadlineText,
+      }).catch((e) => {
+        console.warn("[资料通知] 恢复申请通知发送失败:", (e as Error)?.message);
+        return { notified: 0, mailed: 0 };
+      });
+
+      await writeAuditLog(userId, "asset:restore_request", { documentId: assetId, title: target.title, message }, workspaceId)
+        .catch((e) => console.warn("[审计] 恢复申请日志写入失败:", e));
+
+      // 持久化恢复申请状态，便于列表遮罩层同步并避免重复申请
+      await prisma.documentremoval.updateMany({
+        where: { documentId: assetId, workspaceId, restoredAt: null },
+        data: {
+          restoreRequestedAt: new Date(),
+          restoreRequestMessage: (message || "").trim() || null,
+        },
+      }).catch((e) => console.warn("[资料治理] 更新恢复申请状态失败:", e));
+
+      return NextResponse.json({ success: true, data: { notified: notifyResult.notified, deadline: deadline.toISOString() } });
+    }
+
+    // ===== 资料治理 P0-6：上传人确认被移除的资料（转入个人私密，可在治理中心申请恢复） =====
+    if (action === "confirm_removed_asset") {
+      const { workspaceId, assetId } = body;
+      if (!workspaceId || !assetId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 assetId 参数" }, { status: 400 });
+      }
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const target = await prisma.document.findUnique({ where: { id: assetId } });
+      if (!target || target.workspaceId !== workspaceId) {
+        return NextResponse.json({ success: false, error: "未找到该资料" }, { status: 404 });
+      }
+      if (target.status !== "REMOVED") {
+        return NextResponse.json({ success: false, error: "该资料未被移除，无需确认" }, { status: 400 });
+      }
+      // 仅上传人本人可确认（移除的管理员无需确认）
+      if (target.uploaderId !== userId) {
+        return NextResponse.json({ success: false, error: "仅资料上传人可执行确认操作" }, { status: 403 });
+      }
+
+      // 转入个人私密；移除单记录确认时间，便于治理中心与列表状态同步
+      await prisma.document.update({
+        where: { id: assetId },
+        data: { visibility: "PRIVATE", updatedAt: new Date() },
+      });
+      return NextResponse.json({ success: true, data: { confirmed: true } });
+    }
+
+    // ===== 资料治理 P0-7：删除变更记录 / 操作日志（支持单条及批量删除；管理员可删任何记录，普通成员仅可删本人私密资料记录） =====
+    if (action === "delete_operation_log" || action === "delete_log") {
+      const { workspaceId, logId, logIds } = body;
+      const targetIds: string[] = Array.isArray(logIds) ? logIds : (logId ? [logId] : []);
+      if (!workspaceId || targetIds.length === 0) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 logId/logIds 参数" }, { status: 400 });
+      }
+      // 仅企业空间成员可访问治理中心（空间管理员/所有者或普通成员）；全局管理员非成员无权限
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const isManager = await isGovernanceAdminRole(userId, workspaceId);
+
+      const targetLogs = await prisma.operationlog.findMany({
+        where: { id: { in: targetIds }, workspaceId },
+      });
+      if (targetLogs.length === 0) {
+        return NextResponse.json({ success: false, error: "未找到可删除的变更记录" }, { status: 404 });
+      }
+
+      for (const tLog of targetLogs) {
+        let isPrivateLog = false;
+        let detailsObj: any = tLog.details;
+        if (typeof detailsObj === "string") {
+          try { detailsObj = JSON.parse(detailsObj); } catch (e) {}
+        }
+        if (detailsObj && typeof detailsObj === "object") {
+          if (detailsObj.visibility === "PRIVATE" || detailsObj.isPrivate === true) {
+            isPrivateLog = true;
+          } else if (detailsObj.documentId) {
+            const doc = await prisma.document.findUnique({
+              where: { id: detailsObj.documentId },
+              select: { visibility: true, uploaderId: true },
+            });
+            if (doc && doc.visibility === "PRIVATE") {
+              isPrivateLog = true;
+            }
+          }
+        }
+        const isSelfLog = tLog.userId === userId || (detailsObj && typeof detailsObj === "object" && detailsObj.uploaderId === userId);
+        const canDelete = isManager || (isPrivateLog && isSelfLog);
+        if (!canDelete) {
+          return NextResponse.json(
+            { success: false, error: "权限不足：包含您无权删除的公开资料变更记录" },
+            { status: 403 }
+          );
+        }
+      }
+
+      await prisma.operationlog.deleteMany({
+        where: { id: { in: targetLogs.map((l) => l.id) } },
+      });
+
+      // 持久化记录管理员删除记录的累计总条数
+      if (isManager) {
+        const configKey = `admin_deleted_log_count_${workspaceId}`;
+        const existing = await prisma.systemconfig.findUnique({ where: { key: configKey } }).catch(() => null);
+        const currentCount = existing ? parseInt(existing.value || "0") : 0;
+        const newCount = currentCount + targetLogs.length;
+        await prisma.systemconfig.upsert({
+          where: { key: configKey },
+          create: { key: configKey, value: String(newCount), updatedAt: new Date() },
+          update: { value: String(newCount), updatedAt: new Date() },
+        }).catch(() => {});
+      }
+
+      return NextResponse.json({ success: true, count: targetLogs.length, message: "变更记录已删除" });
+    }
+
+    // ===== 定期物理清理 1 年前历史日志 =====
+    if (action === "clear_expired_logs") {
+      const { workspaceId } = body;
+      if (!workspaceId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 参数" }, { status: 400 });
+      }
+      const isManager = await isGovernanceAdminRole(userId, workspaceId);
+      if (!isManager) {
+        return NextResponse.json({ success: false, error: "权限不足：仅空间管理员可定期清理历史审计日志" }, { status: 403 });
+      }
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+      const deleteRes = await prisma.operationlog.deleteMany({
+        where: {
+          workspaceId,
+          createdAt: { lt: oneYearAgo }
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        count: deleteRes.count,
+        message: `已定期清理满 1 年历史日志，共清除 ${deleteRes.count} 条记录`
+      });
+    }
+
+    // ===== 资料治理 P0-7：管理员彻底删除已移除资料（资料 + 移除记录一并清理，审计留痕） =====
+    if (action === "delete_removal_record") {
+      const { workspaceId, removalId } = body;
+      if (!workspaceId || !removalId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 或 removalId 参数" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const isManager = await isGovernanceAdminRole(userId, workspaceId);
+      if (!isManager) {
+        return NextResponse.json({ success: false, error: "权限不足，仅空间管理员或所有者可彻底删除资料" }, { status: 403 });
+      }
+
+      const record = await prisma.documentremoval.findFirst({
+        where: { id: removalId, workspaceId },
+      });
+      if (!record) {
+        return NextResponse.json({ success: false, error: "未找到可彻底删除的移除记录，请刷新后重试" }, { status: 404 });
+      }
+      if (record.status !== "APPROVED") {
+        return NextResponse.json(
+          { success: false, error: "该移除记录尚未生效或已驳回，请先在删除申请中处理" },
+          { status: 400 }
+        );
+      }
+      if (record.restoredAt) {
+        return NextResponse.json(
+          { success: false, error: "该资料已恢复，不能通过移除记录彻底删除，请从资料库中处理" },
+          { status: 400 }
+        );
+      }
+
+      const targetDoc = await prisma.document.findFirst({
+        where: { id: record.documentId, workspaceId },
+      });
+      const docTitle = targetDoc?.title || record.titleSnapshot || "未知资料";
+      if (targetDoc && targetDoc.visibility === "PRIVATE" && targetDoc.uploaderId !== userId) {
+        return NextResponse.json(
+          { success: false, error: "越权警告：个人私密资料仅上传人本人可彻底删除" },
+          { status: 403 }
+        );
+      }
+      if (targetDoc && targetDoc.status !== "REMOVED") {
+        return NextResponse.json(
+          { success: false, error: "该资料当前仍在资料库中，请先移除再执行彻底删除" },
+          { status: 400 }
+        );
+      }
+
+      if (targetDoc) {
+        // 先移除底层资料，再清理移除单；同资料的历史移除单也一并清理，避免残留“找不到文档”的记录
+        await prisma.document.delete({ where: { id: targetDoc.id } });
+        await prisma.documentremoval.deleteMany({
+          where: { documentId: targetDoc.id, workspaceId },
+        });
+        await deleteAssetFile(targetDoc.filePath);
+      } else {
+        await prisma.documentremoval.deleteMany({
+          where: { documentId: record.documentId, workspaceId },
+        });
+      }
+
+      await writeAuditLog(
+        userId,
+        "asset:removal_record_delete",
+        {
+          removalId,
+          documentId: record.documentId,
+          title: docTitle,
+          permanentlyDeleted: true,
+        },
+        workspaceId
+      ).catch((e) => console.warn("[审计] 彻底删除资料审计日志写入失败:", e));
+
+      return NextResponse.json({
+        success: true,
+        data: { id: removalId, title: docTitle, permanentlyDeleted: true },
+      });
+    }
+
+    // ===== 查询当前用户的资料操作权限（资料页按钮显隐与治理鉴权） =====
+    if (action === "get_asset_permissions") {
+      const wsId = body?.workspaceId || searchParams.get("workspaceId");
+      if (!wsId) {
+        return NextResponse.json({ success: false, error: "缺少 workspaceId 参数" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, wsId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const mine = await getAssetPermissions(userId, wsId);
+      return NextResponse.json({ success: true, data: { mine } });
+    }
+
+    // 资料公开申请/发布接口：管理员可直接公开，普通成员发起公开审核
+    if (action === "request_publish") {
+      const { assetId } = body;
+      if (!workspaceId || !assetId) {
+        return NextResponse.json({ success: false, error: "缺少必要的 workspaceId 或 assetId 参数" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const targetDoc = await prisma.document.findUnique({ where: { id: assetId } });
+      if (!targetDoc || targetDoc.workspaceId !== workspaceId) {
+        return NextResponse.json({ success: false, error: "未找到目标资料文档" }, { status: 404 });
+      }
+
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      const isManager = role === "ADMIN" || role === "OWNER";
+
+      let newStatus = "APPROVED";
+      let newVis = "PUBLIC";
+      let isDirectPublic = true;
+
+      if (!isManager) {
+        // 普通成员：发起公开申请，状态变为 PENDING 待审核，等待管理员审批
+        newStatus = "PENDING";
+        newVis = "PUBLIC";
+        isDirectPublic = false;
+      }
+
+      const updated = await prisma.document.update({
+        where: { id: assetId },
+        data: {
+          status: newStatus,
+          visibility: newVis,
+          updatedAt: new Date()
+        }
+      });
+
+      await writeAuditLog(userId, isDirectPublic ? "asset:publish_direct" : "asset:request_publish", { documentId: assetId, title: updated.title }, workspaceId)
+        .catch((e) => console.warn("[审计] 资料公开日志写入失败:", e));
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...updated,
+          status: newStatus,
+          visibility: newVis,
+          isDirectPublic
+        }
+      });
+    }
+
+    // 批量删除资料接口
+    if (action === "batch_delete_assets") {
+      const { assetIds } = body;
+      if (!workspaceId || !Array.isArray(assetIds) || assetIds.length === 0) {
+        return NextResponse.json({ success: false, error: "缺少有效的 workspaceId 或 assetIds 参数" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const deleteRes = await prisma.document.deleteMany({
+        where: {
+          id: { in: assetIds },
+          workspaceId
+        }
+      });
+
+      await writeAuditLog(userId, "asset:batch_delete", { count: deleteRes.count, assetIds }, workspaceId)
+        .catch((e) => console.warn("[审计] 批量删除资料日志写入失败:", e));
+
+      return NextResponse.json({
+        success: true,
+        count: deleteRes.count
+      });
+    }
+
+    // ===== 资料治理：批量移除资料（软删除 + 移除单 + 全员通知） =====
+    if (action === "batch_remove_assets") {
+      const { assetIds, reasonCode, reasonDetail } = body;
+      if (!workspaceId || !Array.isArray(assetIds) || assetIds.length === 0) {
+        return NextResponse.json({ success: false, error: "缺少有效的 workspaceId 或 assetIds 参数" }, { status: 400 });
+      }
+
+      const validReasons = ["VIOLATION", "EXPIRED", "COPYRIGHT", "OTHER"];
+      const finalReason = validReasons.includes(reasonCode) ? reasonCode : "OTHER";
+      const detail = (reasonDetail || "").trim();
+      if (finalReason === "OTHER" && detail.length < 5) {
+        return NextResponse.json({ success: false, error: "选择「其他原因」时必须填写不少于 5 个字的补充说明" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      const isManager = role === "ADMIN" || role === "OWNER";
+
+      const removedAt = new Date();
+      const selfUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true, phone: true },
+      });
+      const removedByName = selfUser?.name || selfUser?.email || selfUser?.phone || "空间管理员";
+
+      const titles: string[] = [];
+      const byUploader: Record<string, string[]> = {};
+      const removedIds: string[] = [];
+      let removedCount = 0;
+      let skippedCount = 0;
+      const removalRows: any[] = [];
+
+      for (const assetId of assetIds) {
+        const target = await prisma.document.findUnique({ where: { id: assetId } });
+        if (!target || target.workspaceId !== workspaceId) { skippedCount++; continue; }
+        const isSelfUploaded = Boolean(target.uploaderId && target.uploaderId === userId);
+        // 越权拦截：非管理员/所有者只能移除本人上传的资料
+        if (!isManager && !isSelfUploaded) { skippedCount++; continue; }
+        // 私密资料严格本人隔离：管理员也不得批量处理他人私密资料
+        if (target.visibility === "PRIVATE" && target.uploaderId !== userId) { skippedCount++; continue; }
+
+        if (target.visibility === "PRIVATE") {
+          // 个人私密资料：仅上传人本人可删除，物理直接抹除，不生成治理记录，也不通知任何人
+          try {
+            await prisma.document.delete({ where: { id: assetId } });
+            await deleteAssetFile(target.filePath);
+          } catch {
+            await prisma.document.update({
+              where: { id: assetId },
+              data: { status: "REMOVED", updatedAt: removedAt },
+            });
+          }
+          removedIds.push(target.id);
+          removedCount++;
+          await writeAuditLog(
+            userId,
+            "asset:remove_private",
+            { documentId: target.id, title: target.title },
+            workspaceId
+          ).catch(() => {});
+          continue;
+        }
+
+        // 公开资料：标记 REMOVED 并生成 documentremoval 治理记录
+        await prisma.document.update({
+          where: { id: assetId },
+          data: { status: "REMOVED", updatedAt: removedAt },
+        });
+
+        const removal = await prisma.documentremoval.create({
+          data: {
+            id: `rm_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            documentId: assetId,
+            workspaceId,
+            titleSnapshot: target.title,
+            uploaderId: target.uploaderId || null,
+            removedBy: userId,
+            reasonCode: finalReason,
+            reasonDetail: detail || null,
+            removedAt,
+          },
+        });
+        removalRows.push(removal);
+
+        // 仅把公开资料纳入批量通知列表
+        titles.push(target.title);
+        if (target.uploaderId) {
+          (byUploader[target.uploaderId] ||= []).push(target.title);
+        }
+        removedIds.push(target.id);
+        removedCount++;
+      }
+
+      let notifiedCount = 0;
+      // 仅当包含公开资料（titles.length > 0）时才触发批量站内通知
+      if (titles.length > 0) {
+        const usage = await getAssetUsageCounts(workspaceId, removedIds).catch(() => null);
+        const notifyResult = await notifyAssetsBatchRemoved({
+          workspaceId,
+          titles,
+          reasonCode: finalReason,
+          reasonDetail: detail,
+          removedByName,
+          removedByUserId: userId,
+          byUploader,
+          removedAt,
+          usage,
+        }).catch((e) => {
+          console.warn("[资料通知] 批量移除通知发送失败:", (e as Error)?.message);
+          return { notified: 0, mailed: 0 };
+        });
+        notifiedCount = notifyResult.notified;
+
+        // 回填各移除单的通知计数
+        await Promise.all(
+          removalRows.map((rm) =>
+            prisma.documentremoval.update({ where: { id: rm.id }, data: { notifiedCount } }).catch(() => {})
+          )
+        );
+
+        await writeAuditLog(userId, "asset:batch_remove", {
+          removedCount,
+          skippedCount,
+          reasonCode: finalReason,
+          reasonDetail: detail,
+          titles,
+        }, workspaceId).catch((e) => console.warn("[审计] 批量移除日志写入失败:", e));
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { removedCount, skippedCount, notifiedCount },
+      });
+    }
+
+    // 批量公开资料接口（管理员直接批量公开，普通成员批量提交公开审核）
+    if (action === "batch_publish_assets") {
+      const { assetIds } = body;
+      if (!workspaceId || !Array.isArray(assetIds) || assetIds.length === 0) {
+        return NextResponse.json({ success: false, error: "缺少有效的 workspaceId 或 assetIds 参数" }, { status: 400 });
+      }
+
+      const access = await checkWorkspaceAccess(userId, workspaceId);
+      if (access.error) {
+        return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
+      }
+
+      const role = await getLogicalWorkspaceRole(userId, workspaceId);
+      const isManager = role === "ADMIN" || role === "OWNER";
+
+      const targetStatus = isManager ? "APPROVED" : "PENDING";
+      const targetVis = "PUBLIC";
+
+      const updateRes = await prisma.document.updateMany({
+        where: {
+          id: { in: assetIds },
+          workspaceId
+        },
+        data: {
+          status: targetStatus,
+          visibility: targetVis,
+          updatedAt: new Date()
+        }
+      });
+
+      await writeAuditLog(userId, isManager ? "asset:batch_publish_direct" : "asset:batch_request_publish", { count: updateRes.count, assetIds }, workspaceId)
+        .catch((e) => console.warn("[审计] 批量公开资料日志写入失败:", e));
+
+      return NextResponse.json({
+        success: true,
+        count: updateRes.count,
+        isDirectPublic: isManager,
+        status: targetStatus,
+        visibility: targetVis
+      });
     }
 
     // 知识库沉淀：个人空间直接发布；企业空间 MEMBER/VIEWER 提交审核，管理角色直接发布
@@ -1015,6 +2862,64 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: kAccess.error.message }, { status: kAccess.error.status });
       }
 
+      let finalContent = content || "";
+
+      // 当关联 sourceTaskId 时，自动从任务 result 的 outputData 组装完整 Markdown 结构
+      if (sourceTaskId) {
+        const sourceTaskObj = await prisma.componenttask.findUnique({
+          where: { id: sourceTaskId },
+          select: { result: true },
+        });
+
+        if (sourceTaskObj?.result) {
+          const rawResult: any = sourceTaskObj.result;
+          const outputData = rawResult?.outputData || rawResult;
+
+          // 仅当传入 content 为空或为简短摘要时，根据 outputData 生成完整 Markdown 结构
+          const isBasicSummary = !finalContent || finalContent.trim().length < 100 || !finalContent.includes("##");
+
+          if (isBasicSummary && outputData && typeof outputData === "object") {
+            const summaryText = outputData.summary || finalContent || "暂无成果摘要";
+            const mdSections: string[] = [`# 成果摘要\n${summaryText}`];
+
+            // 关键结论
+            if (Array.isArray(outputData.conclusions) && outputData.conclusions.length > 0) {
+              const list = outputData.conclusions.map((item: any, idx: number) => `${idx + 1}. ${typeof item === "string" ? item : item.title || JSON.stringify(item)}`).join("\n");
+              mdSections.push(`## 关键结论\n${list}`);
+            }
+
+            // 偏离分析
+            if (Array.isArray(outputData.deviations) && outputData.deviations.length > 0) {
+              const rows = outputData.deviations
+                .map((d: any) => `| ${d.item || d.clause || d.name || "-"} | ${d.rfp || d.requirement || "-"} | ${d.actual || d.contrast || "-"} | ${d.risk || d.level || "-"} |`)
+                .join("\n");
+              mdSections.push(`## 偏离分析\n| 条款 | 要求 | 比对 | 风险 |\n| --- | --- | --- | --- |\n${rows}`);
+            }
+
+            // 风险清单
+            if (outputData.risks) {
+              const risksArr = Array.isArray(outputData.risks) ? outputData.risks : [outputData.risks];
+              if (risksArr.length > 0) {
+                const risksText = risksArr.map((r: any) => typeof r === "string" ? `- ${r}` : `- [${r.level || "风险"}] ${r.title || r.desc || JSON.stringify(r)}`).join("\n");
+                mdSections.push(`## 风险清单\n${risksText}`);
+              }
+            }
+
+            // 建议清单
+            if (outputData.advices || outputData.suggestions) {
+              const advicesArr = outputData.advices || outputData.suggestions;
+              const advicesList = Array.isArray(advicesArr) ? advicesArr : [advicesArr];
+              if (advicesList.length > 0) {
+                const advicesText = advicesList.map((a: any) => typeof a === "string" ? `- ${a}` : `- ${a.title || a.desc || JSON.stringify(a)}`).join("\n");
+                mdSections.push(`## 建议\n${advicesText}`);
+              }
+            }
+
+            finalContent = mdSections.join("\n\n");
+          }
+        }
+      }
+
       const wsRecord = await prisma.workspace.findUnique({
         where: { id: workspaceId },
         select: { type: true },
@@ -1028,10 +2933,11 @@ export async function POST(request: NextRequest) {
           id: crypto.randomUUID(),
           workspaceId,
           title,
-          content: content || "",
+          content: finalContent,
           type: "knowledge",
           status: finalStatus,
           parentId: sourceTaskId || null,
+          uploaderId: userId,
           updatedAt: new Date()
         }
       });
@@ -1065,6 +2971,7 @@ export async function POST(request: NextRequest) {
           title: doc.title,
           status: finalStatus === "active" ? "APPROVED" : "PENDING",
           createdAt: doc.createdAt,
+          uploaderId: doc.uploaderId || null,
           sourceTaskId: doc.parentId,
           sourceTaskName: sourceTask?.name || sourceTaskId || "空间研发任务",
           componentId: componentId || "",
@@ -1077,7 +2984,8 @@ export async function POST(request: NextRequest) {
 
     // 知识库审核：仅 OWNER / ADMIN / KNOWLEDGE_MANAGER 可通过或驳回
     if (action === "review_knowledge") {
-      const { knowledgeId, approve } = body;
+      const { knowledgeId, approve, comment, reviewComment } = body;
+      const finalComment = (comment || reviewComment || "").trim();
       if (!workspaceId || !knowledgeId || typeof approve !== "boolean") {
         return NextResponse.json({
           success: false,
@@ -1115,7 +3023,7 @@ export async function POST(request: NextRequest) {
           workspaceId,
           action: approve ? "KNOWLEDGE_APPROVE" : "KNOWLEDGE_REJECT",
           resource: "KNOWLEDGE",
-          details: { knowledgeId, workspaceId, userId, status: approve ? "active" : "rejected", reviewer: userId },
+          details: { knowledgeId, workspaceId, userId, status: approve ? "active" : "rejected", reviewer: userId, comment: finalComment },
         },
       });
 
@@ -1126,6 +3034,7 @@ export async function POST(request: NextRequest) {
           title: updated.title,
           status: updated.status === "active" ? "APPROVED" : "REJECTED",
           createdAt: updated.createdAt,
+          reviewComment: finalComment,
         },
       });
     }
@@ -1257,7 +3166,63 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 从数据库中真实物理擦除/删除特定任务记录
+    // 归档任务记录（仅变更 status 为 ARCHIVED，保留在数据库中）
+    if (action === "archive_task" || action === "archive-task") {
+      const targetTaskId = body.taskId || searchParams.get("taskId");
+      const targetWsId = workspaceId || body.workspaceId || searchParams.get("workspaceId");
+
+      if (!targetTaskId || !targetWsId) {
+        return NextResponse.json({
+          success: false,
+          error: "缺少必要的 workspaceId 或 taskId 参数"
+        }, { status: 400 });
+      }
+
+      const isMember = await requireWorkspaceMembership(userId, targetWsId);
+      if (!isMember) {
+        return NextResponse.json({
+          success: false,
+          error: "越权警告：您不属于该工作空间，无权归档任务"
+        }, { status: 403 });
+      }
+
+      const existingTask = await prisma.componenttask.findFirst({
+        where: { id: targetTaskId, tenantId: targetWsId }
+      });
+
+      if (!existingTask) {
+        return NextResponse.json({
+          success: false,
+          error: "未在该工作空间中找到对应任务"
+        }, { status: 404 });
+      }
+
+      await prisma.componenttask.update({
+        where: { id: targetTaskId },
+        data: { status: "ARCHIVED", updatedAt: new Date() }
+      });
+
+      // 任务归档补全审计日志记录
+      await prisma.operationlog.create({
+        data: {
+          id: `op_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          userId,
+          workspaceId: targetWsId,
+          action: "ARCHIVE_TASK",
+          resource: "TASK",
+          details: {
+            taskId: targetTaskId,
+            workspaceId: targetWsId,
+            userId,
+            archivedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    // 从数据库中真实物理擦除/删除特定任务记录（前台不再使用，仅允许平台管理员调用）
     if (action === "delete-task" || action === "delete_task") {
       const targetTaskId = searchParams.get("taskId") || body.taskId;
       if (!targetTaskId) {
@@ -1265,6 +3230,18 @@ export async function POST(request: NextRequest) {
           success: false, 
           error: "缺少必要的 taskId 参数" 
         }, { status: 400 });
+      }
+
+      // 仅允许平台管理员调用，普通用户拦截返回 403
+      const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      if (!currentUser || !isAdminRole(currentUser.role || "")) {
+        return NextResponse.json({
+          success: false,
+          error: "越权警告：仅平台管理员可执行物理擦除/删除任务操作",
+        }, { status: 403 });
       }
 
       // 执行真实的 PostgreSQL 数据库物理擦除删除
@@ -1476,37 +3453,7 @@ export async function POST(request: NextRequest) {
       // 使用日志复用既有记录，避免向绑定表堆叠重复脏数据
       await touchComponentUsage(userId, componentId, targetWorkspaceId);
 
-      // 实时向 componenttask 表中创建一条真实的完成运行任务数据 (闭环流程)。
-      // 组件定义一律从 component_catalog 目录表读取，绝不用任务记录当组件定义。
-      const compDef = await prisma.componentcatalog.findUnique({
-        where: { id: componentId }
-      });
-
-      // 确保租户记录存在，避免 componenttask.tenantId 外键约束失败（与 simulate 分支一致）
-      await prisma.tenant.upsert({
-        where: { id: targetWorkspaceId },
-        update: { name: targetWorkspaceId, updatedAt: new Date() },
-        create: { id: targetWorkspaceId, name: targetWorkspaceId, updatedAt: new Date() },
-      });
-
-      await prisma.componenttask.create({
-        data: {
-          id: crypto.randomUUID(),
-          name: compDef?.name || "能力组件运行",
-          description: compDef?.description || "通过效能组件矩阵启动运行的任务",
-          type: compDef?.category || compDef?.id || "use",
-          status: "completed",
-          progress: 100,
-          userId,
-          tenantId: targetWorkspaceId,
-          completedAt: new Date(),
-          isPublished: false,
-          icon: compDef?.icon || "default",
-          updatedAt: new Date(),
-        }
-      });
-
-      // 更新统计
+      // 更新统计 (仅更新累计调用次数与最近使用时间，不创建任何未执行的任务记录，不扣除算力点)
       await prisma.componentstats.upsert({
         where: { componentId },
         update: {
@@ -1658,7 +3605,10 @@ export async function POST(request: NextRequest) {
     console.error("Studio API POST error:", error);
     return NextResponse.json({ 
       success: false, 
-      error: "服务器内部错误" 
+      error: "服务器内部错误",
+      details: process.env.NODE_ENV === "development" && error instanceof Error
+        ? error.message
+        : undefined,
     }, { status: 500 });
   }
 }

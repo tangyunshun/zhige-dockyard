@@ -40,14 +40,36 @@ import {
   Lightbulb, 
   Wrench, 
   Presentation,
+  ShieldCheck,
+  BarChart2,
+  Link,
+  Repeat,
+  PieChart,
+  CheckSquare,
+  Layers,
+  GitPullRequest,
+  Bell,
+  EyeOff,
+  SearchCode,
+  UserCheck,
+  ListChecks,
+  UserPlus,
+  FileSearch,
+  Compass,
+  FileCode,
+  Server,
+  ShieldAlert,
+  BookOpen,
   Award
 } from "lucide-react";
 import { useAppContext } from "@/contexts/AppContext";
 
-const iconMap: Record<string, React.ComponentType<any>> = {
+export const iconMap: Record<string, React.ComponentType<any>> = {
   "document": FileText,
   "shield": Shield,
+  "shield-check": ShieldCheck,
   "bar-chart": BarChart3,
+  "bar-chart-2": BarChart2,
   "message-square": MessageSquare,
   "calculator": Calculator,
   "trending-up": TrendingUp,
@@ -56,47 +78,69 @@ const iconMap: Record<string, React.ComponentType<any>> = {
   "users": Users,
   "database": Database,
   "plug": Plug,
+  "link": Link,
   "radio": Radio,
   "mail": Mail,
   "hard-drive": HardDrive,
   "lock": Lock,
+  "file-code": FileCode,
   "map": Map,
   "refresh-cw": RefreshCw,
+  "repeat": Repeat,
   "layout": Layout,
+  "box": Box,
   "smartphone": Smartphone,
+  "pie-chart": PieChart,
   "monitor": Monitor,
   "check-circle": CheckCircle2,
+  "check-circle-2": CheckCircle2,
+  "check-square": CheckSquare,
   "weight": Weight,
   "search": Search,
   "mouse-pointer": MousePointer,
   "container": Container,
+  "layers": Layers,
+  "git-pull-request": GitPullRequest,
+  "bell": Bell,
   "activity": Activity,
   "file-text": FileText,
+  "eye-off": EyeOff,
+  "search-code": SearchCode,
   "clipboard-check": ClipboardCheck,
+  "user-check": UserCheck,
+  "list-checks": ListChecks,
   "list": List,
   "calendar": Calendar,
   "alert-triangle": AlertTriangle,
+  "user-plus": UserPlus,
+  "file-check": FileCheck,
+  "book-open": BookOpen,
   "message-circle": MessageCircle,
   "library": Library,
   "help-circle": HelpCircle,
-  "file-check": FileCheck,
-  "lightbulb": Lightbulb,
+  "award": Award,
+  "compass": Compass,
   "wrench": Wrench,
   "presentation": Presentation,
-  "award": Award,
+  "server": Server,
+  "code": FileCode,
+  "shield-alert": ShieldAlert,
+  "file-search": FileSearch,
+  "sparkles": BarChart3,
+  "zap": RefreshCw,
 };
 
 const categoryEmojis: Record<string, string> = {
-  BID_PREP: "📄",
-  REQ_DESIGN: "🧩",
-  BACKEND_CORE: "💻",
-  DATABASE_ENG: "🗄️",
-  FRONTEND_DEV: "📐",
-  TEST_QA: "✅",
-  DEVOPS: "🐳",
-  SECURITY: "🔒",
-  PROJ_MGMT: "👥",
-  KNOWLEDGE: "📚",
+  BID_PREP: "",
+  REQ_DESIGN: "",
+  BACKEND_CORE: "",
+  DATABASE_ENG: "",
+  FRONTEND_DEV: "",
+  TEST_QA: "",
+  DEVOPS: "",
+  SECURITY: "",
+  PROJ_MGMT: "",
+  KNOWLEDGE: "",
 };
 
 interface ComponentShowcaseProps {
@@ -160,11 +204,10 @@ export default function ComponentShowcase({ workspaceId }: ComponentShowcaseProp
                       {component.id}
                     </div>
 
-                    {/* 精致小方盒包裹组件 Emoji 图标 */}
                     <div 
-                      className="w-10 h-10 rounded-lg mb-3 flex items-center justify-center animate-pulse-subtle bg-slate-200/60"
+                      className="w-10 h-10 rounded-lg mb-3 flex items-center justify-center bg-blue-50 text-[#3182ce] border border-blue-100 shadow-2xs"
                     >
-                      <span className="text-xl leading-none">{categoryEmojis[component.category] || "⚙️"}</span>
+                      {(() => { const Ico = iconMap[component.icon || ""] || Box; return <Ico className="w-5 h-5" />; })()}
                     </div>
 
                     <h4 className="text-sm font-bold text-slate-800 mb-1">

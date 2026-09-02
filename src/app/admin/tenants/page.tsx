@@ -1,4 +1,4 @@
-﻿﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
@@ -11,6 +11,8 @@ import {
   Activity,
   CheckCircle,
   XCircle,
+  UserX,
+  UserCheck,
 } from "lucide-react";
 
 interface Tenant {
@@ -133,10 +135,10 @@ export default function AdminTenantsPage() {
         <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
         <div className="relative">
           <h1 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">
-            租户管理
+            企业架构与团队管理
           </h1>
           <p className="text-sm text-slate-500 font-medium">
-            多租户系统管理与监控
+            企业多团队隔离与空间配置中心
           </p>
         </div>
       </div>
@@ -153,7 +155,7 @@ export default function AdminTenantsPage() {
               <Activity className="w-5 h-5 text-[#3182ce]" />
             </div>
             <div className="text-sm text-slate-500 font-semibold mb-1">
-              总租户数
+              总企业团队数
             </div>
             <div className="text-3xl font-black text-slate-800 tracking-tight">
               {tenantData?.total || 0}
@@ -170,7 +172,7 @@ export default function AdminTenantsPage() {
               <Activity className="w-5 h-5 text-[#10b981]" />
             </div>
             <div className="text-sm text-slate-500 font-semibold mb-1">
-              活跃租户
+              活跃团队数
             </div>
             <div className="text-3xl font-black text-slate-800 tracking-tight">
               {tenantData?.tenants.filter((t) => t.status === "active")
@@ -363,18 +365,22 @@ export default function AdminTenantsPage() {
                             onClick={() =>
                               handleStatusChange(tenant.id, "inactive")
                             }
-                            className="px-4 h-10 text-xs font-bold border border-red-200 text-red-600 rounded-xl hover:bg-red-50 hover:border-red-300 transition-all duration-300"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold border border-red-200 text-red-600 rounded-xl hover:bg-red-50 hover:border-red-300 transition-all duration-300 shadow-2xs cursor-pointer"
+                            title="暂停该企业/团队的使用权限"
                           >
-                            停用
+                            <UserX className="w-3.5 h-3.5" />
+                            <span>停用</span>
                           </button>
                         ) : (
                           <button
                             onClick={() =>
                               handleStatusChange(tenant.id, "active")
                             }
-                            className="px-4 h-10 text-xs font-bold border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-50 hover:border-emerald-300 transition-all duration-300 shadow-2xs cursor-pointer"
+                            title="恢复并启用该企业/团队的正常使用"
                           >
-                            激活
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>启用</span>
                           </button>
                         )}
                       </div>

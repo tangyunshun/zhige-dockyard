@@ -2,26 +2,21 @@
 
 import React from "react";
 import { useAppContext } from "@/contexts/AppContext";
-import { ClipboardList, HelpCircle, Terminal, Info, Copy } from "lucide-react";
+import { ClipboardList, HelpCircle, Terminal, Info, Copy, Database } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import type { ComponentDetailContent } from "@/constants/components";
 
 interface ComponentDetailProps {
   componentId: string;
 }
 
-interface DetailData {
-  id: string;
-  name: string;
-  description: string;
-  fullDescription: string;
-  usage: string;
-  apiDoc: string;
-  faq: Array<{ q: string; a: string }>;
-}
-
+/**
+ * 组件深度详情面板
+ * 所有内容 100% 来自数据库 component_catalog.detail 字段，
+ * 前端不再保留任何硬编码兜底文案；若数据库中未配置详情，则明确提示"暂未配置"。
+ */
 export default function ComponentDetail({ componentId }: ComponentDetailProps) {
   const toast = useToast();
-  // 组件信息来自数据库（component_catalog 表），深度详情读取 detail 字段
   const { componentCatalog } = useAppContext();
   const comp = componentCatalog.find((c) => c.id === componentId);
   if (!comp) {
@@ -32,21 +27,28 @@ export default function ComponentDetail({ componentId }: ComponentDetailProps) {
     );
   }
 
-  const dbDetail = (comp as any).detail as Partial<DetailData> | null | undefined;
+  const detail = comp.detail as ComponentDetailContent | null | undefined;
 
-  // 详情优先读取数据库 detail 字段；未配置时派生默认内容，确保每个组件都有展示
-  const details: DetailData = {
-    id: comp.id,
-    name: comp.name,
-    description: comp.description,
-    fullDescription: dbDetail?.fullDescription || `${comp.name} 是专门针对「${comp.description}」阶段设计的高效解决方案。本组件在平台底座与本地隔离沙箱下运行，可自动结合当前工作空间的数据流水和权限模型，实现高内聚的数据处理与审计可追溯，确保企业研发全流程的信息安全与质量防护。`,
-    usage: dbDetail?.usage || `1. 确保本组件已经在当前工作空间中引进绑定（若显示受限，请联系管理员或升级空间）。\n2. 在主调试面板的输入框中输入业务指令或上传测试数据报文。\n3. 点击'模拟调试运行'，扣减对应的额度（标称估算 ${comp.estimatedTokens} 点）。\n4. 查阅控制台实时输出的返回结果，检查数据与预期是否一致。`,
-    apiDoc: dbDetail?.apiDoc || `请求方法: POST\n请求端点: /api/studio (action=use / action=simulate)\n\n输入参数 (JSON)：\n- action: 'use' | 'simulate' (必填，运行操作)\n- componentId: '${comp.id}' (必填，组件标识)\n- workspaceId: String (必填，目标空间 ID)\n- tokens: Number (模拟扣减的算力点数)\n\n返回结果：\n- success: Boolean (执行状态)\n- tokenBalance: Number (空间当前剩余的算力点数)`,
-    faq: dbDetail?.faq || [
-      { q: "这个组件会产生费用吗？", a: comp.isPremium ? "是的，本组件属于高级付费组件（Premium）。免费级别的个人空间无法直接运行，需要您升级为企业协作版或者黄金会员解锁全量使用。" : "不需要，本组件属于基础开放组件。所有级别的个人和企业工作空间均可以直接加载并运行。" },
-      { q: "运行本组件需要扣减多少算力？", a: `本组件单次模拟运行的基准算力消耗约为 ${comp.estimatedTokens} 点。在您执行运行时，系统将直接从工作空间持有的调用额度中自动扣除。` },
-      { q: "数据传输是否安全？数据是否会被收集？", a: "请完全放心。平台支持完全隔离的本地沙箱环境，所有的输入数据在完成处理后会立即销毁，审计日志只保留使用操作轨迹，绝不会用于其他目的。" }
-    ]
+  // 数据库未配置详情时不做任何内容编造，直接提示
+  if (!detail || !detail.fullDescription) {
+    return (
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 text-center space-y-2">
+        <Database className="w-6 h-6 text-slate-300 mx-auto" />
+        <p className="text-xs font-bold text-slate-500">
+          组件 [{comp.id}] {comp.name} 暂未在数据库中配置详情内容
+        </p>
+        <p className="text-[11px] text-slate-400">
+          请由平台管理员在管理后台补全该组件的深度详情后重试
+        </p>
+      </div>
+    );
+  }
+
+  const details = {
+    fullDescription: detail.fullDescription,
+    usage: detail.usage,
+    apiDoc: detail.apiDoc,
+    faq: Array.isArray(detail.faq) ? detail.faq : [],
   };
 
   return (
@@ -103,6 +105,7 @@ export default function ComponentDetail({ componentId }: ComponentDetailProps) {
       </section>
 
       {/* 4. 常见问题 (FAQ) */}
+      {details.faq.length > 0 && (
       <section className="bg-white rounded-2xl p-5 border border-slate-200/60 shadow-sm">
         <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2.5 border-b border-slate-100 mb-3 uppercase tracking-wider">
           <HelpCircle className="w-4 h-4 text-amber-500" />
@@ -122,6 +125,7 @@ export default function ComponentDetail({ componentId }: ComponentDetailProps) {
           ))}
         </div>
       </section>
+      )}
     </div>
   );
 }

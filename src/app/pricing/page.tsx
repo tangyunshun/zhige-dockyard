@@ -1,283 +1,319 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, X, User, Building2, Server, ArrowRight } from "lucide-react";
+import { Check, X, ArrowRight, Building2, Server, Zap, Users, Boxes } from "lucide-react";
 import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import Link from "next/link";
 import UpgradeRequestModal from "@/components/pricing/UpgradeRequestModal";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { getAuthToken } from "@/utils/auth";
+import { formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT } from "@/lib/point-rate";
 
-interface PlanFeature {
-  text: string;
-  included: boolean;
-}
-
-interface PricingPlan {
+/** 会员等级：字段与数据库 membershiplevel 表一一对应（价格单位为「分」） */
+interface MembershipLevel {
   id: string;
   name: string;
-  displayName: string;
-  monthlyPrice: number;
-  yearlyPrice: number;
-  description: string;
-  features: PlanFeature[];
-  popular?: boolean;
-  levelBadge: string;
-  levelColor: string;
-  icon: React.ReactNode;
+  nameZh: string;
+  icon: string | null;
+  color: string;
+  description: string | null;
+  maxPersonalWorkspaces: number;
+  maxEnterpriseWorkspaces: number; // -1 表示无限制
+  maxComponents: number; // 可装配组件实例配额，-1 表示无限制
+  maxTeamSize: number;
+  maxStorage: number; // 单位：字节
+  maxApiCalls: number;
+  tokenLimit: number;
+  features: string[];
+  priceMonthly: number;
+  priceYearly: number;
+  trialDays: number;
+  sortOrder: number;
+  isPopular: boolean;
+  isRecommended: boolean;
 }
 
-const DEFAULT_PLANS: PricingPlan[] = [
-  {
-    id: "free",
-    name: "FREE",
-    displayName: "社区尝鲜版",
-    monthlyPrice: 0,
-    yearlyPrice: 0,
-    description: "个人沙盒、基础组件、有限算力",
-    levelBadge: "L1",
-    levelColor: "bg-gray-500",
-    icon: <User className="w-5 h-5 text-slate-500" />,
-    features: [
-      { text: "1 个个人空间", included: true },
-      { text: "基础组件访问", included: true },
-      { text: "每月 1000 调用额度", included: true },
-      { text: "社区技术支持", included: true },
-      { text: "企业空间创建", included: false },
-      { text: "团队协作功能", included: false },
-      { text: "高级组件解锁", included: false },
-      { text: "私有化部署", included: false },
-    ],
-  },
-  {
-    id: "silver",
-    name: "SILVER",
-    displayName: "岗位专业版",
-    monthlyPrice: 299,
-    yearlyPrice: 239,
-    description: "3个企业空间、解锁高阶组件、团队协同",
-    popular: true,
-    levelBadge: "L2",
-    levelColor: "bg-[#2b6cb0]",
-    icon: <Building2 className="w-5 h-5 text-[#2b6cb0]" />,
-    features: [
-      { text: "3 个企业空间", included: true },
-      { text: "全部 53 个组件", included: true },
-      { text: "每月 100000 调用额度", included: true },
-      { text: "优先技术支持", included: true },
-      { text: "团队协作功能", included: true },
-      { text: "岗位权限配置", included: true },
-      { text: "私有化部署", included: false },
-      { text: "专属定制服务", included: false },
-    ],
-  },
-  {
-    id: "crown",
-    name: "CROWN",
-    displayName: "私有化尊享版",
-    monthlyPrice: 12500,
-    yearlyPrice: 12500,
-    description: "物理隔离部署、源码级二开支持、专属服务",
-    levelBadge: "L3",
-    levelColor: "bg-purple-600",
-    icon: <Server className="w-5 h-5 text-purple-600" />,
-    features: [
-      { text: "无限企业空间", included: true },
-      { text: "全部 53 个组件", included: true },
-      { text: "无限调用额度", included: true },
-      { text: "7x24 专属支持", included: true },
-      { text: "私有化部署", included: true },
-      { text: "源码级二开支持", included: true },
-      { text: "专属定制服务", included: true },
-      { text: "定制化开发", included: true },
-    ],
-  },
-];
+/** 组件目录真实统计，由后端聚合查询，禁止前端硬编码 */
+interface ComponentStats {
+  totalComponents: number;
+  premiumComponents: number;
+  freeComponents: number;
+}
 
-const featureMatrix = [
-  {
-    feature: "组件使用权",
-    FREE: "基础 (6个)",
-    SILVER: "全部 (53个)",
-    CROWN: "全部 (53个)",
-  },
-  {
-    feature: "调用额度",
-    FREE: "1,000/月",
-    SILVER: "100,000/月",
-    CROWN: "无限",
-  },
-  { feature: "部署方式", FREE: "SaaS", SILVER: "SaaS", CROWN: "私有化部署" },
-  { feature: "团队协作", FREE: "-", SILVER: "✓", CROWN: "✓" },
-  { feature: "权限管理", FREE: "-", SILVER: "✓", CROWN: "✓" },
-  { feature: "专属支持", FREE: "社区支持", SILVER: "优先保障", CROWN: "7x24 驻场" },
-];
+const UNLIMITED = -1;
 
-const levelBenefits = [
-  {
-    title: "阶梯化算力分配",
-    description: "从轻量级尝鲜沙盒到无限私有算力，无缝契合业务生命周期各个阶段。",
-  },
-  {
-    title: "企业级合规底座",
-    description: "所有套餐均提供完备的安全沙箱隔离，保障企业知识资产物理级隔离。",
-  },
-  {
-    title: "专家级顾问架构",
-    description: "中高级套餐附带专业顾问一对一方案研讨，协助设计最稳妥的拓扑实施方案。",
-  },
-];
+/** 配额格式化：无限制显示「无限」，否则千分位 */
+const formatQuota = (value: number): string =>
+  value === UNLIMITED ? "无限" : value.toLocaleString();
+
+/** 存储格式化：字节转 GB，无限制显示「无限」 */
+const formatStorage = (bytes: number): string =>
+  bytes === UNLIMITED ? "无限" : `${(bytes / 1024 ** 3).toFixed(0)} GB`;
+
+/** 价格格式化：数据库以「分」存储，展示前统一换算为元 */
+const formatPrice = (cents: number): number => cents / 100;
+
+/**
+ * 年付折扣百分比：按 (月付×12 - 年付) / (月付×12) 动态计算。
+ * 无年付差价时返回 null（前端不展示折扣徽章）。
+ */
+const calcYearlyDiscount = (monthly: number, yearly: number): number | null => {
+  if (monthly <= 0 || yearly <= 0) return null;
+  const yearlyByMonth = monthly * 12;
+  if (yearlyByMonth <= yearly) return null;
+  return Math.round(((yearlyByMonth - yearly) / yearlyByMonth) * 100);
+};
 
 export default function PricingPage() {
   const [isYearly, setIsYearly] = useState(false);
-  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  const [levels, setLevels] = useState<MembershipLevel[]>([]);
+  const [stats, setStats] = useState<ComponentStats>({
+    totalComponents: 0,
+    premiumComponents: 0,
+    freeComponents: 0,
+  });
   const [loading, setLoading] = useState(true);
   const { userState } = useAppContext();
   const router = useRouter();
   const toast = useToast();
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<{ name: string; displayName: string } | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<{ level: MembershipLevel; cycle: "MONTH" | "YEAR"; amount: number } | null>(null);
+  const [upgradingMembership, setUpgradingMembership] = useState(false);
+  // 由升级中枢跳转携带的目标档位（?target=GOLD），用于自动聚焦与高亮
+  // 注意：不可命名为 targetLevel，该名已被下方「推荐等级」变量占用
+  const [focusLevel, setFocusLevel] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMembershipLevels();
+    // 读取 URL 上的目标档位参数
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      setFocusLevel(params.get("target"));
+    }
   }, []);
 
-  const parseFeatures = (dbFeatures: any, defaultPreset: PlanFeature[]): PlanFeature[] => {
-    if (!dbFeatures) return defaultPreset;
-    try {
-      if (Array.isArray(dbFeatures)) {
-        return dbFeatures.map((feat: any) => {
-          const text = String(feat);
-          if (text.startsWith("-")) {
-            return { text: text.substring(1), included: false };
-          } else if (text.startsWith("+")) {
-            return { text: text.substring(1), included: true };
-          }
-          return { text, included: true };
-        });
-      }
-    } catch (e) {
-      console.error("Error parsing features from DB:", e);
+  // 数据就绪后，将用户选定的档位滚动到视野中央
+  useEffect(() => {
+    if (!focusLevel || loading || levels.length === 0) return;
+    const el = document.getElementById(`plan-${focusLevel}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-    return defaultPreset;
-  };
+  }, [focusLevel, loading, levels.length]);
 
   const fetchMembershipLevels = async () => {
     try {
       const response = await fetch("/api/membership/levels");
       const result = await response.json();
-      if (result.success && result.data && result.data.length > 0) {
-        const DISPLAY_PLANS = ["FREE", "SILVER", "CROWN"];
-        const levelConfig: Record<string, { badge: string; color: string; icon: React.ReactNode }> = {
-          FREE: { badge: "L1", color: "bg-gray-500", icon: <User className="w-5 h-5 text-slate-500" /> },
-          SILVER: { badge: "L2", color: "bg-[#2b6cb0]", icon: <Building2 className="w-5 h-5 text-[#2b6cb0]" /> },
-          CROWN: { badge: "L3", color: "bg-purple-600", icon: <Server className="w-5 h-5 text-purple-600" /> },
-        };
-        const filteredPlans = result.data
-          .filter((level: any) => DISPLAY_PLANS.includes(level.name))
-          .map((level: any) => ({
-            id: level.id,
-            name: level.name,
-            displayName: level.displayName,
-            monthlyPrice: level.priceMonthly,
-            yearlyPrice: level.priceYearly,
-            description: level.description,
-            features: parseFeatures(level.features, DEFAULT_PLANS.find((p) => p.name === level.name)?.features || DEFAULT_PLANS[0].features),
-            popular: level.name === "SILVER",
-            levelBadge: levelConfig[level.name]?.badge || "L1",
-            levelColor: levelConfig[level.name]?.color || "bg-gray-500",
-            icon: levelConfig[level.name]?.icon || DEFAULT_PLANS[0].icon,
-          }));
-        setPlans(filteredPlans.length > 0 ? filteredPlans : DEFAULT_PLANS);
-      } else {
-        setPlans(DEFAULT_PLANS);
+      if (result.success && Array.isArray(result.data)) {
+        setLevels(result.data);
+        if (result.stats) setStats(result.stats);
       }
     } catch (error) {
       console.error("Failed to fetch membership levels:", error);
-      setPlans(DEFAULT_PLANS);
+      toast.error("套餐数据加载失败，请稍后重试");
     } finally {
       setLoading(false);
     }
   };
 
   const currentMembership = userState.userInfo?.membershipLevel;
-  const isVip = currentMembership && currentMembership !== "FREE";
 
-  const getButtonConfig = (planName: string) => {
-    const baseBtnStyle = "w-full py-3.5 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 cursor-pointer";
-    if (planName === "FREE") {
-      if (!userState.isLoggedIn) {
-        return {
-          text: "免费注册体验",
-          onClick: () => router.push("/auth/login?redirect=/pricing"),
-          className: `${baseBtnStyle} bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 hover:shadow-sm`,
-          showCheck: false,
-        };
-      } else if (!isVip) {
-        return {
-          text: "当前方案 (已激活)",
-          onClick: () => {},
-          className: `${baseBtnStyle} bg-slate-100 text-slate-400 cursor-not-allowed border border-transparent`,
-          showCheck: false,
-        };
-      } else {
-        return {
-          text: "基础免费可用",
-          onClick: () => {},
-          className: `${baseBtnStyle} bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-200/50`,
-          showCheck: false,
-        };
+  /** 在线模拟支付并立即开通会员 */
+  const confirmMembershipUpgrade = async () => {
+    if (!checkoutPlan) return;
+    if (upgradingMembership) return;
+    setUpgradingMembership(true);
+    try {
+      const token = getAuthToken();
+      const res = await fetch("/api/membership/upgrade", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          targetLevel: checkoutPlan.level.name,
+          billingCycle: checkoutPlan.cycle,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "会员升级失败，请稍后重试");
       }
-    } else if (planName === "SILVER") {
-      if (!userState.isLoggedIn) {
-        return {
-          text: "立即登录升级",
-          onClick: () => router.push("/auth/login?redirect=/pricing"),
-          className: `${baseBtnStyle} bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-md hover:shadow-blue-500/10 hover:-translate-y-0.5`,
-          showCheck: false,
-        };
-      } else if (!isVip) {
-        return {
-          text: "立即支付升级",
-          onClick: () => {
-            setSelectedPlan({ name: "SILVER", displayName: "岗位专业版" });
-            setShowRequestModal(true);
-          },
-          className: `${baseBtnStyle} bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-lg hover:shadow-blue-500/15 hover:-translate-y-0.5`,
-          showCheck: false,
-        };
-      } else {
-        return {
-          text: "当前方案 (已激活)",
-          onClick: () => {},
-          className: `${baseBtnStyle} bg-emerald-50 text-emerald-600 border border-emerald-100 cursor-not-allowed`,
-          showCheck: true,
-        };
-      }
-    } else {
-      if (userState.isLoggedIn) {
-        return {
-          text: "提交大客户私有化评估",
-          onClick: () => {
-            setSelectedPlan({ name: "CROWN", displayName: "私有化尊享版" });
-            setShowRequestModal(true);
-          },
-          className: `${baseBtnStyle} bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md hover:-translate-y-0.5`,
-          showCheck: false,
-        };
-      } else {
-        return {
-          text: "联系专属架构专家",
-          onClick: () => {
-            setSelectedPlan({ name: "CROWN", displayName: "私有化尊享版" });
-            setShowRequestModal(true);
-          },
-          className: `${baseBtnStyle} bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md hover:-translate-y-0.5`,
-          showCheck: false,
-        };
-      }
+      toast.success(data.message || "会员套餐已开通");
+      setCheckoutPlan(null);
+      setTimeout(() => {
+        window.location.href = "/workspace-hub?upgraded=1";
+      }, 600);
+    } catch (err: any) {
+      toast.error(err.message || "网络异常，会员升级失败");
+    } finally {
+      setUpgradingMembership(false);
     }
+  };
+
+  /** 基准等级（免费版）与升级目标等级（推荐等级，无推荐时取最高档） */
+  const baseLevel = levels.find((l) => l.priceMonthly === 0) || levels[0];
+  const targetLevel =
+    levels.find((l) => l.isPopular) ||
+    [...levels].reverse().find((l) => l.priceMonthly > 0) ||
+    levels[levels.length - 1];
+
+  /** 对比矩阵：行定义全部取自数据库配额字段，随后台配置实时变化 */
+  const featureMatrix = [
+    {
+      feature: "可装配组件额度",
+      icon: <Boxes className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) => formatQuota(l.maxComponents),
+    },
+    {
+      feature: `组件库访问范围`,
+      icon: <Boxes className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) =>
+        l.priceMonthly === 0
+          ? `基础 ${stats.freeComponents} 个`
+          : `全部 ${stats.totalComponents} 个`,
+    },
+    {
+      feature: "每月调用额度",
+      icon: <Zap className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) =>
+        l.maxApiCalls === UNLIMITED ? "无限" : `${formatQuota(l.maxApiCalls)}/月`,
+    },
+    {
+      feature: "每月算力 Token",
+      icon: <Zap className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) =>
+        l.tokenLimit === UNLIMITED
+          ? "无限"
+          : `${formatQuota(l.tokenLimit)}/月（${formatYuanFromPoints(l.tokenLimit)}）`,
+    },
+    {
+      feature: "企业空间数量",
+      icon: <Building2 className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) => formatQuota(l.maxEnterpriseWorkspaces),
+    },
+    {
+      feature: "团队协同人数",
+      icon: <Users className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) => formatQuota(l.maxTeamSize),
+    },
+    {
+      feature: "云端存储空间",
+      icon: <Server className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) => formatStorage(l.maxStorage),
+    },
+    {
+      feature: "免费试用天数",
+      icon: <Check className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) => (l.trialDays > 0 ? `${l.trialDays} 天` : "-"),
+    },
+  ];
+
+  /** 升级特权卡片：免费版 ➔ 目标等级，数值全部取数据库真实配额 */
+  const upgradeHighlights =
+    baseLevel && targetLevel
+      ? [
+          {
+            title: "企业空间数量",
+            icon: <Building2 className="w-6 h-6" />,
+            iconClass: "bg-blue-50 text-[#2b6cb0]",
+            boxClass: "bg-[#f0f8ff] border-blue-100/50",
+            accent: "text-[#2b6cb0]",
+            desc: `可同时创建并管理最多 ${formatQuota(targetLevel.maxEnterpriseWorkspaces)} 个企业工作空间。免费体验版仅限 ${formatQuota(baseLevel.maxEnterpriseWorkspaces)} 个个人开发沙盒空间。`,
+            from: `${formatQuota(baseLevel.maxEnterpriseWorkspaces)} 个个人空间`,
+            to: `${formatQuota(targetLevel.maxEnterpriseWorkspaces)} 个企业空间`,
+          },
+          {
+            title: "每月调用额度",
+            icon: <Zap className="w-6 h-6" />,
+            iconClass: "bg-amber-50 text-[#d97706]",
+            boxClass: "bg-amber-50/30 border-amber-100/50",
+            accent: "text-[#d97706]",
+            desc: "提供更多的组件调用额度，避免在开发或调用高性能组件时额度不足。",
+            from: `${formatQuota(baseLevel.maxApiCalls)} 额度`,
+            to: `${formatQuota(targetLevel.maxApiCalls)} 额度`,
+          },
+          {
+            title: "可装配组件额度",
+            icon: <Boxes className="w-6 h-6" />,
+            iconClass: "bg-purple-50 text-purple-600",
+            boxClass: "bg-purple-50/30 border-purple-100/50",
+            accent: "text-purple-600",
+            desc: "组件装配额度决定单个空间内可同时挂载运行的组件实例上限。",
+            from: `${formatQuota(baseLevel.maxComponents)} 个`,
+            to: `${formatQuota(targetLevel.maxComponents)} 个`,
+          },
+          {
+            title: "解锁高级组件",
+            icon: <Server className="w-6 h-6" />,
+            iconClass: "bg-emerald-50 text-[#059669]",
+            boxClass: "bg-emerald-50 border-emerald-100/60",
+            accent: "text-[#059669]",
+            desc: `免费版本仅可装配 ${stats.freeComponents} 个基础体验组件，升级后解锁全部 ${stats.totalComponents} 个组件（其中含 ${stats.premiumComponents} 个企业级高级组件）。`,
+            from: `${stats.freeComponents} 个体验组件`,
+            to: `解锁全部 ${stats.totalComponents} 个组件`,
+          },
+        ]
+      : [];
+
+  /**
+   * 按钮策略完全由数据决定：
+   * - 未登录：免费档引导注册，付费档引导登录
+   * - 已登录且为当前档位：高亮已激活
+   * - 企业级无限配额档：转为私有化评估线索收集
+   */
+  const getButtonConfig = (level: MembershipLevel) => {
+    const baseBtnStyle = "w-full py-3.5 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 cursor-pointer";
+    const isFree = level.priceMonthly === 0;
+    const isCurrent = currentMembership === level.name;
+
+    if (!userState.isLoggedIn) {
+      return {
+        text: isFree ? "免费注册体验" : "立即登录升级",
+        onClick: () => router.push("/auth/login?redirect=/pricing"),
+        className: isFree
+          ? `${baseBtnStyle} bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 hover:shadow-sm`
+          : `${baseBtnStyle} bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-md hover:shadow-blue-500/10 hover:-translate-y-0.5`,
+        showCheck: false,
+      };
+    }
+
+    if (isCurrent) {
+      return {
+        text: "当前方案 (已激活)",
+        onClick: () => { },
+        className: `${baseBtnStyle} bg-emerald-50 text-emerald-600 border border-emerald-100 cursor-not-allowed`,
+        showCheck: true,
+      };
+    }
+
+    if (isFree) {
+      return {
+        text: currentMembership && currentMembership !== "FREE" ? "不可降级到免费版" : "基础免费可用",
+        onClick: () => { },
+        className: `${baseBtnStyle} bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-200/50`,
+        showCheck: false,
+      };
+    }
+
+    return {
+      text: "立即支付升级",
+      onClick: () =>
+        setCheckoutPlan({
+          level,
+          cycle: isYearly ? "YEAR" : "MONTH",
+          amount: isYearly ? level.priceYearly : level.priceMonthly,
+        }),
+      className: `${baseBtnStyle} bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white hover:shadow-lg hover:shadow-blue-500/15 hover:-translate-y-0.5`,
+      showCheck: false,
+    };
   };
 
   if (loading) {
@@ -292,7 +328,7 @@ export default function PricingPage() {
   }
 
   return (
-    <div 
+    <div
       className="min-h-screen relative overflow-hidden bg-[#f0f8ff]"
       style={{
         backgroundImage: "radial-gradient(rgba(49, 130, 206, 0.12) 1.5px, transparent 1.5px)",
@@ -317,7 +353,11 @@ export default function PricingPage() {
                 <span className="text-xs text-slate-700 font-bold">
                   您当前的订阅方案为：
                   <span className="text-[#2b6cb0] font-black ml-1">
-                    {userState.userInfo?.membershipLevel === "SILVER" ? "岗位专业版 (L2 会员)" : "普通用户 (L1)"}
+                    {levels.find((l) => l.name === currentMembership)?.nameZh || "免费版"}
+                    {(() => {
+                      const idx = levels.findIndex((l) => l.name === currentMembership);
+                      return idx >= 0 ? ` (L${idx + 1} 会员)` : "";
+                    })()}
                   </span>
                 </span>
               </div>
@@ -330,45 +370,72 @@ export default function PricingPage() {
               陪伴团队全生命周期
             </span>
           </h1>
-          <p className="text-base md:text-lg text-slate-600 max-w-3xl mx-auto leading-relaxed mb-10">
+          <p className="text-base md:text-lg text-slate-600 max-w-3xl mx-auto leading-relaxed mb-6">
             从冷启动个人开发沙盒、核心岗专业增效，到完全隔离的大集群物理私有化交付。
           </p>
+
+          {/* 算力点统一定价规则 */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 mb-10 bg-amber-50 border border-amber-200 rounded-full shadow-xs">
+            <Zap className="w-4 h-4 text-amber-500 fill-amber-400 shrink-0" />
+            <span className="text-xs font-black text-amber-800">{POINT_RATE_TEXT}</span>
+            <span className="text-[11px] font-bold text-amber-600 hidden sm:inline">｜{POINT_RATE_HINT}</span>
+          </div>
 
           {/* Billing Toggle Switcher */}
           <div className="inline-flex items-center gap-2 bg-white/60 backdrop-blur-md rounded-full p-1 border border-slate-200/50 shadow-sm max-w-[200px] mx-auto">
             <button
               onClick={() => setIsYearly(false)}
-              className={`px-5 py-2 rounded-full text-xs font-black transition-all cursor-pointer ${
-                !isYearly
-                  ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
+              className={`px-5 py-2 rounded-full text-xs font-black transition-all cursor-pointer ${!isYearly
+                ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
+                }`}
             >
               月付
             </button>
             <button
               onClick={() => setIsYearly(true)}
-              className={`px-5 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${
-                isYearly
-                  ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
+              className={`px-5 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1 cursor-pointer ${isYearly
+                ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
+                }`}
             >
               年付
-              <span className="bg-emerald-50 text-[#10b981] text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200/40">
-                -20%
-              </span>
+              {(() => {
+                // 折扣按数据库真实月付/年付价格动态计算，取所有档位中最优折扣
+                const discounts = levels
+                  .map((l) => calcYearlyDiscount(l.priceMonthly, l.priceYearly))
+                  .filter((d): d is number => d !== null);
+                const best = discounts.length > 0 ? Math.max(...discounts) : null;
+                return best ? (
+                  <span className="bg-emerald-50 text-[#10b981] text-[9px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200/40">
+                    -{best}%
+                  </span>
+                ) : null;
+              })()}
             </button>
           </div>
         </div>
       </section>
 
-      {/* Grid benefits layout */}
+      {/* Grid benefits layout - 数据取自数据库组件目录与等级配额统计 */}
       <section className="relative py-8 z-10">
         <div className="max-w-7xl mx-auto px-6">
           <div className="bg-white/40 backdrop-blur-md rounded-[24px] p-6 md:p-8 border border-white/80 shadow-md">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {levelBenefits.map((benefit, index) => (
+              {[
+                {
+                  title: `${stats.totalComponents} 个专业研发组件`,
+                  description: `组件库已上架 ${stats.totalComponents} 个覆盖全研发链路的专业组件，其中 ${stats.premiumComponents} 个企业级高级组件供中高阶套餐解锁调用。`,
+                },
+                {
+                  title: "阶梯化算力分配",
+                  description: `从免费版每月 ${formatQuota(baseLevel?.tokenLimit ?? 0)} Token 算力，到旗舰版 ${targetLevel?.tokenLimit === UNLIMITED ? "无限" : formatQuota(targetLevel?.tokenLimit ?? 0)} Token，无缝契合业务生命周期各阶段。`,
+                },
+                {
+                  title: "企业级合规底座",
+                  description: "所有套餐均提供完备的安全沙箱隔离，保障企业知识资产物理级隔离。",
+                },
+              ].map((benefit, index) => (
                 <div key={index} className="flex items-start gap-4">
                   <div className="w-10 h-10 bg-gradient-to-br from-[#3182ce]/15 to-purple-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
                     <span className="text-[#2b6cb0] font-black text-sm">{index + 1}</span>
@@ -387,110 +454,136 @@ export default function PricingPage() {
       {/* Pricing Cards Grid */}
       <section id="pricing-plans" className="relative py-12 z-10">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {plans.map((plan) => {
-              const buttonConfig = getButtonConfig(plan.name);
-              const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
-              const isCurrentPlan = currentMembership === plan.name;
-              
-              return (
-                <div
-                  key={plan.id}
-                  className={`relative bg-white/70 backdrop-blur-xl rounded-[20px] border transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 ${
-                    plan.popular
-                      ? "border-2 border-[#3182ce] shadow-xl shadow-[#3182ce]/10"
-                      : isCurrentPlan
-                      ? "border-2 border-emerald-500 shadow-xl shadow-emerald-500/10"
-                      : "border-white/80"
-                  }`}
-                >
-                  {plan.popular && (
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-black px-4 py-1.5 rounded-full shadow-md">
-                      最受企业推荐
-                    </div>
-                  )}
+          {levels.length === 0 ? (
+            <div className="text-center py-16 text-slate-400 text-sm font-bold">
+              暂无可展示的订阅方案，请前往管理员后台配置会员等级。
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+              {levels.map((level, index) => {
+                const buttonConfig = getButtonConfig(level);
+                // 数据库价格单位为「分」，展示前换算为元
+                const price = isYearly ? formatPrice(level.priceYearly) : formatPrice(level.priceMonthly);
+                const isCurrentPlan = currentMembership === level.name;
+                const discount = calcYearlyDiscount(level.priceMonthly, level.priceYearly);
+                // 由升级中枢选定的目标档位：优先高亮，避免与其它徽章重叠
+                const isTargetPlan = focusLevel === level.name;
 
-                  {isCurrentPlan && !plan.popular && (
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-md">
-                      当前订阅方案
-                    </div>
-                  )}
-
-                  <div className="p-8">
-                    {/* Header elements */}
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-11 h-11 ${
-                          plan.name === "FREE" ? "bg-slate-100" : plan.name === "SILVER" ? "bg-blue-50" : "bg-purple-50"
-                        } rounded-xl flex items-center justify-center flex-shrink-0`}>
-                          {plan.icon}
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-black text-slate-800">
-                            {plan.displayName}
-                          </h3>
-                          <p className="text-[10px] text-slate-500 mt-0.5 leading-snug font-medium">{plan.description}</p>
-                        </div>
+                return (
+                  <div
+                    key={level.id}
+                    id={`plan-${level.name}`}
+                    className={`relative bg-white/70 backdrop-blur-xl rounded-[20px] border transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 ${isTargetPlan
+                      ? "border-2 border-[#3182ce] shadow-2xl shadow-[#3182ce]/20 ring-4 ring-[#3182ce]/20"
+                      : level.isPopular
+                        ? "border-2 border-[#3182ce] shadow-xl shadow-[#3182ce]/10"
+                        : isCurrentPlan
+                          ? "border-2 border-emerald-500 shadow-xl shadow-emerald-500/10"
+                          : "border-white/80"
+                      }`}
+                  >
+                    {isTargetPlan && (
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-md">
+                        您选择的目标方案
                       </div>
-                      <span className={`${plan.levelColor} text-white text-[10px] font-black px-2.5 py-1 rounded-md`}>
-                        {plan.levelBadge} 会员
-                      </span>
-                    </div>
+                    )}
 
-                    {/* Price section */}
-                    <div className="mb-6">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-black text-slate-800">
-                          {price === 0 ? "免费" : `¥${price.toLocaleString()}`}
+                    {!isTargetPlan && level.isPopular && (
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-black px-4 py-1.5 rounded-full shadow-md">
+                        最受企业推荐
+                      </div>
+                    )}
+
+                    {!isTargetPlan && isCurrentPlan && !level.isPopular && (
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-md">
+                        当前订阅方案
+                      </div>
+                    )}
+
+                    <div className="p-8">
+                      {/* Header elements */}
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-xl"
+                            style={{ backgroundColor: `${level.color}1a` }}
+                          >
+                            {level.icon || "💎"}
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-black text-slate-800">
+                              {level.nameZh}
+                            </h3>
+                            <p className="text-[10px] text-slate-500 mt-0.5 leading-snug font-medium">{level.description}</p>
+                          </div>
+                        </div>
+                        <span
+                          className="text-white text-[10px] font-black px-2.5 py-1 rounded-md"
+                          style={{ backgroundColor: level.color }}
+                        >
+                          L{index + 1} 会员
                         </span>
-                        {price > 0 && (
-                          <span className="text-xs text-slate-500 font-bold">
-                            /{isYearly ? "年" : "月"}
+                      </div>
+
+                      {/* Price section */}
+                      <div className="mb-6">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-4xl font-black text-slate-800">
+                            {price === 0 ? "免费" : `¥${price.toLocaleString()}`}
                           </span>
+                          {price > 0 && (
+                            <span className="text-xs text-slate-500 font-bold">
+                              /{isYearly ? "年" : "月"}
+                            </span>
+                          )}
+                        </div>
+                        {price > 0 && isYearly && discount !== null && (
+                          <div className="text-[11px] text-slate-400 font-medium mt-1">
+                            按月原价: ¥{formatPrice(level.priceMonthly)}/月 (省 ¥{formatPrice(level.priceMonthly * 12 - level.priceYearly).toLocaleString()}/年)
+                          </div>
+                        )}
+                        {level.trialDays > 0 && (
+                          <div className="text-[11px] text-emerald-600 font-bold mt-1">
+                            含 {level.trialDays} 天免费试用
+                          </div>
                         )}
                       </div>
-                      {price > 0 && isYearly && plan.monthlyPrice !== plan.yearlyPrice && (
-                        <div className="text-[11px] text-slate-400 font-medium mt-1">
-                          按月原价: ¥{plan.monthlyPrice}/月 (省 ¥{(plan.monthlyPrice * 12 - plan.yearlyPrice).toLocaleString()}/年)
-                        </div>
-                      )}
-                    </div>
 
-                    <div className="h-px bg-slate-100 mb-6" />
+                      <div className="h-px bg-slate-100 mb-6" />
 
-                    {/* Features list */}
-                    <ul className="space-y-3.5 mb-8">
-                      {plan.features.map((feature) => (
-                        <li key={feature.text} className="flex items-start gap-3">
-                          {feature.included ? (
+                      {/* Features list - 直接渲染数据库配置的权益项 */}
+                      <ul className="space-y-3.5 mb-8">
+                        {level.features.map((feature) => (
+                          <li key={feature} className="flex items-start gap-3">
                             <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                          ) : (
-                            <X className="w-4 h-4 text-slate-300 shrink-0 mt-0.5" />
-                          )}
-                          <span
-                            className={`text-xs leading-normal font-bold ${
-                              feature.included ? "text-slate-700" : "text-slate-400"
-                            }`}
-                          >
-                            {feature.text}
+                            <span className="text-xs leading-normal font-bold text-slate-700">
+                              {feature}
+                            </span>
+                          </li>
+                        ))}
+                        {/* 关键配额可视化：与数据库配额字段实时同步 */}
+                        <li className="flex items-start gap-3 pt-1 border-t border-slate-100/70">
+                          <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <span className="text-xs leading-normal font-bold text-slate-700">
+                            组件装配额度 {formatQuota(level.maxComponents)} · 团队 {formatQuota(level.maxTeamSize)} 人
                           </span>
                         </li>
-                      ))}
-                    </ul>
+                      </ul>
 
-                    {/* CTA button */}
-                    <button
-                      onClick={buttonConfig.onClick}
-                      className={buttonConfig.className}
-                    >
-                      {buttonConfig.showCheck && <Check className="w-4 h-4" />}
-                      {buttonConfig.text}
-                    </button>
+                      {/* CTA button */}
+                      <button
+                        onClick={buttonConfig.onClick}
+                        className={buttonConfig.className}
+                      >
+                        {buttonConfig.showCheck && <Check className="w-4 h-4" />}
+                        {buttonConfig.text}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -505,69 +598,26 @@ export default function PricingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* 卡片 1 */}
-            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
-              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-4 text-[#2b6cb0]">
-                <Building2 className="w-6 h-6" />
+            {upgradeHighlights.map((card, index) => (
+              <div
+                key={card.title}
+                className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300"
+              >
+                <div className={`w-12 h-12 ${card.iconClass} rounded-xl flex items-center justify-center mb-4`}>
+                  {card.icon}
+                </div>
+                <h3 className="text-base font-black text-slate-800 mb-2">{card.title}</h3>
+                <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">{card.desc}</p>
+                <div className={`${card.boxClass} rounded-lg p-3 border`}>
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">
+                    {["空间数量变化", "每月调用额度", "组件装配额度", "组件解锁范围"][index]}
+                  </span>
+                  <span className="text-xs text-slate-700 font-bold">
+                    {card.from} ➔ <span className={`${card.accent} font-black`}>{card.to}</span>
+                  </span>
+                </div>
               </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">企业空间数量</h3>
-              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
-                可同时创建并管理最多 3 个企业工作空间。免费体验版仅限 1 个个人开发沙盒空间。
-              </p>
-              <div className="bg-[#f0f8ff] rounded-lg p-3 border border-blue-100/50">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">空间数量变化</span>
-                <span className="text-xs text-slate-700 font-bold">1 个个人空间 ➔ <span className="text-[#2b6cb0] font-black">3 个企业空间</span></span>
-              </div>
-            </div>
-
-            {/* 卡片 2 */}
-            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
-              <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center mb-4 text-[#d97706]">
-                <Server className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">每月调用额度</h3>
-              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
-                提供更多的组件调用额度，避免在开发或调用高性能组件时额度不足。
-              </p>
-              <div className="bg-amber-50/30 rounded-lg p-3 border border-amber-100/50">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">每月调用额度</span>
-                <span className="text-xs text-slate-700 font-bold">1,000 额度 ➔ <span className="text-[#d97706] font-black">100,000 额度</span></span>
-              </div>
-            </div>
-
-            {/* 卡片 3 */}
-            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
-              <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mb-4 text-purple-600">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">团队协作与岗位</h3>
-              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
-                支持邀请团队成员共同研发，并可为岗位分配不同的管理权限与逻辑角色。
-              </p>
-              <div className="bg-purple-50/30 rounded-lg p-3 border border-purple-100/50">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">团队协同机制</span>
-                <span className="text-xs text-slate-700 font-bold">单人孤立沙盒 ➔ <span className="text-purple-600 font-black">支持多人协作与分权</span></span>
-              </div>
-            </div>
-
-            {/* 卡片 4 */}
-            <div className="bg-white/60 backdrop-blur-md rounded-[20px] p-6 border border-white/80 shadow-sm hover:shadow-md transition-all duration-300">
-              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-4 text-[#059669]">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">解锁高级组件</h3>
-              <p className="text-slate-500 text-xs leading-relaxed font-medium mb-3">
-                全量解锁全部 53 个高级组件。免费版本限制仅能使用 6 个基础体验组件。
-              </p>
-              <div className="bg-emerald-50/30 rounded-lg p-3 border border-emerald-100/50">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider mb-1">高级组件支持</span>
-                <span className="text-xs text-slate-700 font-bold">6 个体验组件 ➔ <span className="text-[#059669] font-black">解锁全部 53 个高级组件</span></span>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
@@ -590,15 +640,16 @@ export default function PricingPage() {
                     <th className="px-6 py-4 text-left font-black text-slate-700 text-sm">
                       功能权益对照
                     </th>
-                    <th className="px-6 py-4 text-center font-black text-slate-500 text-sm w-[22%]">
-                      社区尝鲜版 (L1)
-                    </th>
-                    <th className="px-6 py-4 text-center font-black text-[#2b6cb0] text-sm bg-blue-50/25 w-[22%]">
-                      岗位专业版 (L2)
-                    </th>
-                    <th className="px-6 py-4 text-center font-black text-purple-600 text-sm w-[22%]">
-                      私有化尊享版 (L3)
-                    </th>
+                    {levels.map((level, index) => (
+                      <th
+                        key={level.id}
+                        className={`px-6 py-4 text-center font-black text-sm ${level.isPopular ? "text-[#2b6cb0] bg-blue-50/25" : "text-slate-500"
+                          }`}
+                        style={level.isPopular ? undefined : { color: level.color }}
+                      >
+                        {level.nameZh} (L{index + 1})
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -608,35 +659,29 @@ export default function PricingPage() {
                       className={`border-b border-slate-100/50 ${rowIndex % 2 === 0 ? "bg-white/30" : "bg-slate-50/30"} hover:bg-[#3182ce]/5 transition-colors`}
                     >
                       <td className="px-6 py-4 text-slate-700 text-xs md:text-sm font-bold">
-                        {row.feature}
+                        <span className="inline-flex items-center gap-2">
+                          <span className="text-slate-400">{row.icon}</span>
+                          {row.feature}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 text-center text-slate-600 text-xs md:text-sm font-bold">
-                        {row.FREE === "✓" ? (
-                          <Check className="w-4.5 h-4.5 text-emerald-500 mx-auto" />
-                        ) : row.FREE === "-" ? (
-                          <X className="w-4.5 h-4.5 text-slate-300 mx-auto" />
-                        ) : (
-                          row.FREE
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center text-[#2b6cb0] text-xs md:text-sm font-black bg-blue-50/15">
-                        {row.SILVER === "✓" ? (
-                          <Check className="w-4.5 h-4.5 text-[#2b6cb0] mx-auto" />
-                        ) : row.SILVER === "-" ? (
-                          <X className="w-4.5 h-4.5 text-slate-300 mx-auto" />
-                        ) : (
-                          row.SILVER
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center text-purple-600 text-xs md:text-sm font-black">
-                        {row.CROWN === "✓" ? (
-                          <Check className="w-4.5 h-4.5 text-purple-500 mx-auto" />
-                        ) : row.CROWN === "-" ? (
-                          <X className="w-4.5 h-4.5 text-slate-300 mx-auto" />
-                        ) : (
-                          row.CROWN
-                        )}
-                      </td>
+                      {levels.map((level) => {
+                        const value = row.render(level);
+                        return (
+                          <td
+                            key={level.id}
+                            className={`px-6 py-4 text-center text-xs md:text-sm font-bold ${level.isPopular ? "text-[#2b6cb0] font-black bg-blue-50/15" : "text-slate-600"
+                              }`}
+                          >
+                            {value === "✓" ? (
+                              <Check className="w-4 h-4 text-emerald-500 mx-auto" />
+                            ) : value === "-" ? (
+                              <X className="w-4 h-4 text-slate-300 mx-auto" />
+                            ) : (
+                              value
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -649,7 +694,7 @@ export default function PricingPage() {
       {/* Pricing bottom upgrade banner */}
       <section className="relative py-20 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900 overflow-hidden">
         {/* Dotted dark grid */}
-        <div 
+        <div
           className="absolute inset-0 opacity-[0.03] pointer-events-none"
           style={{
             backgroundImage: "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
@@ -662,7 +707,7 @@ export default function PricingPage() {
             立即释放百倍研发效能
           </h2>
           <p className="text-sm md:text-base text-slate-400 mb-10 max-w-2xl mx-auto">
-            一键绑定组织空间，立即解锁 53 项高阶研发辅助组件与专用高性能离线运行时算力。
+            一键绑定组织空间，立即解锁全部 {stats.totalComponents} 项研发辅助组件（含 {stats.premiumComponents} 项企业级高级组件）与专用高性能离线运行时算力。
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button
@@ -700,6 +745,22 @@ export default function PricingPage() {
         planDisplayName={selectedPlan?.displayName || ""}
         isLoggedIn={userState.isLoggedIn}
         userInfo={userState.userInfo}
+      />
+
+      <ConfirmDialog
+        isOpen={!!checkoutPlan}
+        title={checkoutPlan ? `确认开通${checkoutPlan.level.nameZh}会员` : "确认开通会员"}
+        message={
+          checkoutPlan
+            ? `本次为在线模拟支付，金额 ¥${(checkoutPlan.amount / 100).toFixed(2)}/${checkoutPlan.cycle === "YEAR" ? "年" : "月"}。确认后将立即开通并刷新企业空间数量与配额。`
+            : ""
+        }
+        warnings={["模拟支付成功后，企业空间创建配额将按新会员等级立即生效"]}
+        type="info"
+        confirmText={upgradingMembership ? "开通中..." : "确认支付并开通"}
+        cancelText="取消"
+        onConfirm={confirmMembershipUpgrade}
+        onCancel={() => setCheckoutPlan(null)}
       />
     </div>
   );

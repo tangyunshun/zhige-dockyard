@@ -22,9 +22,11 @@ const PUBLIC_PREFIXES = [
   "/developers",
   "/docs",
   "/init",
-  // 营销页面未登录展示所需的公开数据接口
+  // 营销页面与注册登录未登录展示所需的公开数据接口
   "/api/membership/levels",
   "/api/documents/list",
+  "/api/system-documents",
+  "/api/account-appeal",
   "/studio",
   "/_next",
   "/favicon",
@@ -48,10 +50,6 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
-}
-
-export async function proxy(request: NextRequest) {
-  return middleware(request);
 }
 
 export async function middleware(request: NextRequest) {

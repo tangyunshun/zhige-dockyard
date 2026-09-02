@@ -180,10 +180,11 @@ export default function EnterpriseWorkspaceCard({
                         setMenuOpen(false);
                         onUpgradePackage(workspace.id);
                       }}
+                      title="升级本空间的成员席位与存储等空间级配置（不影响您的账号会员等级）"
                       className="w-full text-left px-3.5 py-2 text-sm font-semibold text-[#2b6cb0] hover:text-[#3182ce] hover:bg-blue-50/20 flex items-center gap-2.5"
                     >
                       <ArrowUpRight className="w-4 h-4 text-[#2b6cb0]" />
-                      <span>升级套餐</span>
+                      <span>升级空间套餐</span>
                     </button>
 
                     <div className="border-t border-slate-100 my-1" />

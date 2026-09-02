@@ -28,7 +28,7 @@ export default function WorkspacePermissionsPage() {
   const COMPONENTS = componentCatalog;
   const COMPONENT_CATEGORIES = componentCategories;
   
-  const workspaceId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const workspaceId = (Array.isArray(params.id) ? params.id[0] : params.id) || "";
   
   // 状态管理
   const [loading, setLoading] = useState(true);

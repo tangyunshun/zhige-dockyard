@@ -6,6 +6,7 @@ import { validateUser } from "@/lib/auth";
 async function getEnterpriseQuota(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
+    select: { membershipLevel: true, role: true },
   });
 
   if (!user) {
@@ -24,8 +25,11 @@ async function getEnterpriseQuota(userId: string) {
     },
   });
 
+  const level = await prisma.membershiplevel.findUnique({
+    where: { id: user.membershipLevel || "FREE" },
+  });
+  const maxEnterprise = level ? Number(level.maxEnterpriseWorkspaces) : 1;
   const isMember = user.membershipLevel !== "FREE" || user.role === "admin" || user.role === "super_admin";
-  const maxEnterprise = isMember ? 3 : 1;
 
   return {
     hasEnterprise: enterpriseWorkspaces.length > 0,
@@ -144,7 +148,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: quota.isMember
-            ? "会员用户最多只能拥有 3 个企业空间"
+            ? `会员用户当前最多可拥有 ${quota.maxEnterprise} 个企业空间`
             : "免费用户只能拥有 1 个企业空间",
         },
         { status: 403 },

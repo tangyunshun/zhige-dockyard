@@ -92,7 +92,7 @@ export default function AdminMatrixPage() {
             企业权限配置中心
           </h2>
           <p className="text-slate-600">
-            配置企业内各岗位对 53 个组件的访问和操作权限，实现精细化的权限管控
+            配置企业内各岗位对 60 个组件的访问和操作权限，实现精细化的权限管控
           </p>
         </div>
 

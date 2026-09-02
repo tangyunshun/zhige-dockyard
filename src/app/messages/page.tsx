@@ -212,6 +212,20 @@ export default function MessagesPage() {
     security: "bg-amber-50 text-amber-600 border-amber-100"
   };
 
+  // 根据消息内容推断对应的功能入口链接；没有对应功能时返回 null，不显示"进入功能"按钮
+  const getActionLink = (item: NotificationItem): string | null => {
+    if (item.link) return item.link;
+    const text = `${item.title || ""} ${item.content || ""}`.toLowerCase();
+    if (item.type === "task" || text.includes("任务")) return "/tasks";
+    if (item.type === "security" || text.includes("安全") || text.includes("隔离")) return "/security";
+    if (text.includes("资料")) return "/studio";
+    if (text.includes("知识")) return "/knowledge";
+    if (text.includes("组件") || text.includes("市场")) return "/market";
+    if (text.includes("工作空间") || text.includes("空间")) return "/workspace-hub";
+    if (text.includes("设置")) return "/settings";
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-[#f0f8ff] text-slate-800 flex flex-col font-sans">
       <GlobalHeader />
@@ -393,11 +407,28 @@ export default function MessagesPage() {
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100/70 flex justify-between items-center text-xs">
                   <span className="text-[11px] text-slate-400 font-bold">编号: {item.id}</span>
-                  <div className="flex items-center gap-3">
-                    {item.link && (
-                      <span className="text-[11px] text-emerald-600 font-black flex items-center gap-1">
-                        <ExternalLink className="w-3 h-3" /> 可跳转
-                      </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenDetail(item);
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-black rounded-lg transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> 查看详情
+                    </button>
+                    {getActionLink(item) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(getActionLink(item)!);
+                        }}
+                        className="px-2.5 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-[11px] font-black rounded-lg transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> 进入功能
+                      </button>
                     )}
                     <button
                       type="button"
@@ -405,13 +436,10 @@ export default function MessagesPage() {
                         e.stopPropagation();
                         handleDelete(item.id);
                       }}
-                      className="text-[11px] text-slate-400 hover:text-red-500 font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      className="px-2.5 py-1.5 text-[11px] text-slate-400 hover:text-red-500 hover:bg-red-50 font-black rounded-lg transition-all cursor-pointer flex items-center gap-1"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> 删除
                     </button>
-                    <span className="text-xs text-[#3182ce] font-black hover:underline flex items-center gap-1">
-                      <Eye className="w-3.5 h-3.5" /> 查看无损全量详情 ➔
-                    </span>
                   </div>
                 </div>
               </div>
@@ -458,17 +486,16 @@ export default function MessagesPage() {
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-              {(detailNotify.link || detailNotify.type === "task") && (
+              {getActionLink(detailNotify) && (
                 <button
                   type="button"
                   onClick={() => {
-                    const target = detailNotify.link || "/tasks";
                     setDetailNotify(null);
-                    router.push(target);
+                    router.push(getActionLink(detailNotify)!);
                   }}
                   className="zg-btn zg-btn-primary h-9 px-4 text-xs font-bold flex items-center gap-1.5"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> 前往查看详情 ➔
+                  <ExternalLink className="w-3.5 h-3.5" /> 进入功能
                 </button>
               )}
               <button

@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
+import { iconMap } from "@/components/ComponentShowcase";
+import { Box } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
@@ -53,6 +55,7 @@ import {
 
 // 引入统一侧滑分发控制面板
 import ComponentDispatcherPanel from "./ComponentDispatcherPanelNew";
+import { formatYuanFromPoints, POINT_RATE_TEXT } from "@/lib/point-rate";
 
 // 应用阶段分组配置：名称/颜色/顺序一律由数据库 component_category 表（经 AppContext 加载）驱动，
 // 代码中不再硬编码任何阶段分组数据。
@@ -84,37 +87,37 @@ const getStageIcon = (id: number, stageConfigs: Record<number, StageConfig>, cla
   }
 };
 
-// 计算组件的展示属性：
-//  - contract（数据流动契约）与 calls（全网调用次数）来自数据库 component_catalog 字段
-//  - successRate / sparkPoints 为视觉装饰派生值（系统暂未记录单组件成功率序列）
-const getComponentExtra = (id: string, contract?: string | null, usageCount?: number | null) => {
-  const idx = parseInt(id.substring(1)) || 1;
-  const calls = usageCount || 0;
-  const successRate = 95.2 + (idx * 13) % 4.6;
-
-  // 派生趋势 Sparkline 线数据点 (确保在 0-30 范围内平滑变化)
-  const sparkPoints = [15];
-  for (let i = 1; i < 7; i++) {
-    const val = 5 + (idx * 17 + i * 29) % 20;
-    sparkPoints.push(val);
-  }
-
+/**
+ * 计算组件的展示属性，全部来自数据库真实统计，无任何派生的模拟数值：
+ *  - contract：component_catalog.contract 字段
+ *  - calls：component_stats.totalUses（由每次真实执行累加）
+ *  - successRate：component_task 中该组件 SUCCESS 任务数 / 总任务数；无任务记录时为 null（不展示数字）
+ */
+const getComponentExtra = (
+  contract?: string | null,
+  realUsageCount?: number,
+  realTaskStats?: { total: number; success: number }
+) => {
+  const calls = realUsageCount || 0;
+  const total = realTaskStats?.total || 0;
+  const success = realTaskStats?.success || 0;
+  const successRate = total > 0 ? (success / total) * 100 : null;
   const resolvedContract = contract || "参数 ➜ 输出";
 
-  return { calls, successRate, sparkPoints, contract: resolvedContract };
+  return { calls, successRate, total, success, contract: resolvedContract };
 };
 
 const categoryEmojis: Record<string, string> = {
-  BID_PREP: "📄",
-  REQ_DESIGN: "🧩",
-  BACKEND_CORE: "💻",
-  DATABASE_ENG: "🗄️",
-  FRONTEND_DEV: "📐",
-  TEST_QA: "✅",
-  DEVOPS: "🐳",
-  SECURITY: "🔒",
-  PROJ_MGMT: "👥",
-  KNOWLEDGE: "📚",
+  BID_PREP: "",
+  REQ_DESIGN: "",
+  BACKEND_CORE: "",
+  DATABASE_ENG: "",
+  FRONTEND_DEV: "",
+  TEST_QA: "",
+  DEVOPS: "",
+  SECURITY: "",
+  PROJ_MGMT: "",
+  KNOWLEDGE: "",
 };
 
 interface ComponentBrowserProps {
@@ -581,14 +584,14 @@ export default function ComponentBrowser({
         `[INFO] 识别文件格式：${uploadedFile.name.split('.').pop()?.toUpperCase() || 'UNKNOWN'} (大小: ${(uploadedFile.size / 1024).toFixed(1)} KB)...`,
         `[INFO] 正在分析文档内容与数据结构...`,
         `[INFO] 正在分析您的需求描述内容：“${smartPrompt}”...`,
-        `[INFO] 正在与大厅 53 个应用组件进行功能适配度比对...`,
+        `[INFO] 正在与大厅 ${COMPONENTS.length || 60} 个应用组件进行功能适配度比对...`,
         `[INFO] 正在检查当前空间的组件权限限制...`,
         `[SUCCESS] 推荐组件匹配分析已完成。`
       ]
       : [
         `[INFO] 未检测到上传文档，直接基于需求描述进行分析匹配...`,
         `[INFO] 正在解析您的需求描述内容：“${smartPrompt}”...`,
-        `[INFO] 正在与大厅 53 个应用组件进行功能适配度比对...`,
+        `[INFO] 正在与大厅 ${COMPONENTS.length || 60} 个应用组件进行功能适配度比对...`,
         `[INFO] 正在检查当前空间的组件权限限制...`,
         `[SUCCESS] 推荐组件匹配分析已完成。`
       ];
@@ -724,9 +727,11 @@ export default function ComponentBrowser({
     return result.sort((a, b) => {
       switch (sortBy) {
         case "hot":
-          return (b.usageCount || 0) - (a.usageCount || 0);
+          return (b.realUsageCount || 0) - (a.realUsageCount || 0);
         case "success":
-          return getComponentExtra(b.id).successRate - getComponentExtra(a.id).successRate;
+          // 无任何执行记录的组件（successRate 为 null）统一排在最后
+          return (getComponentExtra(b.contract, b.realUsageCount, b.realTaskStats).successRate ?? -1)
+            - (getComponentExtra(a.contract, a.realUsageCount, a.realTaskStats).successRate ?? -1);
         case "new":
           return parseInt(b.id.substring(1)) - parseInt(a.id.substring(1));
         default:
@@ -835,7 +840,10 @@ export default function ComponentBrowser({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider">
                   <span>剩余调用额度</span>
-                  <span className="text-slate-700 font-mono font-black">{workspaceToken.toLocaleString()}</span>
+                  <span className="text-slate-700 font-mono font-black">
+                    {workspaceToken.toLocaleString()}
+                    <span className="text-slate-400 font-bold ml-1">({formatYuanFromPoints(workspaceToken)})</span>
+                  </span>
                 </div>
                 <div className="h-10 bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl flex items-center gap-3 shadow-inner">
                   {/* 水平进度条 */}
@@ -849,6 +857,7 @@ export default function ComponentBrowser({
                     {Math.round(tokenPercentage)}%
                   </span>
                 </div>
+                <p className="text-[9px] font-bold text-slate-400">💡 换算规则：{POINT_RATE_TEXT}</p>
               </div>
 
               {/* 第三列：已装配资产摘要及展示控制 */}
@@ -981,7 +990,7 @@ export default function ComponentBrowser({
                                   {c.name}
                                 </h4>
                                 <div className="flex items-center gap-1 text-[9px] font-bold text-[#3182ce] mt-1 bg-blue-50/30 px-1.5 py-0.5 rounded border border-blue-100/30 w-max font-mono">
-                                  <span>{getComponentExtra(c.id, c.contract).contract}</span>
+                                  <span>{getComponentExtra(c.contract).contract}</span>
                                 </div>
                                 <p className="text-[10px] text-slate-400 line-clamp-1 mt-1 leading-normal" title={c.description}>
                                   {c.description}
@@ -1110,7 +1119,7 @@ export default function ComponentBrowser({
                     <span className="text-xs font-black text-slate-800">方式二：自主精细化筛选</span>
                   </div>
                   <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                    按 10 大研发阶段可视化查看、一键收藏和装配 53 个精品效能组件，适合有明确目标、需自主挑选和快捷装配的应用场景。
+                    按 10 大研发阶段可视化查看、一键收藏和装配 {COMPONENTS.length || 60} 个精品效能组件，适合有明确目标、需自主挑选和快捷装配的应用场景。
                   </p>
                 </div>
 
@@ -1343,7 +1352,7 @@ export default function ComponentBrowser({
                 </div>
               </div>
 
-              {/* 53 项组件主列表 (Tab 切换应用阶段货架) */}
+              {/* 60 项组件主列表 (Tab 切换应用阶段货架) */}
               {(() => {
                 // 当前激活的应用阶段组件集
                 const activeStageId = selectedStage === -1 ? 1 : selectedStage;
@@ -1394,7 +1403,7 @@ export default function ComponentBrowser({
                     {viewMode === "grid" ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                         {getSortedComponents(comps).map((comp) => {
-                          const extra = getComponentExtra(comp.id, comp.contract, comp.usageCount);
+                          const extra = getComponentExtra(comp.contract, comp.realUsageCount, comp.realTaskStats);
                           const isFav = favorites.includes(comp.id);
                           const isBound = currentBoundIds.includes(comp.id);
                           const isSelected = selectedComponents.includes(comp.id);
@@ -1461,8 +1470,8 @@ export default function ComponentBrowser({
                                 {/* 标题 */}
                                 <h4 className="text-[13px] font-black text-slate-800 mb-1.5 flex items-center gap-2" title={comp.name}>
                                   {/* 用精致小方盒包裹组件 Emoji 图标 */}
-                                  <div className="w-6 h-6 rounded bg-slate-100/80 flex items-center justify-center shrink-0">
-                                    <span className="text-xs leading-none">{categoryEmojis[comp.category] || "⚙️"}</span>
+                                  <div className="w-6 h-6 rounded bg-blue-50/80 text-[#3182ce] flex items-center justify-center shrink-0">
+                                    {(() => { const Ico = iconMap[comp.icon || ""] || Box; return <Ico className="w-3.5 h-3.5" />; })()}
                                   </div>
                                   <span className="group-hover:text-[#3182ce] transition-colors truncate">{comp.name}</span>
                                 </h4>
@@ -1475,23 +1484,13 @@ export default function ComponentBrowser({
                                   {comp.description}
                                 </p>
 
-                                {/* 折线图与成功率环 */}
+                                {/* 真实调用次数与成功率（数据均来自数据库，无执行记录时显示"暂无"） */}
                                 <div className="flex items-center justify-between text-xs text-slate-400 font-bold mb-4 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
                                   <div className="flex items-center gap-2">
                                     <div className="flex flex-col">
-                                      <span className="text-xs text-slate-400 font-bold">热度走势</span>
+                                      <span className="text-xs text-slate-400 font-bold">累计调用</span>
                                       <span className="text-slate-700 font-black font-mono">{extra.calls.toLocaleString()} 次</span>
                                     </div>
-                                    <svg className="w-14 h-5 overflow-visible" viewBox="0 0 60 20">
-                                      <path
-                                        d={`M ${extra.sparkPoints.map((p, i) => `${i * 10},${20 - p}`).join(" L ")}`}
-                                        fill="none"
-                                        stroke="#3182ce"
-                                        strokeWidth="1.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                    </svg>
                                   </div>
 
                                   <div className="flex items-center gap-1.5 pr-1">
@@ -1506,14 +1505,16 @@ export default function ComponentBrowser({
                                           stroke="#059669"
                                           strokeWidth="2"
                                           strokeDasharray="50"
-                                          strokeDashoffset={50 - (50 * extra.successRate) / 100}
+                                          strokeDashoffset={50 - (50 * (extra.successRate ?? 0)) / 100}
                                           strokeLinecap="round"
                                         />
                                       </svg>
                                     </div>
                                     <div className="flex flex-col">
-                                      <span className="text-xs text-slate-400 font-bold">测试率</span>
-                                      <span className="text-emerald-600 font-black font-mono">{extra.successRate.toFixed(1)}%</span>
+                                      <span className="text-xs text-slate-400 font-bold">成功率</span>
+                                      <span className="text-emerald-600 font-black font-mono">
+                                        {extra.successRate !== null ? `${extra.successRate.toFixed(1)}%` : "暂无"}
+                                      </span>
                                     </div>
                                   </div>
                                 </div>
@@ -1598,7 +1599,7 @@ export default function ComponentBrowser({
                       <div className="bg-white border border-[#e2e8f0]/80 rounded-2xl shadow-sm overflow-hidden">
                         <div className="divide-y divide-slate-100">
                           {getSortedComponents(comps).map((comp) => {
-                            const extra = getComponentExtra(comp.id, comp.contract, comp.usageCount);
+                            const extra = getComponentExtra(comp.contract, comp.realUsageCount, comp.realTaskStats);
                             const isFav = favorites.includes(comp.id);
                             const isBound = currentBoundIds.includes(comp.id);
                             const isSelected = selectedComponents.includes(comp.id);
@@ -1627,8 +1628,8 @@ export default function ComponentBrowser({
                                     />
                                   )}
                                   {/* 用精致小方盒包裹组件 Emoji 图标 */}
-                                  <div className="w-8 h-8 rounded-lg bg-slate-100/80 flex items-center justify-center shrink-0">
-                                    <span className="text-base leading-none">{categoryEmojis[comp.category] || "⚙️"}</span>
+                                  <div className="w-8 h-8 rounded-lg bg-blue-50/80 text-[#3182ce] flex items-center justify-center shrink-0">
+                                    {(() => { const Ico = iconMap[comp.icon || ""] || Box; return <Ico className="w-4 h-4" />; })()}
                                   </div>
                                   <div className="min-w-0 flex-1 pr-4">
                                     <div className="flex items-center gap-2 mb-0.5">
@@ -1654,7 +1655,7 @@ export default function ComponentBrowser({
                                 <div className="flex items-center gap-6">
                                   <div className="flex items-center gap-4 text-xs text-slate-400 font-bold hidden md:flex">
                                     <span className="flex items-center gap-0.5"><Activity className="w-3.5 h-3.5 text-[#f59e0b]" /> {extra.calls} 次调用</span>
-                                    <span className="flex items-center gap-0.5"><CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> {extra.successRate.toFixed(1)}% 成功率</span>
+                                    <span className="flex items-center gap-0.5"><CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> {extra.successRate !== null ? `${extra.successRate.toFixed(1)}% 成功率` : "暂无成功率数据"}</span>
                                   </div>
 
                                   {!selectMode && (
@@ -1987,7 +1988,7 @@ export default function ComponentBrowser({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     {recommendedComponents.map(({ component: comp, matchScore, reason }) => {
-                      const extra = getComponentExtra(comp.id, comp.contract, comp.usageCount);
+                      const extra = getComponentExtra(comp.contract, comp.realUsageCount, comp.realTaskStats);
                       const isFav = favorites.includes(comp.id);
                       const isBound = currentBoundIds.includes(comp.id);
                       const isRestricted = restrictedComponentIds.includes(comp.id);

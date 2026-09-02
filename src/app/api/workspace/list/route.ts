@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
 import { ensureDefaultComponents, getBoundComponentCount } from "@/lib/workspaceInit";
+import { getMembershipTokenLimit } from "@/lib/quota-token";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -261,7 +262,8 @@ export async function GET(request: NextRequest) {
           ml = await prisma.membershiplevel.findFirst();
         }
         const mlId = ml?.id || "FREE";
-        const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
+        // tokenLimit 一律从 membershiplevel 表读取真实值，不再写死档位数值
+        const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
 
         await prisma.workspacequota.create({
           data: {

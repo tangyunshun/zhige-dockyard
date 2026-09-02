@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Pagination from "@/components/Pagination";
 import { BookOpen, Search, Plus, CheckCircle2, AlertTriangle, FileText, ExternalLink, ShieldCheck, Download, Eye, Layers, Clock, Calendar, Zap, Tag, X } from "lucide-react";
+import { useAppContext } from "@/contexts/AppContext";
+import { useToast } from "@/components/Toast";
 
 export interface KnowledgeItem {
   id: string;
@@ -17,85 +20,56 @@ export interface KnowledgeItem {
   createdAt?: string;
   content?: string;
   type?: string;
+  // 管理员审核批示意见（驳回修改意见 / 通过批示），由后端解析后回传
+  reviewComment?: string;
 }
 
 interface KnowledgeTabProps {
   knowledges: KnowledgeItem[];
   workspaceType: string;
   userRole: string;
-  handleReviewKnowledge: (id: string, approve: boolean) => void;
+  handleReviewKnowledge: (id: string, approve: boolean, comment?: string) => void;
   openPreviewModal: (title: string, content: string) => void;
   onOpenCreateModal?: () => void;
 }
 
-// 全量组件字典映射：根据组件 ID / 识别码解析为【组件编号 + 完整中文名称】
-const COMPONENT_FULL_DICT: Record<string, { code: string; name: string; category: string }> = {
-  "C01": { code: "C01", name: "招投标标书自动生成引擎", category: "📄 商务合规" },
-  "C02": { code: "C02", name: "标书响应方案与述标 PPT 自动生成", category: "📄 商务合规" },
-  "C03": { code: "C03", name: "商务合同风险条款识别与审核", category: "📄 商务合规" },
-  "C04": { code: "C04", name: "投标竞品分析与胜率预测模型", category: "📄 商务合规" },
-  "C11": { code: "C11", name: "软件需求规格说明书 (SRS) 自动提炼", category: "🧩 需求架构" },
-  "C12": { code: "C12", name: "业务 API 契约与 JSON Schema 渲染", category: "🧩 需求架构" },
-  "C13": { code: "C13", name: "交互原型 (UI/UX) 规范与流程导图", category: "📐 前端设计" },
-  "C14": { code: "C14", name: "系统架构设计书 (SAD) 与组件拆解", category: "🧩 需求架构" },
-  "C21": { code: "C21", name: "Java/Go 后端微服务骨架代码生成", category: "💻 后端核心" },
-  "C22": { code: "C22", name: "高并发 SQL 优化与索引策略推荐", category: "💻 后端核心" },
-  "C23": { code: "C23", name: "API 接口单元测试套件自动构建", category: "✅ 测试安全" },
-  "C24": { code: "C24", name: "第三方 SDK/中间件集成防坑指南", category: "💻 后端核心" },
-  "C31": { code: "C31", name: "React/Next.js 响应式 UI 骨架生成", category: "📐 前端设计" },
-  "C32": { code: "C32", name: "Vue3/Vite 高效管理后台看板组件", category: "📐 前端设计" },
-  "C33": { code: "C33", name: "Tailwind/Vanilla CSS 主题与设计系统", category: "📐 前端设计" },
-  "C34": { code: "C34", name: "前端 Web 性能瓶颈与 Core Web Vitals 诊断", category: "📐 前端设计" },
-  "C36": { code: "C36", name: "全链路自动化测试与 Selenium/Playwright 脚本", category: "✅ 测试安全" },
-  "C37": { code: "C37", name: "代码安全漏洞扫描与修复预案", category: "🛡️ 风险防范" },
-  "C43": { code: "C43", name: "项目潜在风险防范预案", category: "🛡️ 风险防范" },
-};
+// 动态提取组件【编号 + 完整名称 + 分类】（数据 100% 来源于数据库 component_catalog 表）
+function useResolvedComponentInfo(item: KnowledgeItem): { code: string; name: string; full: string; category: string } {
+  const { componentCatalog } = useAppContext();
 
-// 提取组件【编号 + 完整名称 + 分类】
-function getResolvedComponentInfo(item: KnowledgeItem): { code: string; name: string; full: string; category: string } {
-  // 优先使用后端返回的真实组件元数据
-  if (item.componentId && item.componentName) {
-    const dict = COMPONENT_FULL_DICT[item.componentId.toUpperCase()];
-    return {
-      code: item.componentId,
-      name: item.componentName,
-      full: `[${item.componentId}] ${item.componentName}`,
-      category: dict?.category || "💡 团队知识",
-    };
-  }
+  return useMemo(() => {
+    const catalogList = componentCatalog || [];
+    const catalogMap = new Map<string, any>();
+    catalogList.forEach((c: any) => {
+      catalogMap.set(c.id.toUpperCase(), c);
+    });
 
-  const rawComp = item.sourceComponent;
-  if (!rawComp) return { code: "CORE", name: "空间研发知识", full: "[CORE] 空间研发知识", category: "💡 团队知识" };
-
-  // 从 sourceComponent 中匹配组件编号
-  for (const [key, val] of Object.entries(COMPONENT_FULL_DICT)) {
-    if (rawComp.toUpperCase().includes(key)) {
-      return { code: val.code, name: val.name, full: `[${val.code}] ${val.name}`, category: val.category };
+    const rawComp = (item.componentId || item.sourceComponent || "CORE").toUpperCase();
+    const found = catalogMap.get(rawComp);
+    if (found) {
+      return {
+        code: found.id,
+        name: found.title || found.name || "组件知识",
+        full: `[${found.id}] ${found.title || found.name || "组件知识"}`,
+        category: found.category || "💡 团队知识",
+      };
     }
-  }
 
-  // 尝试解析 "Cxx 名称" 格式
-  const match = rawComp.match(/^(C\d{2})\s+(.*)$/i);
-  if (match) {
-    const [, code, name] = match;
-    const dict = COMPONENT_FULL_DICT[code.toUpperCase()];
-    return {
-      code: code.toUpperCase(),
-      name: name.trim() || dict?.name || "空间组件知识",
-      full: `[${code.toUpperCase()}] ${name.trim() || dict?.name || "空间组件知识"}`,
-      category: dict?.category || "💡 团队知识",
-    };
-  }
-
-  return { code: rawComp, name: "空间组件知识", full: `[${rawComp}] 空间组件知识`, category: "💡 团队知识" };
+    return { code: rawComp, name: "空间组件知识", full: `[${rawComp}] 空间组件知识`, category: "💡 团队知识" };
+  }, [item, componentCatalog]);
 }
 
-// 真实独一无二解包：保证每一项知识卡片的标题真实独特，决不重名！
-function parseKnowledgeCardInfo(item: KnowledgeItem) {
-  const compInfo = getResolvedComponentInfo(item);
-  let knowledgeTitle = item.title || `${compInfo.name}沉淀知识`;
+// 真实解包：保证每一项知识卡片的标题真实独特，决不重名！
+function parseKnowledgeCardInfo(item: KnowledgeItem, catalogList?: any[]) {
+  const catalogMap = new Map<string, any>();
+  (catalogList || []).forEach((c: any) => catalogMap.set(c.id.toUpperCase(), c));
+  const rawComp = (item.componentId || item.sourceComponent || "CORE").toUpperCase();
+  const found = catalogMap.get(rawComp);
+  const compInfo = found 
+    ? { code: found.id, name: found.title || found.name || "组件知识", full: `[${found.id}] ${found.title || found.name || "组件知识"}`, category: found.category || "💡 团队知识" }
+    : { code: rawComp, name: "空间组件知识", full: `[${rawComp}] 空间组件知识`, category: "💡 团队知识" };
 
-  // 来源任务名优先使用后端真实数据，不再把知识标题回退成来源任务
+  let knowledgeTitle = item.title || `${compInfo.name}沉淀知识`;
   let sourceTaskName = item.sourceTaskName?.trim();
   if (!sourceTaskName) {
     if (item.sourceTaskId && item.sourceTaskId !== item.componentId) {
@@ -140,21 +114,34 @@ export default function KnowledgeTab({
   openPreviewModal,
   onOpenCreateModal
 }: KnowledgeTabProps) {
+  const toast = useToast();
+  const { componentCatalog } = useAppContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"ALL" | "APPROVED" | "PENDING">("ALL");
   const [timeRange, setTimeRange] = useState<"ALL" | "7DAYS" | "30DAYS" | "CUSTOM">("ALL");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [reviewModalTarget, setReviewModalTarget] = useState<{ item: KnowledgeItem; approve: boolean } | null>(null);
+  const [reviewModalComment, setReviewModalComment] = useState("");
+  const [mounted, setMounted] = useState(false);
 
-  const isReviewer = workspaceType === "ENTERPRISE" && (userRole === "Owner" || userRole === "Admin" || userRole === "KnowledgeManager");
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  // 空间角色精准判定：只有 OWNER、ADMIN、KNOWLEDGE_MANAGER 等才是空间管理员；其余（MEMBER, DEVELOPER, VIEWER等）均为空间普通成员账号
+  const isWorkspaceAdmin = ["OWNER", "ADMIN", "Owner", "Admin", "KNOWLEDGE_MANAGER", "KnowledgeManager"].includes(userRole || "");
+  const isReviewer = isWorkspaceAdmin;
+  const isWorkspaceMember = !isWorkspaceAdmin;
 
   // 重置为第 1 页
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, activeFilter, timeRange, customStartDate, customEndDate]);
 
-  // 时间与文本高级过滤
+  // 时间与文本高级过滤 (权限隔离：待审核知识只有管理员看得到，普通用户在全库中仅看已归档生效知识)
   const filtered = useMemo(() => {
     const now = Date.now();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
@@ -164,8 +151,14 @@ export default function KnowledgeTab({
     const endMs = customEndDate ? new Date(`${customEndDate}T23:59:59`).getTime() : Infinity;
 
     return knowledges.filter(item => {
-      // 1. 状态过滤
-      const matchesFilter = activeFilter === "ALL" || item.status === activeFilter;
+      // 1. 权限与状态过滤：在“全部知识”大库中，普通成员仅看已被管理员审核通过 (APPROVED) 的公共知识
+      if (activeFilter === "APPROVED" && item.status !== "APPROVED") return false;
+      if (activeFilter === "PENDING" && item.status !== "PENDING") return false;
+      if (activeFilter === "ALL") {
+        if (!isReviewer && item.status === "PENDING") {
+          return false; // 非管理员在公共全库中不直接看到其他人的待审知识
+        }
+      }
 
       // 2. 时间过滤 (支持 7 天、30 天以及自定义时间段)
       let matchesTime = true;
@@ -182,44 +175,53 @@ export default function KnowledgeTab({
 
       // 3. 关键字过滤
       const q = searchQuery.trim().toLowerCase();
-      const cardInfo = parseKnowledgeCardInfo(item);
+      const cardInfo = parseKnowledgeCardInfo(item, componentCatalog);
       const matchesQuery = !q || 
         cardInfo.knowledgeTitle.toLowerCase().includes(q) || 
         cardInfo.sourceTaskName.toLowerCase().includes(q) || 
         cardInfo.compInfo.full.toLowerCase().includes(q);
 
-      return matchesFilter && matchesTime && matchesQuery;
+      return matchesTime && matchesQuery;
     });
-  }, [knowledges, activeFilter, timeRange, customStartDate, customEndDate, searchQuery]);
+  }, [knowledges, activeFilter, timeRange, customStartDate, customEndDate, searchQuery, isReviewer, componentCatalog]);
 
-  // 1 行 3 列 Bento 排版 -> 6 条/页（2 行 3 列对称齐平）
-  const pageSize = 6;
+  // 每页 9 条数据（3 行 3 列齐平网格）
+  const pageSize = 9;
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const safeCurrentPage = Math.min(currentPage, totalPages);
   const paginatedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
+    const start = (safeCurrentPage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage]);
+  }, [filtered, safeCurrentPage, pageSize]);
 
   const approvedCount = knowledges.filter(k => k.status === "APPROVED").length;
   const pendingCount = knowledges.filter(k => k.status === "PENDING").length;
 
   return (
     <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 p-6 rounded-2xl shadow-sm space-y-6 text-left animate-in fade-in duration-200 font-sans">
-      {/* 1. 头部 Header 与统计 (锁定主系统知性蓝) */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-        <div className="flex items-center gap-3.5">
+      {/* 1. Header 知识库标题与沉淀入口 */}
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-start gap-3.5 min-w-0">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] shadow-md shadow-blue-500/20 flex items-center justify-center shrink-0">
             <BookOpen className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-              工作空间 SOP 规约与团队知识库
-            </h3>
-            <p className="text-xs text-slate-500 font-semibold mt-0.5 flex items-center gap-2">
-              <span>共收录 {knowledges.length} 项 SOP 规约与知识沉淀</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                团队 SOP 与知识库
+              </h3>
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-200">
+                知识沉淀
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-semibold mt-1 leading-relaxed">
+              沉淀团队架构规范、代码避坑指南与研发 SOP，让大团队形成统一的开发与研发标准，大幅减少重复踩坑。
+            </p>
+            <p className="text-xs text-slate-500 font-semibold mt-1.5 flex items-center gap-2 flex-wrap">
+              <span>共收录 {knowledges.length} 项知识沉淀</span>
               <span>·</span>
               <span className="text-emerald-600 font-bold">{approvedCount} 项已归档生效</span>
-              {workspaceType === "ENTERPRISE" && (
+              {isReviewer && pendingCount > 0 && (
                 <>
                   <span>·</span>
                   <span className="text-amber-600 font-bold">{pendingCount} 项待管理员审核</span>
@@ -234,10 +236,10 @@ export default function KnowledgeTab({
           <button
             type="button"
             onClick={onOpenCreateModal}
-            className="h-9 px-4 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#1a365d] text-white text-xs font-black rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+            className="h-9 px-4 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#1a365d] text-white text-xs font-black rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            <span>+ 沉淀/录入新规约</span>
+            <span>+ 沉淀/录入新知识</span>
           </button>
         )}
       </div>
@@ -400,6 +402,18 @@ export default function KnowledgeTab({
                     </div>
                   </div>
 
+                  {/* 仅在空间普通成员账号 (isWorkspaceMember) 页面下展示管理员给出的审阅批示意见 */}
+                  {isWorkspaceMember && doc.reviewComment && (
+                    <div className="p-2 bg-blue-50/80 rounded-xl border border-blue-200/60 text-[11px] space-y-0.5 text-slate-700 shadow-2xs">
+                      <div className="flex items-center gap-1 font-extrabold text-[#3182ce]">
+                        💬 管理员审核批示意见:
+                      </div>
+                      <p className="text-slate-700 font-medium leading-relaxed pl-1 break-words">
+                        {doc.reviewComment}
+                      </p>
+                    </div>
+                  )}
+
                   {/* 核心层 5: 归档时间 + 查看详情按钮 */}
                   <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
                     <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
@@ -413,15 +427,23 @@ export default function KnowledgeTab({
                         <div className="flex items-center gap-1 border-r border-slate-200 pr-1.5">
                           <button
                             type="button"
-                            onClick={() => handleReviewKnowledge(doc.id, true)}
+                            onClick={() => {
+                              setReviewModalTarget({ item: doc, approve: true });
+                              setReviewModalComment("");
+                            }}
                             className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded font-extrabold text-[10px] transition-colors cursor-pointer"
+                            title="审核通过并录入意见"
                           >
                             通过
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleReviewKnowledge(doc.id, false)}
+                            onClick={() => {
+                              setReviewModalTarget({ item: doc, approve: false });
+                              setReviewModalComment("");
+                            }}
                             className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-600 rounded font-extrabold text-[10px] transition-colors cursor-pointer"
+                            title="驳回沉淀并录入修改意见"
                           >
                             驳回
                           </button>
@@ -455,6 +477,100 @@ export default function KnowledgeTab({
             />
           </div>
         </div>
+      )}
+
+      {/* 知识沉淀审核意见弹窗 */}
+      {mounted && reviewModalTarget && createPortal(
+        <div className="fixed top-0 left-0 right-0 bottom-0 w-screen h-screen bg-slate-900/70 backdrop-blur-md z-[9999999] flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                {reviewModalTarget.approve ? "🟢 审核通过知识沉淀" : "🔴 驳回知识沉淀申请"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setReviewModalTarget(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs font-bold text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+              知识主题: <span className="text-[#3182ce] font-black">{reviewModalTarget.item.title || "未命名知识"}</span>
+            </p>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-extrabold text-slate-800 flex items-center gap-1">
+                  ✍️ {reviewModalTarget.approve ? "审核通过意见" : "驳回修改意见"}
+                  {!reviewModalTarget.approve ? (
+                    <span className="text-red-500 font-black text-xs zg-required" title="必填项目">* (必填)</span>
+                  ) : (
+                    <span className="text-slate-400 font-medium text-[11px]">(选填)</span>
+                  )}
+                </label>
+              </div>
+
+              <textarea
+                value={reviewModalComment}
+                onChange={(e) => setReviewModalComment(e.target.value)}
+                placeholder={reviewModalTarget.approve ? "填写通过意见（选填，如：符合知识规范与发布标准）..." : "⚠️ 请填写明确的修改要求与驳回具体原因（必填）..."}
+                rows={3}
+                className={`w-full p-3 text-xs border rounded-2xl focus:bg-white focus:outline-none transition-all resize-none font-medium text-slate-800 ${
+                  !reviewModalTarget.approve && !reviewModalComment.trim()
+                    ? "bg-red-50/40 border-red-300 focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                    : "bg-slate-50 border-slate-200 focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
+                }`}
+              />
+
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[
+                  { label: "✅ 同意沉淀归档", text: "符合团队规范，已同意归档入规范库。" },
+                  { label: "❌ 内容需修订", text: "文本描述或范例尚不完善，请补充修改后重新发起申请。" },
+                  { label: "❌ 存在重复知识", text: "已有类似规范，请核对避免冗余沉淀。" }
+                ].map((tpl, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setReviewModalComment(tpl.text)}
+                    className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[11px] font-bold cursor-pointer"
+                  >
+                    {tpl.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setReviewModalTarget(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!reviewModalTarget.approve && !reviewModalComment.trim()) {
+                    toast.error("驳回申请时必须填写明确的修改意见，告知提交人具体修订要求！");
+                    return;
+                  }
+                  handleReviewKnowledge(reviewModalTarget.item.id, reviewModalTarget.approve, reviewModalComment);
+                  setReviewModalTarget(null);
+                  setReviewModalComment("");
+                }}
+                className={`px-5 py-2 rounded-xl text-xs font-black text-white transition-all shadow-md active:scale-95 cursor-pointer ${
+                  reviewModalTarget.approve ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                确认{reviewModalTarget.approve ? "通过" : "驳回"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

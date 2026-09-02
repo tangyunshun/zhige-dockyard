@@ -28,7 +28,7 @@ import ShareWorkspaceModal from "@/components/workspace-hub/modals/ShareWorkspac
 import DeleteConfirmModal from "@/components/workspace-hub/modals/DeleteConfirmModal";
 import CreateEnterpriseModal from "@/components/workspace-hub/modals/CreateEnterpriseModal";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
-import QuotaUpgradeModal from "@/components/workspace-hub/modals/QuotaUpgradeModal";
+import QuotaUpgradeModal, { type UpgradeHighlight } from "@/components/workspace-hub/modals/QuotaUpgradeModal";
 import { DissolveWorkspaceCheckModal } from "@/components/workspace/DissolveWorkspaceCheckModal";
 import { DissolvePersonalWorkspaceModal } from "@/components/workspace/DissolvePersonalWorkspaceModal";
 import { ResetPersonalWorkspaceModal } from "@/components/workspace/ResetPersonalWorkspaceModal";
@@ -81,6 +81,8 @@ export default function WorkspaceHub() {
     creatingEnterprise,
     handleCreateEnterprise,
   } = useEnterpriseWorkspace({ refresh });
+
+  const [hubDetailComp, setHubDetailComp] = useState<any | null>(null);
 
   // 4. 协作邀请加入与分享生成 Hook
   const {
@@ -146,6 +148,14 @@ export default function WorkspaceHub() {
   const [showCreateEnterpriseModal, setShowCreateEnterpriseModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showQuotaUpgradeModal, setShowQuotaUpgradeModal] = useState(false);
+  // 唤起升级中枢时锚定的权益维度（由触发入口决定，用于高亮对应权益行）
+  const [upgradeHighlight, setUpgradeHighlight] = useState<UpgradeHighlight>(null);
+
+  /** 统一升级中枢入口：记录触发场景后打开中枢 */
+  const openUpgradeHub = (highlight: UpgradeHighlight) => {
+    setUpgradeHighlight(highlight);
+    setShowQuotaUpgradeModal(true);
+  };
 
   // 真正个人工作空间一键重置相关状态
   const [showPersonalResetModal, setShowPersonalResetModal] = useState(false);
@@ -440,9 +450,7 @@ export default function WorkspaceHub() {
 
   // 高危企业空间解散数据前置校验与合规审计弹窗逻辑
   const handleWorkspaceDeleteClick = (workspaceId: string) => {
-    const workspace =
-      enterpriseData?.workspaces?.find((ws: any) => ws.id === workspaceId) ||
-      allWorkspaces?.find((ws: any) => ws.id === workspaceId);
+    const workspace = enterpriseData?.workspaces?.find((ws: any) => ws.id === workspaceId);
     setDissolveCheckWorkspace({
       id: workspaceId,
       name: workspace?.name || "企业空间",
@@ -612,8 +620,8 @@ export default function WorkspaceHub() {
         <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-[#3182ce]/[0.03] rounded-full blur-[120px]" />
       </div>
 
-      {/* 主核心区 */}
-      <main className="relative z-10 max-w-[1440px] mx-auto px-6 pt-8 pb-0 space-y-6 flex-1">
+      {/* 主核心区 (统一全站大厂 max-w-[1400px] 黄金标准，两侧留白与组件大厅、文档中心 100% 物理对齐) */}
+      <main className="relative z-10 max-w-[1400px] w-full mx-auto px-4 sm:px-6 md:px-8 pt-8 pb-0 space-y-6 flex-1">
         
         {/* 1. UserGreeting (100% 宽度大顶通栏) */}
         <div className="w-full">
@@ -672,11 +680,11 @@ export default function WorkspaceHub() {
               onInvite={handleOpenShare}
               onManageComponents={(id) => router.push(`/studio?workspaceId=${id}`)}
               onEnterpriseSettings={(id) => router.push(`/workspace/${id}?tab=settings`)}
-              onUpgradePackage={(id) => router.push("/settings/billing")}
+              onUpgradePackage={(id) => router.push(`/settings/billing?workspaceId=${id}`)}
               onViewStats={(id) => router.push(`/workspace/${id}/stats`)}
               onDelete={handleWorkspaceDeleteClick}
               onLeave={handleLeaveWorkspaceClick}
-              onUpgrade={() => setShowQuotaUpgradeModal(true)}
+              onUpgrade={openUpgradeHub}
               onJoinClick={() => setShowJoinModal(true)}
             />
           </div>
@@ -691,7 +699,7 @@ export default function WorkspaceHub() {
               user={user}
               dashboardData={dashboardData}
               quota={quota}
-              onUpgrade={() => setShowQuotaUpgradeModal(true)}
+              onUpgrade={openUpgradeHub}
             />
           </div>
         </div>
@@ -702,6 +710,7 @@ export default function WorkspaceHub() {
             topComponents={dashboardData?.topComponents}
             onComponentClick={handleComponentClick}
             boundNames={componentWorkspaceBoundNames}
+            onViewDetail={(comp) => setHubDetailComp(comp)}
           />
         </div>
       </main>
@@ -959,12 +968,14 @@ export default function WorkspaceHub() {
           </div>
         </div>
       )}
-      {/* 升级额度引导弹窗 */}
+      {/* 统一升级中枢：按触发场景锚定高亮权益维度 */}
       <QuotaUpgradeModal
         isOpen={showQuotaUpgradeModal}
         onClose={() => setShowQuotaUpgradeModal(false)}
+        currentLevel={user?.membershipLevel || "FREE"}
         currentCount={quota?.enterpriseCount || 0}
         maxLimit={quota?.maxEnterprise || 1}
+        highlight={upgradeHighlight}
       />
 
       {/* 恭喜加入空间成功弹窗 (仪式感极客 Onboarding) */}
@@ -1113,16 +1124,92 @@ export default function WorkspaceHub() {
           workspaceId={personalWorkspace.id}
           workspaceName={personalWorkspace.name}
           onClose={() => setShowResetPersonalWorkspaceModal(false)}
-          onSuccess={(resetAt) => {
-            if (resetAt && personalWorkspace) {
-              setPersonalWorkspace({
-                ...personalWorkspace,
-                updatedAt: resetAt,
-              });
-            }
+          onSuccess={() => {
             refresh();
           }}
         />
+      )}
+
+      {/* 推荐组件权威详情 Modal */}
+      {hubDetailComp && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-white/90 overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold text-sm border border-blue-100 shadow-2xs">
+                  {hubDetailComp.id?.slice(0, 4)}
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-slate-500">{hubDetailComp.id}</div>
+                  <div className="text-sm font-black text-slate-900">{hubDetailComp.name}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHubDetailComp(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 font-sans text-xs">
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">组件简介</div>
+                <div className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{hubDetailComp.description}</div>
+              </div>
+
+              {hubDetailComp.detail && (
+                <>
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">深度功能解读</div>
+                    <div className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{hubDetailComp.detail.fullDescription}</div>
+                  </div>
+                  {hubDetailComp.detail.usage && (
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">使用操作指南</div>
+                      <div className="space-y-1">
+                        {String(hubDetailComp.detail.usage).split("\n").filter(Boolean).map((line: string, i: number) => (
+                          <p key={i} className="text-xs font-medium text-slate-600 leading-relaxed">{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {hubDetailComp.detail.apiDoc && (
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">API 接口契约</div>
+                      <pre className="p-2.5 bg-slate-50 border border-slate-200/60 rounded-lg text-[11px] text-slate-700 font-mono overflow-x-auto leading-relaxed whitespace-pre-wrap">
+                        {hubDetailComp.detail.apiDoc}
+                      </pre>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {hubDetailComp.tags?.length > 0 && (
+                <div className="space-y-1 pt-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">核心领域标签</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {hubDetailComp.tags.map((tag: string, i: number) => (
+                      <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
+              <span className="text-[11px] text-slate-400 font-bold">按组件矩阵标准成本扣减（预估 5 点）</span>
+              <button
+                type="button"
+                onClick={() => setHubDetailComp(null)}
+                className="px-4 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-lg cursor-pointer transition-all shadow-xs"
+              >
+                我知道了
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

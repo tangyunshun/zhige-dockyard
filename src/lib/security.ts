@@ -752,7 +752,7 @@ export async function writeAuditLog(
         workspaceId: workspaceId || null,
         action,
         resource: action.split(":")[0] || "system",
-        details: details ? JSON.stringify(details) : undefined,
+        details: details ?? undefined,
         ipAddress: finalIp || null,
       },
     });

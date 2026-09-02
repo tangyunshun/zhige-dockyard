@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 
@@ -64,10 +64,12 @@ export async function GET(request: NextRequest) {
         const componentCountValue = await prisma.componenttask.count({
           where: { userId: { in: memberIds } },
         });
+        // 剔除原始 workspacemember（含 BigInt 字段），避免序列化报错
+        const { workspacemember, ...workspaceBase } = workspace;
         return {
-          ...workspace,
+          ...workspaceBase,
           componentCount: componentCountValue,
-          members: workspace.workspacemember,
+          members: workspacemember,
         };
       }),
     );
@@ -95,7 +97,7 @@ export async function GET(request: NextRequest) {
       prisma.workspace.count({ where }),
     ]);
 
-    // 统计筛选后的工作空间的组件数量
+    // 统计筛选后的工作空间的组件数量与算力配额
     const workspacesWithComponentCount = await Promise.all(
       workspaces.map(async (workspace) => {
         const members = await prisma.workspacemember.findMany({
@@ -106,10 +108,21 @@ export async function GET(request: NextRequest) {
         const componentCountValue = await prisma.componenttask.count({
           where: { userId: { in: memberIds } },
         });
+        const quota = await prisma.workspacequota.findUnique({
+          where: { workspaceId: workspace.id },
+          select: { tokenBalance: true, membershipLevelId: true },
+        });
+        // 剔除原始 workspacemember（含 BigInt 字段），避免 JSON 序列化报错
+        const { workspacemember, ...workspaceBase } = workspace;
         return {
-          ...workspace,
+          ...workspaceBase,
           componentCount: componentCountValue,
-          members: workspace.workspacemember,
+          quota: quota ? { tokenBalance: Number(quota.tokenBalance), membershipLevelId: quota.membershipLevelId } : null,
+          members: workspacemember.map((m) => ({
+            ...m,
+            monthlyTokenLimit: m.monthlyTokenLimit ? Number(m.monthlyTokenLimit) : null,
+            monthlyTokenUsed: Number(m.monthlyTokenUsed || 0),
+          })),
         };
       }),
     );

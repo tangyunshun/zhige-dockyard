@@ -10,6 +10,7 @@ import {
   Box,
   Activity,
   LogOut,
+  Code2,
   ArrowLeft,
   Zap,
   Menu,
@@ -101,6 +102,12 @@ export default function UserDashboardLayout({
           label: "操作日志",
           href: "/user/activities",
           description: "活动记录、操作历史",
+        },
+        {
+          icon: Code2,
+          label: "开发者中心",
+          href: "/user/developer",
+          description: "API Key 管理与开放接口",
         },
         {
           icon: Settings,

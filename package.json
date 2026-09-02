@@ -11,7 +11,7 @@
     "db:seed": "prisma db seed"
   },
   "prisma": {
-    "seed": "npx tsx prisma/seed-components.ts"
+    "seed": "npx tsx prisma/seed-components.ts && npx tsx prisma/seed-membership.ts && npx tsx prisma/seed-positions.ts && npx tsx prisma/seed-system-documents.ts && npx tsx prisma/seed-test-data.ts"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +20,7 @@
     "@tailwindcss/postcss": "^4.2.2",
     "@types/dotenv": "^6.1.1",
     "@types/node": "^25.6.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.0",
@@ -35,13 +36,22 @@
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@types/bcryptjs": "^2.4.6",
+    "adm-zip": "^0.6.0",
     "bcryptjs": "^3.0.3",
+    "chardet": "^2.2.0",
+    "iconv-lite": "^0.7.3",
     "jose": "^6.2.2",
     "lucide-react": "^1.8.0",
+    "mammoth": "^1.12.2",
     "next": "^16.2.4",
     "next-auth": "^4.24.14",
+    "nodemailer": "^7.0.13",
+    "officeparser": "^7.8.0",
+    "pdf2json": "^4.0.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "uuid": "^14.0.0"
+    "tesseract.js": "^7.0.0",
+    "uuid": "^14.0.0",
+    "xlsx": "^0.18.5"
   }
 }

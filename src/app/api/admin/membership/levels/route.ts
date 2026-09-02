@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 
@@ -33,12 +33,12 @@ export async function GET(request: NextRequest) {
     // 构建查询条件
     const where: any = {};
 
-    // 搜索条件
+    // 搜索条件 (符合 MySQL 标准 contains 包含语法，移除 PostgreSQL 特有的 mode: "insensitive")
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { nameZh: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
+        { name: { contains: search } },
+        { nameZh: { contains: search } },
+        { description: { contains: search } },
       ];
     }
 
@@ -67,16 +67,17 @@ export async function GET(request: NextRequest) {
     // 将 BigInt 转换为 Number 以便 JSON 序列化
     const serializedLevels = levels.map((level) => ({
       ...level,
-      maxPersonalWorkspaces: Number(level.maxPersonalWorkspaces),
-      maxEnterpriseWorkspaces: Number(level.maxEnterpriseWorkspaces),
-      maxComponents: Number(level.maxComponents),
-      maxTeamSize: Number(level.maxTeamSize),
-      maxStorage: Number(level.maxStorage),
-      maxApiCalls: Number(level.maxApiCalls),
-      priceMonthly: Number(level.priceMonthly),
-      priceYearly: Number(level.priceYearly),
-      trialDays: Number(level.trialDays),
-      sortOrder: Number(level.sortOrder),
+      maxPersonalWorkspaces: Number(level.maxPersonalWorkspaces || 0),
+      maxEnterpriseWorkspaces: Number(level.maxEnterpriseWorkspaces || 0),
+      maxComponents: Number(level.maxComponents || 0),
+      maxTeamSize: Number(level.maxTeamSize || 0),
+      maxStorage: Number(level.maxStorage || 0),
+      maxApiCalls: Number(level.maxApiCalls || 0),
+      tokenLimit: Number(level.tokenLimit || 0),
+      priceMonthly: Number(level.priceMonthly || 0),
+      priceYearly: Number(level.priceYearly || 0),
+      trialDays: Number(level.trialDays || 0),
+      sortOrder: Number(level.sortOrder || 0),
     }));
 
     return NextResponse.json({
@@ -92,5 +93,117 @@ export async function GET(request: NextRequest) {
       },
       { status: 500 },
     );
+  }
+}
+
+/**
+ * POST /api/admin/membership/levels
+ * 创建新的会员等级
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const authHeader = request.headers.get("authorization");
+    const authResult = await validateUser(authHeader);
+
+    if (!authResult.valid) {
+      return NextResponse.json(
+        { message: authResult.error || "UNAUTHORIZED" },
+        { status: 401 },
+      );
+    }
+
+    if (!isAdmin(authResult.user!)) {
+      return NextResponse.json({ message: "无权访问" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const {
+      name,
+      nameZh,
+      icon,
+      color,
+      description,
+      maxPersonalWorkspaces,
+      maxEnterpriseWorkspaces,
+      maxComponents,
+      maxTeamSize,
+      maxStorage,
+      maxApiCalls,
+      tokenLimit,
+      features,
+      priceMonthly,
+      priceYearly,
+      trialDays,
+      sortOrder,
+      isActive,
+      isRecommended,
+      isPopular,
+    } = body;
+
+    if (!name || !nameZh) {
+      return NextResponse.json({ message: "缺少必填字段（等级编码或中文名称）" }, { status: 400 });
+    }
+
+    const existing = await prisma.membershiplevel.findUnique({
+      where: { id: name },
+    });
+
+    if (existing) {
+      return NextResponse.json(
+        { message: `会员等级编码 [${name}] 已存在` },
+        { status: 400 },
+      );
+    }
+
+    const level = await prisma.membershiplevel.create({
+      data: {
+        id: name,
+        name,
+        nameZh,
+        icon: icon || null,
+        color: color || "#94a3b8",
+        description: description || null,
+        maxPersonalWorkspaces: Number(maxPersonalWorkspaces || 1),
+        maxEnterpriseWorkspaces: BigInt(maxEnterpriseWorkspaces || 1),
+        maxComponents: BigInt(maxComponents || 100),
+        maxTeamSize: BigInt(maxTeamSize || 5),
+        maxStorage: BigInt(maxStorage || 1073741824),
+        maxApiCalls: BigInt(maxApiCalls || 1000),
+        tokenLimit: BigInt(tokenLimit || 1000),
+        features: features || [],
+        priceMonthly: Number(priceMonthly || 0),
+        priceYearly: Number(priceYearly || 0),
+        trialDays: Number(trialDays || 0),
+        sortOrder: Number(sortOrder || 0),
+        isActive: isActive !== false,
+        isRecommended: isRecommended === true,
+        isPopular: isPopular === true,
+        updatedAt: new Date(),
+      },
+    });
+
+    const serializedLevel = {
+      ...level,
+      maxPersonalWorkspaces: Number(level.maxPersonalWorkspaces || 0),
+      maxEnterpriseWorkspaces: Number(level.maxEnterpriseWorkspaces || 0),
+      maxComponents: Number(level.maxComponents || 0),
+      maxTeamSize: Number(level.maxTeamSize || 0),
+      maxStorage: Number(level.maxStorage || 0),
+      maxApiCalls: Number(level.maxApiCalls || 0),
+      tokenLimit: Number(level.tokenLimit || 0),
+      priceMonthly: Number(level.priceMonthly || 0),
+      priceYearly: Number(level.priceYearly || 0),
+      trialDays: Number(level.trialDays || 0),
+      sortOrder: Number(level.sortOrder || 0),
+    };
+
+    return NextResponse.json({
+      success: true,
+      data: serializedLevel,
+      message: "创建会员等级成功",
+    });
+  } catch (error: any) {
+    console.error("创建会员等级失败:", error);
+    return NextResponse.json({ message: "创建会员等级失败", error: error.message }, { status: 500 });
   }
 }

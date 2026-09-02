@@ -11,6 +11,17 @@ export interface ComponentPreviewData {
   roiText: string;
 }
 
+/**
+ * 组件深度详情（唯一数据源：component_catalog.detail 字段）
+ * 由 prisma/seed-component-details.mjs 写入并维护，前端禁止硬编码任何兜底文案。
+ */
+export interface ComponentDetailContent {
+  fullDescription: string;
+  usage: string;
+  apiDoc: string;
+  faq: Array<{ q: string; a: string }>;
+}
+
 export interface ComponentDefinition {
   id: string;
   name: string;
@@ -22,6 +33,11 @@ export interface ComponentDefinition {
   estimatedTokens: number;
   previewData: ComponentPreviewData;
   businessTags?: string[];
+  // 深度详情：来自数据库 component_catalog.detail 字段
+  detail?: ComponentDetailContent | null;
+  // 真实统计：由服务端从 component_stats / component_task 聚合后下发，前端不得自行派生模拟数值
+  realUsageCount?: number;
+  realTaskStats?: { total: number; success: number };
   // 以下字段与数据库 component_catalog 表一一对应
   inputMode?: ComponentInputMode; // text | file | both
   accept?: string; // 文件上传支持的格式

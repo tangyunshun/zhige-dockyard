@@ -66,15 +66,19 @@ export default function RouterGuards({
 
     // 认证页面：允许访问（登录和未登录用户都可以访问）
     if (isAuthRoute) {
-      // 已登录用户访问登录/注册页，重定向到工作空间
-      // 例外：/auth/cancel-deletion（D-02 注销冷静期撤销页）必须保持可访问。
-      // 若把注销中用户重定向到工作台，AuthCheck 会再次弹回撤销页，形成无限循环：
-      // 撤销页 → 工作台 → toast"请先撤销注销" → 撤销页 → …
-      if (
-        userState.isLoggedIn &&
-        pathname !== "/auth/cancel-deletion" &&
-        !pathname.startsWith("/auth/oauth-callback")
-      ) {
+      // 仅对「登录 / 注册」页做已登录重定向，避免把已登录用户从其余认证页弹走。
+      // 例外页面说明：
+      // - /auth/forgot-password  忘记密码：已登录用户同样有正当访问场景（如主动重置密码）
+      //   （若被重定向，AppContext 本地缓存恢复 isLoggedIn 的时序会导致"闪现后弹回"，
+      //    且 workspace-hub 凭证校验失败时还会再次弹回登录页）
+      // - /auth/change-password  密码过期强制改密：被重定向会与 AuthCheck 的
+      //   改密拦截形成死循环（改密页 → 工作台 → 强制改密 → 改密页 → …）
+      // - /auth/cancel-deletion  注销冷静期撤销页：重定向会与 AuthCheck 弹回形成死循环
+      // - /auth/oauth-callback   OAuth 回调页：登录流程必经页，不可重定向
+      // - /auth/verify-crossregion 异地登录二次验证页：登录流程必经页，不可重定向
+      const isLoginOrRegisterPage =
+        pathname.startsWith("/auth/login") || pathname.startsWith("/auth/register");
+      if (userState.isLoggedIn && isLoginOrRegisterPage) {
         router.replace("/workspace-hub");
       }
       return;

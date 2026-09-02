@@ -1,9 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Info, ArrowRight, CheckCircle2, Layers, Compass, ScanSearch, Cpu, History, Activity, FileText, Database, BookOpen, AlertTriangle, Rocket, Lock } from "lucide-react";
+import { Info, ArrowRight, CheckCircle2, Layers, Compass, ScanSearch, Cpu, History, Activity, FileText, Database, BookOpen, AlertTriangle, Rocket, Lock, Zap, Box, Clock } from "lucide-react";
 import type { ComponentCategory } from "@/constants/components";
 import { useAppContext } from "@/contexts/AppContext";
+import { iconMap } from "@/components/ComponentShowcase";
+import { formatYuanFromPoints } from "@/lib/point-rate";
 
 interface TaskRecord {
   id: string;
@@ -18,16 +20,29 @@ interface TaskRecord {
 interface OverviewTabProps {
   workspaceId: string;
   userRole?: string;
+  workspaceToken?: number;
+  setShowRechargeModal?: (show: boolean) => void;
   boundComponentIds: string[];
   recentTasks: TaskRecord[];
   assets: any[];
   knowledges: any[];
   documents?: any[] | null;
+  documentStats?: {
+    publicCount: number;
+    ownPrivateCount?: number;
+    otherPrivateCount?: number;
+    privateCount?: number;
+    pendingCount?: number;
+    total: number;
+    isManager: boolean;
+    scope: string;
+  } | null;
   allowedComponentIds: string[];
   restrictedComponentIds?: string[];
   allComponents: any[];
   setActiveTab: (tab: string) => void;
   onViewAllComponents?: () => void;
+  onViewTaskDetail?: (taskId: string) => void;
   setQuickSubStep: (step: "select" | "material") => void;
   handleComponentClick: (comp: any) => void;
   router: any;
@@ -36,22 +51,26 @@ interface OverviewTabProps {
 export default function OverviewTab({
   workspaceId,
   userRole = "MEMBER",
+  workspaceToken = 10000,
+  setShowRechargeModal,
   boundComponentIds,
   recentTasks,
   assets,
   knowledges,
   documents,
+  documentStats,
   allowedComponentIds,
   restrictedComponentIds = [],
   allComponents,
   setActiveTab,
   onViewAllComponents,
+  onViewTaskDetail,
   setQuickSubStep,
   handleComponentClick,
   router
 }: OverviewTabProps) {
-  // 分类颜色/名称来自数据库 component_category 表（经 AppContext 全局加载，非重复网络请求）
-  const { componentCategories } = useAppContext();
+  // 分类颜色/名称来自数据库表（经 AppContext 全局加载，非重复网络请求）
+  const { componentCategories, componentCatalog } = useAppContext();
 
   // 数据一律来自父布局 props（父布局是当前空间数据的唯一数据源），
   // 不再在子 Tab 内重复请求，避免重复网络请求与数据不一致。
@@ -60,14 +79,14 @@ export default function OverviewTab({
   // 资料与知识库彻底分离：资料只来自 documents，知识库只来自 knowledges，
   // 禁止用知识库回退伪装成资料。documents === null 表示请求失败/未知，显示显式失败态。
   const documentsLoaded = documents !== null && documents !== undefined;
-  const finalDocuments = documents ?? [];
+  const finalDocuments: any[] = documents ?? [];
 
   // 已装配组件数以实时绑定列表为唯一真相（与组件页 ComponentsTab 保持一致，不再叠加权限白名单过滤）
   const boundCount = finalBoundComponentIds.length;
   const runningCount = finalTasks.filter(t => t.status === "RUNNING").length;
   const successCount = finalTasks.filter(t => t.status === "SUCCESS").length;
   const failedCount = finalTasks.filter(t => t.status === "FAILED").length;
-  const recentList = finalTasks.slice(0, 4);
+  const recentList = finalTasks.slice(0, 3);
   const allCommonComps = boundCount === 0 ? [] : allComponents.filter(c => finalBoundComponentIds.some(id => id.trim().toUpperCase() === c.id.trim().toUpperCase()));
   const commonComps = allCommonComps.slice(0, 3);
 
@@ -143,8 +162,16 @@ export default function OverviewTab({
     slate: "bg-slate-500/10 text-slate-500",
   };
 
-  // 三个核心操作入口（功能完整性：覆盖智能识别 / 选择组件 / 效能大盘）
+  // 三个核心操作入口（功能完整性：覆盖选择组件 / 智能识别 / 效能大盘）
   const entryCards = [
+    {
+      icon: <Layers className="w-5 h-5" />,
+      iconBg: "bg-[#059669]/10 text-[#059669]",
+      title: "选择组件，开始任务",
+      desc: "从已装配的研发效能列表中任意选择核心组件，立即处理源文件。",
+      action: "选择组件开始",
+      onClick: () => { setActiveTab("quick"); setQuickSubStep("select"); },
+    },
     {
       icon: <ScanSearch className="w-5 h-5" />,
       iconBg: "bg-[#3182ce]/10 text-[#3182ce]",
@@ -152,14 +179,6 @@ export default function OverviewTab({
       desc: "输入原始文本或诉求，系统自动识别类型并推荐匹配的效能组件。",
       action: "去自动识别",
       onClick: () => { setActiveTab("quick"); setQuickSubStep("material"); },
-    },
-    {
-      icon: <Cpu className="w-5 h-5" />,
-      iconBg: "bg-[#059669]/10 text-[#059669]",
-      title: "选择组件，开始任务",
-      desc: "从已装配的研发效能列表中任意选择核心组件，立即处理源文件。",
-      action: "选择组件开始",
-      onClick: () => { setActiveTab("quick"); setQuickSubStep("select"); },
     },
     {
       icon: <Activity className="w-5 h-5" />,
@@ -175,14 +194,53 @@ export default function OverviewTab({
   const restrictedSet = new Set(restrictedComponentIds || []);
   const restrictedCount = boundCount === 0 ? 0 : allCommonComps.filter(c => restrictedSet.has(c.id)).length;
 
-  // 指标卡（已装配 / 受限组件数量 / 执行中 / 成功报告 / 资料数量 / 知识库数量）
-  // 资料数量只统计 documents，知识库数量只统计 knowledges；资料请求失败时显式显示“未知”，绝不用知识库伪装。
-  const metrics: Array<{ label: string; count: number | string; color: string; icon: ReactNode; iconBg: string }> = [
+  const handleRecharge = () => {
+    if (setShowRechargeModal) {
+      setShowRechargeModal(true);
+    } else {
+      setActiveTab("quota");
+    }
+  };
+
+  // 指标卡（空间总算力点 / 已装配 / 受限组件数量 / 执行中 / 成功报告 / 资料数量 / 知识库数量）
+  const metrics: Array<{ label: string; count: number | string; subtext?: string; desc?: string; color: string; icon: ReactNode; iconBg: string; onClick?: () => void }> = [
+    { 
+      label: "空间总算力点", 
+      count: typeof workspaceToken === "number" ? `${workspaceToken.toLocaleString()} 点` : workspaceToken, 
+      subtext: typeof workspaceToken === "number" ? `折合 ¥${(workspaceToken / 100).toFixed(2)}` : undefined,
+      color: "text-[#3182ce]", 
+      icon: <Zap className="w-4 h-4 fill-[#3182ce]" />, 
+      iconBg: "bg-[#3182ce]/15 text-[#3182ce]",
+      onClick: handleRecharge
+    },
     { label: "已装配组件", count: boundCount, color: "text-[#3182ce]", icon: <Layers className="w-4 h-4" />, iconBg: "bg-[#3182ce]/10 text-[#3182ce]" },
     { label: "受限组件数量", count: restrictedCount, color: "text-amber-600", icon: <Lock className="w-4 h-4" />, iconBg: "bg-amber-500/10 text-amber-600" },
-    { label: "执行中任务", count: runningCount, color: "text-[#059669]", icon: <Activity className="w-4 h-4" />, iconBg: "bg-[#059669]/10 text-[#059669]" },
     { label: "成功报告", count: successCount, color: "text-emerald-500", icon: <CheckCircle2 className="w-4 h-4" />, iconBg: "bg-emerald-500/10 text-emerald-500" },
-    { label: "资料数量", count: documentsLoaded ? finalDocuments.length : (documents?.length ?? 0), color: "text-purple-500", icon: <FileText className="w-4 h-4" />, iconBg: "bg-purple-500/10 text-purple-500" },
+    {
+      label: "资料数量",
+      count: documentStats ? documentStats.total : finalDocuments.filter((d) => d.status !== "REMOVED").length,
+      subtext: documentStats
+        ? (() => {
+            const parts = [`公开 ${documentStats.publicCount}`];
+            if (documentStats.isManager) {
+              parts.push(`本人私密 ${documentStats.ownPrivateCount ?? 0}`);
+              if (documentStats.pendingCount) parts.push(`待审核 ${documentStats.pendingCount}`);
+            } else {
+              parts.push(`本人私密 ${documentStats.ownPrivateCount ?? documentStats.privateCount ?? 0}`);
+              if (documentStats.pendingCount) parts.push(`本人待审核 ${documentStats.pendingCount}`);
+            }
+            return parts.join(" · ");
+          })()
+        : undefined,
+      desc: documentStats
+        ? documentStats.isManager
+          ? "空间公开资料、您的个人私密资料及待审核大盘；成员私密内容仅本人可见"
+          : "空间公开资料、您的个人私密资料及待审核申请"
+        : undefined,
+      color: "text-purple-500",
+      icon: <FileText className="w-4 h-4" />,
+      iconBg: "bg-purple-500/10 text-purple-500",
+    },
     { label: "知识库数量", count: knowledges.length, color: "text-indigo-500", icon: <BookOpen className="w-4 h-4" />, iconBg: "bg-indigo-500/10 text-indigo-500" },
   ];
 
@@ -209,22 +267,19 @@ export default function OverviewTab({
     return `${compName} › ${taskName}`;
   };
 
-  // 相对时间格式化
+  // 具体时间格式化 (显示标准年月日时分秒)
   const formatTaskTime = (raw: string) => {
     if (!raw) return "—";
     try {
       const d = new Date(raw);
       if (isNaN(d.getTime())) return raw;
-      const now = Date.now();
-      const diffMs = now - d.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-      if (diffMins < 1) return "刚刚";
-      if (diffMins < 60) return `${diffMins}分钟前`;
-      if (diffHours < 24) return `${diffHours}小时前`;
-      if (diffDays < 7) return `${diffDays}天前`;
-      return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      const seconds = String(d.getSeconds()).padStart(2, "0");
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     } catch {
       return raw;
     }
@@ -273,17 +328,46 @@ export default function OverviewTab({
         ))}
       </div>
 
-      {/* ============ 空间指标摘要 ============ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        {metrics.map(m => (
-          <div key={m.label} className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-xs text-left hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 transition-all duration-200">
-            <div className="flex items-center justify-between">
-              <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${m.iconBg}`}>{m.icon}</span>
+      {/* ============ 空间指标摘要 (6 宫格) ============ */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {metrics.map(m => {
+          const isRechargeCard = !!m.onClick;
+
+          return (
+            <div 
+              key={m.label} 
+              onClick={m.onClick}
+              className={`p-3.5 rounded-xl border shadow-xs text-left transition-all duration-200 relative ${
+                isRechargeCard 
+                  ? "bg-gradient-to-br from-blue-50/50 via-white to-blue-50/20 border-blue-200/80 cursor-pointer hover:border-[#3182ce] hover:shadow-md hover:-translate-y-0.5 group" 
+                  : "bg-white border-slate-200/80 hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${m.iconBg}`}>{m.icon}</span>
+                {m.onClick && (
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      m.onClick?.();
+                    }}
+                    className="px-2 py-0.5 text-[10px] font-black text-white bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] rounded-md shadow-2xs group-hover:shadow-xs group-hover:scale-105 transition-all flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Zap className="w-2.5 h-2.5 fill-white text-white" />
+                    <span>充值</span>
+                  </button>
+                )}
+              </div>
+              <span className={`text-lg sm:text-xl font-black font-mono tracking-tight block mt-2.5 truncate ${m.color}`}>{m.count}</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className={`text-xs font-bold block truncate ${isRechargeCard ? "text-[#2b6cb0]" : "text-slate-500"}`}>{m.label}</span>
+              </div>
+              {m.subtext && <span className="text-[10px] font-bold text-slate-400 block mt-0.5">{m.subtext}</span>}
+              {m.desc && <span className="text-[10px] font-medium text-slate-400 block mt-0.5 leading-tight">{m.desc}</span>}
             </div>
-            <span className={`text-2xl sm:text-3xl font-black font-mono tracking-tight block mt-3 ${m.color}`}>{m.count}</span>
-            <span className="text-xs font-bold text-slate-500 block tracking-wide mt-1">{m.label}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ============ 最近任务记录 ============ */}
@@ -303,21 +387,80 @@ export default function OverviewTab({
           </div>
         ) : (
           <div className="space-y-2.5">
-            {recentList.map(task => (
-              <div key={task.id} className="p-3 bg-slate-50/70 border border-slate-200/70 rounded-xl flex items-center justify-between gap-3 text-xs hover:bg-white hover:border-[#3182ce]/30 hover:shadow-xs transition-all cursor-pointer" onClick={() => setActiveTab("tasks")}>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold shrink-0">{task.componentId}</span>
-                    <span className="font-bold text-slate-800 text-xs truncate" title={formatTaskTitle(task)}>{formatTaskTitle(task)}</span>
+            {recentList.map(task => {
+              const compDef = allComponents.find(c => c.id.trim().toUpperCase() === (task.componentId || "").trim().toUpperCase());
+              const catName = compDef 
+                ? (componentCategories[compDef.category as ComponentCategory]?.name || compDef.category || "研发组件")
+                : "通用任务";
+              const Ico = iconMap[compDef?.icon || ""] || Box;
+
+              return (
+                <div 
+                  key={task.id} 
+                  className="p-3.5 bg-slate-50/70 border border-slate-200/70 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs hover:bg-white hover:border-[#3182ce]/40 hover:shadow-xs transition-all cursor-pointer group" 
+                  onClick={() => {
+                    if (onViewTaskDetail) onViewTaskDetail(task.id);
+                    else setActiveTab("tasks");
+                  }}
+                >
+                  <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                    {/* 组件商务 Icon 盒子 */}
+                    <div className="w-9 h-9 rounded-lg bg-blue-50/80 text-[#3182ce] flex items-center justify-center shrink-0 border border-blue-100/80 shadow-2xs group-hover:bg-[#3182ce] group-hover:text-white transition-colors">
+                      <Ico className="w-4 h-4" />
+                    </div>
+
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* 任务名称 */}
+                        <span className="font-black text-slate-800 text-xs truncate group-hover:text-[#3182ce] transition-colors" title={formatTaskTitle(task)}>
+                          {formatTaskTitle(task)}
+                        </span>
+                        {/* 组件 ID 编码 (若为大写下划线英文 Key 则隐藏，不露英文硬代码) */}
+                        {task.componentId && !task.componentId.includes("_") && (
+                          <span className="text-[10px] font-mono text-slate-400 font-bold shrink-0">
+                            [{task.componentId}]
+                          </span>
+                        )}
+                        {/* 中文分类 Badge */}
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-100/80 shrink-0">
+                          {catName}
+                        </span>
+                      </div>
+
+                      {/* 时间与算力消耗 */}
+                      <div className="flex items-center gap-3.5 text-[11px] text-slate-400 font-medium flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {formatTaskTime(task.time)}
+                        </span>
+                        {typeof task.tokenUsed === "number" && (
+                          <span className="flex items-center gap-1 font-mono font-bold text-slate-500">
+                            <Zap className="w-3 h-3 text-amber-500" />
+                            {task.tokenUsed} 算力点
+                            <span className="text-slate-400 font-normal">({formatYuanFromPoints(task.tokenUsed)})</span>
+                          </span>
+                        )}
+                        {compDef?.name && (
+                          <span className="text-slate-400 font-semibold truncate hidden md:inline">
+                            · 组件: {compDef.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400 font-medium">
-                    <span className="flex items-center gap-1"><History className="w-3 h-3" />{formatTaskTime(task.time)}</span>
-                    {typeof task.tokenUsed === "number" && <span className="flex items-center gap-1"><Database className="w-3 h-3" />{task.tokenUsed} 点</span>}
+
+                  {/* 右侧状态 Badge 与 查看结果指示 */}
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${statusBadge(task.status)}`}>
+                      {statusText(task.status)}
+                    </span>
+                    <span className="text-xs text-[#3182ce] font-black group-hover:translate-x-1 transition-transform flex items-center gap-0.5">
+                      查看报告 ➔
+                    </span>
                   </div>
                 </div>
-                <span className={`text-[11px] font-bold px-2 py-0.5 rounded border shrink-0 ${statusBadge(task.status)}`}>{statusText(task.status)}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -340,10 +483,20 @@ export default function OverviewTab({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
             {commonComps.map(c => {
-              const stage = componentCategories[c.category as ComponentCategory];
+              // 从 componentCatalog 数据库字典中按组件 ID 精准查找最权威数据
+              const dbCatalogComp = componentCatalog.find(cat => cat.id.trim().toUpperCase() === c.id.trim().toUpperCase());
+
+              const iconKey = dbCatalogComp?.icon || c.icon || "";
+              const compDescription = dbCatalogComp?.description || c.description || "";
+              const categoryKey = dbCatalogComp?.category || c.category || "";
+              const compName = dbCatalogComp?.name || c.name || c.title || c.id;
+
+              const stage = componentCategories[categoryKey as ComponentCategory];
+              const catName = stage?.name || categoryKey || "研发效能组件";
               const isManager = ["OWNER", "ADMIN", "Owner", "Admin"].includes(userRole);
               const isRestricted = restrictedComponentIds.includes(c.id);
               const isRestrictedForCurrentUser = !isManager && isRestricted;
+              const Ico = iconMap[iconKey] || Box;
 
               return (
                 <div
@@ -353,50 +506,75 @@ export default function OverviewTab({
                     }
                   }}
                   key={c.id}
-                  className={`p-4 rounded-xl text-left transition-all relative group ${
+                  className={`p-4.5 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
                     isRestrictedForCurrentUser
                       ? "bg-slate-100/60 border border-slate-200/80 cursor-not-allowed opacity-90"
-                      : "bg-slate-50/70 hover:bg-white border border-slate-200/70 cursor-pointer hover:shadow-sm hover:border-[#3182ce]/40"
+                      : "bg-slate-50/70 hover:bg-white border border-slate-200/70 cursor-pointer hover:shadow-md hover:border-[#3182ce]/40"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className={`text-2xl ${isRestrictedForCurrentUser ? "grayscale" : ""}`}>{c.icon}</span>
-                    {isRestricted ? (
-                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${
-                        isManager ? "bg-blue-50 text-[#2b6cb0] border-blue-200" : "bg-amber-50 text-amber-600 border-amber-200"
+                  <div>
+                    {/* 头部图标与状态 Badge */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center shrink-0 border shadow-2xs ${
+                        isRestrictedForCurrentUser 
+                          ? "bg-slate-200 text-slate-400 border-slate-300" 
+                          : "bg-blue-50/90 text-[#3182ce] border-blue-100/80"
                       }`}>
-                        {isManager ? "🛡️ 特权放行" : "🔒 岗位受限"}
+                        <Ico className="w-4 h-4" />
+                      </div>
+
+                      {isRestricted ? (
+                        <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border shrink-0 ${
+                          isManager ? "bg-blue-50 text-[#2b6cb0] border-blue-200" : "bg-amber-50 text-amber-600 border-amber-200"
+                        }`}>
+                          {isManager ? "🛡️ 特权放行" : "🔒 岗位受限"}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 shrink-0">
+                          🟢 正常运行
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 组件名称与编码 */}
+                    <h5 className={`font-black text-xs truncate ${isRestrictedForCurrentUser ? "text-slate-500" : "text-slate-900"}`}>
+                      {compName} <span className="font-mono text-[10px] text-slate-400 font-bold">({c.id})</span>
+                    </h5>
+
+                    {/* 所属分类名称 Badge */}
+                    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded border inline-block"
+                        style={
+                          isRestrictedForCurrentUser
+                            ? { backgroundColor: "#e2e8f0", color: "#64748b", borderColor: "#cbd5e1" }
+                            : stage?.color 
+                              ? { color: stage.color, backgroundColor: `${stage.color}14`, border: `1px solid ${stage.color}33` }
+                              : { color: "#3182ce", backgroundColor: "#ebf8ff", border: "1px solid #bee3f8" }
+                        }
+                      >
+                        {catName}
                       </span>
+                    </div>
+
+                    {/* 数据库真实功能介绍描述 */}
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-2 mt-2 min-h-[32px] select-none" title={compDescription}>
+                      {compDescription || "暂无组件描述"}
+                    </p>
+                  </div>
+
+                  {/* 底部按钮 */}
+                  <div className="mt-3.5 pt-2.5 border-t border-slate-100/80">
+                    {isRestrictedForCurrentUser ? (
+                      <button disabled className="w-full py-1 px-2 bg-slate-200 text-slate-500 text-[11px] font-bold rounded cursor-not-allowed text-center block">
+                        🔒 岗位受限 (不可用)
+                      </button>
                     ) : (
-                      <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
-                        🟢 正常运行
+                      <span className="text-[11px] text-[#3182ce] font-black flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        {isManager && isRestricted ? "⚡ 特权执行 ➔" : "开始使用 ➔"}
                       </span>
                     )}
                   </div>
-
-                  <h5 className={`font-bold text-xs mt-2.5 truncate ${isRestrictedForCurrentUser ? "text-slate-500" : "text-slate-900"}`}>{c.title} <span className="font-mono text-[10px] text-slate-400 font-normal">({c.id})</span></h5>
-                  {stage && (
-                    <span
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded mt-1.5 inline-block"
-                      style={
-                        isRestrictedForCurrentUser
-                          ? { backgroundColor: "#e2e8f0", color: "#64748b" }
-                          : { color: stage.color, backgroundColor: `${stage.color}14`, border: `1px solid ${stage.color}33` }
-                      }
-                    >
-                      {c.category}
-                    </span>
-                  )}
-
-                  {isRestrictedForCurrentUser ? (
-                    <button disabled className="w-full mt-2.5 py-1 px-2 bg-slate-200 text-slate-500 text-[11px] font-bold rounded cursor-not-allowed text-center block">
-                      🔒 岗位受限 (不可用)
-                    </button>
-                  ) : (
-                    <span className="text-[11px] text-[#3182ce] font-black block mt-2.5 group-hover:translate-x-1 transition-transform">
-                      {isManager && isRestricted ? "⚡ 特权执行 ➔" : "开始使用 ➔"}
-                    </span>
-                  )}
                 </div>
               );
             })}

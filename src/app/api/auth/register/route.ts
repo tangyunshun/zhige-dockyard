@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+// Refresh Turbopack compilation cache
 import { prisma } from "@/lib/prisma";
+import { getMembershipTokenLimit } from "@/lib/quota-token";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 import { SignJWT } from "jose";
@@ -46,26 +48,9 @@ async function issueSessionAndRespond(userId: string, email?: string | null, rol
 
   const response = NextResponse.json({
     success: true,
-    message: "注册成功，已自动登录",
-    token,
-    refreshToken,
+    message: "注册成功，请登录",
     user: { id: userId, email: email || undefined, role },
-    redirectUrl: "/workspace-hub",
-  });
-
-  response.cookies.set("auth_token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-    maxAge: 8 * 60 * 60,
-  });
-  response.cookies.set("userId", userId, {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-    maxAge: 8 * 60 * 60,
+    redirectUrl: "/auth/login",
   });
 
   return response;
@@ -98,11 +83,11 @@ export async function POST(request: NextRequest) {
       const smsVerification = verifySmsCode(phone, smsCode);
       if (!smsVerification.valid) {
         return NextResponse.json(
-          { 
-            message: smsVerification.error === "请先获取验证码" 
-              ? "验证码已失效，请重新获取" 
+          {
+            message: smsVerification.error === "请先获取验证码"
+              ? "验证码已失效，请重新获取"
               : smsVerification.error || "验证码错误",
-            field: "smsCode"
+            field: "smsCode",
           },
           { status: 400 },
         );
@@ -180,9 +165,9 @@ export async function POST(request: NextRequest) {
       const smsVerification = verifySmsCode(phone, smsCode);
       if (!smsVerification.valid) {
         return NextResponse.json(
-          { 
+          {
             message: smsVerification.error || "验证码错误",
-            field: "smsCode"
+            field: "smsCode",
           },
           { status: 400 },
         );
@@ -269,9 +254,9 @@ export async function POST(request: NextRequest) {
       const smsVerification = verifySmsCode(phone, smsCode);
       if (!smsVerification.valid) {
         return NextResponse.json(
-          { 
+          {
             message: smsVerification.error || "验证码错误",
-            field: "smsCode"
+            field: "smsCode",
           },
           { status: 400 },
         );
@@ -345,8 +330,8 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
     const workspaceName = `个人空间 - ${userName || phone || email || '用户'}`;
     const workspaceId = `ws-personal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     const now = new Date();
-    
-    // 创建 workspace
+
+    // 创建 workspace，自动把注册时填写的手机号与邮箱写入 contactPhone 和 contactEmail
     const workspace = await prisma.workspace.create({
       data: {
         id: workspaceId,
@@ -354,11 +339,13 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
         type: 'PERSONAL',
         ownerId: userId,
         description: `${userName || '用户'}的个人工作空间`,
+        contactPhone: phone || null,
+        contactEmail: email || null,
         createdAt: now,
         updatedAt: now,
       },
     });
-    
+
     // 创建 WorkspaceMember 记录
     const memberId = `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     await prisma.workspacemember.create({
@@ -377,7 +364,7 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
       select: { membershipLevel: true }
     });
     const membershipLevel = user?.membershipLevel || "FREE";
-    
+
     let ml = await prisma.membershiplevel.findUnique({
       where: { id: membershipLevel }
     });
@@ -385,8 +372,9 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
       ml = await prisma.membershiplevel.findFirst();
     }
     const mlId = ml?.id || "FREE";
-    const tokenLimit = membershipLevel === "FREE" ? 10000 : membershipLevel === "GOLD" ? 50000 : 100000;
-    
+    // tokenLimit 一律从 membershiplevel 表读取真实值，不再写死档位数值
+    const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
+
     await prisma.workspacequota.create({
       data: {
         id: crypto.randomUUID(),
@@ -396,7 +384,7 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
         updatedAt: now
       }
     });
-    
+
     // 更新用户的 lastWorkspaceId
     await prisma.user.update({
       where: { id: userId },
@@ -404,7 +392,7 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
         lastWorkspaceId: workspace.id,
       },
     });
-    
+
     console.log(`[注册] 成功为用户 ${userId} 创建默认个人空间并赋予配额: ${workspaceId}`);
   } catch (error) {
     console.error(`[注册] 为用户 ${userId} 创建默认个人空间失败:`, error);

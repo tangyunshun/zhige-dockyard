@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import {
   Filter,
@@ -14,6 +15,7 @@ import {
   CheckCircle,
   XCircle,
   X,
+  RotateCcw,
 } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
 
@@ -27,9 +29,15 @@ interface Workspace {
   status: "ACTIVE" | "DISABLED";
   createdAt: string;
   componentCount: number;
+  quota?: {
+    tokenBalance: number | string;
+    membershipLevelId?: string;
+  };
   members: Array<{
     id: string;
     role: string;
+    monthlyTokenLimit?: number | null;
+    monthlyTokenUsed?: number;
     user: { name: string | null; email: string | null };
   }>;
   _count: { members: number };
@@ -55,6 +63,7 @@ interface WorkspaceData {
 }
 
 export default function AdminWorkspacesPage() {
+  const toast = useToast();
   const router = useRouter();
   const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(
     null,
@@ -599,10 +608,22 @@ export default function AdminWorkspacesPage() {
             </select>
             <button
               onClick={() => handleSearch()}
-              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300"
+              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
             >
               <Filter className="w-4 h-4 mr-2" />
               筛选
+            </button>
+            <button
+              onClick={() => {
+                loadWorkspaces(currentPage);
+                toast.success("空间数据已刷新！");
+              }}
+              disabled={loading}
+              className="inline-flex items-center px-4 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all duration-200 cursor-pointer shadow-2xs border border-slate-200/80 active:scale-95 disabled:opacity-50"
+              title="点击刷新空间列表最新数据"
+            >
+              <RotateCcw className={`w-4 h-4 mr-1.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
+              刷新数据
             </button>
           </div>
         </div>
@@ -801,56 +822,44 @@ export default function AdminWorkspacesPage() {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => handleView(workspace)}
-                              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                              title="查看空间"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
+                              title="查看工作空间成员与资产详情"
                             >
-                              <Eye className="w-4 h-4 text-slate-600" />
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>详情</span>
                             </button>
 
-                            {/* 个人空间和企业空间都显示封禁按钮，但有自己的限制 */}
-                            <>
-                              {/* 根据状态显示不同按钮 */}
-                              {workspace.status === "ACTIVE" ? (
-                                // 活跃状态：显示禁用按钮
+                            {workspace.status === "ACTIVE" ? (
+                              <button
+                                onClick={() => handleToggleStatus(workspace)}
+                                disabled={togglingId === workspace.id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                title="停用管控该工作空间"
+                              >
+                                <EyeOff className="w-3.5 h-3.5" />
+                                <span>停用</span>
+                              </button>
+                            ) : (
+                              <>
                                 <button
                                   onClick={() => handleToggleStatus(workspace)}
                                   disabled={togglingId === workspace.id}
-                                  className="p-2 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
-                                  title="禁用空间"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                  title="恢复启用该工作空间"
                                 >
-                                  <EyeOff className="w-4 h-4 text-amber-600" />
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  <span>启用</span>
                                 </button>
-                              ) : (
-                                // 已禁用状态：显示启用和删除按钮
-                                <>
-                                  <button
-                                    onClick={() =>
-                                      handleToggleStatus(workspace)
-                                    }
-                                    disabled={togglingId === workspace.id}
-                                    className="p-2 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                                    title="启用空间"
-                                  >
-                                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(workspace.id)}
-                                    disabled={deletingId === workspace.id}
-                                    className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                                    title="删除空间"
-                                  >
-                                    <Trash2 className="w-4 h-4 text-red-600" />
-                                  </button>
-                                </>
-                              )}
-                            </>
-
-                            {/* 状态标识 */}
-                            {workspace.status === "DISABLED" && (
-                              <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full flex items-center gap-1">
-                                <XCircle className="w-3 h-3" />
-                                已禁用
-                              </span>
+                                <button
+                                  onClick={() => handleDelete(workspace.id)}
+                                  disabled={deletingId === workspace.id}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                  title="解散并彻底删除该工作空间"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>解散</span>
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>

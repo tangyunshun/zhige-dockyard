@@ -94,7 +94,6 @@ export default function AvatarDropdown({
   // 计算管理入口
   const adminIdentities = [];
   if (isSuperAdmin || isPlatformAdmin) adminIdentities.push({ label: "平台后台", path: "/admin", icon: Shield });
-  if (isEnterpriseAdmin) adminIdentities.push({ label: "企业管理", path: "/workspace-hub?filter=managed", icon: Sliders });
   if (isComponentAdmin) adminIdentities.push({ label: "组件管理", path: "/workspace-hub?filter=component-managed", icon: Sliders });
   if (isKnowledgeAdmin) adminIdentities.push({ label: "知识库管理", path: "/workspace-hub?filter=knowledge-managed", icon: Sliders });
 

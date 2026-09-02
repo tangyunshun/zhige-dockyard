@@ -55,6 +55,7 @@ async function ensureDefaultsSeeded(userId: string): Promise<void> {
 
   const now = Date.now();
   const defaults: {
+    id: string;
     userId: string;
     title: string;
     content: string;
@@ -63,6 +64,7 @@ async function ensureDefaultsSeeded(userId: string): Promise<void> {
     createdAt: Date;
   }[] = [
     {
+      id: crypto.randomUUID(),
       userId,
       title: "🎉 欢迎使用知阁舟坊工作台！",
       content: "系统已赠送您 100 点免费体验额度，您可以前往组件大厅挑选工具开始使用。",
@@ -71,6 +73,7 @@ async function ensureDefaultsSeeded(userId: string): Promise<void> {
       createdAt: new Date(now - 3600 * 1000 * 2), // 2小时前
     },
     {
+      id: crypto.randomUUID(),
       userId,
       title: "⚙️ 招标文件分析任务处理完成",
       content: "您提交的文件已分析完成，生成了完整的对比分析报告，您可以随时查看或导出下载报告。",
@@ -79,6 +82,7 @@ async function ensureDefaultsSeeded(userId: string): Promise<void> {
       createdAt: new Date(now - 3600 * 1000 * 6), // 6小时前
     },
     {
+      id: crypto.randomUUID(),
       userId,
       title: "🔐 账号安全防护已开启",
       content: "您的账号安全防护已初始化完成，所有上传的项目文档与资料均已妥善安全存储。",

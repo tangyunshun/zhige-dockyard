@@ -79,6 +79,7 @@ model user {
   sessionToken                                             String?               @map("session_token")
   deletionRequestedAt                                      DateTime?             @map("deletion_requested_at")
   bannedUntil                                              DateTime?             @map("banned_until")
+  banReason                                                String?               @db.Text @map("ban_reason")
   passwordChangedAt                                        DateTime?             @default(now()) @map("password_changed_at")
   deviceLimit                                              Int                   @default(3) @map("device_limit")
   allowMultiDevice                                         Boolean               @default(true) @map("allow_multi_device")
@@ -250,10 +251,25 @@ model document {
   id          String   @id
   workspaceId String
   title       String
-  content     String?
+  content     String?  @db.Text
   parentId    String?
   type        String   @default("doc")
   status      String   @default("active")
+  uploaderId  String?  @map("uploader_id")
+  visibility  String   @default("PUBLIC") @map("visibility")
+  // 管理员审核批示意见（驳回修改意见 / 通过批示）。
+  // 独立字段存储，严禁再写入 content，避免污染资料正文影响预览与「带入快速任务」。
+  reviewComment String? @map("review_comment") @db.Text
+  // 真实文件元信息：fileSize 为文件真实字节数（非 content 字符数估算），
+  // fileExt 为原始文件扩展名，用于精确判定格式类型。历史存量数据可为 null。
+  fileSize    Int?     @map("file_size")
+  fileExt     String?  @map("file_ext") @db.VarChar(32)
+  // 智能总结：导入/上传时基于真实原文生成并持久化，供列表与预览直接展示
+  summary     String?  @db.Text
+  // 原始文件存储：filePath 为 uploads/assets 下的相对路径，预览/下载一律经鉴权 API 读取
+  filePath    String?  @map("file_path")
+  mimeType    String?  @map("mime_type") @db.VarChar(128)
+  originalName String? @map("original_name") @db.VarChar(255)
   createdAt   DateTime @default(now())
   updatedAt   DateTime
 
@@ -419,6 +435,7 @@ model systemdocument {
   content     String?   @db.Text
   category    String
   tags        String?
+  visibility  String   @default("PUBLIC")
   isPublished Boolean  @default(false)
   sortOrder   Int      @default(0)
   viewCount   Int      @default(0)
@@ -577,13 +594,16 @@ model workspaceinvitation {
 }
 
 model workspacemember {
-  id          String               @id
-  userId      String
-  workspaceId String
-  role        workspacemember_role
-  joinedAt    DateTime             @default(now())
-  user        user                 @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
-  workspace   workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
+  id                String               @id
+  userId            String
+  workspaceId       String
+  role              workspacemember_role
+  monthlyTokenLimit BigInt?
+  monthlyTokenUsed  BigInt               @default(0)
+  quotaResetAt      DateTime?
+  joinedAt          DateTime             @default(now())
+  user              user                 @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
+  workspace         workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
 
   @@unique([userId, workspaceId], map: "WorkspaceMember_userId_workspaceId_key")
   @@index([userId], map: "WorkspaceMember_userId_idx")
@@ -760,6 +780,7 @@ model accountappeal {
   appealEvidence String?   @db.Text
   contactInfo    String?
   status         String    @default("pending")
+  businessType   String?   @default("账号解封申诉")
   adminId        String?
   adminName      String?
   adminComment   String?   @db.Text
@@ -916,4 +937,157 @@ model webhooksubscription {
   @@index([userId], map: "Webhook_userId_idx")
   @@index([active], map: "Webhook_active_idx")
   @@map("webhooksubscription")
+}
+
+// 账单与交易记录表：记录空间套餐升级、会员订阅、算力充值等真实交易流水，
+// 供计费中心查询、对账与发票导出使用（对应前端 /settings/billing 页面）。
+model billingrecord {
+  id          String   @id
+  userId      String
+  workspaceId String?
+  // 交易类型：PLAN_UPGRADE 空间套餐升级 / MEMBERSHIP 会员订阅 / TOKEN_RECHARGE 算力充值 / REFUND 退款
+  type        String
+  title       String // 交易描述说明
+  // 交易金额，单位：分（与 membershiplevel 价格口径保持一致）
+  amount      Int      @default(0)
+  currency    String   @default("CNY")
+  // 交易状态：SUCCESS 成功 / PENDING 处理中 / FAILED 失败 / REFUNDED 已退款
+  status      String   @default("SUCCESS")
+  channel     String? // 支付渠道
+  referenceId String? // 关联业务单号（如操作日志 ID）
+  invoiceUrl  String?
+  metadata    Json? // 扩展信息（如套餐升级前后对比）
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId], map: "BillingRecord_userId_idx")
+  @@index([workspaceId], map: "BillingRecord_workspaceId_idx")
+  @@index([status], map: "BillingRecord_status_idx")
+  @@index([createdAt], map: "BillingRecord_createdAt_idx")
+  @@map("billing_record")
+}
+
+model tokenpack {
+  id          String   @id
+  name        String
+  points      BigInt
+  price       Float
+  icon        String?  @default("⚡")
+  color       String?  @default("#3182ce")
+  description String?
+  isPopular   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive], map: "TokenPack_isActive_idx")
+  @@index([sortOrder], map: "TokenPack_sortOrder_idx")
+}
+
+// ============================================================
+// 资料治理模块：移除单 / 资料级权限 / 版本 / 评论 / 分享
+// 说明：以下表仅以 String 保存关联 ID，不建立 Prisma 关系，
+// 避免改动既有 model，且移除记录需长期留存、不随资料级联删除。
+// ============================================================
+
+// 资料移除单：管理员移除资料的原因与执行记录，支持恢复
+model documentremoval {
+  id            String    @id
+  documentId    String
+  workspaceId   String
+  titleSnapshot String
+  uploaderId    String?
+  removedBy     String
+  reasonCode    String // VIOLATION 违规 | EXPIRED 过期 | COPYRIGHT 版权 | OTHER 其他
+  reasonDetail  String?   @db.Text
+  // 删除申请状态：PENDING 待管理员审核（普通成员删除自己资料）| APPROVED 已生效移除 | REJECTED 已驳回
+  status        String   @default("APPROVED")
+  // 管理员驳回删除申请时填写的意见，回写给申请人
+  rejectReason  String?   @db.Text
+  notifiedCount Int       @default(0)
+  removedAt     DateTime  @default(now())
+  restoredAt    DateTime?
+  restoredBy    String?
+  // 上传人确认接收移除：确认后资料转入个人私密，可在治理中心申请恢复
+  confirmedAt   DateTime?
+  confirmedBy   String?
+  // 上传人申请恢复：记录申请时间与说明，避免重复申请并更新遮罩层状态
+  restoreRequestedAt    DateTime?
+  restoreRequestMessage String?   @db.Text
+
+  @@index([workspaceId, removedAt], map: "DocumentRemoval_workspaceId_removedAt_idx")
+  @@index([documentId], map: "DocumentRemoval_documentId_idx")
+  @@index([workspaceId, status], map: "DocumentRemoval_workspaceId_status_idx")
+  @@index([workspaceId, confirmedAt], map: "DocumentRemoval_workspaceId_confirmedAt_idx")
+}
+
+// 资料级操作权限：可精确授予某成员，或按角色 / 岗位批量授予
+model assetpermission {
+  id               String   @id
+  workspaceId      String
+  userId           String?
+  roleScope        String?
+  positionCode     String?
+  canView          Boolean  @default(true)
+  canUpload        Boolean  @default(false)
+  canEdit          Boolean  @default(false)
+  canDelete        Boolean  @default(false)
+  canShare         Boolean  @default(false)
+  canComment       Boolean  @default(true)
+  canManageVersion Boolean  @default(false)
+  grantedBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([workspaceId], map: "AssetPermission_workspaceId_idx")
+  @@index([workspaceId, userId], map: "AssetPermission_workspaceId_userId_idx")
+}
+
+// 资料版本快照：编辑前自动留存，支持对比与回滚
+model documentversion {
+  id         String   @id
+  documentId String
+  versionNo  Int
+  title      String
+  content    String   @db.Text
+  changeNote String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, versionNo], map: "DocumentVersion_documentId_versionNo_key")
+  @@index([documentId, createdAt], map: "DocumentVersion_documentId_createdAt_idx")
+}
+
+// 资料评论：支持楼中楼回复
+model documentcomment {
+  id          String   @id
+  documentId  String
+  workspaceId String
+  userId      String
+  userName    String?
+  content     String   @db.Text
+  parentId    String?
+  createdAt   DateTime @default(now())
+
+  @@index([documentId, createdAt], map: "DocumentComment_documentId_createdAt_idx")
+  @@index([workspaceId], map: "DocumentComment_workspaceId_idx")
+}
+
+// 资料分享链接：token 访问，支持过期与吊销
+model documentshare {
+  id          String    @id
+  documentId  String
+  workspaceId String
+  token       String    @unique
+  permission  String    @default("view") // view | download
+  expiresAt   DateTime?
+  accessCount Int       @default(0)
+  revokedAt   DateTime?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+
+  @@index([documentId], map: "DocumentShare_documentId_idx")
+  @@index([workspaceId], map: "DocumentShare_workspaceId_idx")
 }

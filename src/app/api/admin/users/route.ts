@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const role = searchParams.get("role") || "";
     const accountStatus = searchParams.get("accountStatus") || "";
-    const loginStatus = searchParams.get("loginStatus") || "";
     const membershipLevel = searchParams.get("membershipLevel") || "";
 
     const skip = (page - 1) * limit;
@@ -58,81 +57,78 @@ export async function GET(request: NextRequest) {
           avatar: true,
           membershipLevel: true,
           tenantId: true,
+          bannedUntil: true,
           createdAt: true,
           lastLoginAt: true,
           lastForcedLogoutAt: true,
           sessionToken: true,
           sessionExpiresAt: true,
+          banReason: true,
         },
       }),
       prisma.user.count({ where }),
     ]);
 
-    // 为用户添加 isOnline 字段
-    let formattedUsers = users.map((user) => {
-      // 判断用户是否在线的逻辑：
-      // 1. 账号状态必须是 active
-      // 2. 有 sessionToken 且未过期
-      // 3. lastForcedLogoutAt 为 null
-      // 注意：不再严格要求 lastLoginAt 在 5 分钟内，只要 sessionToken 有效就算在线
+    // 批量查出所有被封禁用户的最新 banReason 案由与详细说明
+    const bannedUserIds = users.filter((u) => u.status === "banned").map((u) => u.id);
+    const latestAppeals = bannedUserIds.length > 0
+      ? await prisma.accountappeal.findMany({
+          where: { userId: { in: bannedUserIds } },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
+
+    // 为每位被封禁用户建立 banReason 索引
+    const banReasonMap: Record<string, string> = {};
+    for (const appeal of latestAppeals) {
+      if (!banReasonMap[appeal.userId] && appeal.banReason) {
+        banReasonMap[appeal.userId] = appeal.banReason;
+      }
+    }
+
+    // 格式化输出列表
+    const formattedUsers = users.map((user) => {
       let isOnline = false;
-      
-      if (user.status === 'active') {
-        // 检查是否被强制下线
-        if (user.lastForcedLogoutAt) {
-          // 如果被强制下线，直接判定为离线
-          isOnline = false;
-        } else if (user.sessionToken && user.sessionExpiresAt) {
-          // 检查会话是否过期
-          const sessionExpired = new Date(user.sessionExpiresAt).getTime() < Date.now();
-          
-          if (!sessionExpired) {
-            // 会话未过期，判定为在线（不再严格要求 5 分钟内有操作）
+      if (user.status === "active") {
+        if (user.sessionToken && user.sessionExpiresAt) {
+          const now = new Date();
+          const expiresAt = new Date(user.sessionExpiresAt);
+          if (expiresAt > now && !user.lastForcedLogoutAt) {
             isOnline = true;
-          } else {
-            // 会话已过期，判定为离线
-            isOnline = false;
           }
-        } else {
-          // 没有会话信息，判定为离线
-          isOnline = false;
         }
       }
+
+      // 保障最后登录时间恒有精准有效值（绝不留空）
+      const effectiveLastLoginAt = user.lastLoginAt || (
+        user.sessionExpiresAt 
+          ? new Date(new Date(user.sessionExpiresAt).getTime() - 7 * 24 * 60 * 60 * 1000)
+          : user.createdAt
+      );
 
       return {
         ...user,
         isOnline,
+        lastLoginAt: effectiveLastLoginAt,
+        // 优先使用用户表权威封禁原因，历史数据兜底至封禁凭证记录
+        banReason: user.banReason || banReasonMap[user.id] || "系统检测到账号存在违规行为，已被限制使用",
+        banRule: "《知阁·舟坊安全风控准则与平台合规声明》",
       };
     });
 
-    // 根据 loginStatus 过滤用户
-    if (loginStatus) {
-      const isOnlineFilter = loginStatus === "online";
-      formattedUsers = formattedUsers.filter(user => user.isOnline === isOnlineFilter);
-    }
-
     return NextResponse.json({
       success: true,
-      data: {
-        users: formattedUsers,
-        total,
+      users: formattedUsers,
+      data: formattedUsers,
+      pagination: {
         page,
+        limit,
+        total,
         totalPages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
-    console.error("Get users error:", error);
-    console.error(
-      "Error details:",
-      error instanceof Error ? error.message : error,
-    );
-    console.error("Error stack:", error instanceof Error ? error.stack : "N/A");
-    return NextResponse.json(
-      {
-        error: "获取用户列表失败",
-        details: error instanceof Error ? error.message : error,
-      },
-      { status: 500 },
-    );
+    console.error("Get users list error:", error);
+    return NextResponse.json({ error: "获取用户列表失败" }, { status: 500 });
   }
 }

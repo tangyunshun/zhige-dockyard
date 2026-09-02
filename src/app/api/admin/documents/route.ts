@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
     const search = searchParams.get("search");
     const category = searchParams.get("category");
-    const published = searchParams.get("published");
+    const published = searchParams.get("published") || searchParams.get("isPublished");
 
     const where: any = {};
     
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       where.category = category;
     }
     
-    if (published !== undefined && published !== "") {
+    if (published !== undefined && published !== null && published !== "") {
       where.isPublished = published === "true";
     }
 
@@ -43,7 +43,14 @@ export async function GET(request: NextRequest) {
       prisma.systemdocument.findMany({
         where,
         include: {
-          user: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar: true,
+            },
+          },
         },
         skip: (page - 1) * limit,
         take: limit,
@@ -102,7 +109,14 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
       include: {
-        user: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+          },
+        },
       },
     });
 

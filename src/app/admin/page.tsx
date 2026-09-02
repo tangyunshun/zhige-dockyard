@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -251,12 +251,34 @@ export default function AdminDashboard() {
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    if (hours < 1) return "刚刚";
-    if (hours < 24) return `${hours}小时前`;
-    const days = Math.floor(hours / 24);
-    return `${days}天前`;
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (seconds < 60) return "刚刚";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`;
+    if (seconds < 2592000) return `${Math.floor(seconds / 86400)}天前`;
+    return `${Math.floor(seconds / 2592000)}个月前`;
+  };
+
+  const splitFullDateTime = (dateStr?: string | Date | null) => {
+    if (!dateStr) return { date: "未知", time: "" };
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return { date: "未知", time: "" };
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const year = d.getFullYear();
+      const month = pad(d.getMonth() + 1);
+      const day = pad(d.getDate());
+      const hours = pad(d.getHours());
+      const minutes = pad(d.getMinutes());
+      const seconds = pad(d.getSeconds());
+      return {
+        date: `${year}-${month}-${day}`,
+        time: `${hours}:${minutes}:${seconds}`,
+      };
+    } catch (e) {
+      return { date: "未知", time: "" };
+    }
   };
 
   return (
@@ -482,14 +504,25 @@ export default function AdminDashboard() {
                   </p>
                 </div>
               ) : (
-                data.recentUsers.map((user) => (
+                data.recentUsers.map((user: any) => (
                   <div
                     key={user.id}
                     className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/60 transition-all duration-300 hover:-translate-x-1"
                   >
-                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
-                      {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
-                    </div>
+                    {user.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={user.name || "用户头像"}
+                        className="w-11 h-11 rounded-full object-cover shadow-md group-hover:scale-110 transition-transform duration-300 border border-slate-100"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                        {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold text-slate-800 truncate group-hover:text-[#3182ce] transition-colors">
                         {user.name || user.email || "匿名用户"}
@@ -498,8 +531,9 @@ export default function AdminDashboard() {
                         {user.email || "未设置邮箱"}
                       </div>
                     </div>
-                    <div className="text-xs text-slate-400 font-medium bg-slate-100 px-2 py-1 rounded-full">
-                      {formatTimeAgo(user.createdAt)}
+                    <div className="text-right font-mono text-xs leading-tight shrink-0 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                      <div className="font-bold text-slate-700">{splitFullDateTime(user.createdAt).date}</div>
+                      <div className="text-[10px] text-slate-400 font-medium mt-0.5">{splitFullDateTime(user.createdAt).time}</div>
                     </div>
                   </div>
                 ))
@@ -557,8 +591,9 @@ export default function AdminDashboard() {
                         · {workspace.members?.length || 0} 名成员
                       </div>
                     </div>
-                    <div className="text-xs text-slate-400 font-medium bg-slate-100 px-2 py-1 rounded-full">
-                      {formatTimeAgo(workspace.createdAt)}
+                    <div className="text-right font-mono text-xs leading-tight shrink-0 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                      <div className="font-bold text-slate-700">{splitFullDateTime(workspace.createdAt).date}</div>
+                      <div className="text-[10px] text-slate-400 font-medium mt-0.5">{splitFullDateTime(workspace.createdAt).time}</div>
                     </div>
                   </div>
                 ))

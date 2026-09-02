@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -12,9 +12,16 @@ export async function POST(request: NextRequest) {
     } = await request.json();
 
     // 验证必填字段
-    if (!appealId || !status || !adminId) {
+    if (!appealId || !status) {
       return NextResponse.json(
-        { message: "缺少必填字段" },
+        { message: "缺少必填字段 (appealId, status)" },
+        { status: 400 },
+      );
+    }
+
+    if (status === "rejected" && (!adminComment || !adminComment.trim())) {
+      return NextResponse.json(
+        { message: "请填写具体的驳回理由" },
         { status: 400 },
       );
     }
@@ -25,6 +32,9 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    const finalAdminId = adminId || "system-admin";
+    const finalAdminName = adminName || "管理员";
 
     // 查找申诉记录
     const appeal = await prisma.accountappeal.findUnique({
@@ -50,8 +60,8 @@ export async function POST(request: NextRequest) {
       where: { id: appealId },
       data: {
         status,
-        adminId,
-        adminName,
+        adminId: finalAdminId,
+        adminName: finalAdminName,
         adminComment: adminComment || null,
         processedAt: new Date(),
         updatedAt: new Date(),
