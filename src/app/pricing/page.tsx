@@ -757,7 +757,7 @@ export default function PricingPage() {
 
       <ConfirmDialog
         isOpen={!!checkoutPlan}
-        title={checkoutPlan ? `确认开通${checkoutPlan.level.nameZh}会员` : "确认开通会员"}
+        title={checkoutPlan ? `确认开通${checkoutPlan.level.nameZh}` : "确认开通会员"}
         message={
           checkoutPlan
             ? `本次通过${membershipPaymentMethod === "ALIPAY" ? "支付宝" : "微信支付"}完成在线支付，金额 ¥${(checkoutPlan.amount / 100).toFixed(2)}/${checkoutPlan.cycle === "YEAR" ? "年" : "月"}。确认后将立即开通并刷新企业空间数量与配额。`
