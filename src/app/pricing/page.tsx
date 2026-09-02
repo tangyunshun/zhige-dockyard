@@ -765,7 +765,14 @@ export default function PricingPage() {
         }
         warnings={["支付成功后，企业空间创建配额将按新会员等级立即生效"]}
         type="info"
-        confirmText={upgradingMembership ? "开通中..." : "确认支付并开通"}
+        confirmText={
+          upgradingMembership
+            ? "开通中..."
+            : checkoutPlan
+              ? `确认支付并开通(¥${(checkoutPlan.amount / 100).toFixed(2)})`
+              : "确认支付并开通"
+        }
+        confirmButtonClass="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-amber-500/25"
         cancelText="取消"
         onConfirm={confirmMembershipUpgrade}
         onCancel={() => setCheckoutPlan(null)}

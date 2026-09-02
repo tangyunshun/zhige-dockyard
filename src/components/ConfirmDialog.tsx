@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
   onConfirm: (inputValue?: string) => void | boolean | Promise<void | boolean>;
   onCancel: () => void;
   confirmText?: string;
+  confirmButtonClass?: string;
   cancelText?: string;
   type?: "danger" | "warning" | "info";
   appealContext?: {
@@ -36,6 +37,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   confirmText = "确认",
+  confirmButtonClass,
   cancelText = "取消",
   type = "warning",
   input,
@@ -245,7 +247,7 @@ export function ConfirmDialog({
                 await onConfirm(localInputValue.trim());
               }}
               disabled={!isOpen}
-              className={`flex-1 px-4 py-2.5 ${config.confirmBg} text-white text-xs font-black rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg active:scale-95 cursor-pointer`}
+              className={`flex-1 px-4 py-2.5 ${confirmButtonClass || config.confirmBg} text-white text-xs font-black rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg active:scale-95 cursor-pointer`}
             >
               {confirmText}
             </button>
