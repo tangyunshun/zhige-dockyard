@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -17,7 +16,6 @@ import {
   Boxes,
   Coins,
   ShoppingBag,
-  ArrowLeft,
   Users,
   Package,
   Database,
@@ -65,7 +63,6 @@ const DEFAULT_PLAN: Partial<WorkspacePlan> = {
 const SYSTEM_KEYS = ["STANDARD", "PRO", "ENTERPRISE", "CUSTOM"];
 
 export default function WorkspacePlansAdminPage() {
-  const router = useRouter();
   const { success, error: toastError } = useToast();
 
   const [plans, setPlans] = useState<WorkspacePlan[]>([]);
@@ -252,13 +249,6 @@ export default function WorkspacePlansAdminPage() {
       {/* 顶部 Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="flex items-center gap-3.5 relative z-10">
-          <button
-            onClick={() => router.back()}
-            className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
-            title="返回上一页"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#4299e1] to-[#3182ce] text-white flex items-center justify-center border border-blue-400/40 shadow-xs shrink-0">
             <Boxes className="w-5 h-5 fill-white/20" />
           </div>
