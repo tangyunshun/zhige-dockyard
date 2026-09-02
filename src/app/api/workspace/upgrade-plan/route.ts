@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
     const currentPlan = normalizePlan(workspace.plan);
     const currentConfig = getPlanConfig(currentPlan);
 
-    // 仅返回阶梯高于当前套餐、且支持在线购买的选项
+    // 可在线购买的全部套餐（前端需要展示完整阶梯：当前、低阶禁用、高阶可升级）
+    const allPlans = PURCHASABLE_PLANS;
+    // 仅阶梯高于当前套餐的选项，用于判断是否可以在线升级
     const availablePlans = PURCHASABLE_PLANS.filter(
       (p) => p.sortOrder > currentConfig.sortOrder
     );
@@ -60,6 +62,7 @@ export async function GET(request: NextRequest) {
       data: {
         workspace: { id: workspace.id, name: workspace.name },
         currentPlan: currentConfig,
+        allPlans,
         availablePlans,
         /** 当前套餐已是最高可购买档时，前端改为引导线下定制 */
         canUpgrade: availablePlans.length > 0,

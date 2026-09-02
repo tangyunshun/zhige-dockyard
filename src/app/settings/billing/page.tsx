@@ -334,16 +334,32 @@ export default function BillingSettingsPage() {
                   ))}
                 </div>
 
-                {/* 可升级套餐列表 */}
-                {planData.canUpgrade ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {planData.availablePlans.map((plan: any) => (
+                {/* 全部空间套餐列表：当前套餐高亮、低阶禁用、高阶可升级 */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {planData.allPlans.map((plan: any) => {
+                    const isCurrent = plan.key === planData.currentPlan?.key;
+                    const isUpgrade = plan.sortOrder > planData.currentPlan?.sortOrder;
+                    const isDowngrade = plan.sortOrder < planData.currentPlan?.sortOrder;
+                    return (
                       <div
                         key={plan.key}
-                        className="rounded-xl border border-slate-200/80 p-5 bg-white hover:border-[#3182ce]/50 hover:shadow-sm transition-all flex flex-col"
+                        className={`rounded-xl border p-5 bg-white transition-all flex flex-col ${
+                          isCurrent
+                            ? "border-[#3182ce] ring-2 ring-[#3182ce]/20"
+                            : isUpgrade
+                              ? "border-slate-200/80 hover:border-[#3182ce]/50 hover:shadow-sm"
+                              : "border-slate-200/80 opacity-75"
+                        }`}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-sm font-black text-slate-800">{plan.name}</h3>
+                          <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                            {plan.name}
+                            {isCurrent && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-[#3182ce] text-white rounded font-bold">
+                                当前套餐
+                              </span>
+                            )}
+                          </h3>
                           <span className="text-xs font-black text-[#2b6cb0]">
                             ¥{plan.priceMonthly / 100}
                             <span className="text-[10px] text-slate-400 font-bold">/月</span>
@@ -361,15 +377,19 @@ export default function BillingSettingsPage() {
                         </ul>
 
                         <button
-                          onClick={() => handleUpgradePlan(plan.key)}
-                          disabled={upgradingPlan !== null}
-                          className="w-full h-9 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                          onClick={() => isUpgrade && handleUpgradePlan(plan.key)}
+                          disabled={upgradingPlan !== null || !isUpgrade}
+                          className="w-full h-9 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-1.5"
                         >
                           {upgradingPlan === plan.key ? (
                             <>
                               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               升级中...
                             </>
+                          ) : isCurrent ? (
+                            "当前套餐"
+                          ) : isDowngrade ? (
+                            "不支持降级"
                           ) : (
                             <>
                               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -378,12 +398,13 @@ export default function BillingSettingsPage() {
                           )}
                         </button>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-4 bg-emerald-50/60 border border-emerald-100 rounded-xl">
+                    );
+                  })}
+                </div>
+                {!planData.canUpgrade && (
+                  <div className="mt-4 p-4 bg-emerald-50/60 border border-emerald-100 rounded-xl">
                     <p className="text-xs text-emerald-700 font-bold leading-relaxed">
-                      当前空间已是最高可在线购买套餐。如需进一步定制席位与存储，请联系专属架构师走线下定制方案。
+                      当前空间已是在线可购买最高套餐。如需进一步定制席位与存储，请联系专属架构师走线下定制方案。
                     </p>
                   </div>
                 )}
