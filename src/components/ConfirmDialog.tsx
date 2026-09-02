@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { X, User, FileText, Shield } from "lucide-react";
 
 interface ConfirmDialogProps {
@@ -25,6 +25,7 @@ interface ConfirmDialogProps {
     value: string;
     onChange: (value: string) => void;
   };
+  children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -39,6 +40,7 @@ export function ConfirmDialog({
   type = "warning",
   input,
   appealContext,
+  children,
 }: ConfirmDialogProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
@@ -195,6 +197,9 @@ export function ConfirmDialog({
               </div>
             </div>
           )}
+
+          {/* 自定义额外内容（如支付方式选择） */}
+          {children}
 
           {/* 处理意见输入框（可选/必填） */}
           {input && (

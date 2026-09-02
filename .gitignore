@@ -52,6 +52,8 @@ public/uploads/
 # Local debug / temp outputs
 dev.err
 tsc_out.txt
+tsc-out.txt
+COMMIT_MSG.txt
 
 # Test evidence artifacts
 .p2a-evidence/
