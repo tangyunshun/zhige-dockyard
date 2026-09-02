@@ -517,15 +517,25 @@ export default function WorkspacePlansAdminPage() {
                           <Edit2 className="w-3.5 h-3.5" />
                           编辑
                         </button>
-                        {!SYSTEM_KEYS.includes(plan.key) && (
-                          <button
-                            onClick={() => setDeleteTarget(plan)}
-                            className="px-3 py-1.5 bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            删除
-                          </button>
-                        )}
+                        {!SYSTEM_KEYS.includes(plan.key) &&
+                          (plan.isActive ? (
+                            <button
+                              disabled
+                              title="请先将套餐停用后再删除"
+                              className="px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-300 font-bold text-xs rounded-xl cursor-not-allowed inline-flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              删除
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setDeleteTarget(plan)}
+                              className="px-3 py-1.5 bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              删除
+                            </button>
+                          ))}
                       </div>
                     </td>
                   </tr>
