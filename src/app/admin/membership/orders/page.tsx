@@ -155,6 +155,7 @@ export default function AdminMembershipOrdersPage() {
   const getPaymentMethodIcon = (method: string) => {
     const icons: Record<string, any> = {
       WECHAT: CreditCard,
+      WECHAT_PAY: CreditCard,
       ALIPAY: CreditCard,
       BANK_TRANSFER: Building2,
       SIMULATED: Sparkles,
@@ -357,7 +358,7 @@ export default function AdminMembershipOrdersPage() {
                                   : "text-slate-600"
                               }`}
                             >
-                              {order.paymentMethod === "WECHAT" && "微信支付"}
+                              {(order.paymentMethod === "WECHAT" || order.paymentMethod === "WECHAT_PAY") && "微信支付"}
                               {order.paymentMethod === "ALIPAY" && "支付宝"}
                               {order.paymentMethod === "BANK_TRANSFER" &&
                                 "银行转账"}

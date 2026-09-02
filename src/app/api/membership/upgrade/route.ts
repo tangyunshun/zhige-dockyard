@@ -27,6 +27,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const targetLevel = String(body.targetLevel || "").toUpperCase();
     const billingCycle = String(body.billingCycle || "MONTH").toUpperCase() === "YEAR" ? "YEAR" : "MONTH";
+    // 支付方式由前端传入（WECHAT_PAY / ALIPAY），与空间算力点充值页保持一致；缺省默认微信支付
+    const reqPaymentMethod = String(body.paymentMethod || "WECHAT_PAY").toUpperCase();
+    const paymentMethod = reqPaymentMethod === "ALIPAY" ? "ALIPAY" : "WECHAT_PAY";
 
     if (!targetLevel) {
       return NextResponse.json({ error: "缺少目标会员等级" }, { status: 400 });
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
           userId,
           levelId: target.name,
           orderType: "UPGRADE",
-          paymentMethod: "SIMULATED",
+          paymentMethod,
           amount,
           currency: "CNY",
           startDate: now,
@@ -140,7 +143,7 @@ export async function POST(request: NextRequest) {
           changeType: "MEMBERSHIP_UPGRADE",
           oldValue: { level: current?.name || "FREE", nameZh: current?.nameZh || "免费版" },
           newValue: { level: target.name, nameZh: target.nameZh },
-          reason: billingCycle === "YEAR" ? "在线模拟支付年费开通" : "在线模拟支付月费开通",
+          reason: billingCycle === "YEAR" ? "在线支付年费开通" : "在线支付月费开通",
           createdAt: new Date(),
         },
       });
@@ -154,7 +157,7 @@ export async function POST(request: NextRequest) {
           amount,
           currency: "CNY",
           status: "SUCCESS",
-          channel: "SIMULATED",
+          channel: paymentMethod,
           referenceId: orderId,
           metadata: {
             orderId,
@@ -187,7 +190,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `已在线模拟支付并开通${target.nameZh}，企业空间数量与配额已同步生效`,
+      message: `已通过${paymentMethod === "ALIPAY" ? "支付宝" : "微信支付"}支付并开通${target.nameZh}，企业空间数量与配额已同步生效`,
       data: {
         orderId,
         membershipLevel: target.name,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, X, ArrowRight, Building2, Server, Zap, Users, Boxes, Sparkles } from "lucide-react";
+import { Check, X, ArrowRight, Building2, Server, Zap, Users, Boxes } from "lucide-react";
 import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
@@ -83,8 +83,8 @@ export default function PricingPage() {
   const [selectedPlan, setSelectedPlan] = useState<{ name: string; displayName: string } | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<{ level: MembershipLevel; cycle: "MONTH" | "YEAR"; amount: number } | null>(null);
   const [upgradingMembership, setUpgradingMembership] = useState(false);
-  // 会员升级弹窗中的支付方式选择：当前后端仅支持模拟支付，真实通道后续接入
-  const [membershipPaymentMethod, setMembershipPaymentMethod] = useState<"SIMULATED" | "WECHAT_PAY" | "ALIPAY">("SIMULATED");
+  // 会员升级弹窗中的支付方式选择：与空间算力点充值页一致（微信支付 / 支付宝）
+  const [membershipPaymentMethod, setMembershipPaymentMethod] = useState<"WECHAT_PAY" | "ALIPAY">("WECHAT_PAY");
   // 由升级中枢跳转携带的目标档位（?target=GOLD），用于自动聚焦与高亮
   // 注意：不可命名为 targetLevel，该名已被下方「推荐等级」变量占用
   const [focusLevel, setFocusLevel] = useState<string | null>(null);
@@ -107,9 +107,9 @@ export default function PricingPage() {
     }
   }, [focusLevel, loading, levels.length]);
 
-  // 打开会员升级结算弹窗时重置为默认支付方式（模拟支付）
+  // 打开会员升级结算弹窗时重置为默认支付方式（微信支付）
   useEffect(() => {
-    if (checkoutPlan) setMembershipPaymentMethod("SIMULATED");
+    if (checkoutPlan) setMembershipPaymentMethod("WECHAT_PAY");
   }, [checkoutPlan]);
 
   const fetchMembershipLevels = async () => {
@@ -147,6 +147,7 @@ export default function PricingPage() {
         body: JSON.stringify({
           targetLevel: checkoutPlan.level.name,
           billingCycle: checkoutPlan.cycle,
+          paymentMethod: membershipPaymentMethod,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -759,10 +760,10 @@ export default function PricingPage() {
         title={checkoutPlan ? `确认开通${checkoutPlan.level.nameZh}会员` : "确认开通会员"}
         message={
           checkoutPlan
-            ? `本次为在线模拟支付，金额 ¥${(checkoutPlan.amount / 100).toFixed(2)}/${checkoutPlan.cycle === "YEAR" ? "年" : "月"}。确认后将立即开通并刷新企业空间数量与配额。`
+            ? `本次通过${membershipPaymentMethod === "ALIPAY" ? "支付宝" : "微信支付"}完成在线支付，金额 ¥${(checkoutPlan.amount / 100).toFixed(2)}/${checkoutPlan.cycle === "YEAR" ? "年" : "月"}。确认后将立即开通并刷新企业空间数量与配额。`
             : ""
         }
-        warnings={["模拟支付成功后，企业空间创建配额将按新会员等级立即生效"]}
+        warnings={["支付成功后，企业空间创建配额将按新会员等级立即生效"]}
         type="info"
         confirmText={upgradingMembership ? "开通中..." : "确认支付并开通"}
         cancelText="取消"
@@ -771,45 +772,37 @@ export default function PricingPage() {
       >
         <div className="mb-4 space-y-2.5">
           <label className="block text-xs font-black text-slate-700">选择支付方式：</label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            {/* 模拟支付：当前会员升级唯一可用通道 */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* 微信支付 */}
             <button
               type="button"
-              onClick={() => setMembershipPaymentMethod("SIMULATED")}
+              onClick={() => setMembershipPaymentMethod("WECHAT_PAY")}
               className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                membershipPaymentMethod === "SIMULATED"
+                membershipPaymentMethod === "WECHAT_PAY"
                   ? "border-[#3182ce] bg-blue-50/80 ring-2 ring-[#3182ce]/20 text-[#2b6cb0]"
                   : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
               }`}
             >
-              <Sparkles className="w-5 h-5 shrink-0" />
-              <span>模拟支付</span>
-            </button>
-
-            {/* 微信支付：真实通道，后续接入 */}
-            <button
-              type="button"
-              disabled
-              className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-xs font-bold transition-all cursor-not-allowed opacity-60"
-            >
-              <img src="/icons/wechat-pay.png" alt="" className="w-5 h-5 object-contain shrink-0 grayscale" />
+              <img src="/icons/wechat-pay.png" alt="" className="w-5 h-5 object-contain shrink-0" />
               <span>微信支付</span>
-              <span className="ml-auto text-[9px] px-1.5 py-0.5 bg-slate-200 text-slate-500 rounded font-bold">即将支持</span>
             </button>
 
-            {/* 支付宝：真实通道，后续接入 */}
+            {/* 支付宝 */}
             <button
               type="button"
-              disabled
-              className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-xs font-bold transition-all cursor-not-allowed opacity-60"
+              onClick={() => setMembershipPaymentMethod("ALIPAY")}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                membershipPaymentMethod === "ALIPAY"
+                  ? "border-[#3182ce] bg-blue-50/80 ring-2 ring-[#3182ce]/20 text-[#2b6cb0]"
+                  : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
+              }`}
             >
-              <img src="/icons/alipay.png" alt="" className="w-5 h-5 object-contain shrink-0 grayscale" />
+              <img src="/icons/alipay.png" alt="" className="w-5 h-5 object-contain shrink-0" />
               <span>支付宝</span>
-              <span className="ml-auto text-[9px] px-1.5 py-0.5 bg-slate-200 text-slate-500 rounded font-bold">即将支持</span>
             </button>
           </div>
           <p className="text-[11px] text-slate-500 font-medium">
-            当前会员升级仅开放模拟支付，真实支付通道后续接入。
+            当前为演示支付，选择任一方式即可完成开通；真实支付通道后续接入。
           </p>
         </div>
       </ConfirmDialog>
