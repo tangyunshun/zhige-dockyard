@@ -29,8 +29,8 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
-# Logs
-logs
+# Logs (仅忽略项目根目录下的 logs 输出目录，避免误伤 src 内的页面/路由源码目录)
+/logs
 *.log
 
 # Testing

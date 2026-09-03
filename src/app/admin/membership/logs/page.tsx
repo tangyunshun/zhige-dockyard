@@ -1,0 +1,367 @@
+﻿﻿"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/components/Toast";
+import { getAuthToken } from "@/utils/auth";
+import {
+  Search,
+  ArrowLeft,
+  History,
+  User,
+  Calendar,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Settings,
+  Edit,
+} from "lucide-react";
+
+interface ChangeLog {
+  id: string;
+  userId: string;
+  levelId: string;
+  operatorId: string;
+  changeType: string;
+  oldValue: any;
+  newValue: any;
+  reason: string;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  operator: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+  level: {
+    name: string;
+    nameZh: string;
+    icon: string;
+    color: string;
+  } | null;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export default function AdminMembershipLogsPage() {
+  const router = useRouter();
+  const toast = useToast();
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<ChangeLog[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
+  const [filters, setFilters] = useState({
+    userId: "",
+    changeType: "",
+  });
+
+  useEffect(() => {
+    loadLogs();
+  }, [pagination.page, filters]);
+
+  const loadLogs = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString(),
+        ...(filters.userId && { userId: filters.userId }),
+        ...(filters.changeType && { changeType: filters.changeType }),
+      });
+
+      const res = await fetch(`/api/admin/membership/logs?${params}`, {
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.data.logs);
+        setPagination(data.data.pagination);
+      } else {
+        const error = await res.json();
+        console.error("Load logs error:", error);
+        toast.error(error.message || "加载日志失败");
+      }
+    } catch (error) {
+      console.error("Load logs error:", error);
+      toast.error("加载失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getChangeTypeIcon = (type: string) => {
+    const icons: Record<string, any> = {
+      LEVEL_UP: ArrowUpCircle,
+      LEVEL_DOWN: ArrowDownCircle,
+      QUOTA_CHANGE: Settings,
+      MANUAL_ADJUST: Edit,
+    };
+    const colors: Record<string, string> = {
+      LEVEL_UP: "text-emerald-600",
+      LEVEL_DOWN: "text-red-600",
+      QUOTA_CHANGE: "text-blue-600",
+      MANUAL_ADJUST: "text-purple-600",
+    };
+    const Icon = icons[type] || History;
+    return <Icon className={`w-5 h-5 ${colors[type]}`} />;
+  };
+
+  const getChangeTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      LEVEL_UP: "等级提升",
+      LEVEL_DOWN: "等级降低",
+      QUOTA_CHANGE: "配额变更",
+      MANUAL_ADJUST: "手动调整",
+    };
+    return labels[type] || type;
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
+      {/* 顶部导航 */}
+      <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="font-medium">返回</span>
+            </button>
+            <h1 className="text-xl font-bold text-slate-800">会员变更日志</h1>
+            <div className="w-20" />
+          </div>
+        </div>
+      </div>
+
+      {/* 主内容区 */}
+      <main className="px-6 py-8">
+        {/* 操作栏 */}
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 mb-6 overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+          <div className="relative flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="搜索用户 ID..."
+                  value={filters.userId}
+                  onChange={(e) =>
+                    setFilters({ ...filters, userId: e.target.value })
+                  }
+                  className="pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                />
+              </div>
+              <select
+                value={filters.changeType}
+                onChange={(e) =>
+                  setFilters({ ...filters, changeType: e.target.value })
+                }
+                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+              >
+                <option value="">全部类型</option>
+                <option value="LEVEL_UP">等级提升</option>
+                <option value="LEVEL_DOWN">等级降低</option>
+                <option value="QUOTA_CHANGE">配额变更</option>
+                <option value="MANUAL_ADJUST">手动调整</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
+              <History className="w-4 h-4" />
+              <span>共 {pagination.total} 条日志</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 日志列表 */}
+        {loading ? (
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-12 overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-slate-100 opacity-50 blur-3xl"></div>
+            <div className="flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-slate-600 font-medium">加载日志数据中...</p>
+              </div>
+            </div>
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-12 overflow-hidden">
+            <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-slate-100 opacity-50 blur-3xl"></div>
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                <History className="w-8 h-8 text-slate-400" />
+              </div>
+              <p className="text-slate-500 font-medium text-sm">暂无会员变更日志数据</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
+              <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+              <div className="relative overflow-x-auto">
+                <table className="w-full table-auto">
+                  <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        变更类型
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        用户
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        变更等级
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        操作者
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        变更原因
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        变更时间
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {logs.map((log) => (
+                      <tr
+                        key={log.id}
+                        className="group hover:bg-white/60 transition-all duration-300"
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            {getChangeTypeIcon(log.changeType)}
+                            <span className="font-medium text-slate-800">
+                              {getChangeTypeLabel(log.changeType)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-slate-400" />
+                            <div>
+                              <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors">
+                                {log.user.name}
+                              </div>
+                              <div className="text-xs text-slate-500 font-medium">
+                                {log.user.email}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {log.level ? (
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-lg shadow-sm group-hover:scale-110 transition-transform duration-300"
+                                style={{
+                                  backgroundColor: `${log.level.color}20`,
+                                }}
+                              >
+                                {log.level.icon || "👑"}
+                              </div>
+                              <div className="font-medium text-slate-800">
+                                {log.level.nameZh}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-slate-500 font-medium">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {log.operator ? (
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4 text-slate-400" />
+                              <div className="text-sm text-slate-600 font-medium">
+                                {log.operator.name}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-slate-500 font-medium">系统</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-slate-600 font-medium max-w-xs truncate">
+                            {log.reason || "-"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
+                            <Calendar className="w-4 h-4 shrink-0 text-slate-400" />
+                            <span className="whitespace-nowrap">
+                              {new Date(log.createdAt).toLocaleString("zh-CN")}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 分页 */}
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 px-2">
+                <div className="text-sm text-slate-600 font-medium">
+                  共{" "}
+                  <span className="font-bold text-[#3182ce]">
+                    {pagination.total}
+                  </span>{" "}
+                  条记录，第{" "}
+                  <span className="font-bold text-[#3182ce]">
+                    {pagination.page}
+                  </span>{" "}
+                  / {pagination.totalPages} 页
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() =>
+                      setPagination({
+                        ...pagination,
+                        page: pagination.page - 1,
+                      })
+                    }
+                    disabled={pagination.page === 1}
+                    className="px-4 h-10 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-[#3182ce] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  >
+                    上一页
+                  </button>
+                  <button
+                    onClick={() =>
+                      setPagination({
+                        ...pagination,
+                        page: pagination.page + 1,
+                      })
+                    }
+                    disabled={pagination.page === pagination.totalPages}
+                    className="px-4 h-10 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-[#3182ce] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
