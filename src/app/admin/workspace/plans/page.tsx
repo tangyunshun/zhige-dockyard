@@ -249,7 +249,7 @@ export default function WorkspacePlansAdminPage() {
   const fmtLimit = (n: number) => (n === -1 ? "无限制" : n.toLocaleString());
 
   return (
-    <div className="min-h-screen bg-[#f0f8ff] p-6 max-w-7xl mx-auto space-y-6 text-left font-sans">
+    <div className="min-h-screen bg-[#f0f8ff] space-y-6 pb-8 text-left font-sans">
       {/* 顶部 Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="flex items-center gap-3.5 relative z-10">
@@ -290,7 +290,7 @@ export default function WorkspacePlansAdminPage() {
         <span className="text-amber-800 font-medium">
           价格单位均为「分」（如 ¥199/月 请输入 <span className="font-mono">19900</span>）；配额填写
           <span className="font-mono"> -1 </span>
-          表示「无限制」；系统默认套餐不可删除，仅可停用。
+          表示「无限制」；套餐需先停用后才能删除，启用中的套餐仅可停用不可删除。
         </span>
       </div>
 
@@ -520,16 +520,10 @@ export default function WorkspacePlansAdminPage() {
                         </button>
 
                         {(() => {
-                          const isSystem = SYSTEM_KEYS.includes(plan.key);
-                          let disabled = false;
-                          let title = "删除套餐";
-                          if (plan.isActive) {
-                            disabled = true;
-                            title = "启用中的套餐不可删除，请先停用";
-                          } else if (isSystem) {
-                            disabled = true;
-                            title = "系统默认套餐不可删除，仅可停用";
-                          }
+                          const disabled = plan.isActive;
+                          const title = plan.isActive
+                            ? "启用中的套餐不可删除，请先停用"
+                            : "删除套餐";
                           return (
                             <button
                               onClick={() => !disabled && setDeleteTarget(plan)}
@@ -538,7 +532,7 @@ export default function WorkspacePlansAdminPage() {
                               style={disabled ? { cursor: RED_NO_CURSOR } : undefined}
                               className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 ${
                                 disabled
-                                  ? "bg-red-50/60 border border-red-200 text-red-400 cursor-not-allowed hover:ring-2 hover:ring-red-300/50"
+                                  ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed hover:ring-2 hover:ring-red-300/40"
                                   : "bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 cursor-pointer"
                               }`}
                             >

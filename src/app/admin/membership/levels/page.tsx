@@ -77,6 +77,10 @@ interface LevelFormData {
   isPopular: boolean;
 }
 
+// 红色「禁止」鼠标指针（替换浏览器默认的黑色 not-allowed 圈）
+const RED_NO_CURSOR =
+  "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Ccircle%20cx='12'%20cy='12'%20r='9'%20fill='none'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3Cline%20x1='5'%20y1='5'%20x2='19'%20y2='19'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3C/svg%3E\") 12 12, not-allowed";
+
 export default function AdminMembershipLevelsPage() {
   const router = useRouter();
   const toast = useToast();
@@ -550,7 +554,7 @@ export default function AdminMembershipLevelsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f8ff] p-6 max-w-7xl mx-auto space-y-6 text-left font-sans">
+    <div className="min-h-screen bg-[#f0f8ff] space-y-6 pb-8 text-left font-sans">
       {/* 顶部高颜值 Header 导航 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="flex items-center gap-3.5 relative z-10">
@@ -603,7 +607,7 @@ export default function AdminMembershipLevelsPage() {
           <span className="text-amber-700 text-[11px] font-normal">(月付 = 算力点 ÷ 100，年付 = 月付 × 12)</span>
         </div>
         <div className="text-[11px] text-amber-700 font-medium shrink-0 hidden md:block">
-          💡 修改算力配额将自动重算价格，亦可手动修改或点击「按规则重算」恢复。
+          💡 修改算力配额将自动重算价格，亦可手动修改或点击「按规则重算」恢复。启用中的等级不可编辑/删除，请先禁用。
         </div>
       </div>
 
@@ -810,16 +814,30 @@ export default function AdminMembershipLevelsPage() {
                     <td className="px-6 py-4 text-right whitespace-nowrap w-40 shrink-0">
                       <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                         <button
-                          onClick={() => openEditModal(level)}
-                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
+                          onClick={() => !level.isActive && openEditModal(level)}
+                          disabled={level.isActive}
+                          title={level.isActive ? "启用中的会员等级不可编辑，请先禁用" : "编辑"}
+                          style={level.isActive ? { cursor: RED_NO_CURSOR } : undefined}
+                          className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1 shrink-0 whitespace-nowrap ${
+                            level.isActive
+                              ? "bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed"
+                              : "bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"
+                          }`}
                         >
                           <Edit className="w-3.5 h-3.5 shrink-0" />
                           <span className="whitespace-nowrap">编辑</span>
                         </button>
 
                         <button
-                          onClick={() => handleDelete(level.name)}
-                          className="px-3 py-1.5 bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
+                          onClick={() => !level.isActive && handleDelete(level.name)}
+                          disabled={level.isActive}
+                          title={level.isActive ? "启用中的会员等级不可删除，请先禁用" : "删除"}
+                          style={level.isActive ? { cursor: RED_NO_CURSOR } : undefined}
+                          className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 shrink-0 whitespace-nowrap ${
+                            level.isActive
+                              ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed hover:ring-2 hover:ring-red-300/40"
+                              : "bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 cursor-pointer"
+                          }`}
                         >
                           <Trash2 className="w-3.5 h-3.5 shrink-0" />
                           <span className="whitespace-nowrap">删除</span>

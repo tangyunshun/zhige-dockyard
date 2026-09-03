@@ -54,7 +54,7 @@ export default function AdminMatrixPage() {
     <div className="min-h-screen bg-[#f0f8ff]">
       {/* 顶部导航栏 */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             {/* 返回按钮 */}
             <button
@@ -85,7 +85,7 @@ export default function AdminMatrixPage() {
       </header>
 
       {/* 主要内容 */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="px-6 py-8">
         {/* 页面标题 */}
         <div className="mb-6">
           <h2 className="text-2xl font-black text-slate-800 mb-2">

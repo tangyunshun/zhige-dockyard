@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       upgradeApplications,
       recentUsers,
       recentWorkspaces,
-      componentCategories,
+      componentTaskByType,
       activeApiKeys,
       systemServices,
     ] = await Promise.all([
@@ -112,16 +112,10 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // 12. 组件分类统计
+      // 12. 组件分类统计（按 componentcategory 聚合：先按 task.type = componentcatalog.id 映射到分类，再汇总）
       prisma.componenttask.groupBy({
         by: ["type"],
         _count: true,
-        orderBy: {
-          _count: {
-            type: "desc",
-          },
-        },
-        take: 5,
       }),
 
       // 13. 活跃 API Key 数 - 过去 7 天内使用过的 API Key
@@ -141,6 +135,56 @@ export async function GET(request: NextRequest) {
         email: "normal",
       }),
     ]);
+
+    // ===== 把 componenttask.type 聚合成 componentcategory（按分类维度展示） =====
+    // 兼容两种数据形态：
+    //   1) type = componentcatalog.id（绝大多数），通过 catalog.category 找到分类 key
+    //   2) type = componentcategory.key（少量历史脏数据），直接当作分类 key
+    const typeRows = (componentTaskByType as Array<{ type: string; _count: number }>) || [];
+    const allTypes = typeRows.map((r) => r.type);
+
+    // 一次性把所有 componentcatalog 与 componentcategory 拿出来，避免 N+1
+    const [catalogs, allCategories] = await Promise.all([
+      allTypes.length > 0
+        ? prisma.componentcatalog.findMany({
+            where: { id: { in: allTypes } },
+            select: { id: true, category: true },
+          })
+        : Promise.resolve([] as Array<{ id: string; category: string }>),
+      prisma.componentcategory.findMany({
+        select: { key: true, name: true, color: true },
+      }),
+    ]);
+    const typeToCategory = new Map<string, string>();
+    for (const c of catalogs) typeToCategory.set(c.id, c.category);
+    const validCategoryKeySet = new Set(allCategories.map((c) => c.key));
+    const categoryMetaMap = new Map(allCategories.map((c) => [c.key, c]));
+
+    const categoryCountMap = new Map<string, number>();
+    for (const row of typeRows) {
+      const categoryKey =
+        typeToCategory.get(row.type) ||
+        (validCategoryKeySet.has(row.type) ? row.type : "UNCLASSIFIED");
+      categoryCountMap.set(
+        categoryKey,
+        (categoryCountMap.get(categoryKey) || 0) + row._count,
+      );
+    }
+
+    const aggregatedCategoryKeys = Array.from(categoryCountMap.keys());
+
+    const componentCategories = aggregatedCategoryKeys
+      .map((key) => {
+        const meta = categoryMetaMap.get(key);
+        return {
+          key,
+          name: meta?.name || key,
+          color: meta?.color || "#94a3b8",
+          count: categoryCountMap.get(key) || 0,
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
 
     const baseHealth = 100;
     const pendingPenalty = Math.min(upgradeApplications * 2, 20);
@@ -201,8 +245,10 @@ export async function GET(request: NextRequest) {
         })),
 
         componentCategories: componentCategories.map((c: any) => ({
-          type: c.type,
-          count: c._count,
+          key: c.key,
+          name: c.name,
+          color: c.color,
+          count: c.count,
         })),
       },
     });

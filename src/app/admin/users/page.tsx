@@ -29,6 +29,10 @@ import DataTableFilter, {
   FilterConfig,
 } from "@/components/common/DataTableFilter";
 import SearchInput from "@/components/common/SearchInput";
+import Pagination from "@/components/Pagination";
+
+/** 用户列表每页固定展示 10 条 */
+const PAGE_SIZE = 10;
 
 // 定义完整的筛选项值（不依赖动态数据）
 const ROLE_OPTIONS = [
@@ -175,7 +179,7 @@ export default function AdminUsersPage() {
         searchValue !== undefined ? searchValue : searchQuery;
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: "10",
+        limit: PAGE_SIZE.toString(),
         ...(currentSearch && { search: currentSearch }),
         ...(filterRole !== "all" && { role: filterRole }),
         ...(filterAccountStatus !== "all" && {
@@ -1306,32 +1310,15 @@ export default function AdminUsersPage() {
               </div>
 
               {/* 分页 */}
-              {userData && userData.totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent flex items-center justify-between">
-                  <div className="text-sm text-slate-500 font-medium">
-                    共 {userData.total} 个用户，第 {userData.page}/
-                    {userData.totalPages} 页
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      上一页
-                    </button>
-                    <button
-                      onClick={() =>
-                        setCurrentPage((p) =>
-                          Math.min(userData.totalPages, p + 1),
-                        )
-                      }
-                      disabled={currentPage === userData.totalPages}
-                      className="px-4 py-2 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl text-sm font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      下一页
-                    </button>
-                  </div>
+              {userData && userData.total > 0 && (
+                <div className="px-6 py-4 border-t border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent">
+                  <Pagination
+                    currentPage={userData.page || currentPage}
+                    totalItems={userData.total}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={(p) => setCurrentPage(p)}
+                    itemLabel="个用户"
+                  />
                 </div>
               )}
             </>

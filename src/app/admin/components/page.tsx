@@ -35,6 +35,7 @@ import {
   Workflow,
   Clock,
   Coins,
+  X,
 } from "lucide-react";
 
 interface Component {
@@ -146,6 +147,9 @@ export default function AdminComponentsPage() {
   });
 
   const [submitting, setSubmitting] = useState(false);
+  // 批量操作：当前页选中的组件 ID 集合
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     published: 0,
@@ -245,6 +249,12 @@ export default function AdminComponentsPage() {
   useEffect(() => {
     loadComponents();
     loadStats();
+  }, [currentPage, filters]);
+
+  // 切换筛选/分页时清空批量选中，避免脏数据
+  useEffect(() => {
+    clearSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, filters]);
 
   // 上架 / 下架 状态切换处理
@@ -418,11 +428,89 @@ export default function AdminComponentsPage() {
     }
   };
 
+  // ============== 批量操作 ==============
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const allOnPage = components.map((c) => c.id);
+      const allSelected = allOnPage.every((id) => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(allOnPage);
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const executeBatch = async (
+    endpoint: "batch-publish" | "batch-unpublish" | "batch-delete",
+    ids: string[],
+  ) => {
+    try {
+      setBatchLoading(true);
+      const authToken = getAuthToken();
+      const res = await fetch(`/api/admin/components/${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message || "批量操作成功");
+        clearSelection();
+        loadComponents();
+        loadStats();
+      } else {
+        toast.error(data.error || "批量操作失败");
+      }
+    } catch (err) {
+      console.error(`Batch ${endpoint} error:`, err);
+      toast.error("网络错误，请稍后重试");
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleBatchAction = (
+    endpoint: "batch-publish" | "batch-unpublish" | "batch-delete",
+    label: string,
+    needsConfirm: boolean,
+  ) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) {
+      toast.error("请先勾选要操作的组件");
+      return;
+    }
+    if (needsConfirm) {
+      setConfirmDialog({
+        isOpen: true,
+        title: `确认批量${label}`,
+        message: `将对 ${ids.length} 个组件执行「${label}」操作，此操作${
+          endpoint === "batch-delete" ? "不可恢复" : "可重新上架"
+        }，是否继续？`,
+        type: "danger",
+        onConfirm: () => executeBatch(endpoint, ids),
+      });
+    } else {
+      executeBatch(endpoint, ids);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-12 font-sans">
       {/* 顶部标题区 */}
       <div className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="py-6">
           <div className="mb-2">
             <h1 className="text-3xl font-black text-slate-800 tracking-tight">
               组件管理中枢
@@ -435,7 +523,7 @@ export default function AdminComponentsPage() {
       </div>
 
       {/* 主内容区 */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="py-8">
         {/* 真实统计卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
           <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
@@ -585,11 +673,83 @@ export default function AdminComponentsPage() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* 批量操作浮动工具栏：仅当选中项 > 0 时显示 */}
+            {selectedIds.size > 0 && (() => {
+              const selectedComponents = components.filter((c) => selectedIds.has(c.id));
+              const hasPublished = selectedComponents.some((c) => c.isPublished);
+              const hasUnpublished = selectedComponents.some((c) => !c.isPublished);
+              return (
+              <div className="sticky top-2 z-20 flex items-center justify-between gap-3 px-4 py-3 bg-white rounded-2xl shadow-md border border-[#3182ce]/30">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#2b6cb0]">
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#4299e1] to-[#3182ce] text-white flex items-center justify-center">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  </div>
+                  <span>已选中 {selectedIds.size} 个组件</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {hasUnpublished && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleBatchAction("batch-publish", "上架", false)
+                      }
+                      disabled={batchLoading}
+                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> 批量上架
+                    </button>
+                  )}
+                  {hasPublished && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleBatchAction("batch-unpublish", "下架", false)
+                      }
+                      disabled={batchLoading}
+                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                    >
+                      <EyeOff className="w-3.5 h-3.5" /> 批量下架
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleBatchAction("batch-delete", "删除", true)
+                    }
+                    disabled={batchLoading}
+                    className="px-3 py-1.5 bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> 批量删除
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    disabled={batchLoading}
+                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                  >
+                    <X className="w-3.5 h-3.5" /> 取消
+                  </button>
+                </div>
+              </div>
+              );
+            })()}
             <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
               <div className="relative overflow-x-auto">
                 <table className="w-full text-xs text-left border-collapse">
                   <thead className="bg-slate-50/90 border-b border-slate-200 font-black text-slate-700">
                     <tr>
+                      <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[40px]">
+                        <input
+                          type="checkbox"
+                          checked={
+                            components.length > 0 &&
+                            components.every((c) => selectedIds.has(c.id))
+                          }
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
+                          title="全选/取消全选"
+                        />
+                      </th>
                       <th className="py-3.5 px-4 whitespace-nowrap font-extrabold w-[25%]">组件名称与标识代码</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[14%]">领域分类</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[14%]">所需算力点数</th>
@@ -607,8 +767,20 @@ export default function AdminComponentsPage() {
                       return (
                         <tr
                           key={component.id}
-                          className="hover:bg-blue-50/20 transition-all group"
+                          className={`hover:bg-blue-50/20 transition-all group ${
+                            selectedIds.has(component.id)
+                              ? "bg-blue-50/40"
+                              : ""
+                          }`}
                         >
+                          <td className="py-3.5 px-3 w-[40px]">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(component.id)}
+                              onChange={() => toggleSelectOne(component.id)}
+                              className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
+                            />
+                          </td>
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-xs">

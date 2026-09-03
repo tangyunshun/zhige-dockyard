@@ -170,10 +170,10 @@ export async function DELETE(request: NextRequest, context?: any) {
       );
     }
 
-    // 保护系统默认套餐，避免误删导致已有空间无法解析配额
-    if (["STANDARD", "PRO", "ENTERPRISE", "CUSTOM"].includes(key)) {
+    // 仅允许删除已停用的套餐（启用中的套餐由前端拦截，这里再次兜底）
+    if (existing.isActive) {
       return NextResponse.json(
-        { message: "系统默认套餐不允许删除，可选择禁用" },
+        { message: "启用中的套餐不可删除，请先停用" },
         { status: 400 },
       );
     }

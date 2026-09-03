@@ -113,7 +113,7 @@ export default function AdminMembershipUsersPage() {
     <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
       {/* 顶部导航 */}
       <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <button
               onClick={() => router.back()}
@@ -129,7 +129,7 @@ export default function AdminMembershipUsersPage() {
       </div>
 
       {/* 主内容区 */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="px-6 py-8">
         {/* 操作栏 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 mb-6 overflow-hidden">
           <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>

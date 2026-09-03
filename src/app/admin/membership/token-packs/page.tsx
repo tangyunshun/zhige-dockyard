@@ -188,7 +188,7 @@ export default function AdminTokenPacksPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 text-left font-sans">
+    <div className="space-y-6 pb-8 text-left font-sans">
       
       {/* 顶部标题导航 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">

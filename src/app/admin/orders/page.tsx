@@ -66,7 +66,7 @@ export default function OrdersPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 text-left font-sans max-w-7xl mx-auto">
+    <div className="space-y-6 pb-8 text-left font-sans">
       {/* 头部面包屑与返回 */}
       <div className="flex items-center justify-between shrink-0 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>

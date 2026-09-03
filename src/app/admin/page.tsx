@@ -16,6 +16,8 @@ import {
   UserPlus,
   Building2,
   Shield,
+  X,
+  Loader2,
 } from "lucide-react";
 
 interface DashboardData {
@@ -63,7 +65,9 @@ interface DashboardData {
     }>;
   }>;
   componentCategories: Array<{
-    type: string;
+    key: string;
+    name: string;
+    color: string;
     count: number;
   }>;
 }
@@ -73,6 +77,47 @@ export default function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 查看更多弹窗（最近用户 / 最近工作空间）
+  const [usersModalOpen, setUsersModalOpen] = useState(false);
+  const [usersModalLoading, setUsersModalLoading] = useState(false);
+  const [usersModalList, setUsersModalList] = useState<any[]>([]);
+  const [workspacesModalOpen, setWorkspacesModalOpen] = useState(false);
+  const [workspacesModalLoading, setWorkspacesModalLoading] = useState(false);
+  const [workspacesModalList, setWorkspacesModalList] = useState<any[]>([]);
+  const token = getAuthToken();
+
+  const openUsersModal = async () => {
+    setUsersModalOpen(true);
+    setUsersModalLoading(true);
+    try {
+      const res = await fetch("/api/admin/users?page=1&limit=20", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      setUsersModalList(json?.users || []);
+    } catch (e) {
+      setUsersModalList([]);
+    } finally {
+      setUsersModalLoading(false);
+    }
+  };
+
+  const openWorkspacesModal = async () => {
+    setWorkspacesModalOpen(true);
+    setWorkspacesModalLoading(true);
+    try {
+      const res = await fetch("/api/admin/workspaces?page=1&limit=20", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      setWorkspacesModalList(json?.data?.workspaces || []);
+    } catch (e) {
+      setWorkspacesModalList([]);
+    } finally {
+      setWorkspacesModalLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadDashboardData();
@@ -487,10 +532,10 @@ export default function AdminDashboard() {
                 最近注册用户
               </h2>
               <button
-                onClick={() => router.push("/admin/users")}
+                onClick={openUsersModal}
                 className="text-sm text-[#3182ce] hover:text-[#3182ce] font-bold hover:underline transition-all"
               >
-                查看全部 →
+                查看更多 →
               </button>
             </div>
             <div className="space-y-2">
@@ -555,10 +600,10 @@ export default function AdminDashboard() {
                 最近工作空间
               </h2>
               <button
-                onClick={() => router.push("/admin/workspaces")}
+                onClick={openWorkspacesModal}
                 className="text-sm text-[#3182ce] hover:text-[#3182ce] font-bold hover:underline transition-all"
               >
-                查看全部 →
+                查看更多 →
               </button>
             </div>
             <div className="space-y-2">
@@ -635,60 +680,43 @@ export default function AdminDashboard() {
               </div>
             ) : (
               data.componentCategories.map((category, index) => {
-                const colors = [
-                  {
-                    bg: "bg-[#3182ce]",
-                    text: "text-[#3182ce]",
-                    bar: "from-[#3182ce] to-[#2b6cb0]",
-                  },
-                  {
-                    bg: "bg-[#10b981]",
-                    text: "text-[#10b981]",
-                    bar: "from-[#10b981] to-[#059669]",
-                  },
-                  {
-                    bg: "bg-[#f59e0b]",
-                    text: "text-[#f59e0b]",
-                    bar: "from-[#f59e0b] to-[#d97706]",
-                  },
-                  {
-                    bg: "bg-[#8b5cf6]",
-                    text: "text-[#8b5cf6]",
-                    bar: "from-[#8b5cf6] to-[#805ad5]",
-                  },
-                  {
-                    bg: "bg-[#805ad5]",
-                    text: "text-[#805ad5]",
-                    bar: "from-[#805ad5] to-[#805ad5]",
-                  },
-                ];
-                const color = colors[index % colors.length];
                 const maxCount = Math.max(
                   ...data.componentCategories.map((c) => c.count),
                 );
                 const percentage = Math.round(
                   (category.count / maxCount) * 100,
                 );
+                const c = category.color || "#3182ce";
 
                 return (
-                  <div key={category.type} className="space-y-1">
+                  <div key={category.key} className="space-y-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div
-                          className={`w-2 h-2 rounded-full ${color.bg}`}
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: c }}
                         ></div>
-                        <span className="text-sm font-bold text-slate-700">
-                          {category.type}
+                        <span
+                          className="text-sm font-bold text-slate-700"
+                          title={category.key}
+                        >
+                          {category.name}
                         </span>
                       </div>
-                      <span className={`text-sm font-black ${color.text}`}>
+                      <span
+                        className="text-sm font-black"
+                        style={{ color: c }}
+                      >
                         {category.count} 个
                       </span>
                     </div>
                     <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div
-                        className={`h-full bg-gradient-to-r ${color.bar} rounded-full transition-all duration-500`}
-                        style={{ width: `${percentage}%` }}
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${percentage}%`,
+                          backgroundColor: c,
+                        }}
                       ></div>
                     </div>
                   </div>
@@ -698,6 +726,128 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* 用户查看更多弹窗 */}
+      {usersModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] p-5 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm">最近注册用户</h3>
+                  <p className="text-[11px] text-blue-100">展示前 20 条最新注册用户</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUsersModalOpen(false)}
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50/40 p-4">
+              {usersModalLoading ? (
+                <div className="py-12 text-center text-xs font-bold text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#3182ce]" />
+                  加载中...
+                </div>
+              ) : usersModalList.length === 0 ? (
+                <div className="py-12 text-center text-xs font-bold text-slate-400">暂无用户数据</div>
+              ) : (
+                <div className="space-y-2">
+                  {usersModalList.map((u: any) => {
+                    const initial = (u.name || u.email || "?").slice(0, 1).toUpperCase();
+                    return (
+                      <div key={u.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200/80 hover:border-[#3182ce]/40 transition-colors">
+                        {u.avatar ? (
+                          <img src={u.avatar} alt="" className="w-9 h-9 rounded-full object-cover border border-slate-200" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#4299e1] to-[#3182ce] text-white flex items-center justify-center font-black text-sm">
+                            {initial}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-slate-800 truncate">{u.name || "未命名用户"}</div>
+                          <div className="text-[11px] text-slate-500 font-medium truncate">{u.email || "-"}</div>
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-500">
+                          {u.role && (
+                            <span className="px-2 py-0.5 bg-slate-100 rounded-md mr-2">{u.role}</span>
+                          )}
+                          {u.membershipLevel && (
+                            <span className="px-2 py-0.5 bg-blue-50 text-[#3182ce] rounded-md mr-2">{u.membershipLevel}</span>
+                          )}
+                          <span className="font-mono">{new Date(u.createdAt).toLocaleDateString("zh-CN")}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 工作空间查看更多弹窗 */}
+      {workspacesModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="bg-gradient-to-r from-[#059669] to-[#10b981] p-5 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm">最近工作空间</h3>
+                  <p className="text-[11px] text-emerald-100">展示前 20 条最新创建的工作空间</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setWorkspacesModalOpen(false)}
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50/40 p-4">
+              {workspacesModalLoading ? (
+                <div className="py-12 text-center text-xs font-bold text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#10b981]" />
+                  加载中...
+                </div>
+              ) : workspacesModalList.length === 0 ? (
+                <div className="py-12 text-center text-xs font-bold text-slate-400">暂无工作空间数据</div>
+              ) : (
+                <div className="space-y-2">
+                  {workspacesModalList.map((ws: any) => {
+                    const memberCount = ws._count?.workspacemember ?? ws.members?.length ?? 0;
+                    return (
+                      <div key={ws.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200/80 hover:border-[#10b981]/40 transition-colors">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] text-white flex items-center justify-center font-black">
+                          <Building2 className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-slate-800 truncate">{ws.name || "未命名空间"}</div>
+                          <div className="text-[11px] text-slate-500 font-medium truncate">
+                            {ws.type || "PERSONAL"} · 成员 {memberCount} 人
+                          </div>
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-500 shrink-0">
+                          <span className="font-mono">{new Date(ws.createdAt).toLocaleDateString("zh-CN")}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
