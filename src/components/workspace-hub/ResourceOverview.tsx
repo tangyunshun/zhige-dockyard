@@ -23,12 +23,12 @@ export default function ResourceOverview({
 
   const level = user?.membershipLevel || "FREE";
 
-  // === 算力 Token 统计与 SVG 圆环计算 ===
+  // === 算力点统计与 SVG 圆环计算 ===
   const tokenQuota = dashboardData?.userQuota?.quotas?.tokenBalance;
   const tokenUsed = tokenQuota?.used || 0;
   // 无限额度（total = -1）：不进入比率计算，单独标记
   const tokenUnlimited = (tokenQuota?.total ?? 0) === -1;
-  const tokenTotal = tokenUnlimited ? -1 : (tokenQuota?.total || 10000);
+  const tokenTotal = tokenUnlimited ? -1 : (tokenQuota?.total ?? 100);
   const tokenRatio = tokenUnlimited ? 0 : (tokenTotal > 0 ? Math.min(100, Math.round((tokenUsed / tokenTotal) * 100)) : 0);
 
   // 根据会员级别设置圆环颜色 (唯一真理系统 V6.0 配色体系)
@@ -151,9 +151,9 @@ export default function ResourceOverview({
 
         {/* 消耗数值 */}
         <div className="min-w-0 flex-1">
-          <span className="text-xs text-slate-400 font-bold block mb-1">本月算力 Token</span>
+          <span className="text-xs text-slate-400 font-bold block mb-1">本月算力点</span>
           <div className="text-sm font-bold text-slate-800 truncate leading-none">
-            {tokenUsed.toLocaleString("zh-CN")} <span className="text-xs font-semibold text-slate-400">/ {tokenUnlimited ? "无限" : tokenTotal.toLocaleString("zh-CN")}</span>
+            {tokenUsed.toLocaleString("zh-CN")} <span className="text-xs font-semibold text-slate-400">/ {tokenUnlimited ? "无限" : `${tokenTotal.toLocaleString("zh-CN")} 点`}</span>
           </div>
           <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-normal">
             {level === "FREE" ? "算力不足时可升级会员套餐" : tokenUnlimited ? "当前算力无限制" : "当前算力充沛"}

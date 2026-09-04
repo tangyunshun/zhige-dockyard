@@ -44,6 +44,10 @@ export async function GET(request: NextRequest) {
         deletionRequestedAt: true,
         membershipLevel: true,
         passwordChangedAt: true,
+        password: true,
+        wechatUnionId: true,
+        qqUnionId: true,
+        ssoProvider: true,
       },
     });
 
@@ -103,6 +107,11 @@ export async function GET(request: NextRequest) {
       passwordExpired = ageDays > PASSWORD_EXPIRY_DAYS;
     }
 
+    // 判断是否为第三方登录用户且尚未完善账号密码/安全绑定
+    const isOAuthUser = !!(user.wechatUnionId || user.qqUnionId || user.ssoProvider || (user.password && user.password.startsWith("oauth_")));
+    const hasCustomPassword = !!(user.password && !user.password.startsWith("oauth_"));
+    const needsProfileCompletion = isOAuthUser && (!hasCustomPassword || !user.email || !user.phone);
+
     // 返回用户信息 - 简单可靠
     return NextResponse.json({
       user: {
@@ -116,6 +125,9 @@ export async function GET(request: NextRequest) {
         membershipLevel: user.membershipLevel,
         deletionDaysRemaining,
         deletionCooldownDays,
+        isOAuthUser,
+        hasCustomPassword,
+        needsProfileCompletion,
       },
       passwordExpired,
       permissions,

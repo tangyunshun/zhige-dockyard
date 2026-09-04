@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { SignJWT } from 'jose';
 
@@ -174,6 +174,7 @@ export async function GET(request: NextRequest) {
         };
 
         const redirectUrl = new URL('/auth/oauth-callback', request.nextUrl.origin);
+        redirectUrl.searchParams.set('token', token);
         redirectUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(userData)));
         redirectUrl.searchParams.set('new', isNewUser ? 'true' : 'false');
 
@@ -366,6 +367,7 @@ export async function GET(request: NextRequest) {
     };
 
     const redirectUrl = new URL('/auth/oauth-callback', request.nextUrl.origin);
+    redirectUrl.searchParams.set('token', token);
     redirectUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(userData)));
     redirectUrl.searchParams.set('new', isNewUser ? 'true' : 'false');
 

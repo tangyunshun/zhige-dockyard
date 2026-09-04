@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
-    const tokenLimit = levelData ? Number(levelData.tokenLimit) : Number(await getMembershipTokenLimit(membershipLevel));
+    const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
 
     const availableEnterpriseSlots = maxEnterpriseWorkspaces === -1 
       ? -1 

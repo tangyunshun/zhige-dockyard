@@ -105,6 +105,7 @@ export function useWorkspaceHubData() {
       // 加载所有的工作空间列表 (禁用 HTTP/Next 强缓存)
       const workspacesRes = await fetch(`/api/workspace/list?_t=${Date.now()}`, {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
         cache: "no-store",
       });
 

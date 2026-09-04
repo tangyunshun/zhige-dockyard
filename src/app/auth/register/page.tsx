@@ -1130,20 +1130,38 @@ function RegisterContent() {
                       }
                       if (channel.type === "wechat" || channel.id === "wechat") {
                         return (
-                          <Image
+                          <img
                             src="/icons/wechat.png"
                             alt="微信"
-                            width={20}
-                            height={20}
-                            className="w-5 h-5"
+                            className="w-5 h-5 object-contain shrink-0"
                           />
                         );
                       }
-                      if (channel.type === "qq") {
+                      if (channel.type === "qq" || channel.id === "qq") {
                         return (
-                          <div className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-black">
-                            QQ
-                          </div>
+                          <img
+                            src="/icons/QQ.png"
+                            alt="QQ"
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
+                        );
+                      }
+                      if (channel.type === "weibo" || channel.id === "weibo") {
+                        return (
+                          <img
+                            src="/icons/xinlang.png"
+                            alt="微博"
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
+                        );
+                      }
+                      if (channel.type === "alipay" || channel.id === "alipay") {
+                        return (
+                          <img
+                            src="/icons/alipay.png"
+                            alt="支付宝"
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
                         );
                       }
                       if (channel.type === "gitee") {
