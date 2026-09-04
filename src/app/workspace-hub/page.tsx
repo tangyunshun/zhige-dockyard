@@ -33,6 +33,7 @@ import { DissolveWorkspaceCheckModal } from "@/components/workspace/DissolveWork
 import { DissolvePersonalWorkspaceModal } from "@/components/workspace/DissolvePersonalWorkspaceModal";
 import { ResetPersonalWorkspaceModal } from "@/components/workspace/ResetPersonalWorkspaceModal";
 import Footer from "@/components/Footer";
+import { ShieldCheck, X } from "lucide-react";
 
 export default function WorkspaceHub() {
   const router = useRouter();
@@ -59,6 +60,9 @@ export default function WorkspaceHub() {
   const [dissolveCheckWorkspace, setDissolveCheckWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [dissolvePersonalWorkspace, setDissolvePersonalWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [showResetPersonalWorkspaceModal, setShowResetPersonalWorkspaceModal] = useState(false);
+
+  // 第三方登录用户安全绑定横幅（弹窗由全局 OAuthProfilePrompt 统一接管）
+  const [showSecurityBanner, setShowSecurityBanner] = useState(true);
 
   // 2. 个人空间核心 CRUD Hook
   const {
@@ -623,6 +627,45 @@ export default function WorkspaceHub() {
       {/* 主核心区 (统一全站大厂 max-w-[1400px] 黄金标准，两侧留白与组件大厅、文档中心 100% 物理对齐) */}
       <main className="relative z-10 max-w-[1400px] w-full mx-auto px-4 sm:px-6 md:px-8 pt-8 pb-0 space-y-6 flex-1">
         
+        {/* 0. 第三方登录用户未设密码与绑定全局安全建议横幅 */}
+        {showSecurityBanner && user?.needsProfileCompletion && (
+          <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-amber-50/95 via-amber-50/80 to-orange-50/70 border border-amber-200/90 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-start md:items-center gap-3.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-100/90 border border-amber-300/60 flex items-center justify-center text-amber-700 shrink-0 shadow-2xs">
+                <ShieldCheck className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-amber-900 flex items-center gap-2">
+                  <span>账号安全绑定与独立密码设置建议</span>
+                  <span className="text-[10px] font-bold bg-amber-200/80 text-amber-800 px-2 py-0.5 rounded-full font-mono">
+                    第三方快捷登录提醒
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800/90 mt-1 leading-relaxed">
+                  您当前使用第三方账号（微信/QQ等）登录。<strong>若不设置专属账号密码及绑定手机/邮箱，后续在其他浏览器或移动设备上将无法通过账号密码直接登录</strong>。建议您立即设置专属登录凭证。
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 shrink-0 self-end md:self-auto">
+              <button
+                type="button"
+                onClick={() => router.push("/user/security")}
+                className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>立即设置专属账号密码</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSecurityBanner(false)}
+                className="p-2 text-amber-600 hover:text-amber-900 hover:bg-amber-100/60 rounded-xl transition-colors cursor-pointer"
+                title="稍后提醒"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 1. UserGreeting (100% 宽度大顶通栏) */}
         <div className="w-full">
           <UserGreeting 
@@ -1211,6 +1254,7 @@ export default function WorkspaceHub() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

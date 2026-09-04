@@ -11,9 +11,13 @@ interface UserState {
     id: string;
     name: string;
     email: string;
+    phone?: string | null;
     avatar: string;
     role: "SuperAdmin" | "Admin" | "User";
     membershipLevel?: string | null;
+    isOAuthUser?: boolean;
+    hasCustomPassword?: boolean;
+    needsProfileCompletion?: boolean;
   } | null;
   workspaces: Workspace[];
   currentWorkspaceId: string | null;
@@ -453,9 +457,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             id: data.user.id,
             name: data.user.name || "用户",
             email: data.user.email || "",
+            phone: data.user.phone || null,
             avatar: data.user.avatar || "",
             role,
             membershipLevel: data.user.membershipLevel,
+            isOAuthUser: data.user.isOAuthUser,
+            hasCustomPassword: data.user.hasCustomPassword,
+            needsProfileCompletion: data.user.needsProfileCompletion,
           },
           workspaces,
           currentWorkspaceId:

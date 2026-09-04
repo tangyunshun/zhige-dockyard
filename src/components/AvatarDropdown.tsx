@@ -157,6 +157,34 @@ export default function AvatarDropdown({
             </span>
           </div>
 
+          {/* 第三方快捷登录用户未设独立密码或未绑定邮箱手机的提示卡片 */}
+          {userInfo.needsProfileCompletion && (
+            <div
+              onClick={() => {
+                router.push("/user/security");
+                setShowDropdown(false);
+              }}
+              className="mx-1.5 mb-1 p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 hover:border-amber-300 hover:shadow-sm transition-all cursor-pointer group"
+            >
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                  <Shield className="w-3.5 h-3.5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black text-amber-900">建议设置独立密码</span>
+                    <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full group-hover:bg-amber-200 transition-colors">
+                      去完善
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-amber-800/80 mt-1 leading-relaxed">
+                    第三方登录尚未绑定独立账号密码，设置后可在任意设备直接登录
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 菜单项区块一：个人中心与设置 */}
           <div className="space-y-0.5">
             <button

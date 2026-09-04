@@ -14,6 +14,7 @@ import { ResponsiveProvider } from "@/contexts/ResponsiveContext";
 import { DeviceProvider } from "@/contexts/DeviceContext";
 import MobileBottomNav from "@/components/platform/MobileBottomNav";
 import GlobalFeedbackModal from "@/components/GlobalFeedbackModal";
+import OAuthProfilePrompt from "@/components/OAuthProfilePrompt";
 
 export default function AppLayout({
   children,
@@ -103,6 +104,7 @@ export default function AppLayout({
                 </RouterGuards>
               </AuthCheck>
               <ActivityMonitor />
+              <OAuthProfilePrompt />
               {shouldShowGlobalFeedback && <GlobalFeedbackModal />}
             </ToastProvider>
           </WorkspaceProvider>
