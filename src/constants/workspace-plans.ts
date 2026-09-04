@@ -1,23 +1,27 @@
 /**
  * 空间级套餐配置（对应 workspace.plan 字段）
  *
- * 与「账号级会员等级 membershiplevel」是两个独立维度：
- * - 账号级会员等级：决定可创建的企业空间数量、账号月度算力 Token 等
- * - 空间级套餐：决定单个空间内的成员席位、存储、调用额度、组件装配额度
+ * 产品定位：一次性「团队资源扩容包」（不再按月/年订阅）。
+ * - priceMonthly：一次性扩容价格（单位：分），购买后长期生效
+ * - priceYearly：订阅制年付字段，已随「一次性扩容」模式停用，恒为 0
+ * - tokenLimit：扩容包不再附赠月度算力（恒为 0）；算力统一由「会员等级(月度额度) + 算力加油包(即时充值)」提供
  *
- * 这里作为唯一数据源，供空间创建（初始化配额）与空间套餐升级共用，
- * 避免同一份配额在多个路由里重复硬编码。
+ * 与「账号级会员等级 membershiplevel」是两个独立维度：
+ * - 账号级会员等级：决定每月算力额度、企业空间数量、团队规模等账号权益，按月/年订阅
+ * - 空间级扩容包：决定单个空间内的成员席位、组件装配、存储、调用额度，一次购买长期生效
+ *
+ * 套餐升级/空间创建统一从数据库 workspaceplan 读取；
+ * 本文件作为数据库不可用时的兜底配置与数据库为空时的初始化基线，禁止在业务代码中另行写死资费。
  */
-
 export type WorkspacePlanKey = "STANDARD" | "PRO" | "ENTERPRISE" | "CUSTOM";
 
 export interface WorkspacePlanConfig {
   key: WorkspacePlanKey;
   name: string;
   description: string;
-  /** 月付价格，单位：分 */
+  /** 一次性扩容价格，单位：分 */
   priceMonthly: number;
-  /** 年付价格，单位：分 */
+  /** 订阅制年付已停用（一次性扩容模式恒为 0） */
   priceYearly: number;
   /** 可装配组件实例上限，-1 表示无限制 */
   maxComponents: number;
@@ -25,14 +29,14 @@ export interface WorkspacePlanConfig {
   maxMembers: number;
   /** 存储空间上限，单位：MB，-1 表示无限制 */
   maxStorage: number;
-  /** 每月调用额度上限，-1 表示无限制 */
+  /** 调用额度上限，-1 表示无限制 */
   maxApiCalls: number;
-  /** 套餐附带的月度算力 Token，-1 表示无限制 */
+  /** 扩容包附赠算力已取消，恒为 0（算力统一由会员等级 + 算力加油包承担） */
   tokenLimit: number;
   features: string[];
   /** 排序，决定升级阶梯顺序 */
   sortOrder: number;
-  /** 是否允许在线自助升级（CUSTOM 为线下定制，不支持在线购买） */
+  /** 是否允许在线自助购买（CUSTOM 为线下定制，不支持在线购买） */
   purchasable: boolean;
 }
 
@@ -42,19 +46,19 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
   STANDARD: {
     key: "STANDARD",
     name: "标准版",
-    description: "适合初创小团队的基础协作空间",
+    description: "新空间免费基础档，空间级资源可随时按需一次性扩容",
     priceMonthly: 0,
     priceYearly: 0,
     maxComponents: 100,
     maxMembers: 10,
     maxStorage: 1024, // 1 GB
     maxApiCalls: 1000,
-    tokenLimit: 20000,
+    tokenLimit: 0,
     features: [
       "10 个团队协同席位",
       "100 个组件装配额度",
       "1 GB 云端存储",
-      "每月 1,000 次调用额度",
+      "1,000 次组件调用额度",
       "基础组件与标准技术支持",
     ],
     sortOrder: 1,
@@ -63,19 +67,19 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
   PRO: {
     key: "PRO",
     name: "专业版",
-    description: "适合成长型团队，解锁全量组件与更高并发",
+    description: "成长型团队一次性扩容包，解锁全量组件与更高并发",
     priceMonthly: 19900,
-    priceYearly: 199000,
+    priceYearly: 0,
     maxComponents: 500,
     maxMembers: 50,
     maxStorage: 10240, // 10 GB
     maxApiCalls: 10000,
-    tokenLimit: 100000,
+    tokenLimit: 0,
     features: [
       "50 个团队协同席位",
       "500 个组件装配额度",
       "10 GB 云端存储",
-      "每月 10,000 次调用额度",
+      "10,000 次组件调用额度",
       "全量组件、优先支持与数据分析",
     ],
     sortOrder: 2,
@@ -84,19 +88,19 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
   ENTERPRISE: {
     key: "ENTERPRISE",
     name: "旗舰版",
-    description: "面向大型组织，席位与组件无限制并含 SLA 保障",
+    description: "大型组织一次性扩容包，席位与组件无限制并含 SLA 保障",
     priceMonthly: 69900,
-    priceYearly: 699000,
+    priceYearly: 0,
     maxComponents: -1,
     maxMembers: -1,
     maxStorage: 102400, // 100 GB
     maxApiCalls: 100000,
-    tokenLimit: 500000,
+    tokenLimit: 0,
     features: [
       "团队席位无限制",
       "组件装配额度无限制",
       "100 GB 云端存储",
-      "每月 100,000 次调用额度",
+      "100,000 次组件调用额度",
       "专属支持、高级分析与 SLA 保障",
     ],
     sortOrder: 3,
@@ -112,7 +116,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxMembers: -1,
     maxStorage: -1,
     maxApiCalls: -1,
-    tokenLimit: 1000000,
+    tokenLimit: 0,
     features: ["全部能力按合同约定开放"],
     sortOrder: 4,
     purchasable: false,
@@ -121,6 +125,9 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
 
 /** 默认套餐 */
 export const DEFAULT_WORKSPACE_PLAN: WorkspacePlanKey = "STANDARD";
+
+/** 计费模式：空间扩容包一次性买断（订阅制已下线） */
+export const WORKSPACE_PLAN_BILLING_LABEL = "一次性扩容";
 
 /** 可在线自助购买的套餐（按阶梯排序） */
 export const PURCHASABLE_PLANS: WorkspacePlanConfig[] = Object.values(WORKSPACE_PLANS)

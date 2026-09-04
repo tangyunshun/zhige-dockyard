@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
@@ -23,11 +24,12 @@ import {
   Zap,
 } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
+import Pagination from "@/components/Pagination";
 import {
   POINT_RATE_HINT,
   POINT_RATE_TEXT,
   monthlyCentsFromPoints,
-  yearlyCentsFromPoints,
+  formatDiscountLabel,
 } from "@/lib/point-rate";
 
 interface MembershipLevel {
@@ -47,6 +49,7 @@ interface MembershipLevel {
   tokenLimit: number;
   priceMonthly: number;
   priceYearly: number;
+  tokenPackDiscount: number;
   trialDays: number;
   sortOrder: number;
   isActive: boolean;
@@ -70,12 +73,15 @@ interface LevelFormData {
   features: string;
   priceMonthly: number;
   priceYearly: number;
+  tokenPackDiscount: number;
   trialDays: number;
   sortOrder: number;
   isActive: boolean;
   isRecommended: boolean;
   isPopular: boolean;
 }
+
+const PAGE_SIZE = 10;
 
 // 红色「禁止」鼠标指针（替换浏览器默认的黑色 not-allowed 圈）
 const RED_NO_CURSOR =
@@ -106,6 +112,7 @@ export default function AdminMembershipLevelsPage() {
     features: "",
     priceMonthly: 0,
     priceYearly: 0,
+    tokenPackDiscount: 0,
     trialDays: 0,
     sortOrder: 0,
     isActive: true,
@@ -133,9 +140,13 @@ export default function AdminMembershipLevelsPage() {
   const [filterPrice, setFilterPrice] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
+
   useEffect(() => {
     loadLevels();
-  }, [searchQuery, filterPrice, filterStatus]);
+  }, [searchQuery, filterPrice, filterStatus, currentPage]);
 
   const loadLevels = async (isSilent: boolean = false) => {
     if (!isSilent) {
@@ -147,6 +158,8 @@ export default function AdminMembershipLevelsPage() {
       console.log("Loading levels with authToken:", authToken);
 
       const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: String(PAGE_SIZE),
         ...(searchQuery && { search: searchQuery }),
         ...(filterPrice !== "all" && { priceType: filterPrice }),
         ...(filterStatus !== "all" && { status: filterStatus }),
@@ -165,6 +178,17 @@ export default function AdminMembershipLevelsPage() {
         const data = await res.json();
         console.log("Levels data:", data);
         setLevels(data.data);
+        if (data.pagination) {
+          setTotal(Number(data.pagination.total) || 0);
+          const tp = Number(data.pagination.totalPages) || 1;
+          // 当前页被删空/筛选后超出总页数时，回退到最后一页
+          if (currentPage > tp) {
+            setCurrentPage(tp);
+            return;
+          }
+        } else {
+          setTotal(Array.isArray(data.data) ? data.data.length : 0);
+        }
       } else {
         const errorText = await res.text();
         console.error("Load levels error - Status:", res.status);
@@ -296,6 +320,7 @@ export default function AdminMembershipLevelsPage() {
       features: "",
       priceMonthly: 0,
       priceYearly: 0,
+      tokenPackDiscount: 0,
       trialDays: 0,
       sortOrder: 0,
       isActive: true,
@@ -322,6 +347,7 @@ export default function AdminMembershipLevelsPage() {
       features: Array.isArray(level.features) ? level.features.join("\n") : "",
       priceMonthly: level.priceMonthly,
       priceYearly: level.priceYearly,
+      tokenPackDiscount: Number(level.tokenPackDiscount || 0),
       trialDays: level.trialDays,
       sortOrder: level.sortOrder,
       isActive: level.isActive,
@@ -470,6 +496,7 @@ export default function AdminMembershipLevelsPage() {
         : [],
       priceMonthly: Number(formData.priceMonthly),
       priceYearly: Number(formData.priceYearly),
+      tokenPackDiscount: Number(formData.tokenPackDiscount || 0),
       trialDays: Number(formData.trialDays),
       sortOrder: Number(formData.sortOrder),
       isActive: formData.isActive,
@@ -579,6 +606,15 @@ export default function AdminMembershipLevelsPage() {
         </div>
 
         <div className="flex items-center gap-3 shrink-0 relative z-10">
+          <Link
+            href="/admin/users"
+            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+            title="前往用户管理查看全平台注册用户与等级分布"
+          >
+            <Users className="w-3.5 h-3.5 text-[#3182ce]" />
+            <span>用户分布中枢</span>
+          </Link>
+
           <button
             onClick={() => loadLevels(false)}
             disabled={loading}
@@ -604,10 +640,10 @@ export default function AdminMembershipLevelsPage() {
           <Zap className="w-4 h-4 text-amber-600 shrink-0" />
           <span className="font-black text-amber-950">算力定价规则：</span>
           <span className="font-mono text-amber-800">100 算力点 = 1 元</span>
-          <span className="text-amber-700 text-[11px] font-normal">(月付 = 算力点 ÷ 100，年付 = 月付 × 12)</span>
+          <span className="text-amber-700 text-[11px] font-normal">(等值点仅作参考价；订阅月付独立设置，年付 = 月付 × 10)</span>
         </div>
         <div className="text-[11px] text-amber-700 font-medium shrink-0 hidden md:block">
-          💡 修改算力配额将自动重算价格，亦可手动修改或点击「按规则重算」恢复。启用中的等级不可编辑/删除，请先禁用。
+          💡 价格、月算力点、加油包折扣均为独立配置，修改算力点数不会自动改写价格。启用中的等级不可编辑/删除，请先禁用。
         </div>
       </div>
 
@@ -616,7 +652,7 @@ export default function AdminMembershipLevelsPage() {
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <div className="text-xs text-slate-500 font-bold mb-1">会员等级总数</div>
-            <div className="text-2xl font-black font-mono text-slate-900">{levels.length} <span className="text-xs font-normal text-slate-400">个方案</span></div>
+            <div className="text-2xl font-black font-mono text-slate-900">{total || levels.length} <span className="text-xs font-normal text-slate-400">个方案</span></div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
             <Crown className="w-5 h-5" />
@@ -661,7 +697,10 @@ export default function AdminMembershipLevelsPage() {
         <div className="w-full md:w-80">
           <SearchInput
             value={searchQuery}
-            onChange={setSearchQuery}
+            onChange={(v) => {
+              setSearchQuery(v);
+              setCurrentPage(1);
+            }}
             placeholder="搜索会员等级标识、中文名..."
             debounceMs={300}
           />
@@ -670,7 +709,10 @@ export default function AdminMembershipLevelsPage() {
         <div className="flex items-center gap-3 w-full md:w-auto shrink-0 justify-end">
           <select
             value={filterPrice}
-            onChange={(e) => setFilterPrice(e.target.value)}
+            onChange={(e) => {
+              setFilterPrice(e.target.value);
+              setCurrentPage(1);
+            }}
             className="h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">所有价格分类</option>
@@ -680,7 +722,10 @@ export default function AdminMembershipLevelsPage() {
 
           <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            onChange={(e) => {
+              setFilterStatus(e.target.value);
+              setCurrentPage(1);
+            }}
             className="h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">所有启用状态</option>
@@ -738,6 +783,14 @@ export default function AdminMembershipLevelsPage() {
                                 <Crown className="w-3 h-3 shrink-0" /> 热门
                               </span>
                             )}
+                            <Link
+                              href={`/admin/users?search=${encodeURIComponent(level.nameZh || level.name)}`}
+                              className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 text-[10px] rounded-md font-bold flex items-center gap-1 shrink-0 whitespace-nowrap transition-colors"
+                              title="点击反查持有该等级的注册用户"
+                            >
+                              <Users className="w-3 h-3 text-slate-500 shrink-0" />
+                              反查用户
+                            </Link>
                           </div>
                           <div className="font-mono text-[11px] text-slate-400 font-bold mt-0.5 whitespace-nowrap">
                             ID: {level.name}
@@ -786,14 +839,9 @@ export default function AdminMembershipLevelsPage() {
                         <div className="text-[11px] text-slate-500 font-bold whitespace-nowrap">
                           年付: ¥&nbsp;{(Number(level.priceYearly) / 100).toFixed(2)}
                         </div>
-                        {Number(level.tokenLimit) !== -1 && (
-                          <div className={`text-[10px] font-bold whitespace-nowrap ${
-                            Number(level.priceMonthly) === monthlyCentsFromPoints(level.tokenLimit) ? "text-emerald-600" : "text-amber-600"
-                          }`}>
-                            规则应售 ¥{(monthlyCentsFromPoints(level.tokenLimit) / 100).toFixed(2)}
-                            {Number(level.priceMonthly) === monthlyCentsFromPoints(level.tokenLimit) ? " ✓" : " ⚠"}
-                          </div>
-                        )}
+                        <div className="text-[10px] font-bold whitespace-nowrap text-violet-600">
+                          加油包折扣: {formatDiscountLabel(level.tokenPackDiscount) ?? "无"}
+                        </div>
                       </div>
                     </td>
 
@@ -849,6 +897,18 @@ export default function AdminMembershipLevelsPage() {
               </tbody>
             </table>
           </div>
+          {/* 分页 */}
+          {total > 0 && (
+            <div className="px-6 py-4 border-t border-slate-200/80">
+              <Pagination
+                currentPage={currentPage}
+                totalItems={total}
+                pageSize={PAGE_SIZE}
+                onPageChange={(p) => setCurrentPage(p)}
+                itemLabel="个会员等级"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1021,43 +1081,35 @@ export default function AdminMembershipLevelsPage() {
                     value={formData.tokenLimit || 0}
                     onChange={(e) => {
                       const pts = parseInt(e.target.value) || 0;
-                      // 输入算力点即时折算价格：1 算力点 = 0.01 元 = 1 分
-                      // 无限制(-1) 无法按点数折算，保持原手动价格
+                      // 注：订阅月费与月算力点相互独立设置（月包价低于等值点折算、体现订阅优惠），
+                      // 修改算力点数不再自动改写月付/年付，避免破坏数据库中的新阶梯订阅价。
                       setFormData({
                         ...formData,
                         tokenLimit: pts,
-                        ...(pts !== -1
-                          ? {
-                              priceMonthly: monthlyCentsFromPoints(pts),
-                              priceYearly: yearlyCentsFromPoints(pts, 12),
-                            }
-                          : {}),
                       });
                     }}
                     placeholder="如：1000, 20000, 100000"
                     className="w-full px-3.5 py-2 bg-white border border-blue-300/80 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                   />
 
-                  {/* 即时折算结果：输入点数后立刻算出月付 / 年付 */}
+                  {/* 等值点参考折算（仅供定价参考，实际订阅价为独立设置值） */}
                   <div className="bg-white/80 border border-blue-200/70 rounded-lg px-2.5 py-2 text-[11px] font-bold text-blue-900 leading-relaxed">
                     {(() => {
                       const pts = Number(formData.tokenLimit) || 0;
                       if (pts === -1) {
                         return (
                           <span className="text-amber-600">
-                            ⚠ 当前为「无限制」配额，无法按算力点规则折算，请手动填写月付 / 年付价格
+                            ⚠ 当前为「无限制」配额，请手动填写月付 / 年付价格
                           </span>
                         );
                       }
-                      const mCents = monthlyCentsFromPoints(pts);
-                      const yCents = yearlyCentsFromPoints(pts, 12);
                       return (
                         <span>
-                          按 <span className="text-[#3182ce]">{POINT_RATE_TEXT}</span> 即时折算：
-                          {pts.toLocaleString()} 点 ÷ 100 ={" "}
-                          <strong className="text-[#3182ce]">¥{(mCents / 100).toFixed(2)}</strong> /月；
-                          年付 ×12 ={" "}
-                          <strong className="text-[#3182ce]">¥{(yCents / 100).toFixed(2)}</strong> /年
+                          等值点参考价：{pts.toLocaleString()} 点 ÷ 100 ={" "}
+                          <strong className="text-[#3182ce]">
+                            ¥{(monthlyCentsFromPoints(pts) / 100).toFixed(2)}
+                          </strong>{" "}
+                          /月。订阅月付建议在参考价以内设置（体现订阅优惠）；年付 = 月付 × 10。
                         </span>
                       );
                     })()}
@@ -1261,7 +1313,7 @@ export default function AdminMembershipLevelsPage() {
                       className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                     <p className="mt-1 text-[10px] font-bold text-slate-400">
-                      按规则应售 ¥{(monthlyCentsFromPoints(formData.tokenLimit) / 100).toFixed(2)} /月
+                      订阅月付为独立设置值（可参考上方等值点参考价，定价不受算力点数硬约束）
                     </p>
                   </div>
 
@@ -1283,22 +1335,47 @@ export default function AdminMembershipLevelsPage() {
                     />
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <p className="text-[10px] font-bold text-slate-400">
-                        按规则应售 ¥{(yearlyCentsFromPoints(formData.tokenLimit, 12) / 100).toFixed(2)} /年（月付 ×12）
+                        会员年付规则：月付 × 10（相当于买 10 送 2 个月）
                       </p>
                       <button
                         type="button"
                         onClick={() =>
                           setFormData({
                             ...formData,
-                            priceMonthly: monthlyCentsFromPoints(formData.tokenLimit),
-                            priceYearly: yearlyCentsFromPoints(formData.tokenLimit, 12),
+                            priceYearly: (Number(formData.priceMonthly) || 0) * 10,
                           })
                         }
                         className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-black rounded-md border border-amber-200 cursor-pointer shrink-0"
                       >
-                        按规则重算
+                        按 月付×10 填充
                       </button>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      算力加油包折扣 (%) <span className="text-violet-500">新</span>
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={formData.tokenPackDiscount}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          tokenPackDiscount: Math.max(
+                            0,
+                            Math.min(100, parseInt(e.target.value) || 0),
+                          ),
+                        })
+                      }
+                      placeholder="如 0, 10, 15, 20"
+                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
+                    />
+                    <p className="mt-1 text-[10px] font-bold text-slate-400">
+                      该等级会员购买算力加油包立减百分比：10=9 折、15=8.5 折、20=8 折
+                    </p>
                   </div>
 
                   <div>

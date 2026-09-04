@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, X, ArrowRight, Building2, Server, Zap, Users, Boxes } from "lucide-react";
+import { Check, X, ArrowRight, Building2, Server, Zap, Users, Boxes, Percent, Clock, CheckCircle2, Settings, Gem } from "lucide-react";
 import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import Link from "next/link";
 import UpgradeRequestModal from "@/components/pricing/UpgradeRequestModal";
+import WorkspacePlanSection from "@/components/pricing/WorkspacePlanSection";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
-import { formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT } from "@/lib/point-rate";
+import { getMembershipLevelIcon } from "@/utils/membership-icon";
+import { formatTokenBalance, isUnlimitedToken } from "@/utils/quota";
+import { formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, formatDiscountLabel } from "@/lib/point-rate";
 
 /** 会员等级：字段与数据库 membershiplevel 表一一对应（价格单位为「分」） */
 interface MembershipLevel {
@@ -27,6 +30,7 @@ interface MembershipLevel {
   maxStorage: number; // 单位：字节
   maxApiCalls: number;
   tokenLimit: number;
+  tokenPackDiscount: number; // 算力加油包折扣百分比（10=9折）
   features: string[];
   priceMonthly: number;
   priceYearly: number;
@@ -88,6 +92,12 @@ export default function PricingPage() {
   // 由升级中枢跳转携带的目标档位（?target=GOLD），用于自动聚焦与高亮
   // 注意：不可命名为 targetLevel，该名已被下方「推荐等级」变量占用
   const [focusLevel, setFocusLevel] = useState<string | null>(null);
+  // 登录态账户状态条数据：算力余额 / 月度重置日（来自 /api/workspace/quota，加载失败静默降级）
+  const [accountQuota, setAccountQuota] = useState<{
+    tokenBalance: number;
+    tokenLimit: number;
+    renewDate: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchMembershipLevels();
@@ -127,6 +137,38 @@ export default function PricingPage() {
       setLoading(false);
     }
   };
+
+  /** 登录态拉取算力余额与月度重置日；失败静默降级（状态条只展示会员等级） */
+  const fetchAccountQuota = async () => {
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch("/api/workspace/quota", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          const resetAt = data.resetAt ? data.resetAt.slice(0, 10) : "";
+          setAccountQuota({
+            tokenBalance: data.tokenBalance ?? 0,
+            tokenLimit: data.tokenLimit ?? 10000,
+            renewDate: resetAt,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("加载算力配额失败:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (userState.isLoggedIn) {
+      fetchAccountQuota();
+    } else {
+      setAccountQuota(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userState.isLoggedIn]);
 
   const currentMembership = userState.userInfo?.membershipLevel;
 
@@ -195,12 +237,20 @@ export default function PricingPage() {
         l.maxApiCalls === UNLIMITED ? "无限" : `${formatQuota(l.maxApiCalls)}/月`,
     },
     {
-      feature: "每月算力 Token",
+      feature: "每月算力额度",
       icon: <Zap className="w-3.5 h-3.5" />,
       render: (l: MembershipLevel) =>
         l.tokenLimit === UNLIMITED
           ? "无限"
-          : `${formatQuota(l.tokenLimit)}/月（${formatYuanFromPoints(l.tokenLimit)}）`,
+          : `${formatQuota(l.tokenLimit)} 点/月（折合 ${formatYuanFromPoints(l.tokenLimit)}）`,
+    },
+    {
+      feature: "加油包会员折扣",
+      icon: <Percent className="w-3.5 h-3.5" />,
+      render: (l: MembershipLevel) =>
+        l.tokenPackDiscount > 0
+          ? `${formatDiscountLabel(l.tokenPackDiscount)}（高等级会员买算力加油包自动生效）`
+          : "无折扣",
     },
     {
       feature: "企业空间数量",
@@ -224,7 +274,7 @@ export default function PricingPage() {
     },
   ];
 
-  /** 升级特权卡片：免费版 ➔ 目标等级，数值全部取数据库真实配额 */
+  /** 升级特权卡片：从免费版到目标等级，数值全部取数据库真实配额 */
   const upgradeHighlights =
     baseLevel && targetLevel
       ? [
@@ -353,21 +403,165 @@ export default function PricingPage() {
           <div className="inline-flex flex-col items-center gap-3 mb-6">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/70 backdrop-blur-md rounded-full shadow-sm border border-blue-200/30">
               <span className="text-xs text-[#2b6cb0] font-black tracking-wide flex items-center gap-1.5">
-                💎 阶梯灵活算力与部署方案
+                <Gem className="w-3.5 h-3.5" />
+                阶梯灵活算力与部署方案
               </span>
             </div>
             {userState.isLoggedIn && (
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-[#3182ce]/10 to-purple-500/10 backdrop-blur-md rounded-full border border-[#63b3ed]/20 shadow-sm animate-fade-in">
-                <span className="text-xs text-slate-700 font-bold">
-                  您当前的订阅方案为：
-                  <span className="text-[#2b6cb0] font-black ml-1">
-                    {levels.find((l) => l.name === currentMembership)?.nameZh || "免费版"}
-                    {(() => {
-                      const idx = levels.findIndex((l) => l.name === currentMembership);
-                      return idx >= 0 ? ` (L${idx + 1} 会员)` : "";
-                    })()}
-                  </span>
-                </span>
+              <div className="w-full max-w-5xl animate-in fade-in duration-300">
+                <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-sm shadow-blue-500/5 overflow-hidden">
+                  {/* 装饰背景：浅蓝到浅紫的横向渐变 + 顶部高光细线 */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-50/60 via-white/0 to-violet-50/40 pointer-events-none" />
+                  <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-blue-400/40 to-transparent" />
+
+                  <div className="relative flex flex-col lg:flex-row items-stretch divide-y lg:divide-y-0 lg:divide-x divide-slate-200/60">
+                    {/* 左：当前会员订阅（品牌徽章 + 已激活角标） */}
+                    <div className="flex items-center gap-3 px-5 py-4 lg:py-3.5 lg:pr-6 lg:flex-[1.5] min-w-0">
+                      <div className="relative shrink-0">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#3182ce] via-[#2b6cb0] to-[#1a56a6] flex items-center justify-center shadow-lg shadow-blue-500/25 text-white">
+                          {(() => {
+                            const LevelBadgeIcon = getMembershipLevelIcon(currentMembership);
+                            return <LevelBadgeIcon className="w-6 h-6" strokeWidth={2.2} />;
+                          })()}
+                        </div>
+                        {/* 已激活小角标 */}
+                        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full ring-2 ring-white flex items-center justify-center">
+                          <CheckCircle2 className="w-2.5 h-2.5 text-white" strokeWidth={4} />
+                        </span>
+                      </div>
+                      <div className="text-left min-w-0">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">
+                          当前订阅方案
+                        </p>
+                        <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
+                          {levels.find((l) => l.name === currentMembership)?.nameZh || "免费版"}
+                          {(() => {
+                            const idx = levels.findIndex((l) => l.name === currentMembership);
+                            return idx >= 0 ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 text-[#2b6cb0] border border-blue-100 font-black">
+                                L{idx + 1} 会员
+                              </span>
+                            ) : null;
+                          })()}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 font-medium mt-0.5 whitespace-nowrap">
+                          会员权益已激活
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 中：算力余额（核心 KPI）+ 月度重置（含倒计时） */}
+                    <div className="flex items-stretch gap-5 px-5 py-4 lg:py-3.5 lg:flex-[1.2]">
+                      {/* 算力余额 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50" />
+                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                            可用算力余额
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xl font-black text-slate-800 tracking-tight tabular-nums font-mono leading-none">
+                            {isUnlimitedToken(accountQuota?.tokenBalance)
+                              ? "∞"
+                              : formatTokenBalance(accountQuota?.tokenBalance)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-bold">Tokens</span>
+                        </div>
+                        {!isUnlimitedToken(accountQuota?.tokenBalance) &&
+                          typeof accountQuota?.tokenLimit === "number" &&
+                          accountQuota.tokenLimit > 0 && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="flex-1 h-1 rounded-full bg-slate-100/80 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500"
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      Math.max(
+                                        6,
+                                        Math.round(
+                                          ((accountQuota?.tokenBalance || 0) /
+                                            (accountQuota?.tokenLimit ?? 1)) *
+                                            100
+                                        )
+                                      )
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
+                                {Math.min(
+                                  100,
+                                  Math.round(
+                                    ((accountQuota?.tokenBalance || 0) /
+                                      (accountQuota?.tokenLimit ?? 1)) *
+                                      100
+                                  )
+                                )}
+                                %
+                              </span>
+                            </div>
+                          )}
+                      </div>
+
+                      {/* 垂直分隔 */}
+                      <div className="w-px self-stretch bg-slate-200/80" />
+
+                      {/* 月度重置（含倒计时） */}
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                            下次重置
+                          </span>
+                        </div>
+                        <div className="text-sm font-black text-slate-800 font-mono tabular-nums whitespace-nowrap">
+                          {accountQuota?.renewDate || "--"}
+                        </div>
+                        {accountQuota?.renewDate && (() => {
+                          const target = new Date(accountQuota.renewDate);
+                          const today = new Date();
+                          const days = Math.max(
+                            0,
+                            Math.ceil((target.getTime() - today.getTime()) / 86400000)
+                          );
+                          return (
+                            <p className="text-[10px] text-slate-400 mt-1 font-medium whitespace-nowrap">
+                              还有{" "}
+                              <span className="font-black text-slate-700 tabular-nums">
+                                {days}
+                              </span>{" "}
+                              天
+                            </p>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* 右：管理入口与升级操作（按钮组不再被压缩换行） */}
+                    <div className="flex items-center gap-2 px-5 py-3.5 lg:pl-5 bg-slate-50/50 lg:flex-[1.1] justify-end shrink-0">
+                      <button
+                        onClick={() => router.push("/user/billing-center")}
+                        className="h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-[#3182ce]/40 hover:text-[#3182ce] text-xs font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        管理套餐与账单
+                      </button>
+                      <button
+                        onClick={() =>
+                          document
+                            .getElementById("pricing-plans")
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" })
+                        }
+                        className="h-9 px-4 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+                      >
+                        立即升级
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -375,7 +569,7 @@ export default function PricingPage() {
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-black mb-6 tracking-tight">
             算力按需配给，{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#3182ce] via-[#2b6cb0] to-purple-600">
-              陪伴团队全生命周期
+              陪伴团队从初创到规模化协作
             </span>
           </h1>
           <p className="text-base md:text-lg text-slate-600 max-w-3xl mx-auto leading-relaxed mb-6">
@@ -433,14 +627,14 @@ export default function PricingPage() {
               {[
                 {
                   title: `${stats.totalComponents} 个专业研发组件`,
-                  description: `组件库已上架 ${stats.totalComponents} 个覆盖全研发链路的专业组件，其中 ${stats.premiumComponents} 个企业级高级组件供中高阶套餐解锁调用。`,
+                  description: `组件库已上架 ${stats.totalComponents} 个覆盖研发各环节的实用组件，其中 ${stats.premiumComponents} 个企业级高级组件供中高阶套餐解锁调用。`,
                 },
                 {
                   title: "阶梯化算力分配",
-                  description: `从免费版每月 ${formatQuota(baseLevel?.tokenLimit ?? 0)} Token 算力，到旗舰版 ${targetLevel?.tokenLimit === UNLIMITED ? "无限" : formatQuota(targetLevel?.tokenLimit ?? 0)} Token，无缝契合业务生命周期各阶段。`,
+                  description: `从免费版每月 ${formatQuota(baseLevel?.tokenLimit ?? 0)} Token 算力，到旗舰版 ${targetLevel?.tokenLimit === UNLIMITED ? "无限" : formatQuota(targetLevel?.tokenLimit ?? 0)} Token，匹配不同业务阶段的算力需求。`,
                 },
                 {
-                  title: "企业级合规底座",
+                  title: "企业级合规保障",
                   description: "所有套餐均提供完备的安全沙箱隔离，保障企业知识资产物理级隔离。",
                 },
               ].map((benefit, index) => (
@@ -513,10 +707,19 @@ export default function PricingPage() {
                       <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                           <div
-                            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-xl"
+                            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                             style={{ backgroundColor: `${level.color}1a` }}
                           >
-                            {level.icon || "💎"}
+                            {(() => {
+                              const PlanLevelIcon = getMembershipLevelIcon(level.name);
+                              return (
+                                <PlanLevelIcon
+                                  className="w-5 h-5"
+                                  style={{ color: level.color }}
+                                  strokeWidth={2.4}
+                                />
+                              );
+                            })()}
                           </div>
                           <div>
                             <h3 className="text-lg font-black text-slate-800">
@@ -595,6 +798,26 @@ export default function PricingPage() {
         </div>
       </section>
 
+      {/* 登录态：空间团队资源扩容包（一次性买断，与账号会员订阅相互独立叠加） */}
+      {userState.isLoggedIn && (
+        <section className="relative py-12 z-10">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight flex items-center justify-center gap-2.5">
+                为空间按需扩容
+                <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100 font-black">
+                  一次性买断 · 长期生效
+                </span>
+              </h2>
+              <p className="text-slate-500 text-sm mt-2 font-medium">
+                会员订阅决定账号级权益，扩容包为单个空间追加席位 / 组件装配 / 存储 / 调用额度，两者独立叠加生效
+              </p>
+            </div>
+            <WorkspacePlanSection />
+          </div>
+        </section>
+      )}
+
       {/* 核心权益图解解读区段 */}
       <section className="relative py-12 z-10 border-t border-slate-200/30 bg-slate-50/20">
         <div className="max-w-7xl mx-auto px-6">
@@ -621,7 +844,9 @@ export default function PricingPage() {
                     {["空间数量变化", "每月调用额度", "组件装配额度", "组件解锁范围"][index]}
                   </span>
                   <span className="text-xs text-slate-700 font-bold">
-                    {card.from} ➔ <span className={`${card.accent} font-black`}>{card.to}</span>
+                    {card.from}{" "}
+                    <ArrowRight className="w-3 h-3 inline-block mx-0.5 align-middle" />{" "}
+                    <span className={`${card.accent} font-black`}>{card.to}</span>
                   </span>
                 </div>
               </div>

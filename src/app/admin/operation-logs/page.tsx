@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, Fragment } from "react";
+import Link from "next/link";
+import Pagination from "@/components/Pagination";
 import {
   Search,
   RefreshCw,
@@ -380,12 +382,13 @@ function formatTime(iso: string) {
   });
 }
 
+const PAGE_SIZE = 10;
+
 export default function OperationLogsPage() {
   const [logs, setLogs] = useState<OperationLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({ total: 0, today: 0, highRisk: 0 });
 
@@ -405,7 +408,7 @@ export default function OperationLogsPage() {
     try {
       const params = new URLSearchParams();
       params.set("page", String(page));
-      params.set("limit", "15");
+      params.set("limit", String(PAGE_SIZE));
       if (action) params.set("action", action);
       if (userKeyword.trim()) params.set("user", userKeyword.trim());
       if (resource) params.set("resource", resource);
@@ -422,9 +425,14 @@ export default function OperationLogsPage() {
       }
 
       const data = result.data;
-      setLogs(data.logs || []);
       setTotal(data.total || 0);
-      setTotalPages(data.totalPages || 1);
+      // 当前页超出总页数时（筛选/数据变化后），自动回退到最后一页
+      const tp = Math.max(1, Number(data.totalPages) || 1);
+      if (page > tp) {
+        setPage(tp);
+        return;
+      }
+      setLogs(data.logs || []);
       setStats(data.stats || { total: 0, today: 0, highRisk: 0 });
     } catch (err: any) {
       setError(err.message || "获取操作日志失败");
@@ -480,15 +488,35 @@ export default function OperationLogsPage() {
   ];
 
   return (
-    <div className="space-y-6 pb-8">
-      {/* 页面标题 */}
-      <div className="mb-2">
-        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">
-          审计日志
-        </h1>
-        <p className="text-sm text-slate-500 font-medium">
-          记录平台所有高危与管理操作，便于安全审计与追溯
-        </p>
+    <div className="space-y-6 pb-8 text-left font-sans">
+      {/* 顶部标题区 */}
+      <div className="bg-white/70 backdrop-blur-md border border-slate-200/80 rounded-2xl p-6 shadow-2xs">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                全平台操作审计日志中枢 (Audit & Security Logs)
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200/80">
+                真实实时溯源
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              全方位追踪记录平台所有管理指令、高危删除、用户处罚与配置变更，保障系统合规与可回溯
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchLogs}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-4 h-9 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
+              <span>刷新审计流</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* 统计卡片 */}
@@ -725,9 +753,13 @@ export default function OperationLogsPage() {
                               </div>
                             )}
                             <div className="min-w-0">
-                              <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
+                              <Link
+                                href={`/admin/users?search=${encodeURIComponent(log.user?.email || log.user?.name || log.userId)}`}
+                                className="text-sm font-bold text-slate-800 hover:text-[#3182ce] hover:underline transition-colors truncate block"
+                                title="反查操作人画像"
+                              >
                                 {log.user?.name || "未知用户"}
-                              </div>
+                              </Link>
                               <div className="text-xs text-slate-500 font-medium truncate">
                                 {log.user?.email || "—"}
                               </div>
@@ -836,27 +868,15 @@ export default function OperationLogsPage() {
         </div>
 
         {/* 分页 */}
-        {!loading && totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-gradient-to-r from-slate-50/50 to-transparent">
-            <div className="text-sm text-slate-500">
-              共 {total} 条记录，第 {page} / {totalPages} 页
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-              >
-                上一页
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-4 py-2 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-              >
-                下一页
-              </button>
-            </div>
+        {!loading && total > 0 && (
+          <div className="px-6 py-4 border-t border-slate-200 bg-gradient-to-r from-slate-50/50 to-transparent">
+            <Pagination
+              currentPage={page}
+              totalItems={total}
+              pageSize={PAGE_SIZE}
+              onPageChange={(p) => setPage(p)}
+              itemLabel="条操作日志"
+            />
           </div>
         )}
       </div>

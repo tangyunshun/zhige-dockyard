@@ -18,12 +18,14 @@ import {
   RotateCcw,
 } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
+import Pagination from "@/components/Pagination";
 
 interface Workspace {
   id: string;
   name: string;
   type: "PERSONAL" | "ENTERPRISE";
   ownerId: string;
+  plan?: string;
   description: string | null;
   logo: string | null;
   status: "ACTIVE" | "DISABLED";
@@ -32,6 +34,10 @@ interface Workspace {
   quota?: {
     tokenBalance: number | string;
     membershipLevelId?: string;
+    storageUsed?: number;
+    storageLimit?: number;
+    apiCallsUsed?: number;
+    apiCallsLimit?: number;
   };
   members: Array<{
     id: string;
@@ -41,6 +47,20 @@ interface Workspace {
     user: { name: string | null; email: string | null };
   }>;
   _count: { members: number };
+}
+
+const WORKSPACE_PLAN_BADGES: Record<string, { label: string; badge: string }> = {
+  STANDARD: { label: "标准版", badge: "bg-slate-50 text-slate-600 border-slate-200" },
+  PRO: { label: "专业版", badge: "bg-blue-50 text-[#2b6cb0] border-blue-200 font-black" },
+  ENTERPRISE: { label: "旗舰版", badge: "bg-purple-50 text-purple-700 border-purple-200 font-black" },
+  CUSTOM: { label: "定制版", badge: "bg-amber-50 text-amber-700 border-amber-200 font-black" },
+};
+
+function formatWorkspaceBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "0 MB";
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
 }
 
 interface WorkspaceComponent {
@@ -61,6 +81,8 @@ interface WorkspaceData {
     totalMembers: number;
   };
 }
+
+const PAGE_SIZE = 10;
 
 export default function AdminWorkspacesPage() {
   const toast = useToast();
@@ -113,7 +135,7 @@ export default function AdminWorkspacesPage() {
         searchValue !== undefined ? searchValue : searchQuery;
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: "10",
+        limit: String(PAGE_SIZE),
         ...(currentSearch && { search: currentSearch }),
         ...(filterType !== "all" && { type: filterType }),
         ...(filterComponentCount !== "all" && {
@@ -714,6 +736,9 @@ export default function AdminWorkspacesPage() {
                       类型
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                      套餐档位
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       成员数
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
@@ -734,7 +759,7 @@ export default function AdminWorkspacesPage() {
                   {workspaceData?.workspaces.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         className="px-6 py-20 text-center text-slate-400"
                       >
                         暂无工作空间数据
@@ -785,6 +810,17 @@ export default function AdminWorkspacesPage() {
                               企业空间
                             </span>
                           )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {(() => {
+                            const planKey = (workspace.plan || "STANDARD").toUpperCase();
+                            const meta = WORKSPACE_PLAN_BADGES[planKey] || { label: planKey, badge: "bg-slate-50 text-slate-600 border-slate-200" };
+                            return (
+                              <span className={`px-2 py-0.5 rounded border text-[11px] font-bold ${meta.badge}`}>
+                                {meta.label}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -871,32 +907,15 @@ export default function AdminWorkspacesPage() {
             </div>
 
             {/* 分页 */}
-            {workspaceData && workspaceData.totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-                <div className="text-sm text-slate-500">
-                  共 {workspaceData.total} 个空间，第 {workspaceData.page}/
-                  {workspaceData.totalPages} 页
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    上一页
-                  </button>
-                  <button
-                    onClick={() =>
-                      setCurrentPage((p) =>
-                        Math.min(workspaceData.totalPages, p + 1),
-                      )
-                    }
-                    disabled={currentPage === workspaceData.totalPages}
-                    className="px-4 py-2 bg-[#3182ce] text-white rounded-lg text-sm hover:bg-[#3182ce] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    下一页
-                  </button>
-                </div>
+            {workspaceData && workspaceData.total > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200">
+                <Pagination
+                  currentPage={workspaceData.page || currentPage}
+                  totalItems={workspaceData.total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(p) => setCurrentPage(p)}
+                  itemLabel="个工作空间"
+                />
               </div>
             )}
           </>
@@ -920,64 +939,128 @@ export default function AdminWorkspacesPage() {
             <div className="p-6 space-y-6">
               {/* 基本信息 */}
               <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
-                  基本信息
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-slate-50 rounded-xl">
-                    <div className="text-xs text-slate-500 mb-1">空间名称</div>
-                    <div className="text-sm font-bold text-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">
+                    基本信息与业务归属
+                  </h3>
+                  <button
+                    onClick={() => window.open(`/workspace/${viewingWorkspace.id}`, "_blank")}
+                    className="text-xs font-bold text-[#3182ce] hover:underline flex items-center gap-1 cursor-pointer"
+                    title="新窗口打开该工作空间前台视图"
+                  >
+                    <span>进入前台工作台</span>
+                    <Building2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-[11px] text-slate-400 font-bold mb-1">空间名称</div>
+                    <div className="text-xs font-black text-slate-800 truncate" title={viewingWorkspace.name}>
                       {viewingWorkspace.name}
                     </div>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-xl">
-                    <div className="text-xs text-slate-500 mb-1">空间类型</div>
-                    <div className="text-sm font-bold">
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-[11px] text-slate-400 font-bold mb-1">空间类型</div>
+                    <div className="text-xs font-bold">
                       {viewingWorkspace.type === "PERSONAL" ? (
-                        <span className="px-2 py-1 bg-blue-100 text-[#2b6cb0] rounded-full text-xs">
+                        <span className="px-2 py-0.5 bg-blue-50 text-[#2b6cb0] border border-blue-200 rounded text-[10px] font-bold">
                           个人空间
                         </span>
                       ) : (
-                        <span className="px-2 py-1 bg-purple-100 text-[#805ad5] rounded-full text-xs">
+                        <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold">
                           企业空间
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-xl">
-                    <div className="text-xs text-slate-500 mb-1">成员数量</div>
-                    <div className="text-sm font-bold text-slate-800">
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-[11px] text-slate-400 font-bold mb-1">套餐档位</div>
+                    <div className="text-xs font-bold flex items-center justify-between">
+                      {(() => {
+                        const planKey = (viewingWorkspace.plan || "STANDARD").toUpperCase();
+                        const meta = WORKSPACE_PLAN_BADGES[planKey] || { label: planKey, badge: "bg-slate-50 text-slate-600 border-slate-200" };
+                        return (
+                          <span className={`px-2 py-0.5 rounded border text-[10px] ${meta.badge}`}>
+                            {meta.label}
+                          </span>
+                        );
+                      })()}
+                      <button
+                        onClick={() => window.open(`/user/billing-center?workspaceId=${viewingWorkspace.id}`, "_blank")}
+                        className="text-[10px] font-bold text-[#3182ce] hover:underline"
+                        title="查看/调整该空间的套餐与配额"
+                      >
+                        配置
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-[11px] text-slate-400 font-bold mb-1">成员规模</div>
+                    <div className="text-xs font-bold text-slate-800">
                       {viewingWorkspace._count.members} 人
                     </div>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-xl">
-                    <div className="text-xs text-slate-500 mb-1">组件数量</div>
-                    <div className="text-sm font-bold text-emerald-600">
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-[11px] text-slate-400 font-bold mb-1">已装配组件</div>
+                    <div className="text-xs font-bold text-emerald-600">
                       {viewingWorkspace.componentCount} 个
                     </div>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-xl">
-                    <div className="text-xs text-slate-500 mb-1">创建时间</div>
-                    <div className="text-sm font-bold text-slate-800">
-                      {new Date(viewingWorkspace.createdAt).toLocaleString(
-                        "zh-CN",
-                      )}
-                    </div>
-                  </div>
-                  <div className="p-4 bg-slate-50 rounded-xl">
-                    <div className="text-xs text-slate-500 mb-1">状态</div>
-                    <div className="text-sm font-bold">
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="text-[11px] text-slate-400 font-bold mb-1">运营状态</div>
+                    <div className="text-xs font-bold">
                       {viewingWorkspace.status === "ACTIVE" ? (
-                        <span className="px-2 py-1 bg-emerald-100 text-emerald-600 rounded-full text-xs flex items-center gap-1 w-fit">
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded text-[10px] font-bold inline-flex items-center gap-1">
                           <CheckCircle className="w-3 h-3" />
-                          活跃
+                          活跃中
                         </span>
                       ) : (
-                        <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs flex items-center gap-1 w-fit">
+                        <span className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-bold inline-flex items-center gap-1">
                           <XCircle className="w-3 h-3" />
                           已禁用
                         </span>
                       )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 核心配额与水位监控（全流程数据闭环） */}
+              <div>
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
+                  <span>空间资源配额与水位监控</span>
+                  <span className="text-[10px] font-bold text-slate-400">实时数据库聚合</span>
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1">
+                      <span>云端存储</span>
+                      <span>
+                        {viewingWorkspace.quota?.storageLimit === -1 ? "无限制" : formatWorkspaceBytes(viewingWorkspace.quota?.storageLimit)}
+                      </span>
+                    </div>
+                    <div className="text-xs font-black text-slate-800 font-mono">
+                      {formatWorkspaceBytes(viewingWorkspace.quota?.storageUsed)}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1">
+                      <span>API 调用频次</span>
+                      <span>
+                        {viewingWorkspace.quota?.apiCallsLimit === -1 ? "无限制" : `${(viewingWorkspace.quota?.apiCallsLimit || 0).toLocaleString()} 次`}
+                      </span>
+                    </div>
+                    <div className="text-xs font-black text-slate-800 font-mono">
+                      {(viewingWorkspace.quota?.apiCallsUsed || 0).toLocaleString()} 次
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1">
+                      <span>可用算力余额</span>
+                      <span className="text-emerald-600 font-bold">生效中</span>
+                    </div>
+                    <div className="text-xs font-black text-[#2b6cb0] font-mono">
+                      {(Number(viewingWorkspace.quota?.tokenBalance) || 0).toLocaleString()} Tokens
                     </div>
                   </div>
                 </div>

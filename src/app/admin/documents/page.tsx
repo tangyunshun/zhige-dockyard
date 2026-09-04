@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
 import { getAuthToken } from "@/utils/auth";
@@ -19,6 +20,7 @@ import {
   Settings,
   CheckCircle,
   XCircle,
+  ExternalLink,
 } from "lucide-react";
 
 interface Document {
@@ -329,15 +331,32 @@ export default function AdminDocumentsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-8">
       {/* 顶部标题区 */}
-      <div className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
-        <div className="py-6">
-          <div className="mb-2">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">
-              文档管理
-            </h1>
-            <p className="text-sm text-slate-500 font-medium mt-1">
-              管理系统文档、用户指南、API 文档、常见问题、公告
+      <div className="bg-white/70 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+        <div className="py-6 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                帮助与知识文档中心 (Docs & Knowledge)
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200/80">
+                知识库引擎
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              集中管理系统用户指南、API 开发者手册、架构文档与官方公告
             </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/help"
+              target="_blank"
+              className="inline-flex items-center gap-1.5 px-4 h-9 bg-white hover:bg-slate-50 text-[#3182ce] border border-[#3182ce]/30 hover:border-[#3182ce] rounded-xl text-xs font-bold transition-all shadow-2xs group"
+              title="在新标签页打开前台帮助中心查看实际展现效果"
+            >
+              <span>直达前台帮助中心</span>
+              <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </Link>
           </div>
         </div>
       </div>
@@ -450,9 +469,45 @@ export default function AdminDocumentsPage() {
                 className="px-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all bg-white/80 whitespace-nowrap"
               >
                 <option value="">全部状态</option>
-                <option value="true">已发布</option>
-                <option value="false">未发布</option>
+                <option value="true">🟢 已发布</option>
+                <option value="false">⚪ 未发布</option>
               </select>
+            </div>
+
+            {/* 第三行：快捷分类标签栏 */}
+            <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 overflow-x-auto pb-0.5 text-xs">
+              <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap mr-1">快捷分类:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterCategory("");
+                  setCurrentPage(1);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  filterCategory === ""
+                    ? "bg-[#3182ce] text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                全部文档 ({total})
+              </button>
+              {Object.entries(CATEGORY_LABELS).map(([catKey, catLabel]) => (
+                <button
+                  key={catKey}
+                  type="button"
+                  onClick={() => {
+                    setFilterCategory(catKey);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    filterCategory === catKey
+                      ? "bg-[#3182ce] text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {catLabel}
+                </button>
+              ))}
             </div>
           </div>
         </div>

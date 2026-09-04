@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { getMembershipConfig, isTeamSizeExceeded, formatTeamSize } from "@/lib/membership";
+import { TEAM_SIZE_OPTIONS } from "@/lib/membership";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { storageMbToBytes } from "@/constants/workspace-plans";
 import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
+import { mergeLimits } from "@/lib/limit-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,11 +46,10 @@ export async function POST(request: NextRequest) {
       where: { id: userId },
       select: { membershipLevel: true },
     });
-    const userMembershipLevel = (dbUser?.membershipLevel || 'FREE') as keyof typeof getMembershipConfig;
-    const membershipConfig = getMembershipConfig(userMembershipLevel);
+    const userMembershipLevel = dbUser?.membershipLevel || 'FREE';
 
     let ml = await prisma.membershiplevel.findUnique({
-      where: { id: userMembershipLevel as string },
+      where: { id: userMembershipLevel },
     });
     if (!ml) {
       ml = await prisma.membershiplevel.findFirst();
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     if (maxEnterpriseAllowed !== -1 && enterpriseWorkspaces.length >= maxEnterpriseAllowed) {
       return NextResponse.json(
         { 
-          error: `${membershipConfig.nameZh}最多可创建${maxEnterpriseAllowed}个企业空间，已达到上限`,
+          error: `${ml?.nameZh || "当前会员等级"}最多可创建${maxEnterpriseAllowed}个企业空间，已达到上限`,
           currentLevel: mlId,
           maxEnterprise: maxEnterpriseAllowed,
         },
@@ -77,20 +77,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查团队规模是否超出会员等级限制
-    if (teamSize && isTeamSizeExceeded(teamSize, userMembershipLevel)) {
-      const availableTeamSizes = ['1-5', '6-20', '21-50', '51-100', '101-200', '200+'].filter(size => {
-        return !isTeamSizeExceeded(size, userMembershipLevel);
-      });
-      
-      return NextResponse.json(
-        {
-          error: `${membershipConfig.nameZh}最大团队规模为${membershipConfig.maxTeamSize}人，请选择较小的团队规模（可用选项：${availableTeamSizes.join(',')})`,
-          currentLevel: membershipConfig.nameZh,
-          maxTeamSize: membershipConfig.maxTeamSize,
-        },
-        { status: 403 }
-      );
+    // 检查团队规模是否超出会员等级限制（一律以数据库 membershiplevel.maxTeamSize 为准）
+    if (teamSize && ml) {
+      const maxTeamSize = Number(ml.maxTeamSize); // -1 表示无限制
+      const sizeRange = String(teamSize).split("-");
+      const maxInRange = parseInt(sizeRange[sizeRange.length - 1] || "0", 10) || 0;
+      if (maxTeamSize !== -1 && maxInRange > maxTeamSize) {
+        const availableTeamSizes = TEAM_SIZE_OPTIONS.filter((option) => {
+          const parts = option.value.split("-");
+          const m = parseInt(parts[parts.length - 1] || "0", 10) || 0;
+          return maxTeamSize === -1 || m <= maxTeamSize;
+        }).map((option) => option.value);
+
+        return NextResponse.json(
+          {
+            error: `${ml.nameZh}最大团队规模为${maxTeamSize}人，请选择较小的团队规模（可用选项：${availableTeamSizes.join(",") || "无"}）`,
+            currentLevel: ml.nameZh,
+            maxTeamSize,
+          },
+          { status: 403 }
+        );
+      }
     }
 
     // 获取计划配置（取自共享套餐模块，与空间套餐升级保持同一数据源）
@@ -104,8 +111,9 @@ export async function POST(request: NextRequest) {
       features: planConfig.features,
     };
 
-    // 根据套餐配置规划初始 Token 点数（ml / mlId 已在上方统一查询，此处不再重复查库）
-    const tokenLimit = planConfig.tokenLimit;
+    // 新空间初始算力：发放当前「会员等级」当月的月度算力额度（扩容包不再附赠算力，
+    // 算力统一由 会员等级(月度保底) + 算力加油包(即时充值) 提供；ml/mlId 已在上方统一查询）
+    const initialTokenBalance = ml ? Number(ml.tokenLimit) : 0;
 
     const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     const workspaceId = generateId("ws");
@@ -140,9 +148,14 @@ export async function POST(request: NextRequest) {
             id: generateId("wsq"),
             workspaceId: workspaceId,
             membershipLevelId: mlId,
-            tokenBalance: BigInt(tokenLimit + 100), // 新开通企业空间免费赠送 100 算力点
-            storageLimit: BigInt(storageMbToBytes(planConfig.maxStorage)),
-            apiCallsLimit: BigInt(planConfig.maxApiCalls),
+            tokenBalance: BigInt(initialTokenBalance), // 当月会员等级算力额度即时到账
+            // 存储/调用上限 = max(空间扩容包额度, 账号会员等级基础保底)
+            storageLimit: BigInt(
+              mergeLimits(storageMbToBytes(planConfig.maxStorage), ml?.maxStorage)
+            ),
+            apiCallsLimit: BigInt(
+              mergeLimits(planConfig.maxApiCalls, ml?.maxApiCalls)
+            ),
             updatedAt: new Date(),
           }
         }

@@ -81,9 +81,9 @@ export default function UserDashboardLayout({
         },
         {
           icon: CreditCard,
-          label: "会员信息",
-          href: "/user/membership",
-          description: "会员等级、配额使用",
+          label: "套餐与计费",
+          href: "/user/billing-center",
+          description: "会员套餐、空间扩容、账单管理",
         },
         {
           icon: FolderOpen,

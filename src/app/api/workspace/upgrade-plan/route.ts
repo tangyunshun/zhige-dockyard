@@ -6,6 +6,7 @@ import {
   getWorkspacePlans,
   getWorkspacePlanByKey,
 } from "@/lib/workspace-plan-service";
+import { mergeLimits } from "@/lib/limit-utils";
 
 const generateId = (prefix: string) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
@@ -24,27 +25,120 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = authResult.user!.id;
-    const workspaceId = request.nextUrl.searchParams.get("workspaceId");
+    let targetWorkspaceId = request.nextUrl.searchParams.get("workspaceId");
 
-    if (!workspaceId) {
-      return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
+    // 若未传 workspaceId，自动兜底定位用户当前活跃或归属的工作空间
+    if (!targetWorkspaceId) {
+      const userRecord = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { lastWorkspaceId: true },
+      });
+      if (userRecord?.lastWorkspaceId) {
+        targetWorkspaceId = userRecord.lastWorkspaceId;
+      } else {
+        const ownedWs = await prisma.workspace.findFirst({
+          where: { ownerId: userId },
+          select: { id: true },
+        });
+        if (ownedWs) {
+          targetWorkspaceId = ownedWs.id;
+        } else {
+          const memberWs = await prisma.workspacemember.findFirst({
+            where: { userId },
+            select: { workspaceId: true },
+          });
+          targetWorkspaceId = memberWs?.workspaceId || null;
+        }
+      }
+    }
+
+    if (!targetWorkspaceId) {
+      return NextResponse.json({ error: "暂无可管理的工作空间" }, { status: 404 });
     }
 
     const workspace = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { id: true, name: true, ownerId: true, plan: true, quota: true },
+      where: { id: targetWorkspaceId },
+      select: {
+        id: true,
+        name: true,
+        ownerId: true,
+        plan: true,
+        quota: true,
+        workspacequotaId: true,
+      },
     });
 
     if (!workspace) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
     }
 
-    if (workspace.ownerId !== userId) {
-      return NextResponse.json({ error: "仅空间所有者可管理空间套餐" }, { status: 403 });
+    const isOwner = workspace.ownerId === userId;
+    const memberRecord = await prisma.workspacemember.findFirst({
+      where: { userId, workspaceId: targetWorkspaceId },
+      select: { role: true },
+    });
+
+    if (!isOwner && !memberRecord) {
+      return NextResponse.json({ error: "无权访问此工作空间套餐信息" }, { status: 403 });
     }
 
     const currentConfig = await getWorkspacePlanByKey(workspace.plan);
-    const currentPlan = currentConfig.key;
+
+    // 从数据库实时统计各项运行时数据，确保数据 100% 来源真实库表
+    // 1. 真实已加入成员数 (workspacemember)
+    const memberCount = await prisma.workspacemember.count({
+      where: { workspaceId: targetWorkspaceId },
+    });
+
+    // 2. 真实已装配组件数 (componentusage)
+    const usages = await prisma.componentusage.findMany({
+      where: { workspaceId: targetWorkspaceId },
+      select: { componentId: true, metadata: true },
+    });
+    const boundIdSet = new Set<string>();
+    usages.forEach((u) => {
+      if (!u.metadata) return;
+      try {
+        const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : (u.metadata as any);
+        if (meta && typeof meta.enabled === "boolean") {
+          if (meta.enabled) boundIdSet.add(u.componentId);
+        } else {
+          boundIdSet.add(u.componentId);
+        }
+      } catch {
+        boundIdSet.add(u.componentId);
+      }
+    });
+    if (boundIdSet.size === 0) {
+      usages.forEach((u) => boundIdSet.add(u.componentId));
+    }
+    const componentCount = boundIdSet.size;
+
+    // 3. 真实存储配额与使用量 (workspacequota)
+    const quotaRecord = workspace.workspacequotaId
+      ? await prisma.workspacequota.findUnique({ where: { id: workspace.workspacequotaId } })
+      : await prisma.workspacequota.findUnique({ where: { workspaceId: targetWorkspaceId } });
+
+    const storageUsedBytes = Number(quotaRecord?.storageUsed ?? 0);
+    const storageUsedMB = Math.round((storageUsedBytes / (1024 * 1024)) * 100) / 100;
+    const storageLimitMB =
+      quotaRecord && Number(quotaRecord.storageLimit) > 0
+        ? Math.round(Number(quotaRecord.storageLimit) / (1024 * 1024))
+        : currentConfig.maxStorage;
+
+    // 4. 真实 API 调用量 (apiusage 30 天统计 与 workspacequota 记录)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentApiCalls = await prisma.apiusage.count({
+      where: {
+        workspaceId: targetWorkspaceId,
+        timestamp: { gte: thirtyDaysAgo },
+      },
+    }).catch(() => 0);
+    const apiCallsUsed = Math.max(Number(quotaRecord?.apiCallsUsed ?? 0), recentApiCalls);
+    const apiCallsLimit =
+      quotaRecord && Number(quotaRecord.apiCallsLimit) > 0
+        ? Number(quotaRecord.apiCallsLimit)
+        : currentConfig.maxApiCalls;
 
     // 可在线购买的全部套餐（前端需要展示完整阶梯：当前、低阶禁用、高阶可升级）
     const allPlans = await getWorkspacePlans({ onlyActive: true, onlyPurchasable: true });
@@ -56,12 +150,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        workspace: { id: workspace.id, name: workspace.name },
+        workspace: { id: workspace.id, name: workspace.name, ownerId: workspace.ownerId },
         currentPlan: currentConfig,
         allPlans,
         availablePlans,
         /** 当前套餐已是最高可购买档时，前端改为引导线下定制 */
         canUpgrade: availablePlans.length > 0,
+        /** 空间运行时真实用量与配额（100% 来自数据库实时统计） */
+        realtimeUsage: {
+          members: {
+            used: memberCount,
+            limit: currentConfig.maxMembers,
+          },
+          components: {
+            used: componentCount,
+            limit: currentConfig.maxComponents,
+          },
+          storage: {
+            usedBytes: storageUsedBytes,
+            usedMB: storageUsedMB,
+            limitMB: storageLimitMB,
+          },
+          apiCalls: {
+            used: apiCallsUsed,
+            limit: apiCallsLimit,
+          },
+        },
       },
     });
   } catch (error) {
@@ -138,7 +252,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. 更新空间套餐与配额快照
+    // 1. 更新空间套餐与配额快照（团队资源扩容包语义：一次购买、长期生效）
     await prisma.workspace.update({
       where: { id: workspaceId },
       data: {
@@ -155,39 +269,67 @@ export async function POST(request: NextRequest) {
     });
 
     // 2. 同步 workspacequota 的硬性限额（存储单位由 MB 转换为字节）
+    //    扩容包不附赠月算力：tokenBalance 保持不变，算力统一由「会员等级(月度保底) + 算力加油包(即时充值)」提供。
+    //    存储/调用上限 = max(扩容包额度, 该空间绑定的会员等级基础保底)，两类权益叠加且互不缩水。
     const existingWsq = workspace.workspacequotaId
       ? await prisma.workspacequota.findUnique({ where: { id: workspace.workspacequotaId } })
       : null;
 
-    const newLevelLimit = BigInt(targetConfig.tokenLimit);
-    const currentBal = existingWsq ? existingWsq.tokenBalance : BigInt(0);
-    const finalTokenBalance = currentBal > newLevelLimit ? currentBal : newLevelLimit;
+    let baseLevel:
+      | { maxStorage: bigint; maxApiCalls: bigint; tokenLimit: bigint }
+      | null = null;
+    if (existingWsq?.membershipLevelId) {
+      baseLevel = await prisma.membershiplevel.findFirst({
+        where: {
+          OR: [
+            { id: existingWsq.membershipLevelId },
+            { name: existingWsq.membershipLevelId },
+          ],
+        },
+        select: { maxStorage: true, maxApiCalls: true, tokenLimit: true },
+      });
+    }
 
-    const quotaUpdateData = {
-      storageLimit: BigInt(storageMbToBytes(targetConfig.maxStorage)),
-      apiCallsLimit: BigInt(targetConfig.maxApiCalls),
-      // 升级后按新套餐刷新月度算力保底，且不覆盖更高的历史余量
-      tokenBalance: finalTokenBalance,
-      updatedAt: new Date(),
-    };
+    const planStorageBytes = storageMbToBytes(targetConfig.maxStorage);
+    const finalStorageLimit = baseLevel
+      ? mergeLimits(planStorageBytes, baseLevel.maxStorage)
+      : planStorageBytes;
+    const finalApiCallsLimit = baseLevel
+      ? mergeLimits(targetConfig.maxApiCalls, baseLevel.maxApiCalls)
+      : targetConfig.maxApiCalls;
 
     if (workspace.workspacequotaId) {
       await prisma.workspacequota.update({
         where: { id: workspace.workspacequotaId },
-        data: quotaUpdateData,
+        data: {
+          storageLimit: BigInt(finalStorageLimit),
+          apiCallsLimit: BigInt(finalApiCallsLimit),
+          updatedAt: new Date(),
+        },
       });
     } else {
-      // 历史空间可能缺失配额记录，此处补齐
+      // 历史空间可能缺失配额记录，此处补齐：初始算力按该空间绑定的会员等级当月额度发放
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { membershipLevel: true },
       });
+      const levelKey = user?.membershipLevel || "FREE";
+      const memberLevel = await prisma.membershiplevel.findFirst({
+        where: {
+          OR: [{ id: levelKey }, { name: levelKey }],
+        },
+        select: { tokenLimit: true },
+      });
+      const baseTokens = Number(memberLevel?.tokenLimit ?? 0);
       await prisma.workspacequota.create({
         data: {
           id: generateId("wsq"),
           workspaceId,
           membershipLevelId: user?.membershipLevel || "FREE",
-          ...quotaUpdateData,
+          tokenBalance: BigInt(baseTokens > 0 ? baseTokens : 0),
+          storageLimit: BigInt(finalStorageLimit),
+          apiCallsLimit: BigInt(finalApiCallsLimit),
+          updatedAt: new Date(),
         },
       });
     }
@@ -219,7 +361,7 @@ export async function POST(request: NextRequest) {
         userId,
         workspaceId,
         type: "PLAN_UPGRADE",
-        title: `空间「${workspace.name}」套餐升级至${targetConfig.name}`,
+        title: `空间「${workspace.name}」扩容至${targetConfig.name}（团队资源扩容包·一次性）`,
         amount: targetConfig.priceMonthly,
         currency: "CNY",
         status: "SUCCESS",
@@ -230,6 +372,8 @@ export async function POST(request: NextRequest) {
           fromPlan: currentPlan,
           toPlan: targetConfig.key,
           planName: targetConfig.name,
+          billingModel: "ONE_TIME", // 一次性扩容（原订阅制月付/年付已下线）
+          originalPriceYearly: targetConfig.priceYearly,
         },
         updatedAt: new Date(),
       },
@@ -237,7 +381,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `空间套餐已升级为${targetConfig.name}`,
+      message: `已为空间「${workspace.name}」开通${targetConfig.name}团队资源扩容包（一次性买断，长期生效）`,
       data: {
         plan: targetConfig,
         previousPlan: currentConfig,

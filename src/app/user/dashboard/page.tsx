@@ -256,7 +256,7 @@ export default function UserDashboardPage() {
             )}
 
             <button
-              onClick={() => (window.location.href = "/user/membership")}
+              onClick={() => (window.location.href = "/user/billing-center")}
               className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#f59e0b]/5 hover:to-[#d97706]/5 border border-slate-200 hover:border-[#f59e0b]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
             >
               <div className="w-12 h-12 rounded-xl bg-[#f59e0b]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
@@ -264,10 +264,10 @@ export default function UserDashboardPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800 group-hover:text-[#f59e0b] transition-colors">
-                  会员中心
+                  套餐与计费
                 </div>
                 <div className="text-xs text-slate-500 font-medium">
-                  查看配额/升级会员
+                  会员套餐/空间扩容/账单管理
                 </div>
               </div>
             </button>

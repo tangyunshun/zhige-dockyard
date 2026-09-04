@@ -1,19 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
+import { buildDynamicPlanFeatures } from "@/lib/workspace-plan-service";
 
 function serializePlan(plan: any) {
+  const maxComponents = Number(plan.maxComponents ?? 0);
+  const maxMembers = Number(plan.maxMembers ?? 0);
+  const maxStorage = Number(plan.maxStorage ?? 0);
+  const maxApiCalls = Number(plan.maxApiCalls ?? 0);
+  const rawFeatures = Array.isArray(plan.features) ? plan.features : [];
+
   return {
     ...plan,
     priceMonthly: Number(plan.priceMonthly || 0),
     priceYearly: Number(plan.priceYearly || 0),
-    maxComponents: Number(plan.maxComponents ?? 0),
-    maxMembers: Number(plan.maxMembers ?? 0),
-    maxStorage: Number(plan.maxStorage ?? 0),
-    maxApiCalls: Number(plan.maxApiCalls ?? 0),
+    maxComponents,
+    maxMembers,
+    maxStorage,
+    maxApiCalls,
     tokenLimit: Number(plan.tokenLimit ?? 0),
     sortOrder: Number(plan.sortOrder || 0),
-    features: Array.isArray(plan.features) ? plan.features : [],
+    features: buildDynamicPlanFeatures({
+      maxMembers,
+      maxComponents,
+      maxStorage,
+      maxApiCalls,
+      customFeatures: rawFeatures,
+    }),
   };
 }
 

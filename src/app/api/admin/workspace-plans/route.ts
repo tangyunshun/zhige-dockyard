@@ -1,19 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
+import { buildDynamicPlanFeatures } from "@/lib/workspace-plan-service";
 
 function serializePlan(plan: any) {
+  const maxComponents = Number(plan.maxComponents ?? 0);
+  const maxMembers = Number(plan.maxMembers ?? 0);
+  const maxStorage = Number(plan.maxStorage ?? 0);
+  const maxApiCalls = Number(plan.maxApiCalls ?? 0);
+  const rawFeatures = Array.isArray(plan.features) ? plan.features : [];
+
   return {
     ...plan,
     priceMonthly: Number(plan.priceMonthly || 0),
     priceYearly: Number(plan.priceYearly || 0),
-    maxComponents: Number(plan.maxComponents ?? 0),
-    maxMembers: Number(plan.maxMembers ?? 0),
-    maxStorage: Number(plan.maxStorage ?? 0),
-    maxApiCalls: Number(plan.maxApiCalls ?? 0),
+    maxComponents,
+    maxMembers,
+    maxStorage,
+    maxApiCalls,
     tokenLimit: Number(plan.tokenLimit ?? 0),
     sortOrder: Number(plan.sortOrder || 0),
-    features: Array.isArray(plan.features) ? plan.features : [],
+    features: buildDynamicPlanFeatures({
+      maxMembers,
+      maxComponents,
+      maxStorage,
+      maxApiCalls,
+      customFeatures: rawFeatures,
+    }),
   };
 }
 
@@ -66,9 +79,19 @@ export async function GET(request: NextRequest) {
       orderBy: { sortOrder: "asc" },
     });
 
+    // 统计各套餐当前关联的真实工作空间数量
+    const workspaceCounts = await prisma.workspace.groupBy({
+      by: ["plan"],
+      _count: { id: true },
+    }).catch(() => []);
+    const planCountMap = new Map(workspaceCounts.map((w) => [w.plan, w._count.id]));
+
     return NextResponse.json({
       success: true,
-      data: plans.map(serializePlan),
+      data: plans.map((p) => ({
+        ...serializePlan(p),
+        workspaceCount: planCountMap.get(p.key) || 0,
+      })),
     });
   } catch (error: any) {
     console.error("获取空间套餐列表失败:", error);

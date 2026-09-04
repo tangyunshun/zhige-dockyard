@@ -1,7 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
 import { getAuthToken } from "@/utils/auth";
@@ -331,15 +332,31 @@ export default function AdminStagesPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-8">
       {/* 顶部标题区 */}
-      <div className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
-        <div className="py-6">
-          <div className="mb-2">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">
-              阶段管理
-            </h1>
-            <p className="text-sm text-slate-500 font-medium mt-1">
-              管理组件的开发阶段、阶段排序、启用/停用
+      <div className="bg-white/70 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+        <div className="py-6 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                研发阶段与流程内容管理 (Stages & Pipeline)
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200/80">
+                组件分类源头
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              定义全生命周期研发流程分类、控制阶段显示权重与全网组件映射
             </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/components"
+              className="inline-flex items-center gap-1.5 px-4 h-9 bg-white hover:bg-slate-50 text-[#3182ce] border border-[#3182ce]/30 hover:border-[#3182ce] rounded-xl text-xs font-bold transition-all shadow-2xs"
+              title="前往组件管理中枢查看全量组件矩阵"
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>直达组件管理中枢</span>
+            </Link>
           </div>
         </div>
       </div>
@@ -547,9 +564,13 @@ export default function AdminStagesPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <Package className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm font-bold text-slate-800">
-                            {stage.componentCount || 0}
-                          </span>
+                          <Link
+                            href={`/admin/components?stage=${encodeURIComponent(stage.name)}`}
+                            className="text-sm font-bold text-[#3182ce] hover:underline flex items-center gap-1"
+                            title="点击反查属于此阶段的所有组件"
+                          >
+                            <span>{stage.componentCount || 0} 个组件</span>
+                          </Link>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

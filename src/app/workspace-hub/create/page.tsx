@@ -60,6 +60,10 @@ function CreateEnterpriseWorkspaceForm() {
   } | null>(null);
   const [membershipLevel, setMembershipLevel] =
     useState<MembershipLevel>("FREE");
+  // 会员等级权益（团队规模等）运行时从数据库读取，避免与后台配置不一致
+  const [membershipLevels, setMembershipLevels] = useState<
+    { id: string; nameZh: string; maxTeamSize: number }[]
+  >([]);
   const [uploadedIcon, setUploadedIcon] = useState<string | null>(null);
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [errors, setErrors] = useState<{
@@ -91,11 +95,14 @@ function CreateEnterpriseWorkspaceForm() {
     }
 
     // 已登录，加载数据
-    Promise.all([loadQuota(), loadWorkspaceInfo(), loadUserInfo()]).finally(
-      () => {
-        setIsLoading(false);
-      },
-    );
+    Promise.all([
+      loadQuota(),
+      loadWorkspaceInfo(),
+      loadUserInfo(),
+      loadMembershipLevels(),
+    ]).finally(() => {
+      setIsLoading(false);
+    });
   }, []);
 
   const loadQuota = async () => {
@@ -144,6 +151,54 @@ function CreateEnterpriseWorkspaceForm() {
     } catch (error) {
       console.warn("Load quota error:", error);
     }
+  };
+
+  // 会员等级配置从数据库读取（团队规模等权益以后台配置为准）
+  const loadMembershipLevels = async () => {
+    try {
+      const res = await fetch("/api/membership/levels", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        const list = Array.isArray(json?.data) ? json.data : [];
+        setMembershipLevels(
+          list.map((level: { id?: string; nameZh?: string; maxTeamSize?: number }) => ({
+            id: level.id || "",
+            nameZh: level.nameZh || "",
+            maxTeamSize: Number(level.maxTeamSize ?? 0),
+          })),
+        );
+      }
+    } catch (error) {
+      console.warn("加载会员等级配置失败:", error);
+    }
+  };
+
+  /** 团队规模可选范围：以数据库 membershiplevel.maxTeamSize 为准（未加载完成时退化为静态兜底） */
+  const resolveTeamSizeOptions = () => {
+    const dbLevel = membershipLevels.find((level) => level.id === membershipLevel);
+    if (membershipLevels.length > 0 && dbLevel) {
+      return TEAM_SIZE_OPTIONS.filter((option) => {
+        const parts = option.value.split("-");
+        const maxInRange = parseInt(parts[parts.length - 1] || "0", 10) || 0;
+        return dbLevel.maxTeamSize === -1 || maxInRange <= dbLevel.maxTeamSize;
+      });
+    }
+    return getAvailableTeamSizeOptions(membershipLevel);
+  };
+
+  /** 当前等级名称与团队规模上限提示（数据库优先，未加载完成时退化为静态兜底） */
+  const resolveLevelHint = () => {
+    const dbLevel = membershipLevels.find((level) => level.id === membershipLevel);
+    if (dbLevel) {
+      return {
+        nameZh: dbLevel.nameZh || MEMBERSHIP_CONFIGS[membershipLevel]?.nameZh || "当前等级",
+        maxTeamSize: dbLevel.maxTeamSize,
+      };
+    }
+    return {
+      nameZh: MEMBERSHIP_CONFIGS[membershipLevel]?.nameZh || "当前等级",
+      maxTeamSize: MEMBERSHIP_CONFIGS[membershipLevel]?.maxTeamSize ?? 5,
+    };
   };
 
   const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -736,13 +791,11 @@ function CreateEnterpriseWorkspaceForm() {
                         }`}
                       >
                         <option value="">请选择团队规模</option>
-                        {getAvailableTeamSizeOptions(membershipLevel).map(
-                          (option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ),
-                        )}
+                        {resolveTeamSizeOptions().map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                       {errors.teamSize && (
                         <p className="text-xs text-red-500 font-bold flex items-center gap-1 mt-1">
@@ -754,13 +807,11 @@ function CreateEnterpriseWorkspaceForm() {
                         <div className="flex items-center gap-2 text-xs text-slate-600">
                           <Crown className="w-3 h-3" />
                           <span>
-                            当前{MEMBERSHIP_CONFIGS[membershipLevel].nameZh}：
+                            当前{resolveLevelHint().nameZh}：
                             最多支持{" "}
-                            {MEMBERSHIP_CONFIGS[membershipLevel].maxTeamSize ===
-                            -1
+                            {resolveLevelHint().maxTeamSize === -1
                               ? "无限"
-                              : MEMBERSHIP_CONFIGS[membershipLevel]
-                                  .maxTeamSize}{" "}
+                              : resolveLevelHint().maxTeamSize}{" "}
                             人团队
                           </span>
                         </div>

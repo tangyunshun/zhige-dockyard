@@ -71,6 +71,56 @@ function LoginForm() {
     banReason?: string | null;
   }>({ text: "去申诉 →", isDepleted: false, hasAppeal: false });
 
+  // 系统全局公开配置（包含第三方联合登录状态与站点标识）
+  const [publicConfig, setPublicConfig] = useState<{
+    siteName: string;
+    logo: string;
+    description: string;
+    oauth: {
+      github: { enabled: boolean };
+      wechat: { enabled: boolean };
+      channels?: Array<{
+        id: string;
+        type: string;
+        name: string;
+        enabled: boolean;
+        clientId?: string;
+      }>;
+    };
+  }>({
+    siteName: "知阁·舟坊",
+    logo: "/logo.png",
+    description: "全链路软件研发效能操作系统",
+    oauth: {
+      github: { enabled: false },
+      wechat: { enabled: false },
+      channels: [],
+    },
+  });
+
+  const [accountType, setAccountType] = useState<
+    "phone" | "email" | "username" | "unknown"
+  >("unknown");
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
+  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
+  const [isSelectingSuggestion, setIsSelectingSuggestion] = useState(false);
+  const [accountCheckStatus, setAccountCheckStatus] = useState<{
+    exists?: boolean;
+    locked?: boolean;
+    disabled?: boolean;
+    minutesRemaining?: number;
+    remainingAttempts?: number;
+  }>({});
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [lockSeconds, setLockSeconds] = useState<number>(0);
+  // 同一账号关联的标识集合（账号名/邮箱/手机号）：任一被锁定则全部锁定
+  const [lockedIdentifiers, setLockedIdentifiers] = useState<string[]>([]);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(
+    null,
+  );
+  const [timeoutNotice, setTimeoutNotice] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+
   // 自动检测用户申诉状态以渲染正确的按钮
   const checkAppealButtonMeta = async (accName: string) => {
     if (!accName || !accName.trim()) return;
@@ -93,29 +143,6 @@ function LoginForm() {
     }
   };
 
-  useEffect(() => {
-    if (formData.account) {
-      checkAppealButtonMeta(formData.account);
-    }
-  }, [formData.account]);
-  const [accountType, setAccountType] = useState<
-    "phone" | "email" | "username" | "unknown"
-  >("unknown");
-  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
-  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
-  const [isSelectingSuggestion, setIsSelectingSuggestion] = useState(false);
-  const [accountCheckStatus, setAccountCheckStatus] = useState<{
-    exists?: boolean;
-    locked?: boolean;
-    disabled?: boolean;
-    minutesRemaining?: number;
-    remainingAttempts?: number;
-  }>({});
-  const [lockUntil, setLockUntil] = useState<number | null>(null);
-  const [lockSeconds, setLockSeconds] = useState<number>(0);
-  // 同一账号关联的标识集合（账号名/邮箱/手机号）：任一被锁定则全部锁定
-  const [lockedIdentifiers, setLockedIdentifiers] = useState<string[]>([]);
-
   // 判断某输入值是否属于已被锁定的账号（命中关联标识任一即锁定）
   const isIdentifierLocked = (value: string): boolean => {
     const v = value.trim().toLowerCase();
@@ -135,6 +162,16 @@ function LoginForm() {
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
 
+  // 获取回调参数（必须在 useEffect 之前定义）
+  const errorMessage = searchParams.get("error");
+
+  // ========== 所有的 useEffect 在 useState 之后，且必须在条件渲染之前 ==========
+  useEffect(() => {
+    if (formData.account) {
+      checkAppealButtonMeta(formData.account);
+    }
+  }, [formData.account]);
+
   // 锁定倒计时：每秒刷新剩余秒数；归零后自动解除锁定
   useEffect(() => {
     if (lockUntil === null) {
@@ -150,12 +187,6 @@ function LoginForm() {
     const timer = setInterval(syncRemaining, 1000);
     return () => clearInterval(timer);
   }, [lockUntil]);
-  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(
-    null,
-  );
-  const [timeoutNotice, setTimeoutNotice] = useState(false);
-
-  // ========== 所有的 useEffect 在 useState 之后 ==========
 
   // 监听超时退出指示
   useEffect(() => {
@@ -164,9 +195,6 @@ function LoginForm() {
       setTimeoutNotice(true);
     }
   }, [searchParams]);
-
-  // 获取回调参数（必须在 useEffect 之前定义）
-  const errorMessage = searchParams.get("error");
 
   // 检查用户是否已登录，如果已登录则重定向
   useEffect(() => {
@@ -279,6 +307,38 @@ function LoginForm() {
 
     return () => clearInterval(timer);
   }, [redirectCountdown, router, formData.account]);
+
+  // 加载系统公开全局配置（包含第三方登录开关、站点名称与Logo）
+  useEffect(() => {
+    fetch("/api/system/public-config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) {
+          setPublicConfig((prev) => ({
+            ...prev,
+            siteName: data.siteName || prev.siteName,
+            logo: data.logo || prev.logo,
+            description: data.description || prev.description,
+            oauth: data.oauth || prev.oauth,
+          }));
+        }
+      })
+      .catch((err) => console.warn("获取公共系统配置异常:", err));
+  }, []);
+
+  // 监听 OAuth 错误提示
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error === "github_disabled") {
+      toast.warning("系统暂未开启 GitHub 开发者联合登录通道");
+    } else if (error === "wechat_disabled") {
+      toast.warning("系统暂未开启微信扫码登录通道");
+    } else if (error === "github_login_failed" || error === "github_callback_error") {
+      toast.error("GitHub 登录授权失败，请重试");
+    } else if (error === "wechat_login_failed" || error === "wechat_callback_invalid") {
+      toast.error("微信登录授权失败，请重试");
+    }
+  }, [searchParams]);
 
   // ========== 所有条件渲染必须在所有 Hooks 之后 ==========
 
@@ -513,6 +573,11 @@ function LoginForm() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // GitHub 登录处理
+  const handleGithubLogin = () => {
+    window.location.href = "/api/auth/github";
   };
 
   // 微信登录处理
@@ -898,18 +963,44 @@ function LoginForm() {
           </div>
 
           <div className="relative z-10 text-center">
-            <div className="w-16 h-16 mb-4 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm mx-auto shadow-lg">
-              <svg
-                className="w-10 h-10"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 6c1.4 0 2.8 1.1 2.8 2.5V11c.6 0 1.2.6 1.2 1.2v3.5c0 .7-.6 1.3-1.2 1.3H9.2c-.6 0-1.2-.6-1.2-1.2v-3.5c0-.7.6-1.3 1.2-1.3V9.5C9.2 8.1 10.6 7 12 7zm0 1c-.8 0-1.5.7-1.5 1.5V11h3V9.5c0-.8-.7-1.5-1.5-1.5zm-1.5 5v3.5h3v-3.5h-3z" />
-              </svg>
+            <div className="w-16 h-16 mb-4 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm mx-auto shadow-lg overflow-hidden p-2">
+              {publicConfig.logo && !logoError ? (
+                <img
+                  src={publicConfig.logo}
+                  alt={publicConfig.siteName}
+                  className="w-full h-full object-contain"
+                  onError={() => {
+                    setLogoError(true);
+                  }}
+                />
+              ) : (
+                <svg
+                  className="w-10 h-10 transition-transform duration-300 hover:scale-105"
+                  viewBox="10 10 180 190"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <defs>
+                    <linearGradient id="loginLogoGradPrimary" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stopColor="#ffffff" />
+                      <stop offset="100%" stopColor="#bfdbfe" />
+                    </linearGradient>
+                    <linearGradient id="loginLogoGradLight" x1="200" y1="0" x2="0" y2="200" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stopColor="#93c5fd" />
+                      <stop offset="100%" stopColor="#60a5fa" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M100 20 L25 65 L25 155 L100 105 Z" fill="url(#loginLogoGradPrimary)" />
+                  <path d="M25 155 L100 195 L175 155 L100 105 Z" fill="#3b82f6" opacity={0.8} />
+                  <path d="M100 20 L175 65 L175 115 L100 155 Z" fill="url(#loginLogoGradLight)" />
+                  <circle cx="100" cy="105" r="14" fill="#1e3a8a" />
+                  <circle cx="100" cy="105" r="6" fill="#ffffff" />
+                </svg>
+              )}
             </div>
-            <h1 className="text-2xl font-bold mb-2">知阁·舟坊</h1>
+            <h1 className="text-2xl font-bold mb-2">{publicConfig.siteName || "知阁·舟坊"}</h1>
             <p className="text-blue-100 mb-6 text-sm">
-              全链路软件研发效能操作系统
+              {publicConfig.description || "全链路软件研发效能操作系统"}
             </p>
 
             <div className="space-y-3 text-left">
@@ -1408,51 +1499,119 @@ function LoginForm() {
             </>
           )}
 
-          {/* 第三方登录：锁定状态下隐藏 */}
-          {!isLocked && (
-            <div className="mt-6 mb-4">
-              <div className="relative mb-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-200"></div>
+          {/* 第三方联合登录：当后台开启至少一项且未处于锁定状态时渲染 */}
+          {(() => {
+            const activeChannels =
+              publicConfig.oauth?.channels && publicConfig.oauth.channels.length > 0
+                ? publicConfig.oauth.channels.filter((c) => c.enabled)
+                : [
+                    ...(publicConfig.oauth?.github?.enabled
+                      ? [{ id: "github", type: "github", name: "GitHub" }]
+                      : []),
+                    ...(publicConfig.oauth?.wechat?.enabled
+                      ? [{ id: "wechat", type: "wechat", name: "微信扫码" }]
+                      : []),
+                  ];
+
+            if (isLocked || activeChannels.length === 0) return null;
+
+            return (
+              <div className="mt-6 mb-4">
+                <div className="relative mb-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="px-4 bg-white text-slate-500 text-xs font-medium">
+                      第三方账号快捷登录
+                    </span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center">
-                  <span className="px-4 bg-white text-slate-500 text-xs">
-                    第三方账号登录
-                  </span>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  {activeChannels.map((channel) => {
+                    const handleChannelClick = () => {
+                      if (channel.type === "github" || channel.id === "github") {
+                        handleGithubLogin();
+                      } else if (channel.type === "wechat" || channel.id === "wechat") {
+                        handleWechatLogin();
+                      } else {
+                        toast.info(`正在调起【${channel.name}】第三方快捷授权通道...`);
+                      }
+                    };
+
+                    const renderIcon = () => {
+                      if (channel.type === "github" || channel.id === "github") {
+                        return (
+                          <svg className="w-5 h-5 text-slate-800 group-hover:text-black transition-colors" viewBox="0 0 24 24" fill="currentColor">
+                            <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+                          </svg>
+                        );
+                      }
+                      if (channel.type === "wechat" || channel.id === "wechat") {
+                        return (
+                          <Image
+                            src="/icons/wechat.png"
+                            alt="微信"
+                            width={20}
+                            height={20}
+                            className="w-5 h-5"
+                          />
+                        );
+                      }
+                      if (channel.type === "qq") {
+                        return (
+                          <div className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-black">
+                            QQ
+                          </div>
+                        );
+                      }
+                      if (channel.type === "gitee") {
+                        return (
+                          <div className="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px] font-black">
+                            G
+                          </div>
+                        );
+                      }
+                      if (channel.type === "google") {
+                        return (
+                          <div className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-black">
+                            G+
+                          </div>
+                        );
+                      }
+                      if (channel.type === "feishu") {
+                        return (
+                          <div className="w-5 h-5 rounded-full bg-cyan-600 text-white flex items-center justify-center text-[10px] font-black">
+                            飞
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">
+                          {channel.name.slice(0, 1)}
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <button
+                        key={channel.id}
+                        type="button"
+                        onClick={handleChannelClick}
+                        className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-800 rounded-xl transition-all hover:scale-105 bg-white shadow-2xs group cursor-pointer"
+                        title={channel.name}
+                      >
+                        {renderIcon()}
+                        <span className="text-xs font-semibold text-slate-700">
+                          {channel.name.replace(/开发者授权登录|开放平台扫码登录|互联快捷登录|联合登录|企业扫码登录/g, "").trim() || channel.name}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              <div className="flex items-center justify-center gap-8">
-                <button
-                  type="button"
-                  onClick={handleWechatLogin}
-                  className="transition-all hover:scale-110"
-                  title="微信扫码登录"
-                >
-                  <Image
-                    src="/icons/wechat.png"
-                    alt="微信"
-                    width={32}
-                    height={32}
-                    className="w-8 h-8"
-                  />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleQQLogin}
-                  className="transition-all hover:scale-110"
-                  title="QQ 登录"
-                >
-                  <Image
-                    src="/icons/QQ.png"
-                    alt="QQ"
-                    width={32}
-                    height={32}
-                    className="w-8 h-8"
-                  />
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="text-center text-sm text-slate-600">
             还没有账号？{" "}

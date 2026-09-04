@@ -61,3 +61,9 @@ COMMIT_MSG.txt
 
 # User runtime uploads (data, not source)
 uploads/
+
+# Local IDE / agent workspace data (not source)
+.codebuddy/
+
+# Local build/diagnostic logs
+prisma_gen.txt

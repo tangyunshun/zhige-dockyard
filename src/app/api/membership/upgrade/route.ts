@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { getNextMonthResetDate } from "@/lib/quota-cycle";
 import { UNLIMITED_TOKEN, isUnlimitedTokenLimit } from "@/lib/quota-token";
+import { mergeLimits } from "@/lib/limit-utils";
 
 function safeBigInt(value: bigint | number | null | undefined, fallback = 0): bigint {
   if (value === null || value === undefined) return BigInt(fallback);
@@ -90,20 +91,24 @@ export async function POST(request: NextRequest) {
         const targetTokenLimit = safeBigInt(target.tokenLimit, 0);
         for (const q of quotas) {
           const currentBalance = safeBigInt(q.tokenBalance, 0);
-          // 无限额度（如皇冠会员 tokenLimit = -1）：直接写入 -1，让全链路（升级/校验/展示/扣费）
+          // 无限额度（会员 tokenLimit = -1）：直接写入 -1，让全链路（升级/校验/展示/扣费）
           // 识别为「无限」语义，不再写死任何固定大数（原 SIMULATED_CAP = 999999999）。
           const finalBalance = targetIsUnlimited
             ? UNLIMITED_TOKEN
             : currentBalance < targetTokenLimit
               ? targetTokenLimit
               : currentBalance;
+          // 存储/调用限额：会员等级提供「基础保底」，空间级扩容包提供「空间扩容」，
+          // 生效值取两者与既有值中的最大值（无限制 -1 优先），保证会员升级绝不缩水已购扩容包。
+          const finalStorage = mergeLimits(q.storageLimit, target.maxStorage);
+          const finalApiCalls = mergeLimits(q.apiCallsLimit, target.maxApiCalls);
           await tx.workspacequota.update({
             where: { id: q.id },
             data: {
               membershipLevelId: target.name,
               tokenBalance: finalBalance,
-              storageLimit: Number(target.maxStorage) === -1 ? BigInt(-1) : safeBigInt(target.maxStorage, 1073741824),
-              apiCallsLimit: Number(target.maxApiCalls) === -1 ? BigInt(-1) : safeBigInt(target.maxApiCalls, 1000),
+              storageLimit: BigInt(finalStorage),
+              apiCallsLimit: BigInt(finalApiCalls),
               resetAt: nextReset,
               updatedAt: new Date(),
             },

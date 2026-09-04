@@ -15,7 +15,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(5),
     maxStorage: BigInt(1073741824), // 1GB
     maxApiCalls: BigInt(1000),
-    tokenLimit: BigInt(10000), // 每月 10000 Token 配额
+    tokenLimit: BigInt(500), // 每月 500 算力点
     features: [
       "基础组件库访问",
       "标准技术支持",
@@ -24,9 +24,12 @@ const membershipLevels = [
     ],
     priceMonthly: 0,
     priceYearly: 0,
+    tokenPackDiscount: 0,
     trialDays: 0,
     sortOrder: 1,
     isActive: true,
+    isPopular: false,
+    isRecommended: false,
   },
   {
     name: "BRONZE",
@@ -40,18 +43,21 @@ const membershipLevels = [
     maxTeamSize: BigInt(20),
     maxStorage: BigInt(5368709120), // 5GB
     maxApiCalls: BigInt(5000),
-    tokenLimit: BigInt(20000), // 每月 20000 Token 配额
+    tokenLimit: BigInt(3000), // 每月 3000 算力点
     features: [
       "基础组件库访问",
       "优先技术支持",
       "2 个企业空间",
       "数据分析基础版",
     ],
-    priceMonthly: 9900, // 99 元
-    priceYearly: 99000, // 990 元
+    priceMonthly: 2900, // 29 元/月
+    priceYearly: 29000, // 290 元/年（年付=月付×10）
+    tokenPackDiscount: 0,
     trialDays: 14,
     sortOrder: 2,
     isActive: true,
+    isPopular: false,
+    isRecommended: false,
   },
   {
     name: "SILVER",
@@ -65,7 +71,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(50),
     maxStorage: BigInt(10737418240), // 10GB
     maxApiCalls: BigInt(10000),
-    tokenLimit: BigInt(100000), // 每月 100000 Token 配额
+    tokenLimit: BigInt(7000), // 每月 7000 算力点
     features: [
       "全量组件库访问",
       "优先技术支持",
@@ -73,11 +79,14 @@ const membershipLevels = [
       "数据分析报表",
       "自定义主题",
     ],
-    priceMonthly: 19900, // 199 元
-    priceYearly: 199000, // 1990 元
+    priceMonthly: 5900, // 59 元/月
+    priceYearly: 59000, // 590 元/年（年付=月付×10）
+    tokenPackDiscount: 0,
     trialDays: 14,
     sortOrder: 3,
     isActive: true,
+    isPopular: false,
+    isRecommended: false,
   },
   {
     name: "GOLD",
@@ -91,7 +100,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(100),
     maxStorage: BigInt(53687091200), // 50GB
     maxApiCalls: BigInt(50000),
-    tokenLimit: BigInt(500000), // 每月 500000 Token 配额
+    tokenLimit: BigInt(25000), // 每月 25000 算力点
     features: [
       "全量组件库访问",
       "VIP 专属技术支持",
@@ -100,11 +109,14 @@ const membershipLevels = [
       "自定义主题",
       "优先功能更新",
     ],
-    priceMonthly: 39900, // 399 元
-    priceYearly: 399000, // 3990 元
+    priceMonthly: 16900, // 169 元/月
+    priceYearly: 169000, // 1690 元/年（年付=月付×10）
+    tokenPackDiscount: 10, // 购买算力加油包 9 折
     trialDays: 14,
     sortOrder: 4,
     isActive: true,
+    isPopular: true,
+    isRecommended: true,
   },
   {
     name: "DIAMOND",
@@ -118,7 +130,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(200),
     maxStorage: BigInt(107374182400), // 100GB
     maxApiCalls: BigInt(100000),
-    tokenLimit: BigInt(1000000), // 每月 1000000 Token 配额
+    tokenLimit: BigInt(90000), // 每月 90000 算力点
     features: [
       "所有功能无限制",
       "专属客户经理",
@@ -127,11 +139,14 @@ const membershipLevels = [
       "完整自定义",
       "专属培训课程",
     ],
-    priceMonthly: 69900, // 699 元
-    priceYearly: 699000, // 6990 元
+    priceMonthly: 49900, // 499 元/月
+    priceYearly: 499000, // 4990 元/年（年付=月付×10）
+    tokenPackDiscount: 15, // 购买算力加油包 8.5 折
     trialDays: 14,
     sortOrder: 5,
     isActive: true,
+    isPopular: false,
+    isRecommended: false,
   },
   {
     name: "CROWN",
@@ -145,7 +160,7 @@ const membershipLevels = [
     maxTeamSize: BigInt(-1),
     maxStorage: BigInt(536870912000), // 500GB
     maxApiCalls: BigInt(500000),
-    tokenLimit: BigInt(-1), // -1 表示无限制 Token 配额
+    tokenLimit: BigInt(200000), // 每月 200000 算力点
     features: [
       "所有功能无限制",
       "专属客户经理 24/7",
@@ -155,11 +170,14 @@ const membershipLevels = [
       "专属培训课程",
       "定制化服务",
     ],
-    priceMonthly: 129900, // 1299 元
-    priceYearly: 1299000, // 12990 元
+    priceMonthly: 99900, // 999 元/月
+    priceYearly: 999000, // 9990 元/年（年付=月付×10）
+    tokenPackDiscount: 20, // 购买算力加油包 8 折
     trialDays: 14,
     sortOrder: 6,
     isActive: true,
+    isPopular: false,
+    isRecommended: false,
   },
 ];
 

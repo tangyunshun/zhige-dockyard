@@ -223,8 +223,8 @@ export default function HelpPage() {
       <div className="absolute top-0 left-[-10%] w-[35%] h-[35%] bg-[#3182ce]/[0.05] rounded-full blur-[130px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#10b981]/[0.05] rounded-full blur-[130px] pointer-events-none" />
 
-      <main className="relative z-10 flex items-start justify-center px-4 py-8">
-        <div className="w-full max-w-6xl">
+      <main className="relative z-10 max-w-[1400px] w-full mx-auto px-4 sm:px-6 md:px-8 pt-8 pb-12 space-y-6 flex-1 text-left">
+        <div className="w-full">
           {/* 返回按钮 */}
           <button
             onClick={() => router.back()}

@@ -680,7 +680,7 @@ export default function WorkspaceHub() {
               onInvite={handleOpenShare}
               onManageComponents={(id) => router.push(`/studio?workspaceId=${id}`)}
               onEnterpriseSettings={(id) => router.push(`/workspace/${id}?tab=settings`)}
-              onUpgradePackage={(id) => router.push(`/settings/billing?workspaceId=${id}`)}
+              onUpgradePackage={(id) => router.push(`/user/billing-center?workspaceId=${id}`)}
               onViewStats={(id) => router.push(`/workspace/${id}/stats`)}
               onDelete={handleWorkspaceDeleteClick}
               onLeave={handleLeaveWorkspaceClick}

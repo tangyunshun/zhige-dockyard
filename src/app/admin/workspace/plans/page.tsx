@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -21,6 +22,7 @@ import {
   Database,
   Zap,
   Tag,
+  Building2,
 } from "lucide-react";
 
 interface WorkspacePlan {
@@ -39,6 +41,7 @@ interface WorkspacePlan {
   sortOrder: number;
   purchasable: boolean;
   isActive: boolean;
+  workspaceCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,7 +56,7 @@ const DEFAULT_PLAN: Partial<WorkspacePlan> = {
   maxMembers: 10,
   maxStorage: 1024,
   maxApiCalls: 1000,
-  tokenLimit: 20000,
+  tokenLimit: 0, // 扩容包不再附赠月算力（算力由会员等级 + 加油包提供）
   features: [],
   sortOrder: 0,
   purchasable: true,
@@ -65,6 +68,61 @@ const SYSTEM_KEYS = ["STANDARD", "PRO", "ENTERPRISE", "CUSTOM"];
 // 红色「禁止」鼠标指针（替换浏览器默认的黑色 not-allowed 圈）
 const RED_NO_CURSOR =
   "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Ccircle%20cx='12'%20cy='12'%20r='9'%20fill='none'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3Cline%20x1='5'%20y1='5'%20x2='19'%20y2='19'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3C/svg%3E\") 12 12, not-allowed";
+
+/** 判断是否是与数据库 4 大基础配额字段重叠的旧写死文本 */
+function isCoreQuotaFeatureText(text: string): boolean {
+  const t = text.trim();
+  return (
+    t.includes("团队协同席位") ||
+    t.includes("团队席位") ||
+    t.includes("协同席位") ||
+    t.includes("组件装配额度") ||
+    t.includes("组件装配") ||
+    t.includes("云端存储") ||
+    t.includes("组件调用额度") ||
+    t.includes("组件调用") ||
+    t.includes("API 调用")
+  );
+}
+
+/** 根据数据库核心配额字段动态生成 4 项系统基准特性，杜绝手工写死 */
+function generateCoreQuotaFeatures(f: Partial<WorkspacePlan>) {
+  const maxMembers = Number(f.maxMembers ?? 10);
+  const maxComponents = Number(f.maxComponents ?? 100);
+  const maxStorage = Number(f.maxStorage ?? 1024);
+  const maxApiCalls = Number(f.maxApiCalls ?? 1000);
+
+  return [
+    {
+      key: "members",
+      label: "团队协同席位",
+      icon: Users,
+      value: maxMembers === -1 ? "团队席位无限制" : `${maxMembers} 个团队协同席位`,
+      unlimited: maxMembers === -1,
+    },
+    {
+      key: "components",
+      label: "组件装配额度",
+      icon: Package,
+      value: maxComponents === -1 ? "组件装配额度无限制" : `${maxComponents} 个组件装配额度`,
+      unlimited: maxComponents === -1,
+    },
+    {
+      key: "storage",
+      label: "云端存储",
+      icon: Database,
+      value: maxStorage === -1 ? "云端存储无限制" : `${Math.round(maxStorage / 1024)} GB 云端存储`,
+      unlimited: maxStorage === -1,
+    },
+    {
+      key: "apiCalls",
+      label: "组件调用额度",
+      icon: Zap,
+      value: maxApiCalls === -1 ? "组件调用额度无限制" : `${maxApiCalls.toLocaleString("zh-CN")} 次组件调用额度`,
+      unlimited: maxApiCalls === -1,
+    },
+  ];
+}
 
 export default function WorkspacePlansAdminPage() {
   const { success, error: toastError } = useToast();
@@ -127,13 +185,29 @@ export default function WorkspacePlansAdminPage() {
 
   const openCreate = () => {
     setEditingPlan(null);
-    setForm({ ...DEFAULT_PLAN, key: "", name: "", sortOrder: plans.length + 1 });
+    setForm({ ...DEFAULT_PLAN, key: "", name: "", sortOrder: plans.length + 1, features: [] });
     setModalOpen(true);
   };
 
   const openEdit = (plan: WorkspacePlan) => {
     setEditingPlan(plan);
-    setForm({ ...plan });
+    // 从 plan.features 中抽离自定义特性，过滤掉属于 4 大核心配额的旧静态文本
+    const customFeatures = (plan.features || []).filter((f) => !isCoreQuotaFeatureText(f));
+    setForm({ ...plan, features: customFeatures });
+    setModalOpen(true);
+  };
+
+  const openClone = (plan: WorkspacePlan) => {
+    setEditingPlan(null);
+    const customFeatures = (plan.features || []).filter((f) => !isCoreQuotaFeatureText(f));
+    setForm({
+      ...plan,
+      key: `${plan.key}_COPY`,
+      name: `${plan.name} (副本)`,
+      sortOrder: plans.length + 1,
+      features: customFeatures,
+      isActive: false, // 复制出的套餐默认未启用，方便二次审核
+    });
     setModalOpen(true);
   };
 
@@ -150,6 +224,16 @@ export default function WorkspacePlansAdminPage() {
     }
     setSaving(true);
     try {
+      // 动态依据数据库字段生成 4 项基准特性，并与附加扩展特性合并，确保数据 100% 动态驱动
+      const coreLabels = generateCoreQuotaFeatures(form).map((item) => item.value);
+      const cleanedCustom = (form.features || []).filter((f) => f.trim() && !isCoreQuotaFeatureText(f));
+      const dynamicFeatures = [...coreLabels, ...cleanedCustom];
+
+      const payload = {
+        ...form,
+        features: dynamicFeatures,
+      };
+
       const url = editingPlan
         ? `/api/admin/workspace-plans/${editingPlan.key}`
         : "/api/admin/workspace-plans";
@@ -160,7 +244,7 @@ export default function WorkspacePlansAdminPage() {
           "Content-Type": "application/json",
           authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
@@ -437,6 +521,14 @@ export default function WorkspacePlansAdminPage() {
                                 默认
                               </span>
                             )}
+                            <Link
+                              href={`/admin/workspaces?search=${encodeURIComponent(plan.name)}`}
+                              className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 text-[10px] rounded-md font-black flex items-center gap-1 transition-colors"
+                              title="点击反查绑定该套餐的企业空间"
+                            >
+                              <Building2 className="w-3 h-3 text-emerald-600" />
+                              {plan.workspaceCount ?? 0} 个空间
+                            </Link>
                           </div>
                           <div className="font-mono text-[11px] text-slate-400 font-bold mt-0.5">
                             ID: {plan.key}
@@ -473,10 +565,10 @@ export default function WorkspacePlansAdminPage() {
                     <td className="px-6 py-4 font-mono whitespace-nowrap">
                       <div className="space-y-0.5">
                         <div className="font-black text-slate-900 text-xs">
-                          月付: <span className="text-[#3182ce]">{fmtPrice(plan.priceMonthly)}</span>
+                          一次性: <span className="text-[#3182ce]">{fmtPrice(plan.priceMonthly)}</span>
                         </div>
-                        <div className="text-[11px] text-slate-500 font-bold">
-                          年付: {fmtPrice(plan.priceYearly)}
+                        <div className="text-[10px] font-bold text-slate-400">
+                          {plan.priceYearly > 0 ? "订阅年付已下线" : "买断长期生效"}
                         </div>
                         <div className="text-[10px] font-bold text-slate-400">
                           {plan.purchasable ? "在线售卖" : "线下定制"}
@@ -746,35 +838,86 @@ export default function WorkspacePlansAdminPage() {
                 </div>
               </div>
 
-              {/* 特性说明 */}
+              {/* 特性说明（100% 动态联动数据库字段，拒绝写死） */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-3">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  特性说明（前端卡片展示）
-                </h4>
-                <div className="space-y-2">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    特性说明（前端卡片展示）
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#2b6cb0] border border-blue-100">
+                    4 项核心指标由数据库字段动态驱动
+                  </span>
+                </div>
+
+                {/* 1. 动态基准特性：由上方配额字段实时联动生成，禁止且无需手动写死 */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 block">
+                    系统基准指标（实时联动上方数据库字段，无需手动写死）：
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {generateCoreQuotaFeatures(form).map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <div
+                          key={item.key}
+                          className="flex items-center gap-2 px-3 py-2 bg-slate-50/80 border border-slate-200/70 rounded-xl"
+                        >
+                          <div className="w-5 h-5 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0">
+                            <Icon className="w-3 h-3" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-bold text-slate-700 truncate block">
+                              {item.value}
+                            </span>
+                          </div>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. 附加扩展特性：专用于填写非配额类的增值服务与权益 */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 block">
+                      附加扩展特性（如全量组件、SLA 保障、专属支持等）：
+                    </span>
+                    <button
+                      type="button"
+                      onClick={addFeature}
+                      className="text-[11px] font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      添加扩展特性
+                    </button>
+                  </div>
+
                   {(form.features || []).map((feature, idx) => (
                     <div key={idx} className="flex items-center gap-2">
                       <input
                         value={feature}
                         onChange={(e) => updateFeature(idx, e.target.value)}
-                        placeholder={`特性 ${idx + 1}`}
+                        placeholder={`例如：全量组件、优先支持与数据分析`}
                         className="flex-1 px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                       />
                       <button
+                        type="button"
                         onClick={() => removeFeature(idx)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title="删除该特性"
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                   ))}
-                  <button
-                    onClick={addFeature}
-                    className="text-[11px] font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors"
-                  >
-                    + 添加特性
-                  </button>
+
+                  {(form.features || []).length === 0 && (
+                    <p className="text-[11px] text-slate-400 font-medium py-1">
+                      暂无自定义扩展特性，前端卡片将默认展示上述 4 项数据库基准指标。
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

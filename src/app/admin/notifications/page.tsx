@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Mail,
   Bell,
@@ -9,6 +10,8 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  Megaphone,
+  Users,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
 
@@ -112,16 +115,33 @@ export default function AdminNotificationsPage() {
 
   return (
     <div className="space-y-8">
-      {/* 页面标题 */}
-      <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#3182ce]/10 via-[#10b981]/10 to-[#f59e0b]/10 rounded-2xl blur-xl"></div>
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-8 border border-white/90 shadow-lg">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2 bg-gradient-to-r from-[#3182ce] via-[#10b981] to-[#f59e0b] bg-clip-text text-transparent">
-            通知管理
-          </h1>
-          <p className="text-sm text-slate-600 font-medium">
-            用户通知设置与系统消息配置
-          </p>
+      {/* 顶部标题区 */}
+      <div className="bg-white/70 backdrop-blur-md border border-slate-200/80 rounded-2xl p-6 shadow-2xs">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                通知与消息推送治理 (Notifications & Alerts)
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200/80">
+                消息偏好监控
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              监控全平台用户通知渠道订阅水位，统一调度全网系统公告与邮件送达配置
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/documents?category=announcement"
+              className="inline-flex items-center gap-1.5 px-4 h-9 bg-white hover:bg-slate-50 text-[#3182ce] border border-[#3182ce]/30 hover:border-[#3182ce] rounded-xl text-xs font-bold transition-all shadow-2xs"
+              title="前往文档中心发布或管理系统官方公告"
+            >
+              <Megaphone className="w-3.5 h-3.5" />
+              <span>发布/管理系统公告</span>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -245,8 +265,14 @@ export default function AdminNotificationsPage() {
                           </div>
                         )}
                         <div>
-                          <div className="text-sm font-bold text-slate-800">
-                            {notification.user.name || "未知用户"}
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              href={`/admin/users?search=${encodeURIComponent(notification.user.email || notification.user.name || notification.userId)}`}
+                              className="text-sm font-bold text-slate-800 hover:text-[#3182ce] hover:underline transition-colors"
+                              title="反查此用户画像"
+                            >
+                              {notification.user.name || "未知用户"}
+                            </Link>
                           </div>
                           <div className="text-xs text-slate-500 font-medium">
                             {notification.user.email}

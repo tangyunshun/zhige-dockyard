@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import Pagination from "@/components/Pagination";
 import {
   FileText,
   Search,
@@ -51,6 +52,8 @@ interface AppealData {
   };
 }
 
+const PAGE_SIZE = 10;
+
 export default function AdminAccountAppealsPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -63,8 +66,24 @@ export default function AdminAccountAppealsPage() {
   const [businessTypeFilter, setBusinessTypeFilter] = useState<string>("all");
   const [searchAccount, setSearchAccount] = useState("");
   const [detailModalAppeal, setDetailModalAppeal] = useState<Appeal | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const [adminComment, setAdminComment] = useState("");
+
+  // 快捷审核理由模板
+  const QUICK_AUDIT_TEMPLATES = {
+    approved: [
+      "经核验无异常违规行为，予以即刻解封并恢复算力。",
+      "安全策略误拦截，现已解除限制并更新白名单。",
+      "用户已补充合规材料并通过身份核验，予以解封。",
+    ],
+    rejected: [
+      "经技术团队排查，违规滥用事实明确，申诉不予支持。",
+      "提交的申诉说明与事实不符，维持当前封禁状态。",
+      "申诉材料不足，请在工单中心提供完整业务凭证后重新提交。",
+    ],
+  };
+
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -104,7 +123,7 @@ export default function AdminAccountAppealsPage() {
       setLoading(true);
       const params = new URLSearchParams();
       params.set("page", String(page));
-      params.set("limit", "10");
+      params.set("limit", String(PAGE_SIZE));
       if (status && status !== "all") params.set("status", status);
       if (userStatus && userStatus !== "all") params.set("userStatus", userStatus);
       if (dateRange && dateRange !== "all") params.set("dateRange", dateRange);
@@ -271,43 +290,49 @@ export default function AdminAccountAppealsPage() {
 
   return (
     <div className="p-6 space-y-6 font-sans">
-      {/* 1. 头部 Banner */}
-      <div className="bg-gradient-to-r from-[#1a365d] via-[#2b6cb0] to-[#3182ce] p-6 rounded-3xl text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="space-y-1.5">
+      {/* 1. 头部 Banner（符合知阁设计系统规范的亮色科技感控制台） */}
+      <div className="bg-white/85 backdrop-blur-md p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
+        <div className="absolute -right-8 -top-8 w-40 h-40 bg-[#3182ce]/5 rounded-full blur-2xl pointer-events-none" />
+        <div className="space-y-1.5 relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] text-white flex items-center justify-center border border-blue-400/30 shadow-xs">
               <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-black tracking-tight">风控与审核</h1>
-              <p className="text-xs text-blue-100/80 font-medium mt-0.5">
-                账号封禁记录管理与在线解封申诉审核
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-black text-slate-900 tracking-tight">风控与审核中枢</h1>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-[#2b6cb0] border border-blue-100">
+                  Risk & Audit Center
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                实时监管平台账号封禁记录、处置工单与在线解封申诉仲裁流程
               </p>
             </div>
           </div>
         </div>
 
-        {/* 顶部指标 */}
-        <div className="flex items-center gap-3.5 shrink-0">
-          <div className="bg-white/15 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/20 text-center min-w-[85px] shadow-sm">
-            <div className="text-[11px] text-blue-100 font-bold uppercase tracking-wider">总申诉数</div>
-            <div className="text-xl font-black text-white mt-0.5">{stats.total}</div>
+        {/* 顶部核心指标 */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0 relative z-10">
+          <div className="bg-slate-50/90 px-3.5 py-2 rounded-xl border border-slate-200/70 text-center min-w-[76px] shadow-2xs">
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">总申诉</div>
+            <div className="text-lg font-black text-slate-800 mt-0.5 font-mono">{stats.total}</div>
           </div>
-          <div className="bg-amber-500/20 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-amber-300/30 text-center min-w-[85px] shadow-sm">
-            <div className="text-[11px] text-amber-200 font-bold uppercase tracking-wider">待处理</div>
-            <div className="text-xl font-black text-amber-300 mt-0.5">{stats.pending}</div>
+          <div className="bg-amber-50/80 px-3.5 py-2 rounded-xl border border-amber-200/80 text-center min-w-[76px] shadow-2xs">
+            <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider">待处理</div>
+            <div className="text-lg font-black text-amber-600 mt-0.5 font-mono">{stats.pending}</div>
           </div>
-          <div className="bg-emerald-500/20 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-emerald-300/30 text-center min-w-[85px] shadow-sm">
-            <div className="text-[11px] text-emerald-200 font-bold uppercase tracking-wider">已解封</div>
-            <div className="text-xl font-black text-emerald-300 mt-0.5">{stats.approved}</div>
+          <div className="bg-emerald-50/80 px-3.5 py-2 rounded-xl border border-emerald-200/80 text-center min-w-[76px] shadow-2xs">
+            <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">已解封</div>
+            <div className="text-lg font-black text-emerald-600 mt-0.5 font-mono">{stats.approved}</div>
           </div>
-          <div className="bg-red-500/20 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-red-300/30 text-center min-w-[85px] shadow-sm">
-            <div className="text-[11px] text-red-200 font-bold uppercase tracking-wider">已驳回</div>
-            <div className="text-xl font-black text-red-300 mt-0.5">{stats.rejected}</div>
+          <div className="bg-red-50/80 px-3.5 py-2 rounded-xl border border-red-200/80 text-center min-w-[76px] shadow-2xs">
+            <div className="text-[10px] text-red-600 font-bold uppercase tracking-wider">已驳回</div>
+            <div className="text-lg font-black text-red-600 mt-0.5 font-mono">{stats.rejected}</div>
           </div>
-          <div className="bg-slate-500/20 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-300/30 text-center min-w-[85px] shadow-sm">
-            <div className="text-[11px] text-slate-200 font-bold uppercase tracking-wider">已撤销</div>
-            <div className="text-xl font-black text-slate-300 mt-0.5">{stats.canceled}</div>
+          <div className="bg-slate-100/80 px-3.5 py-2 rounded-xl border border-slate-200 text-center min-w-[76px] shadow-2xs">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">已撤销</div>
+            <div className="text-lg font-black text-slate-600 mt-0.5 font-mono">{stats.canceled}</div>
           </div>
         </div>
       </div>
@@ -588,29 +613,15 @@ export default function AdminAccountAppealsPage() {
         )}
 
         {/* 分页 */}
-        {appealData && appealData.pagination.totalPages > 1 && (
-          <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
-            <div className="text-xs text-slate-500 font-bold">
-              共 {appealData.pagination.total} 条记录，第 {appealData.pagination.page} / {appealData.pagination.totalPages} 页
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer transition-all shadow-2xs"
-              >
-                上一页
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.min(appealData.pagination.totalPages, p + 1))}
-                disabled={currentPage === appealData.pagination.totalPages}
-                className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer transition-all shadow-2xs"
-              >
-                下一页
-              </button>
-            </div>
+        {appealData && appealData.pagination.total > 0 && (
+          <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-100">
+            <Pagination
+              currentPage={appealData.pagination.page || currentPage}
+              totalItems={appealData.pagination.total}
+              pageSize={PAGE_SIZE}
+              onPageChange={(p) => setCurrentPage(p)}
+              itemLabel="条申诉"
+            />
           </div>
         )}
       </div>
@@ -694,12 +705,24 @@ export default function AdminAccountAppealsPage() {
               </div>
             </div>
 
-            {/* 证明材料 */}
+            {/* 证明材料与附件 */}
             {detailModalAppeal.appealEvidence && (
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">证明材料:</label>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/60 text-xs font-mono text-slate-700 leading-relaxed">
+                <label className="block text-xs font-bold text-slate-700">证明材料与附件:</label>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/60 text-xs font-mono text-slate-700 leading-relaxed break-all">
                   {detailModalAppeal.appealEvidence}
+                  {/* 若证明材料中包含图片格式URL，提供快捷预览 */}
+                  {/\.(jpg|jpeg|png|webp|gif)/i.test(detailModalAppeal.appealEvidence) && (
+                    <div className="mt-2.5">
+                      <span className="text-[10px] text-slate-400 font-bold block mb-1">图片预览（点击放大查看）：</span>
+                      <img
+                        src={detailModalAppeal.appealEvidence}
+                        alt="申诉证明"
+                        onClick={() => setPreviewImage(detailModalAppeal.appealEvidence || null)}
+                        className="max-h-36 rounded-lg border border-slate-200 object-cover cursor-zoom-in hover:opacity-90 transition-opacity"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -714,34 +737,67 @@ export default function AdminAccountAppealsPage() {
               </div>
             )}
 
-            {/* 底部按钮 */}
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+            {/* 底部按钮与跨系统业务闭环 */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setDetailModalAppeal(null)}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                onClick={() => {
+                  setDetailModalAppeal(null);
+                  window.open(`/admin/workspaces?search=${encodeURIComponent(detailModalAppeal.userAccount)}`, "_blank");
+                }}
+                className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-[#2b6cb0] rounded-xl font-bold text-xs border border-blue-200 transition-all flex items-center gap-1.5 cursor-pointer"
+                title="在新标签页中查看该用户关联的所有工作空间与配额"
               >
-                关闭
+                <Shield className="w-3.5 h-3.5" />
+                <span>查看关联空间与资源</span>
               </button>
-              {detailModalAppeal.status === "pending" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openProcessModal(detailModalAppeal, "rejected")}
-                    className="px-5 py-2.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl font-bold text-xs border border-red-200 transition-all cursor-pointer"
-                  >
-                    驳回申诉
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openProcessModal(detailModalAppeal, "approved")}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-all shadow-2xs cursor-pointer"
-                  >
-                    同意解封
-                  </button>
-                </>
-              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDetailModalAppeal(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                >
+                  关闭
+                </button>
+                {detailModalAppeal.status === "pending" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openProcessModal(detailModalAppeal, "rejected")}
+                      className="px-4 py-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl font-bold text-xs border border-red-200 transition-all cursor-pointer"
+                    >
+                      驳回申诉
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openProcessModal(detailModalAppeal, "approved")}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-all shadow-2xs cursor-pointer"
+                    >
+                      同意解封
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 证明材料大图预览 Modal */}
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in"
+        >
+          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImage} alt="证明大图" className="max-h-[85vh] max-w-full rounded-xl object-contain" />
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/60 text-white hover:bg-black flex items-center justify-center cursor-pointer transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

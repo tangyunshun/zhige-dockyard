@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
@@ -36,6 +37,7 @@ import {
   Clock,
   Coins,
   X,
+  ExternalLink,
 } from "lucide-react";
 
 interface Component {
@@ -509,15 +511,32 @@ export default function AdminComponentsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff] pb-12 font-sans">
       {/* 顶部标题区 */}
-      <div className="bg-white/50 backdrop-blur-sm border-b border-slate-200/50">
-        <div className="py-6">
-          <div className="mb-2">
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">
-              组件管理中枢
-            </h1>
-            <p className="text-sm text-slate-500 font-medium mt-1">
+      <div className="bg-white/70 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+        <div className="py-6 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                组件管理中枢
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200/80">
+                真实数据库引擎
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-1">
               管理全平台核心组件矩阵、算力消耗配额、上架发布控制与全网使用监控
             </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/components"
+              target="_blank"
+              className="inline-flex items-center gap-1.5 px-4 h-9 bg-white hover:bg-slate-50 text-[#3182ce] border border-[#3182ce]/30 hover:border-[#3182ce] rounded-xl text-xs font-bold transition-all shadow-2xs group"
+              title="前往用户前台组件中心查看实际展示与调度情况"
+            >
+              <span>直达前台组件集市</span>
+              <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </Link>
           </div>
         </div>
       </div>
@@ -652,6 +671,42 @@ export default function AdminComponentsPage() {
                   <span>新增组件</span>
                 </button>
               </div>
+            </div>
+
+            {/* 快捷领域分类标签栏 */}
+            <div className="flex items-center gap-1.5 pt-2.5 border-t border-slate-100 overflow-x-auto pb-0.5 text-xs">
+              <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap mr-1">快捷分类:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilters({ ...filters, stage: "" });
+                  setCurrentPage(1);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  filters.stage === ""
+                    ? "bg-[#3182ce] text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                全部阶段 ({stats.total})
+              </button>
+              {types.slice(0, 8).map((stage) => (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => {
+                    setFilters({ ...filters, stage });
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    filters.stage === stage
+                      ? "bg-[#3182ce] text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {getStageCNLabel(stage)}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -1051,7 +1106,16 @@ export default function AdminComponentsPage() {
               )}
             </div>
 
-            <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+            <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <Link
+                href={`/components?search=${encodeURIComponent(detailComp.name)}`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-[#3182ce] rounded-xl text-xs font-bold border border-blue-200/70 transition-all cursor-pointer shadow-2xs"
+                title="在新标签页中打开前台集市查看实际展示效果"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>前往前台集市查看</span>
+              </Link>
               <button
                 type="button"
                 onClick={() => setDetailComp(null)}

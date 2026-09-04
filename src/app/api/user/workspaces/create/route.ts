@@ -4,6 +4,7 @@ import { validateUser } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
 import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
+import { mergeLimits } from "@/lib/limit-utils";
 
 /**
  * 创建工作空间
@@ -120,9 +121,15 @@ export async function POST(request: NextRequest) {
             id: generateId("wsq"),
             workspaceId: workspaceId,
             membershipLevelId: mlId,
-            tokenBalance: BigInt(planConfig.tokenLimit + 100), // 新开通工作空间免费赠送 100 算力点
-            storageLimit: BigInt(storageMbToBytes(planConfig.maxStorage)),
-            apiCallsLimit: BigInt(planConfig.maxApiCalls),
+            // 新空间初始算力 = 当前会员等级当月的月度算力额度（扩容包不再附赠算力）
+            tokenBalance: BigInt(ml ? Number(ml.tokenLimit) : 0),
+            // 存储/调用上限 = max(空间扩容包额度, 账号会员等级基础保底)
+            storageLimit: BigInt(
+              mergeLimits(storageMbToBytes(planConfig.maxStorage), ml?.maxStorage)
+            ),
+            apiCallsLimit: BigInt(
+              mergeLimits(planConfig.maxApiCalls, ml?.maxApiCalls)
+            ),
             updatedAt: new Date(),
           },
         },

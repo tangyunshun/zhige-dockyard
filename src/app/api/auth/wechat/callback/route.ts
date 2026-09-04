@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { SignJWT } from 'jose';
 
@@ -36,6 +36,16 @@ export async function GET(request: NextRequest) {
     if (!code) {
       console.log('缺少 code 参数');
       return NextResponse.redirect(new URL('/auth/login?error=wechat_callback_invalid', request.nextUrl.origin));
+    }
+
+    // 检查后台是否启用了微信登录
+    const enabledConfig = await prisma.systemconfig.findUnique({
+      where: { key: 'oauthWechatEnabled' },
+    });
+    if (enabledConfig && enabledConfig.value !== 'true') {
+      return NextResponse.redirect(
+        new URL('/auth/login?error=wechat_disabled', request.nextUrl.origin)
+      );
     }
 
     // 测试模式

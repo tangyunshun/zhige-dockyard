@@ -29,6 +29,11 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const priceType = searchParams.get("priceType") || "";
     const status = searchParams.get("status") || "";
+    // 分页参数：仅当显式传入 page 时才启用服务端分页（保持旧调用方兼容：不传则返回全量）
+    const rawPage = searchParams.get("page");
+    const paginated = rawPage !== null && rawPage !== "";
+    const page = Math.max(1, parseInt(rawPage || "", 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "", 10) || 10));
 
     // 构建查询条件
     const where: any = {};
@@ -56,12 +61,22 @@ export async function GET(request: NextRequest) {
       where.isActive = false;
     }
 
-    // 获取会员等级列表
+    // 获取会员等级列表（分页时使用 skip/take）
+    const total = paginated
+      ? await prisma.membershiplevel.count({ where })
+      : 0;
+
     const levels = await prisma.membershiplevel.findMany({
       where,
       orderBy: {
         sortOrder: "asc",
       },
+      ...(paginated
+        ? {
+            skip: (page - 1) * limit,
+            take: limit,
+          }
+        : {}),
     });
 
     // 将 BigInt 转换为 Number 以便 JSON 序列化
@@ -83,6 +98,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: serializedLevels,
+      ...(paginated
+        ? {
+            pagination: {
+              page,
+              limit,
+              total,
+              totalPages: Math.max(1, Math.ceil(total / limit)),
+            },
+          }
+        : {}),
     });
   } catch (error: any) {
     console.error("获取会员等级列表失败:", error);
@@ -133,6 +158,7 @@ export async function POST(request: NextRequest) {
       features,
       priceMonthly,
       priceYearly,
+      tokenPackDiscount,
       trialDays,
       sortOrder,
       isActive,
@@ -173,6 +199,7 @@ export async function POST(request: NextRequest) {
         features: features || [],
         priceMonthly: Number(priceMonthly || 0),
         priceYearly: Number(priceYearly || 0),
+        tokenPackDiscount: Number(tokenPackDiscount || 0),
         trialDays: Number(trialDays || 0),
         sortOrder: Number(sortOrder || 0),
         isActive: isActive !== false,
@@ -191,6 +218,7 @@ export async function POST(request: NextRequest) {
       maxStorage: Number(level.maxStorage || 0),
       maxApiCalls: Number(level.maxApiCalls || 0),
       tokenLimit: Number(level.tokenLimit || 0),
+      tokenPackDiscount: Number(level.tokenPackDiscount || 0),
       priceMonthly: Number(level.priceMonthly || 0),
       priceYearly: Number(level.priceYearly || 0),
       trialDays: Number(level.trialDays || 0),

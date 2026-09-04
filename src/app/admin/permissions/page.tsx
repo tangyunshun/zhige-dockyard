@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Key, ArrowLeft, RefreshCw, Check, ShieldAlert, Loader2, Save } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { Key, ArrowLeft, RefreshCw, Check, ShieldAlert, Loader2, Save, CheckSquare, Square, Users, ShieldCheck } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 
@@ -48,9 +49,12 @@ const AVAILABLE_PERMISSIONS = [
   ]}
 ];
 
-export default function PermissionsPage() {
+function PermissionsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryAdminId = searchParams.get("adminId");
   const toast = useToast();
+
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [selectedAdminId, setSelectedAdminId] = useState<string>("");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
@@ -70,13 +74,16 @@ export default function PermissionsPage() {
       });
       if (res.ok) {
         const result = await res.json();
-        setAdmins(result.data || []);
-        if (result.data && result.data.length > 0) {
-          // 默认选中第一个非超级管理员
-          const firstNormalAdmin = result.data.find((a: AdminUser) => !a.isSuper);
-          const defaultSelect = firstNormalAdmin || result.data[0];
-          setSelectedAdminId(defaultSelect.id);
-          setSelectedPermissions(defaultSelect.permissions || []);
+        const data: AdminUser[] = result.data || [];
+        setAdmins(data);
+        if (data.length > 0) {
+          // 如果 URL 指定了 adminId，则优先选中目标管理员
+          let target = queryAdminId ? data.find(a => a.id === queryAdminId) : null;
+          if (!target) {
+            target = data.find(a => !a.isSuper) || data[0];
+          }
+          setSelectedAdminId(target.id);
+          setSelectedPermissions(target.permissions || []);
         }
       } else {
         toast.error("加载管理员列表失败，请检查登录角色");
@@ -102,6 +109,28 @@ export default function PermissionsPage() {
         return [...prev, key];
       }
     });
+  };
+
+  // 分组全选/清空
+  const handleToggleGroup = (groupKeys: string[]) => {
+    const allInGroupChecked = groupKeys.every(k => selectedPermissions.includes(k));
+    if (allInGroupChecked) {
+      setSelectedPermissions(prev => prev.filter(k => !groupKeys.includes(k)));
+    } else {
+      setSelectedPermissions(prev => Array.from(new Set([...prev, ...groupKeys])));
+    }
+  };
+
+  // 全量全选 / 全量清空
+  const allAvailableKeys = AVAILABLE_PERMISSIONS.flatMap(g => g.keys.map(k => k.key));
+  const isAllChecked = allAvailableKeys.length > 0 && allAvailableKeys.every(k => selectedPermissions.includes(k));
+
+  const handleToggleAll = () => {
+    if (isAllChecked) {
+      setSelectedPermissions([]);
+    } else {
+      setSelectedPermissions([...allAvailableKeys]);
+    }
   };
 
   const handleSavePermissions = async () => {
@@ -145,31 +174,40 @@ export default function PermissionsPage() {
   const currentAdmin = admins.find(a => a.id === selectedAdminId);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 pb-8">
       {/* 头部面包屑与返回 */}
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-            <Key className="w-8 h-8 text-[#8b5cf6]" />
+            <Key className="w-8 h-8 text-[#3182ce]" />
             管理员模块授权中心
           </h1>
           <p className="text-sm text-slate-400 font-semibold mt-1">
-            为平台运营管理员分配、细化核心业务模块的读写或高危操作授权。
+            为平台运营管理员分配、细化核心业务模块的读写或高危操作授权。超级管理员自动拥有全站所有特权。
           </p>
         </div>
-        <button
-          onClick={() => router.push("/admin")}
-          className="h-10 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          返回大盘
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/administrators"
+            className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+          >
+            <Users className="w-4 h-4 text-[#3182ce]" />
+            管理员成员列表
+          </Link>
+          <button
+            onClick={() => router.push("/admin")}
+            className="h-10 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回大盘
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center min-h-[350px]">
           <div className="text-center">
-            <Loader2 className="w-10 h-10 text-[#8b5cf6] animate-spin mx-auto mb-4" />
+            <Loader2 className="w-10 h-10 text-[#3182ce] animate-spin mx-auto mb-4" />
             <p className="text-slate-500 font-bold text-xs">正在拉取平台管理员及授权数据...</p>
           </div>
         </div>
@@ -188,18 +226,18 @@ export default function PermissionsPage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4 text-left">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider pb-2.5 border-b border-slate-100 flex items-center justify-between">
               <span>选择平台管理员</span>
-              <button onClick={loadAdmins} className="text-[#8b5cf6] hover:underline flex items-center gap-0.5">
+              <button onClick={loadAdmins} className="text-[#3182ce] hover:underline flex items-center gap-0.5">
                 <RefreshCw className="w-3.5 h-3.5" /> 刷新
               </button>
             </h3>
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
               {admins.map((admin) => (
                 <button
                   key={admin.id}
                   onClick={() => handleAdminSelect(admin.id)}
                   className={`w-full p-3.5 rounded-xl border flex flex-col gap-1 transition-all text-left cursor-pointer ${
                     admin.id === selectedAdminId
-                      ? "bg-purple-50/50 border-[#8b5cf6] shadow-sm"
+                      ? "bg-blue-50/60 border-[#3182ce] shadow-sm ring-1 ring-[#3182ce]/20"
                       : "bg-slate-50/30 border-slate-200/80 hover:bg-slate-50"
                   }`}
                 >
@@ -210,14 +248,14 @@ export default function PermissionsPage() {
                     <span className={`px-2 py-0.5 border text-[9px] font-black rounded-full select-none ${
                       admin.isSuper 
                         ? "bg-amber-50 text-amber-600 border-amber-100" 
-                        : "bg-purple-50 text-purple-600 border-purple-100"
+                        : "bg-blue-50 text-blue-600 border-blue-100"
                     }`}>
-                      {admin.isSuper ? "超级管理员" : "平台管理员"}
+                      {admin.isSuper ? "超级管理员" : "运营管理员"}
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-400 truncate mt-0.5">{admin.email}</span>
-                  <span className="text-[9px] text-[#8b5cf6] font-bold mt-1.5">
-                    {admin.isSuper ? "★ 完整所有特权" : `已分发 ${admin.permissions.length} 项权限`}
+                  <span className="text-[9px] text-[#3182ce] font-bold mt-1.5">
+                    {admin.isSuper ? "★ 拥有全量免鉴特权" : `已授权 ${admin.permissions.length} 项功能`}
                   </span>
                 </button>
               ))}
@@ -226,28 +264,39 @@ export default function PermissionsPage() {
 
           {/* 右侧：权限包勾选矩阵 */}
           <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-left space-y-6">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-100">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-800">
-                  权限配置控制台：{currentAdmin?.name || "未知管理员"}
+                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#3182ce]" />
+                  授权配置矩阵：{currentAdmin?.name || "未知管理员"}
                 </h3>
-                <p className="text-[11px] text-slate-400 font-semibold mt-1">
-                  正在为普通管理员配置并更新模块持久化授权包
+                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                  已配置 <span className="text-[#3182ce] font-bold">{selectedPermissions.length}</span> 项细粒度权限，实时持久化到数据库
                 </p>
               </div>
               {currentAdmin && !currentAdmin.isSuper && (
-                <button
-                  onClick={handleSavePermissions}
-                  disabled={saving}
-                  className="h-10 px-4 bg-[#8b5cf6] hover:bg-[#805ad5] text-white disabled:bg-slate-100 disabled:text-slate-400 text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
-                  <span>保存权限包</span>
-                </button>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <button
+                    onClick={handleToggleAll}
+                    type="button"
+                    className="h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    {isAllChecked ? <Square className="w-3.5 h-3.5 text-slate-500" /> : <CheckSquare className="w-3.5 h-3.5 text-[#3182ce]" />}
+                    {isAllChecked ? "全部清空" : "一键全选"}
+                  </button>
+                  <button
+                    onClick={handleSavePermissions}
+                    disabled={saving}
+                    className="h-9 px-4 bg-[#3182ce] hover:bg-[#2b6cb0] text-white disabled:bg-slate-100 disabled:text-slate-400 text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    <span>保存权限包</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -256,56 +305,89 @@ export default function PermissionsPage() {
                 <ShieldAlert className="w-12 h-12 text-amber-500" />
                 <div>
                   <h4 className="text-sm font-extrabold text-slate-800">超级管理员免配置提示</h4>
-                  <p className="text-xs font-semibold text-slate-400 mt-2 leading-relaxed max-w-sm">
-                    该账号在数据库中为系统最高超级管理员 (SuperAdmin)。<br />
-                    系统自动为超级管理员授予并豁免一切后台模块权限检验，无需也禁止在此处手动进行缩权或配置更改。
+                  <p className="text-xs font-semibold text-slate-500 mt-2 leading-relaxed max-w-sm">
+                    该账号在数据库中拥有最高超级管理员 (SuperAdmin) 身份。<br />
+                    系统架构自动为超级管理员授予并豁免全站所有模块的鉴权拦截，无需也禁止在此处手动缩权或配置更改。
                   </p>
                 </div>
               </div>
             ) : (
               <div className="space-y-6">
-                {AVAILABLE_PERMISSIONS.map((group, idx) => (
-                  <div key={idx} className="space-y-3">
-                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-wider pb-1 border-b border-slate-100">
-                      {group.group}
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {group.keys.map((perm) => {
-                        const isChecked = selectedPermissions.includes(perm.key);
-                        return (
-                          <div
-                            key={perm.key}
-                            onClick={() => handleTogglePermission(perm.key)}
-                            className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer select-none transition-all ${
-                              isChecked
-                                ? "bg-purple-50/20 border-[#8b5cf6]/50 shadow-sm"
-                                : "bg-slate-50/20 border-slate-200/80 hover:bg-slate-50/50"
-                            }`}
-                          >
-                            <div className="min-w-0 pr-3">
-                              <span className="font-extrabold text-slate-700 text-xs block truncate">
-                                {perm.label}
-                              </span>
-                              <span className="text-[9px] font-bold text-slate-400 font-mono block mt-1">
-                                {perm.key}
-                              </span>
+                {AVAILABLE_PERMISSIONS.map((group, idx) => {
+                  const groupKeyStrings = group.keys.map(k => k.key);
+                  const isGroupAll = groupKeyStrings.every(k => selectedPermissions.includes(k));
+                  const groupCheckedCount = groupKeyStrings.filter(k => selectedPermissions.includes(k)).length;
+
+                  return (
+                    <div key={idx} className="space-y-3 p-4 rounded-xl bg-slate-50/40 border border-slate-100">
+                      <div className="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-black text-slate-700 tracking-wider">
+                            {group.group}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 font-bold">
+                            ({groupCheckedCount}/{group.keys.length})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleGroup(groupKeyStrings)}
+                          className="text-[11px] text-[#3182ce] hover:underline font-bold cursor-pointer"
+                        >
+                          {isGroupAll ? "取消该组" : "全选该组"}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        {group.keys.map((perm) => {
+                          const isChecked = selectedPermissions.includes(perm.key);
+                          return (
+                            <div
+                              key={perm.key}
+                              onClick={() => handleTogglePermission(perm.key)}
+                              className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer select-none transition-all ${
+                                isChecked
+                                  ? "bg-blue-50/40 border-[#3182ce]/50 shadow-xs"
+                                  : "bg-white border-slate-200/80 hover:bg-slate-50"
+                              }`}
+                            >
+                              <div className="min-w-0 pr-3">
+                                <span className={`text-xs block truncate ${isChecked ? "font-bold text-[#2b6cb0]" : "font-semibold text-slate-700"}`}>
+                                  {perm.label}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 font-mono block mt-0.5">
+                                  {perm.key}
+                                </span>
+                              </div>
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                isChecked ? "bg-[#3182ce] border-[#3182ce]" : "bg-white border-slate-300"
+                              }`}>
+                                {isChecked && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                              </div>
                             </div>
-                            <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
-                              isChecked ? "bg-[#8b5cf6] border-[#8b5cf6]" : "bg-white border-slate-400"
-                            }`}>
-                              {isChecked && <Check className="w-3.5 h-3.5 text-white" />}
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+export default function PermissionsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[350px]">
+        <Loader2 className="w-10 h-10 text-[#3182ce] animate-spin" />
+      </div>
+    }>
+      <PermissionsContent />
+    </Suspense>
   );
 }

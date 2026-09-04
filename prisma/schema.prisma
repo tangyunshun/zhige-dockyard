@@ -344,6 +344,8 @@ model membershiplevel {
   features                Json?
   priceMonthly            Int                   @default(0)
   priceYearly             Int                   @default(0)
+  // 购买算力加油包可享折扣（百分比，如 10=9 折、15=8.5 折、20=8 折；0 表示无折扣）
+  tokenPackDiscount       Int                   @default(0)
   trialDays               Int                   @default(0)
   sortOrder               Int                   @default(0)
   isActive                Boolean               @default(true)

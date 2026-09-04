@@ -174,11 +174,11 @@ export default function AvatarDropdown({
               <span className="group-hover:translate-x-0.5 transition-transform">账号安全</span>
             </button>
             <button
-              onClick={() => { router.push("/user/membership"); setShowDropdown(false); }}
+              onClick={() => { router.push("/user/billing-center"); setShowDropdown(false); }}
               className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
             >
               <CreditCard className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
-              <span className="group-hover:translate-x-0.5 transition-transform">会员与额度</span>
+              <span className="group-hover:translate-x-0.5 transition-transform">套餐与计费</span>
             </button>
             <button
               onClick={() => { router.push("/user/developer"); setShowDropdown(false); }}

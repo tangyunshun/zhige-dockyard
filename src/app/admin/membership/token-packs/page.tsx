@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, isPriceMatchingRule } from "@/lib/point-rate";
-import { Zap, Plus, Edit2, Trash2, ShieldAlert, Sparkles, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins } from "lucide-react";
+import { Zap, Plus, Edit2, Trash2, ShieldAlert, Sparkles, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList } from "lucide-react";
 
 interface TokenPack {
   id: string;
@@ -205,6 +206,15 @@ export default function AdminTokenPacksPage() {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
+          <Link
+            href="/admin/orders"
+            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+            title="直达订单中枢查看用户实际算力充值流水"
+          >
+            <ClipboardList className="w-3.5 h-3.5 text-[#3182ce]" />
+            <span>充值交易账单</span>
+          </Link>
+
           <button
             onClick={loadPacks}
             disabled={loading}
@@ -221,6 +231,49 @@ export default function AdminTokenPacksPage() {
             <Plus className="w-4 h-4" />
             <span>新增算力加油包</span>
           </button>
+        </div>
+      </div>
+
+      {/* 4 大 Bento 统计数据卡片 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">加油包方案总数</div>
+            <div className="text-2xl font-black font-mono text-slate-900">{packs.length} <span className="text-xs font-normal text-slate-400">个档位</span></div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
+            <Zap className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">当前在售/上架中</div>
+            <div className="text-2xl font-black font-mono text-emerald-600">{packs.filter((p) => p.isActive).length} <span className="text-xs font-normal text-slate-400">个在售</span></div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">热门推荐标记</div>
+            <div className="text-2xl font-black font-mono text-amber-600">{packs.filter((p) => p.isPopular).length} <span className="text-xs font-normal text-slate-400">个推荐</span></div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+            <Sparkles className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">基准换算率</div>
+            <div className="text-2xl font-black font-mono text-violet-600">100 点 / 元</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center font-bold">
+            <Coins className="w-5 h-5" />
+          </div>
         </div>
       </div>
 

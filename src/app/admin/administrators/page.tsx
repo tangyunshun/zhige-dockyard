@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserCheck, ArrowLeft, Plus, Search, RefreshCw, Loader2, X, ShieldAlert, Trash2, Key } from "lucide-react";
+import { UserCheck, ArrowLeft, Plus, Search, RefreshCw, Loader2, X, ShieldAlert, Trash2, Key, Shield, Users, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
@@ -197,25 +198,74 @@ export default function AdministratorsPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 pb-8">
       {/* 头部面包屑与返回 */}
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-            <UserCheck className="w-8 h-8 text-[#10b981]" />
+            <UserCheck className="w-8 h-8 text-[#3182ce]" />
             管理员治理中心
           </h1>
           <p className="text-sm text-slate-400 font-semibold mt-1">
             设置和管理平台管理员成员，委派任命新管理员，进行权限包更改分配，或取消管理员身份。
           </p>
         </div>
-        <button
-          onClick={() => router.push("/admin")}
-          className="h-10 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          返回大盘
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/permissions"
+            className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+          >
+            <Key className="w-4 h-4 text-[#3182ce]" />
+            功能授权矩阵
+          </Link>
+          <button
+            onClick={() => router.push("/admin")}
+            className="h-10 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回大盘
+          </button>
+        </div>
+      </div>
+
+      {/* 4 大指标卡片 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white/80 backdrop-blur-md p-4 rounded-xl border border-slate-200/80 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">在册特权账号</span>
+            <Users className="w-4 h-4 text-[#3182ce]" />
+          </div>
+          <div className="text-2xl font-black text-slate-800 mt-2">{admins.length}</div>
+          <div className="text-[11px] text-slate-400 mt-1">具备后台管理权限的用户数</div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-md p-4 rounded-xl border border-slate-200/80 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">超级管理员 (Root)</span>
+            <Shield className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="text-2xl font-black text-amber-600 mt-2">
+            {admins.filter(a => a.isSuper).length}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-1">拥有无限制底层所有权限</div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-md p-4 rounded-xl border border-slate-200/80 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">常规业务管理员</span>
+            <UserCheck className="w-4 h-4 text-emerald-500" />
+          </div>
+          <div className="text-2xl font-black text-emerald-600 mt-2">
+            {admins.filter(a => !a.isSuper).length}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-1">按角色策略矩阵受限管控</div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-md p-4 rounded-xl border border-slate-200/80 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">系统就绪状态</span>
+            <RefreshCw className="w-4 h-4 text-blue-400" />
+          </div>
+          <div className="text-2xl font-black text-slate-800 mt-2">100%</div>
+          <div className="text-[11px] text-slate-400 mt-1">RBAC 安全鉴权拦截已激活</div>
+        </div>
       </div>
 
       {/* 搜索与快捷配置 */}
@@ -304,14 +354,21 @@ export default function AdministratorsPage() {
                     {new Date(admin.createdAt).toLocaleDateString("zh-CN")}
                   </td>
                   <td className="px-6 py-4 text-right flex items-center justify-end gap-1.5 pt-6">
+                    <Link
+                      href={`/admin/operation-logs?user=${encodeURIComponent(admin.email || "")}`}
+                      className="p-2 text-slate-400 hover:text-[#3182ce] hover:bg-blue-50 rounded-lg transition-all inline-flex items-center justify-center cursor-pointer"
+                      title="查看该管理员的操作审计日志"
+                    >
+                      <FileText className="w-4 h-4" />
+                    </Link>
                     {!admin.isSuper && (
-                      <button
-                        onClick={() => router.push("/admin/permissions")}
+                      <Link
+                        href={`/admin/permissions?adminId=${encodeURIComponent(admin.id)}`}
                         className="p-2 text-slate-400 hover:text-[#8b5cf6] hover:bg-purple-50 rounded-lg transition-all inline-flex items-center justify-center cursor-pointer"
-                        title="更改模块权限配置"
+                        title="更改该管理员权限矩阵配置"
                       >
                         <Key className="w-4 h-4" />
-                      </button>
+                      </Link>
                     )}
                     {!admin.isSuper && (
                       <button

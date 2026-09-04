@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Search, Bell, Trash2 } from "lucide-react";
 import { useToast } from "@/components/Toast";
@@ -25,12 +25,24 @@ export default function GlobalHeader() {
     setMounted(true);
   }, []);
 
-  const fetchNotifications = async () => {
+  // 轮询防重入：上一次请求未结束前不叠加发起新请求
+  const fetchingRef = useRef(false);
+  // 网络抖动只提示一次，避免 60s 轮询在断网/热更新场景下反复刷屏
+  const networkWarnedRef = useRef(false);
+
+  /** 通知轮询拉取。请求带 10s 超时主动取消；瞬时网络中断(dev 热更新/断网)静默降级，等待下轮自动重试 */
+  const fetchNotifications = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
     try {
       const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       const res = await fetch("/api/user/notifications/list", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-        credentials: "include"
+        credentials: "include",
+        signal: controller.signal,
+        cache: "no-store",
       });
       if (res.status === 401) {
         return;
@@ -39,11 +51,26 @@ export default function GlobalHeader() {
         const json = await res.json();
         setNotifications(json.data?.list || []);
         setUnreadCount(json.data?.unreadCount || 0);
+        networkWarnedRef.current = false; // 网络恢复后重置，下次中断可再提示一次
       }
     } catch (e) {
+      // 主动超时/取消：属预期降级，不提示
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      // TypeError: Failed to fetch —— dev 热更新重编译、快速切页、服务器重启等瞬时网络中断，
+      // 非业务异常，仅提示一次并交由下轮轮询自动恢复
+      if (e instanceof TypeError) {
+        if (!networkWarnedRef.current) {
+          networkWarnedRef.current = true;
+          console.warn("通知中心暂时无法连接，稍后将自动重试");
+        }
+        return;
+      }
       console.error("加载消息通知失败:", e);
+    } finally {
+      clearTimeout(timer);
+      fetchingRef.current = false;
     }
-  };
+  }, []);
 
   const handleMarkAsRead = async (id?: string) => {
     try {
@@ -209,6 +236,12 @@ export default function GlobalHeader() {
                 className={getTabClass("knowledge")}
               >
                 知识库
+              </button>
+              <button 
+                onClick={() => handleNavClick("/pricing", true)} 
+                className={getTabClass("pricing")}
+              >
+                价格方案
               </button>
               <button 
                 onClick={() => handleNavClick("/docs")} 

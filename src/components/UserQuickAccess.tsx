@@ -104,9 +104,9 @@ export default function UserQuickAccess() {
             </p>
           </button>
 
-          {/* 会员信息 */}
+          {/* 套餐与计费 */}
           <button
-            onClick={() => router.push("/user/membership")}
+            onClick={() => router.push("/user/billing-center")}
             className="group p-6 bg-white rounded-2xl shadow-lg shadow-[#f59e0b]/10 border border-slate-200 hover:shadow-xl hover:shadow-[#f59e0b]/20 hover:border-[#f59e0b]/30 transition-all duration-300 hover:-translate-y-1 text-left"
           >
             <div className="flex items-center justify-between mb-4">
@@ -116,10 +116,10 @@ export default function UserQuickAccess() {
               <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-[#f59e0b] group-hover:translate-x-1 transition-all" />
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-2">
-              会员信息
+              套餐与计费
             </h3>
             <p className="text-sm text-slate-500">
-              查看会员等级、配额使用和权益详情
+              查看会员套餐、空间扩容、算力与账单
             </p>
           </button>
 

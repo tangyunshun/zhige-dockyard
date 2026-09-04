@@ -101,3 +101,50 @@ export function yearlyCentsFromPoints(
 export function isPriceMatchingRule(points: number, priceYuan: number): boolean {
   return Math.abs(Number(priceYuan) - pointsToYuan(points)) < 0.011;
 }
+
+/**
+ * 按会员折扣百分比计算优惠后金额（元），保留 2 位小数。
+ * discountPercent 语义为「立减百分比」：10 → 9 折，20 → 8 折。
+ * 折扣非法或 <= 0 时原价返回。
+ */
+export function applyMemberDiscount(
+  priceYuan: number | null | undefined,
+  discountPercent: number | null | undefined
+): number {
+  const p = Number(priceYuan);
+  if (!Number.isFinite(p) || p <= 0) return 0;
+  const d = Number(discountPercent);
+  if (!Number.isFinite(d) || d <= 0) return p;
+  const off = Math.min(Math.max(d, 0), 100);
+  if (off >= 100) return 0;
+  return Math.round(p * (100 - off)) / 100;
+}
+
+/**
+ * 按会员折扣百分比计算优惠后金额（分），供后端结算/账单使用（整数分，无浮点误差）。
+ */
+export function discountedCents(
+  priceYuan: number | null | undefined,
+  discountPercent: number | null | undefined
+): number {
+  const p = Number(priceYuan);
+  if (!Number.isFinite(p) || p <= 0) return 0;
+  const d = Number(discountPercent);
+  if (!Number.isFinite(d) || d <= 0) return Math.round(p * 100);
+  const off = Math.min(Math.max(d, 0), 100);
+  if (off >= 100) return 0;
+  return Math.round(p * (100 - off));
+}
+
+/**
+ * 折扣百分比 ➔ 中文折扣文案：10 → "9 折"，15 → "8.5 折"，20 → "8 折"。
+ * 无折扣时返回 null。
+ */
+export function formatDiscountLabel(
+  discountPercent: number | null | undefined
+): string | null {
+  const d = Number(discountPercent);
+  if (!Number.isFinite(d) || d <= 0 || d >= 100) return null;
+  const pay = (100 - d) / 10;
+  return `${pay % 1 === 0 ? pay : pay.toFixed(1)} 折`;
+}

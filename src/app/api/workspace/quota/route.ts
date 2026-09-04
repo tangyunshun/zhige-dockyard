@@ -132,11 +132,19 @@ export async function GET(request: NextRequest) {
     const resetAt = workspaceQuotaRecord?.resetAt
       ? workspaceQuotaRecord.resetAt.toISOString()
       : null;
+    // 从数据库动态统计全系统已发布的通用组件总数
+    const totalPublishedComponents = await prisma.componentcatalog.count({
+      where: { isPublished: true },
+    }).catch(() => 0);
+    const tokenLimit = Number(membershipLevel?.tokenLimit ?? 10000);
+    // 会员等级展示名（用于前端「当前订阅方案」等文案，缺省回退为等级 ID）
     const membershipLevelName = membershipLevel?.nameZh || user.membershipLevel;
 
     return NextResponse.json({
       success: true,
       tokenBalance: currentTokenBalance,
+      tokenLimit,
+      totalPublishedComponents,
       membershipLevel: user.membershipLevel,
       membershipLevelName,
       totalUsedTokens,
@@ -151,6 +159,8 @@ export async function GET(request: NextRequest) {
         membershipLevel: user.membershipLevel,
         membershipLevelName,
         tokenBalance: currentTokenBalance,
+        tokenLimit,
+        totalPublishedComponents,
         totalUsedTokens,
         resetAt,
         quotas: {

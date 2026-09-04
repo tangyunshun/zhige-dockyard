@@ -32,7 +32,7 @@ export const categoryIconsMap: Record<string, any> = {
   COMMON: Layers,
 };
 import { iconMap } from "@/components/ComponentShowcase";
-import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT } from "@/lib/point-rate";
+import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, applyMemberDiscount, formatDiscountLabel } from "@/lib/point-rate";
 import { isAllowedTextFile, isExtractableFile, isProbablyBinaryContent, uploadAndExtractText } from "@/lib/text-utils";
 import { scanSensitiveWords } from "@/lib/sensitive-words";
 import { getFileTypeLabel, formatFileSize, resolveAssetSize } from "@/lib/file-type";
@@ -920,18 +920,29 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
   // 在线算力包真实充值状态与函数
   const [dynamicTokenPacks, setDynamicTokenPacks] = useState<any[]>([]);
-  const [selectedRechargePack, setSelectedRechargePack] = useState<{ points: number; name: string; price?: number }>({ points: 1000, name: "标准算力包 (1,000 点)", price: pointsToYuan(1000) });
+  const [selectedRechargePack, setSelectedRechargePack] = useState<{ id?: string; points: number; name: string; price?: number }>({ points: 1000, name: "标准算力包 (1,000 点)", price: pointsToYuan(1000), id: "pack_standard_1000" });
   const [recharging, setRecharging] = useState(false);
   const [rechargePaymentMethod, setRechargePaymentMethod] = useState<"WECHAT_PAY" | "ALIPAY">("WECHAT_PAY");
+  // 当前账号会员等级对加油包的折扣（由 /token-packs 接口按登录态返回数据库配置）
+  const [rechargeMemberDiscount, setRechargeMemberDiscount] = useState(0);
+  const [rechargeMemberName, setRechargeMemberName] = useState("");
 
   const loadDynamicTokenPacks = async () => {
     try {
-      const res = await fetch("/api/workspace/quota/token-packs");
+      const token = getAuthToken();
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch("/api/workspace/quota/token-packs", {
+        headers,
+        cache: "no-store",
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.packs && data.packs.length > 0) {
           setDynamicTokenPacks(data.packs);
+          setRechargeMemberDiscount(Number(data.membership?.tokenPackDiscount) || 0);
+          setRechargeMemberName(data.membership?.nameZh || "");
           setSelectedRechargePack({
+            id: data.packs[0].id,
             points: data.packs[0].points,
             name: `${data.packs[0].name} (${data.packs[0].points.toLocaleString()} 点)`,
             price: data.packs[0].price,
@@ -995,6 +1006,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           workspaceId,
           points: selectedRechargePack.points,
           packName: selectedRechargePack.name,
+          packId: selectedRechargePack.id || null,
           price: selectedRechargePack.price,
           paymentMethod: rechargePaymentMethod,
         }),
@@ -6569,8 +6581,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               </div>
 
               <div className="text-[11px] font-bold text-amber-800 bg-amber-100/80 border border-amber-200/60 rounded-xl px-2.5 py-1.5 flex items-center gap-1 shrink-0 overflow-x-auto no-scrollbar whitespace-nowrap">
-                <span className="shrink-0">💡 统一换算规则:</span>
-                <span className="font-mono text-amber-900 font-bold whitespace-nowrap">10 算力点 = 0.1 元（即 100 算力点 = 1 元，1 算力点 = 0.01 元）</span>
+                <span className="shrink-0">💡 换算规则:</span>
+                <span className="font-mono text-amber-900 font-bold whitespace-nowrap">10 算力点 = 0.1 元为参考价；加油包按档位享体积折扣，高级会员另享专属折扣</span>
               </div>
             </div>
 
@@ -6583,15 +6595,22 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             <div className="flex-1 min-h-[160px] max-h-[34vh] overflow-y-auto pr-1.5 space-y-3">
               <div className="grid grid-cols-1 gap-3">
                 {(dynamicTokenPacks.length > 0 ? dynamicTokenPacks : [
-                  { id: "1", name: "标准算力加油包", points: 1000, price: pointsToYuan(1000), icon: "⚡", isPopular: false, description: "适合日常基础算力补充" },
-                  { id: "2", name: "尊享算力加油包", points: 10000, price: pointsToYuan(10000), icon: "👑", isPopular: true, description: "热门划算选购，团队敏捷研发首选" },
-                  { id: "3", name: "企业旗舰算力包", points: 50000, price: pointsToYuan(50000), icon: "🚀", isPopular: false, description: "大型团队敏捷研发保障" },
+                  { id: "pack_standard_1000", name: "标准算力包", points: 1000, price: pointsToYuan(1000), icon: "⚡", isPopular: false, description: "适合日常基础算力补充" },
+                  { id: "pack_pro_10000", name: "尊享算力包", points: 10000, price: pointsToYuan(10000), icon: "👑", isPopular: true, description: "热门划算选购，团队敏捷研发首选" },
+                  { id: "pack_enterprise_50000", name: "企业旗舰算力包", points: 50000, price: pointsToYuan(50000), icon: "🚀", isPopular: false, description: "大型团队敏捷研发保障" },
                 ]).map((pack) => {
-                  const isSelected = selectedRechargePack.points === pack.points;
+                  const isSelected = selectedRechargePack.id
+                    ? selectedRechargePack.id === pack.id
+                    : selectedRechargePack.points === pack.points;
+                  const originalPrice = Number(pack.price ?? pointsToYuan(pack.points));
+                  const memberPrice =
+                    rechargeMemberDiscount > 0 ? applyMemberDiscount(originalPrice, rechargeMemberDiscount) : originalPrice;
+                  const hasMemberDeal = rechargeMemberDiscount > 0 && memberPrice < originalPrice;
+                  const memberDealLabel = formatDiscountLabel(rechargeMemberDiscount);
                   return (
                     <div
                       key={pack.id}
-                      onClick={() => setSelectedRechargePack({ points: pack.points, name: `${pack.name} (${pack.points.toLocaleString()} 点)`, price: pack.price })}
+                      onClick={() => setSelectedRechargePack({ id: pack.id, points: pack.points, name: `${pack.name} (${pack.points.toLocaleString()} 点)`, price: pack.price })}
                       className={`p-4 rounded-2xl border text-xs cursor-pointer transition-all relative ${
                         isSelected
                           ? "bg-blue-50/80 border-[#3182ce] ring-2 ring-[#3182ce]/20 text-[#3182ce]"
@@ -6614,9 +6633,21 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] rounded font-black">热门</span>
                               )}
                             </div>
-                            <span className="font-mono text-sm font-black shrink-0">
-                              ¥ {Number(pack.price ?? pointsToYuan(pack.points)).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
+                            <div className="text-right shrink-0">
+                              {hasMemberDeal && (
+                                <div className="text-[10px] font-bold text-slate-400 line-through">
+                                  ¥{originalPrice.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                              )}
+                              <div className="font-mono text-sm font-black">
+                                ¥{memberPrice.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              {hasMemberDeal && memberDealLabel && (
+                                <div className="mt-0.5 text-[9px] font-black bg-rose-50 text-rose-500 px-1 py-0.5 rounded w-fit ml-auto">
+                                  会员 {memberDealLabel}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           {pack.description && (
                             <p className="text-[11px] text-slate-500 font-medium mt-1.5 leading-relaxed">
@@ -6677,7 +6708,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               >
                 {recharging
                   ? "正在划拨算力..."
-                  : `立即确认充值 (${selectedRechargePack.points.toLocaleString()} 点 / ${formatYuanFromPoints(selectedRechargePack.points)})`}
+                  : `立即确认充值 (${selectedRechargePack.points.toLocaleString()} 点 / ¥${applyMemberDiscount(selectedRechargePack.price ?? pointsToYuan(selectedRechargePack.points), rechargeMemberDiscount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`}
               </button>
             </div>
           </div>

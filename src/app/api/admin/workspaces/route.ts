@@ -110,14 +110,30 @@ export async function GET(request: NextRequest) {
         });
         const quota = await prisma.workspacequota.findUnique({
           where: { workspaceId: workspace.id },
-          select: { tokenBalance: true, membershipLevelId: true },
+          select: {
+            tokenBalance: true,
+            membershipLevelId: true,
+            storageUsed: true,
+            storageLimit: true,
+            apiCallsUsed: true,
+            apiCallsLimit: true,
+          },
         });
         // 剔除原始 workspacemember（含 BigInt 字段），避免 JSON 序列化报错
         const { workspacemember, ...workspaceBase } = workspace;
         return {
           ...workspaceBase,
           componentCount: componentCountValue,
-          quota: quota ? { tokenBalance: Number(quota.tokenBalance), membershipLevelId: quota.membershipLevelId } : null,
+          quota: quota
+            ? {
+                tokenBalance: Number(quota.tokenBalance),
+                membershipLevelId: quota.membershipLevelId,
+                storageUsed: Number(quota.storageUsed || 0),
+                storageLimit: Number(quota.storageLimit || 0),
+                apiCallsUsed: Number(quota.apiCallsUsed || 0),
+                apiCallsLimit: Number(quota.apiCallsLimit || 0),
+              }
+            : null,
           members: workspacemember.map((m) => ({
             ...m,
             monthlyTokenLimit: m.monthlyTokenLimit ? Number(m.monthlyTokenLimit) : null,

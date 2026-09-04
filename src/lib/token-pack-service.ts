@@ -14,42 +14,60 @@ export interface TokenPackItem {
   sortOrder: number;
 }
 
+/**
+ * 预置算力加油包基线（仅数据库为空/缺失时补齐，不覆盖已有修改）。
+ *
+ * 定价策略：体积阶梯折扣 —— 档位越大单价越低；
+ * 高等级会员还可再享 membershiplevel.tokenPackDiscount 百分比折扣（由数据库配置）。
+ */
 export const DEFAULT_TOKEN_PACKS: TokenPackItem[] = [
   {
-    id: "pack_standard_1000",
-    name: "标准算力加油包",
-    points: 1000,
-    price: pointsToYuan(1000), // 按统一规则：10 算力点 = 0.1 元 ➔ ¥10
+    id: "pack_lite_500",
+    name: "知惠算力包",
+    points: 500,
+    price: 6, // ¥0.012/点，小额尝鲜
     icon: "⚡",
-    color: "#3182ce",
-    description: "适合日常小规模测试与组件研发调用，按 10 算力点 = 0.1 元 标准计价",
+    color: "#38a169",
+    description: "小额尝鲜，随时为空间补充算力（约 ¥0.012/点）",
     isPopular: false,
     isActive: true,
     sortOrder: 1,
   },
   {
-    id: "pack_pro_10000",
-    name: "尊享算力加油包",
-    points: 10000,
-    price: pointsToYuan(10000), // 按统一规则 ➔ ¥100
-    icon: "👑",
-    color: "#dd6b20",
-    description: "团队敏捷研发首选，按 10 算力点 = 0.1 元 标准计价，量大更省心",
-    isPopular: true,
+    id: "pack_standard_1000",
+    name: "标准算力包",
+    points: 1000,
+    price: 10, // ¥0.01/点，标准价
+    icon: "💡",
+    color: "#3182ce",
+    description: "适合日常小规模测试与组件研发调用（约 ¥0.010/点）",
+    isPopular: false,
     isActive: true,
     sortOrder: 2,
+  },
+  {
+    id: "pack_pro_10000",
+    name: "尊享算力包",
+    points: 10000,
+    price: 80, // ¥0.008/点
+    icon: "👑",
+    color: "#dd6b20",
+    description: "团队敏捷研发首选，量大更省心（约 ¥0.008/点）",
+    isPopular: true,
+    isActive: true,
+    sortOrder: 3,
   },
   {
     id: "pack_enterprise_50000",
     name: "企业旗舰算力包",
     points: 50000,
-    price: pointsToYuan(50000), // 按统一规则 ➔ ¥500
+    price: 350, // ¥0.007/点
     icon: "🚀",
     color: "#805ad5",
-    description: "专为大型企业级研发团队定制，按 10 算力点 = 0.1 元 标准计价",
+    description: "专为大型企业级研发团队定制，大额采购最优（约 ¥0.007/点）",
     isPopular: false,
     isActive: true,
-    sortOrder: 3,
+    sortOrder: 4,
   },
 ];
 

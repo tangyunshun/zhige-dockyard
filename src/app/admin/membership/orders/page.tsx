@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import Pagination from "@/components/Pagination";
 import {
   Search,
   Plus,
@@ -55,6 +56,8 @@ interface Pagination {
   totalPages: number;
 }
 
+const PAGE_SIZE = 10;
+
 export default function AdminMembershipOrdersPage() {
   const router = useRouter();
   const toast = useToast();
@@ -83,7 +86,7 @@ export default function AdminMembershipOrdersPage() {
       const authToken = getAuthToken();
       const params = new URLSearchParams({
         page: pagination.page.toString(),
-        limit: pagination.limit.toString(),
+        limit: String(PAGE_SIZE),
         ...(filters.status && { status: filters.status }),
         ...(filters.userId && { userId: filters.userId }),
         ...(filters.levelId && { levelId: filters.levelId }),
@@ -400,45 +403,15 @@ export default function AdminMembershipOrdersPage() {
             </div>
 
             {/* 分页 */}
-            {pagination.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-6 px-2">
-                <div className="text-sm text-slate-600 font-medium">
-                  共{" "}
-                  <span className="font-bold text-[#3182ce]">
-                    {pagination.total}
-                  </span>{" "}
-                  条记录，第{" "}
-                  <span className="font-bold text-[#3182ce]">
-                    {pagination.page}
-                  </span>{" "}
-                  / {pagination.totalPages} 页
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      setPagination({
-                        ...pagination,
-                        page: pagination.page - 1,
-                      })
-                    }
-                    disabled={pagination.page === 1}
-                    className="px-4 h-10 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-[#3182ce] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
-                  >
-                    上一页
-                  </button>
-                  <button
-                    onClick={() =>
-                      setPagination({
-                        ...pagination,
-                        page: pagination.page + 1,
-                      })
-                    }
-                    disabled={pagination.page === pagination.totalPages}
-                    className="px-4 h-10 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-[#3182ce] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
-                  >
-                    下一页
-                  </button>
-                </div>
+            {pagination.total > 0 && (
+              <div className="mt-6 px-2">
+                <Pagination
+                  currentPage={pagination.page}
+                  totalItems={pagination.total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(p) => setPagination({ ...pagination, page: p })}
+                  itemLabel="条订单"
+                />
               </div>
             )}
           </>

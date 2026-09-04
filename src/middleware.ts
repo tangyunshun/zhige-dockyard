@@ -27,6 +27,8 @@ const PUBLIC_PREFIXES = [
   "/api/documents/list",
   "/api/system-documents",
   "/api/account-appeal",
+  "/api/system/public-config",
+  "/api/system/maintenance",
   "/studio",
   "/_next",
   "/favicon",
