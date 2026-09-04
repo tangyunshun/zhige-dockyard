@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getMembershipTokenLimit } from '@/lib/quota-token';
+import { seedDefaultWelcomeNotifications } from '@/lib/notifications-store';
 import { SignJWT } from 'jose';
 
 /**
@@ -132,6 +134,18 @@ export async function GET(request: NextRequest) {
             },
           });
 
+          // 真实赋予新入驻微信用户 100 算力点免费组件体验额度
+          const freeTokenLimit = await getMembershipTokenLimit("FREE");
+          await prisma.workspacequota.create({
+            data: {
+              id: crypto.randomUUID(),
+              workspaceId: newWorkspace.id,
+              membershipLevelId: "FREE",
+              tokenBalance: freeTokenLimit,
+              updatedAt: new Date(),
+            },
+          }).catch((e) => console.warn("[wechat-callback] 创建默认空间配额警告:", e));
+
           // 更新用户的 lastWorkspaceId
           await prisma.user.update({
             where: { id: user.id },
@@ -140,7 +154,13 @@ export async function GET(request: NextRequest) {
             },
           });
 
-          console.log('创建个人空间成功:', newWorkspace.id);
+          console.log('创建个人空间并赋予100算力点成功:', newWorkspace.id);
+        }
+
+        if (isNewUser) {
+          await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+            console.error("[wechat-callback] 注入默认通知失败:", e);
+          });
         }
 
         // 生成 session
@@ -184,6 +204,7 @@ export async function GET(request: NextRequest) {
         };
 
         const redirectUrl = new URL('/auth/oauth-callback', request.nextUrl.origin);
+        redirectUrl.searchParams.set('token', token);
         redirectUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(userData)));
         redirectUrl.searchParams.set('new', isNewUser ? 'true' : 'false');
 

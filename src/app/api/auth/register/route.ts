@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getMembershipTokenLimit } from "@/lib/quota-token";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
+import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
 import { SignJWT } from "jose";
 import crypto from "crypto";
 
@@ -129,6 +130,11 @@ export async function POST(request: NextRequest) {
       // 自动开通默认个人工作空间
       await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
 
+      // 新用户注册成功后注入默认欢迎通知
+      await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+        console.error("[register] 注入默认通知失败:", e);
+      });
+
       // 删除验证码
       deleteSmsCode(phone);
 
@@ -221,6 +227,11 @@ export async function POST(request: NextRequest) {
       // 自动开通默认个人工作空间
       await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
 
+      // 新用户注册成功后注入默认欢迎通知
+      await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+        console.error("[register] 注入默认通知失败:", e);
+      });
+
       // 删除验证码
       deleteSmsCode(phone);
 
@@ -307,6 +318,11 @@ export async function POST(request: NextRequest) {
 
       // 自动开通默认个人工作空间
       await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
+
+      // 新用户注册成功后注入默认欢迎通知
+      await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+        console.error("[register] 注入默认通知失败:", e);
+      });
 
       // 删除验证码
       deleteSmsCode(phone);

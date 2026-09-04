@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
 import { SignJWT } from "jose";
 import crypto from "crypto";
 
@@ -200,6 +201,12 @@ export async function GET(request: NextRequest) {
       activeWorkspaceId = personalWorkspace.workspaceId;
     }
 
+    if (isNewUser) {
+      await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+        console.error("[github-callback] 注入默认通知失败:", e);
+      });
+    }
+
     // 4. 更新登录时间与会话
     const sessionToken = crypto.randomUUID();
     const sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -254,6 +261,7 @@ export async function GET(request: NextRequest) {
     };
 
     const redirectUrl = new URL("/auth/oauth-callback", request.nextUrl.origin);
+    redirectUrl.searchParams.set("token", token);
     redirectUrl.searchParams.set("user", encodeURIComponent(JSON.stringify(userData)));
     redirectUrl.searchParams.set("new", isNewUser ? "true" : "false");
 

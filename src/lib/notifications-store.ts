@@ -37,49 +37,36 @@ function toRecord(n: {
 }
 
 /**
- * 确保用户的通知偏好记录存在，且仅首次注入默认欢迎通知。
- * 用 usernotification.defaultsSeeded 标记避免"删除全部后再次冒出默认通知"。
+ * 首次注册/登录时为新用户注入默认欢迎通知。
+ * 基于 usernotification.defaultsSeeded 严格幂等：已初始化用户不再注入。
  */
-async function ensureDefaultsSeeded(userId: string): Promise<void> {
-  const prefs = await prisma.usernotification.upsert({
+export async function seedDefaultWelcomeNotifications(userId: string): Promise<void> {
+  const prefs = await prisma.usernotification.findUnique({
     where: { userId },
-    update: {},
-    create: {
-      id: crypto.randomUUID(),
-      userId,
-      updatedAt: new Date(),
-    },
   });
+  if (prefs?.defaultsSeeded) return;
 
-  if (prefs.defaultsSeeded) return;
+  // 平滑兼容历史旧文案：若库中存在“100 点免费体验额度”，自动修正为标准文案
+  await prisma.notification.updateMany({
+    where: {
+      userId,
+      content: { contains: "100 点免费体验额度" },
+    },
+    data: {
+      content: "系统已赠送您 100 算力点免费组件体验额度，您可以前往组件大厅挑选工具开始使用。",
+    },
+  }).catch(() => {});
 
   const now = Date.now();
-  const defaults: {
-    id: string;
-    userId: string;
-    title: string;
-    content: string;
-    type: string;
-    isRead: boolean;
-    createdAt: Date;
-  }[] = [
+  const defaults = [
     {
       id: crypto.randomUUID(),
       userId,
       title: "🎉 欢迎使用知阁舟坊工作台！",
-      content: "系统已赠送您 100 点免费体验额度，您可以前往组件大厅挑选工具开始使用。",
+      content: "系统已赠送您 100 算力点免费组件体验额度，您可以前往组件大厅挑选工具开始使用。",
       type: "system",
       isRead: false,
-      createdAt: new Date(now - 3600 * 1000 * 2), // 2小时前
-    },
-    {
-      id: crypto.randomUUID(),
-      userId,
-      title: "⚙️ 招标文件分析任务处理完成",
-      content: "您提交的文件已分析完成，生成了完整的对比分析报告，您可以随时查看或导出下载报告。",
-      type: "task",
-      isRead: false,
-      createdAt: new Date(now - 3600 * 1000 * 6), // 6小时前
+      createdAt: new Date(now - 1000 * 60 * 2), // 2分钟前
     },
     {
       id: crypto.randomUUID(),
@@ -87,15 +74,23 @@ async function ensureDefaultsSeeded(userId: string): Promise<void> {
       title: "🔐 账号安全防护已开启",
       content: "您的账号安全防护已初始化完成，所有上传的项目文档与资料均已妥善安全存储。",
       type: "security",
-      isRead: true,
-      createdAt: new Date(now - 3600 * 1000 * 24), // 1天前
+      isRead: false,
+      createdAt: new Date(now - 1000 * 60 * 5), // 5分钟前
     },
   ];
 
-  await prisma.notification.createMany({ data: defaults });
-  await prisma.usernotification.update({
-    where: { userId },
-    data: { defaultsSeeded: true },
+  await prisma.$transaction(async (tx) => {
+    await tx.notification.createMany({ data: defaults });
+    await tx.usernotification.upsert({
+      where: { userId },
+      update: { defaultsSeeded: true },
+      create: {
+        id: crypto.randomUUID(),
+        userId,
+        defaultsSeeded: true,
+        updatedAt: new Date(),
+      },
+    });
   });
 }
 
@@ -103,7 +98,14 @@ async function ensureDefaultsSeeded(userId: string): Promise<void> {
  * 获取用户的通知列表（按时间倒序）
  */
 export async function getNotifications(userId: string): Promise<NotificationRecord[]> {
-  await ensureDefaultsSeeded(userId);
+  // 自动清理历史上因默认注入而遗留的未发生真实业务操作的“招标文件分析”虚假通知
+  await prisma.notification.deleteMany({
+    where: {
+      userId,
+      title: "⚙️ 招标文件分析任务处理完成",
+    },
+  }).catch(() => {});
+
   const list = await prisma.notification.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
