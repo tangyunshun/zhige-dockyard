@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { getOAuthChannelMeta } from "@/constants/oauth";
 import {
   Settings,
   Mail,
@@ -97,12 +98,24 @@ const DEFAULT_NAV_COLUMNS: NavColumnItem[] = [
 
 export interface OAuthChannelItem {
   id: string;
-  type: "github" | "wechat" | "qq" | "gitee" | "google" | "feishu" | "custom";
+  type: string;
   name: string;
   clientId: string;
   clientSecret: string;
   enabled: boolean;
   callbackUrl?: string;
+}
+
+interface OAuthChannelMenuItem {
+  type: string;
+  name: string;
+  icon?: string;
+  isImg?: boolean;
+  dotColor?: string;
+  tag: string;
+  tagColor: string;
+  hoverBg: string;
+  hoverText: string;
 }
 
 const DEFAULT_OAUTH_CHANNELS: OAuthChannelItem[] = [
@@ -356,6 +369,7 @@ export default function AdminSettingsPage() {
 
   // 第三方登录通道动态状态
   const [oauthChannels, setOauthChannels] = useState<OAuthChannelItem[]>(DEFAULT_OAUTH_CHANNELS);
+  const [channelToDelete, setChannelToDelete] = useState<OAuthChannelItem | null>(null);
 
   // 同步更新第三方渠道与底层系统配置字段
   const syncOAuthChannels = (updated: OAuthChannelItem[]) => {
@@ -374,29 +388,29 @@ export default function AdminSettingsPage() {
     }));
   };
 
-  // 1. 添加第三方登录渠道
-  const handleAddOAuthChannel = (type: "qq" | "gitee" | "google" | "feishu" | "custom") => {
-    const metaMap: Record<string, { name: string; callback: string }> = {
-      qq: { name: "QQ 互联快捷登录", callback: "/api/auth/qq/callback" },
-      gitee: { name: "Gitee 码云联合登录", callback: "/api/auth/gitee/callback" },
-      google: { name: "Google 账号联合登录", callback: "/api/auth/google/callback" },
-      feishu: { name: "飞书企业扫码登录", callback: "/api/auth/feishu/callback" },
-      custom: { name: "自定义企业 SSO / OAuth2 登录", callback: "/api/auth/custom/callback" },
-    };
-    const target = metaMap[type] || { name: "自定义 OAuth 登录", callback: `/api/auth/${type}/callback` };
+  // 1. 添加第三方登录渠道（覆盖国内主流与国外常用平台）
+  const handleAddOAuthChannel = (type: string) => {
+    const meta = getOAuthChannelMeta(type);
     const newId = `${type}_${Date.now().toString(36)}`;
+    const currentEnabledCount = oauthChannels.filter((c) => c.enabled).length;
+    // 登录页排版规范最多支持显示 2 个，若已达到 2 个，新增渠道默认不开启并给出友好提示
+    const shouldEnable = currentEnabledCount < 2;
     const newChannel: OAuthChannelItem = {
       id: newId,
       type,
-      name: target.name,
+      name: meta.name,
       clientId: "",
       clientSecret: "",
-      enabled: true,
-      callbackUrl: target.callback,
+      enabled: shouldEnable,
+      callbackUrl: meta.defaultCallback,
     };
     const updated = [...oauthChannels, newChannel];
     syncOAuthChannels(updated);
-    toast.success(`已新增【${target.name}】通道，请填写对应 AppID 与 Secret！`);
+    if (shouldEnable) {
+      toast.success(`已新增【${meta.name}】并已启用，请填写对应 Client ID 与 Secret！`);
+    } else {
+      toast.info(`已新增【${meta.name}】（已达到前台 2 个开启上限，默认未启用，若需开启请先禁用其他渠道）。`);
+    }
   };
 
   // 2. 删除渠道
@@ -404,15 +418,30 @@ export default function AdminSettingsPage() {
     const target = oauthChannels.find((c) => c.id === id);
     const updated = oauthChannels.filter((c) => c.id !== id);
     syncOAuthChannels(updated);
-    toast.success(`已删除【${target?.name || "第三方通道"}】！`);
+    toast.success(`已成功删除【${target?.name || "第三方通道"}】！`);
   };
 
-  // 3. 开关切换
+  // 3. 开关切换（严格执行最多启用 2 个的前置判断与拦截）
   const handleToggleOAuthChannel = (id: string) => {
+    const target = oauthChannels.find((c) => c.id === id);
+    if (!target) return;
+
+    // 前置阻断：如果当前试图开启，而当前已开启总数 >= 2
+    if (!target.enabled) {
+      const currentEnabledCount = oauthChannels.filter((c) => c.enabled).length;
+      if (currentEnabledCount >= 2) {
+        toast.warning(
+          "登录页面排版规范最多只支持同时显示 2 个第三方登录渠道。若要启用该渠道，请先关闭已开启的其中一个渠道！"
+        );
+        return;
+      }
+    }
+
     const updated = oauthChannels.map((c) =>
       c.id === id ? { ...c, enabled: !c.enabled } : c
     );
     syncOAuthChannels(updated);
+    toast.success(`已${!target.enabled ? "启用" : "关闭"}【${target.name}】渠道！`);
   };
 
   // 4. 更新渠道字段
@@ -540,6 +569,12 @@ export default function AdminSettingsPage() {
 
       // 权威状态兜底同步：确保第三方登录通道从当前真实状态完整序列化
       if (keysToSave.includes("oauthChannels")) {
+        const enabledCount = oauthChannels.filter((c) => c.enabled).length;
+        if (enabledCount > 2) {
+          toast.warning(`登录页面排版规范最多支持开启 2 个第三方登录渠道，当前开启了 ${enabledCount} 个。请先关闭多余渠道后再保存！`);
+          setSaving(false);
+          return;
+        }
         payload["oauthChannels"] = JSON.stringify(oauthChannels);
         const github = oauthChannels.find((c) => c.type === "github" || c.id === "github");
         const wechat = oauthChannels.find((c) => c.type === "wechat" || c.id === "wechat");
@@ -703,15 +738,15 @@ export default function AdminSettingsPage() {
     <div className="space-y-6 pb-8">
       {/* 页面标题微毛玻璃 Header */}
       <div className="relative overflow-hidden rounded-2xl border border-white/80 bg-white/70 p-6 shadow-sm backdrop-blur-xl transition-all">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 text-[#3182ce] flex items-center justify-center shadow-inner">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 text-[#3182ce] flex items-center justify-center shadow-inner flex-shrink-0">
               <Settings className="w-6 h-6" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-black text-slate-800 tracking-tight">系统设置中心</h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-[#3182ce] border border-blue-200">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-[#3182ce] border border-blue-200 whitespace-nowrap">
                   真实 DB 持久化驱动
                 </span>
               </div>
@@ -720,25 +755,25 @@ export default function AdminSettingsPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
             <button
               onClick={loadSystemSettings}
               disabled={loading}
-              className="h-9 px-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+              className="h-9 px-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs whitespace-nowrap"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : ""}`} />
               刷新参数
             </button>
             <Link
               href="/admin/maintenance"
-              className="h-9 px-3.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+              className="h-9 px-3.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs whitespace-nowrap"
             >
               <Wrench className="w-3.5 h-3.5 text-amber-600" />
               维护与熔断控制台
             </Link>
             <Link
               href="/admin/operation-logs"
-              className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+              className="h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs whitespace-nowrap"
             >
               <FileText className="w-3.5 h-3.5 text-[#3182ce]" />
               操作审计日志
@@ -1187,70 +1222,207 @@ export default function AdminSettingsPage() {
                               className="fixed inset-0 z-20"
                               onClick={() => setShowAddOAuthMenu(false)}
                             />
-                            <div className="absolute right-0 top-9 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-30 py-1 text-xs font-medium animate-in fade-in zoom-in-95 duration-100">
-                              <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                                选择新增渠道类型
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleAddOAuthChannel("qq");
-                                  setShowAddOAuthMenu(false);
-                                }}
-                                className="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-700 hover:text-blue-600 flex items-center gap-2 cursor-pointer transition-colors"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                QQ 互联快捷登录
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleAddOAuthChannel("gitee");
-                                  setShowAddOAuthMenu(false);
-                                }}
-                                className="w-full px-3 py-2 text-left hover:bg-rose-50 text-slate-700 hover:text-rose-600 flex items-center gap-2 cursor-pointer transition-colors"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-rose-500" />
-                                Gitee 码云联合登录
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleAddOAuthChannel("google");
-                                  setShowAddOAuthMenu(false);
-                                }}
-                                className="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-700 hover:text-amber-600 flex items-center gap-2 cursor-pointer transition-colors"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                Google 账号联合登录
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleAddOAuthChannel("feishu");
-                                  setShowAddOAuthMenu(false);
-                                }}
-                                className="w-full px-3 py-2 text-left hover:bg-cyan-50 text-slate-700 hover:text-cyan-600 flex items-center gap-2 cursor-pointer transition-colors"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-cyan-500" />
-                                飞书企业扫码登录
-                              </button>
-                              <div className="border-t border-slate-100 my-1" />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleAddOAuthChannel("custom");
-                                  setShowAddOAuthMenu(false);
-                                }}
-                                className="w-full px-3 py-2 text-left hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 flex items-center gap-2 cursor-pointer transition-colors"
-                              >
-                                <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                                自定义企业 SSO / OAuth2
-                              </button>
+                            <div className="absolute right-0 top-9 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-30 py-1.5 text-xs font-medium animate-in fade-in zoom-in-95 duration-100 divide-y divide-slate-100">
+                              {(() => {
+                                const configuredTypes = new Set(oauthChannels.map((c) => c.type || c.id));
+                                const domesticItems: OAuthChannelMenuItem[] = [
+                                  {
+                                    type: "wechat",
+                                    name: "微信开放平台扫码",
+                                    icon: "/icons/wechat.png",
+                                    isImg: true,
+                                    tag: "扫码型",
+                                    tagColor: "text-emerald-600",
+                                    hoverBg: "hover:bg-emerald-50",
+                                    hoverText: "hover:text-emerald-700",
+                                  },
+                                  {
+                                    type: "qq",
+                                    name: "QQ 互联快捷登录",
+                                    icon: "/icons/QQ.png",
+                                    isImg: true,
+                                    tag: "扫码/跳转",
+                                    tagColor: "text-blue-600",
+                                    hoverBg: "hover:bg-blue-50",
+                                    hoverText: "hover:text-blue-600",
+                                  },
+                                  {
+                                    type: "weibo",
+                                    name: "新浪微博快捷登录",
+                                    icon: "/icons/xinlang.png",
+                                    isImg: true,
+                                    tag: "扫码/跳转",
+                                    tagColor: "text-rose-600",
+                                    hoverBg: "hover:bg-rose-50",
+                                    hoverText: "hover:text-rose-600",
+                                  },
+                                  {
+                                    type: "feishu",
+                                    name: "飞书企业扫码登录",
+                                    dotColor: "bg-cyan-500",
+                                    tag: "扫码/SSO",
+                                    tagColor: "text-cyan-600",
+                                    hoverBg: "hover:bg-cyan-50",
+                                    hoverText: "hover:text-cyan-600",
+                                  },
+                                  {
+                                    type: "dingtalk",
+                                    name: "钉钉企业免登与扫码",
+                                    dotColor: "bg-sky-500",
+                                    tag: "扫码/免登",
+                                    tagColor: "text-sky-600",
+                                    hoverBg: "hover:bg-sky-50",
+                                    hoverText: "hover:text-sky-600",
+                                  },
+                                  {
+                                    type: "alipay",
+                                    name: "支付宝快捷登录",
+                                    icon: "/icons/alipay.png",
+                                    isImg: true,
+                                    tag: "扫码/跳转",
+                                    tagColor: "text-blue-600",
+                                    hoverBg: "hover:bg-blue-50",
+                                    hoverText: "hover:text-blue-600",
+                                  },
+                                ].filter((item) => !configuredTypes.has(item.type));
+
+                                const developerItems: OAuthChannelMenuItem[] = [
+                                  {
+                                    type: "github",
+                                    name: "GitHub 开发者授权",
+                                    dotColor: "bg-slate-800",
+                                    tag: "跳转型",
+                                    tagColor: "text-slate-500",
+                                    hoverBg: "hover:bg-slate-50",
+                                    hoverText: "hover:text-slate-900",
+                                  },
+                                  {
+                                    type: "gitee",
+                                    name: "Gitee 码云联合登录",
+                                    dotColor: "bg-rose-500",
+                                    tag: "跳转型",
+                                    tagColor: "text-rose-500",
+                                    hoverBg: "hover:bg-rose-50",
+                                    hoverText: "hover:text-rose-600",
+                                  },
+                                  {
+                                    type: "custom",
+                                    name: "自定义企业 SSO / OAuth2",
+                                    dotColor: "bg-indigo-500",
+                                    tag: "自定义",
+                                    tagColor: "text-indigo-500",
+                                    hoverBg: "hover:bg-indigo-50",
+                                    hoverText: "hover:text-indigo-600",
+                                  },
+                                ].filter((item) => !configuredTypes.has(item.type));
+
+                                if (domesticItems.length === 0 && developerItems.length === 0) {
+                                  return (
+                                    <div className="px-4 py-4 text-center text-slate-400 space-y-1">
+                                      <Check className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+                                      <div className="text-xs font-bold text-slate-700">全部支持的渠道已添加</div>
+                                      <p className="text-[10px] text-slate-400">如需重新配置，可先在下方卡片中删除对应渠道</p>
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <>
+                                    {domesticItems.length > 0 && (
+                                      <div>
+                                        <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                          国内主流平台（优先推荐）
+                                        </div>
+                                        {domesticItems.map((item) => (
+                                          <button
+                                            key={item.type}
+                                            type="button"
+                                            onClick={() => {
+                                              handleAddOAuthChannel(item.type);
+                                              setShowAddOAuthMenu(false);
+                                            }}
+                                            className={`w-full px-3 py-1.5 text-left text-slate-700 flex items-center justify-between cursor-pointer transition-colors ${item.hoverBg} ${item.hoverText}`}
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              {item.isImg ? (
+                                                <img src={item.icon} alt={item.name} className="w-4 h-4 object-contain" />
+                                              ) : (
+                                                <span className={`w-2 h-2 rounded-full ${item.dotColor}`} />
+                                              )}
+                                              {item.name}
+                                            </div>
+                                            <span className={`text-[10px] font-normal ${item.tagColor}`}>{item.tag}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {developerItems.length > 0 && (
+                                      <div className={domesticItems.length > 0 ? "pt-1.5" : ""}>
+                                        <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                          开发者与通用平台
+                                        </div>
+                                        {developerItems.map((item) => (
+                                          <button
+                                            key={item.type}
+                                            type="button"
+                                            onClick={() => {
+                                              handleAddOAuthChannel(item.type);
+                                              setShowAddOAuthMenu(false);
+                                            }}
+                                            className={`w-full px-3 py-1.5 text-left text-slate-700 flex items-center justify-between cursor-pointer transition-colors ${item.hoverBg} ${item.hoverText}`}
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              {item.isImg ? (
+                                                <img src={item.icon} alt={item.name} className="w-4 h-4 object-contain" />
+                                              ) : (
+                                                <span className={`w-2 h-2 rounded-full ${item.dotColor}`} />
+                                              )}
+                                              {item.name}
+                                            </div>
+                                            <span className={`text-[10px] font-normal ${item.tagColor}`}>{item.tag}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </>
                         )}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* 登录页面展示规范与当前配额指示横幅 */}
+                  <div className="p-3.5 bg-blue-50/60 border border-blue-100/90 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-[#3182ce]/10 text-[#3182ce] flex items-center justify-center shrink-0">
+                        <Shield className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                          <span>前台登录页排版规范</span>
+                          <span className="text-[10px] font-normal text-slate-400">· 系统最多同时支持开启 2 个渠道</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                          为保证前台登录界面的视觉平衡与紧凑排版，最多同时激活 2 个入口。若需开启新平台，请先关闭已启用的渠道。
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto font-mono">
+                      <span className="text-slate-400 font-sans font-medium text-[11px]">当前启用：</span>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-xs font-black border ${
+                          oauthChannels.filter((c) => c.enabled).length >= 2
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        }`}
+                      >
+                        {oauthChannels.filter((c) => c.enabled).length} / 2
+                        {oauthChannels.filter((c) => c.enabled).length >= 2 ? " (已满额)" : " (可开启)"}
+                      </span>
                     </div>
                   </div>
 
@@ -1285,15 +1457,39 @@ export default function AdminSettingsPage() {
                               };
                             case "wechat":
                               return {
-                                bg: "bg-emerald-600 text-white",
-                                label: "微信",
-                                icon: <CheckCircle2 className="w-3.5 h-3.5 text-white" />,
+                                bg: "bg-emerald-50 text-emerald-700 border border-emerald-200/80",
+                                label: "微信扫码",
+                                icon: <img src="/icons/wechat.png" alt="微信" className="w-3.5 h-3.5 object-contain" />,
                               };
                             case "qq":
                               return {
-                                bg: "bg-blue-600 text-white",
+                                bg: "bg-blue-50 text-blue-700 border border-blue-200/80",
                                 label: "QQ互联",
-                                icon: <MessageSquare className="w-3.5 h-3.5 text-white" />,
+                                icon: <img src="/icons/QQ.png" alt="QQ" className="w-3.5 h-3.5 object-contain" />,
+                              };
+                            case "weibo":
+                              return {
+                                bg: "bg-rose-50 text-rose-700 border border-rose-200/80",
+                                label: "新浪微博",
+                                icon: <img src="/icons/xinlang.png" alt="微博" className="w-3.5 h-3.5 object-contain" />,
+                              };
+                            case "feishu":
+                              return {
+                                bg: "bg-cyan-600 text-white",
+                                label: "飞书企业",
+                                icon: <Send className="w-3.5 h-3.5 text-white" />,
+                              };
+                            case "dingtalk":
+                              return {
+                                bg: "bg-sky-600 text-white",
+                                label: "钉钉免登",
+                                icon: <Send className="w-3.5 h-3.5 text-white" />,
+                              };
+                            case "alipay":
+                              return {
+                                bg: "bg-sky-50 text-blue-700 border border-blue-200/80",
+                                label: "支付宝",
+                                icon: <img src="/icons/alipay.png" alt="支付宝" className="w-3.5 h-3.5 object-contain" />,
                               };
                             case "gitee":
                               return {
@@ -1307,12 +1503,6 @@ export default function AdminSettingsPage() {
                                 label: "Google",
                                 icon: <Globe className="w-3.5 h-3.5 text-white" />,
                               };
-                            case "feishu":
-                              return {
-                                bg: "bg-cyan-600 text-white",
-                                label: "飞书",
-                                icon: <Send className="w-3.5 h-3.5 text-white" />,
-                              };
                             default:
                               return {
                                 bg: "bg-indigo-600 text-white",
@@ -1322,6 +1512,7 @@ export default function AdminSettingsPage() {
                           }
                         };
                         const badge = getChannelBadge();
+                        const meta = getOAuthChannelMeta(channel.type || channel.id);
                         const isCopied = copiedChannelId === channel.id;
 
                         return (
@@ -1333,22 +1524,40 @@ export default function AdminSettingsPage() {
                                 : "border-slate-200/70 bg-slate-50/60 opacity-85"
                             }`}
                           >
-                            {/* 卡片头部：标识、名称输入、开关与删除 */}
+                            {/* 卡片头部：标识、认证模式徽章、名称输入、开关与删除 */}
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                              <div className="flex items-center gap-2.5 flex-1 max-w-lg">
+                              <div className="flex flex-wrap items-center gap-2 flex-1 max-w-xl">
                                 <span
                                   className={`px-2 py-0.5 rounded-md text-[10px] font-black flex items-center gap-1 shadow-2xs ${badge.bg}`}
                                 >
                                   {badge.icon}
                                   {badge.label}
                                 </span>
+
+                                {/* 认证模式属性标签（严格区分扫码与跳转） */}
+                                {meta.authMode === "qrcode" && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center gap-1">
+                                    📷 扫码登录
+                                  </span>
+                                )}
+                                {meta.authMode === "redirect" && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/60 flex items-center gap-1">
+                                    🔗 网页跳转
+                                  </span>
+                                )}
+                                {meta.authMode === "hybrid" && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60 flex items-center gap-1">
+                                    🔄 扫码/跳转双模
+                                  </span>
+                                )}
+
                                 <input
                                   type="text"
                                   value={channel.name}
                                   onChange={(e) =>
                                     handleUpdateOAuthChannel(channel.id, "name", e.target.value)
                                   }
-                                  className="w-full max-w-xs px-2.5 py-1 text-xs font-bold text-slate-800 bg-transparent hover:bg-slate-100 focus:bg-white border border-transparent hover:border-slate-200 focus:border-[#3182ce] rounded-md outline-none transition-colors"
+                                  className="flex-1 min-w-[140px] px-2 py-1 text-xs font-bold text-slate-800 bg-transparent hover:bg-slate-100 focus:bg-white border border-transparent hover:border-slate-200 focus:border-[#3182ce] rounded-md outline-none transition-colors"
                                   placeholder="渠道显示名称"
                                 />
                               </div>
@@ -1378,15 +1587,7 @@ export default function AdminSettingsPage() {
                                 {/* 删除渠道按钮 */}
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (
-                                      confirm(
-                                        `确定要删除【${channel.name}】渠道吗？删除后前台登录页将不再显示此选项。`
-                                      )
-                                    ) {
-                                      handleDeleteOAuthChannel(channel.id);
-                                    }
-                                  }}
+                                  onClick={() => setChannelToDelete(channel)}
                                   className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                                   title="从系统中删除此第三方渠道"
                                 >
@@ -1498,6 +1699,52 @@ export default function AdminSettingsPage() {
                       保存第三方登录设置
                     </button>
                   </div>
+
+                  {/* 删除联合登录渠道二次确认模态框（统一知阁设计系统规范，彻底消除原生 confirm 闪烁与拦截问题） */}
+                  {channelToDelete && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+                      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden text-left animate-in zoom-in-95 duration-150">
+                        <div className="p-5 pb-4">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                              <Trash2 className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-black text-slate-800">确认删除登录渠道</h3>
+                              <p className="text-[11px] text-slate-400 font-medium">从当前登录配置列表中移除</p>
+                            </div>
+                          </div>
+                          <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-600 leading-relaxed">
+                            确定要移除 <strong className="text-slate-800">【{channelToDelete.name}】</strong> 渠道吗？
+                            <p className="text-[11px] text-slate-400 mt-1">
+                              移除后前台登录与注册页将不再展示此渠道。后续可在“添加登录渠道”下拉菜单中随时重新添加。
+                            </p>
+                          </div>
+                        </div>
+                        <div className="px-5 py-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setChannelToDelete(null)}
+                            className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                          >
+                            取消
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const targetId = channelToDelete.id;
+                              setChannelToDelete(null);
+                              handleDeleteOAuthChannel(targetId);
+                            }}
+                            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            确认删除
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1561,7 +1808,7 @@ export default function AdminSettingsPage() {
                         <div>
                           <div className="flex items-center justify-between mb-2.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                              <img src="/icons/wechat.png" alt="微信" className="w-4 h-4 object-contain shrink-0" />
                               <span className="text-xs font-bold text-slate-800">官方微信公众号 / 客服</span>
                             </div>
                             <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
@@ -1650,7 +1897,7 @@ export default function AdminSettingsPage() {
                         <div>
                           <div className="flex items-center justify-between mb-2.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-[#0284c7]"></span>
+                              <img src="/icons/QQ.png" alt="QQ" className="w-4 h-4 object-contain shrink-0" />
                               <span className="text-xs font-bold text-slate-800">官方 QQ 交流群</span>
                             </div>
                             <span className="text-[10px] font-semibold text-[#0284c7] bg-sky-50 px-1.5 py-0.5 rounded">
@@ -1739,7 +1986,7 @@ export default function AdminSettingsPage() {
                         <div>
                           <div className="flex items-center justify-between mb-2.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-[#ef4444]"></span>
+                              <img src="/icons/xinlang.png" alt="微博" className="w-4 h-4 object-contain shrink-0" />
                               <span className="text-xs font-bold text-slate-800">官方新浪微博</span>
                             </div>
                             <span className="text-[10px] font-semibold text-[#ef4444] bg-red-50 px-1.5 py-0.5 rounded">

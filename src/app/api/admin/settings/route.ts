@@ -223,6 +223,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "参数格式错误" }, { status: 400 });
     }
 
+    // 业务红线前置校验：登录页面排版最多支持开启 2 个第三方联合登录渠道
+    let oauthAuditDetail: any = null;
+    let isOauthUpdate = false;
+    if (settings.oauthChannels) {
+      isOauthUpdate = true;
+      try {
+        const channels = typeof settings.oauthChannels === "string"
+          ? JSON.parse(settings.oauthChannels)
+          : settings.oauthChannels;
+        if (Array.isArray(channels)) {
+          const enabled = channels.filter((c: any) => c.enabled === true);
+          if (enabled.length > 2) {
+            return NextResponse.json(
+              {
+                error: `登录页面排版规范最多支持开启 2 个第三方登录渠道，当前提交了 ${enabled.length} 个开启渠道。请先禁用部分渠道后再保存！`,
+              },
+              { status: 400 }
+            );
+          }
+          oauthAuditDetail = {
+            actionName: "更新第三方联合登录渠道",
+            totalCount: channels.length,
+            enabledCount: enabled.length,
+            enabledChannels: enabled.map((c: any) => c.name || c.type),
+          };
+        }
+      } catch (e) {
+        // json parse error
+      }
+    }
+
     // 1. 自动执行非破坏性平滑扩容校验，确保 system_config.value 支持大容量 JSON 配置（突破 varchar(191) 限制）
     try {
       await prisma.$executeRawUnsafe(
@@ -252,17 +283,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. 记录管理员审计日志
+    // 3. 记录管理员审计日志与消息提醒闭环
     try {
       await prisma.operationlog.create({
         data: {
           id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           userId: auth.adminId,
-          action: "system:update_settings",
-          resource: "system_config",
-          details: JSON.stringify({ updatedKeys: Object.keys(settings) }),
+          action: isOauthUpdate ? "system:update_oauth_channels" : "system:update_settings",
+          resource: isOauthUpdate ? "oauth_channels" : "system_config",
+          details: JSON.stringify(oauthAuditDetail || { updatedKeys: Object.keys(settings) }),
         },
       });
+
+      // 若为第三方登录渠道策略更新，同时写入一条系统通知，形成消息提醒闭环
+      if (isOauthUpdate && oauthAuditDetail) {
+        await prisma.notification.create({
+          data: {
+            id: crypto.randomUUID(),
+            userId: auth.adminId,
+            title: "⚙️ 第三方联合登录渠道策略已更新",
+            content: `管理员已更新联合登录配置，当前前台登录页已启用 ${oauthAuditDetail.enabledCount} 个渠道（${oauthAuditDetail.enabledChannels.join("、") || "暂无开启"}）。`,
+            type: "security",
+            isRead: false,
+            createdAt: new Date(),
+          },
+        }).catch((e) => console.warn("写入配置变更通知非致命提示:", e));
+      }
     } catch (logErr) {
       console.warn("记录配置变更审计失败:", logErr);
     }

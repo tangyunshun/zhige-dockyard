@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { getAuthToken } from "@/utils/auth";
+import OAuthQRCodeModal from "@/components/auth/OAuthQRCodeModal";
+import { getOAuthChannelMeta, type OAuthChannelMeta } from "@/constants/oauth";
 import {
   validateAccount,
   validatePhone,
@@ -45,6 +47,7 @@ function LoginForm() {
   const [rememberMe, setRememberMe] = useState(false);
   const [hasShownError, setHasShownError] = useState(false);
   const [showAppealModal, setShowAppealModal] = useState(false);
+  const [qrModalChannel, setQrModalChannel] = useState<OAuthChannelMeta | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [redirectPath, setRedirectPath] = useState("/");
   const [formData, setFormData] = useState({
@@ -575,21 +578,32 @@ function LoginForm() {
     }
   };
 
-  // GitHub 登录处理
+  // GitHub 登录处理（纯跳转授权型）
   const handleGithubLogin = () => {
     window.location.href = "/api/auth/github";
   };
 
-  // 微信登录处理
+  // 微信登录处理（按国内微信开放平台规范：纯扫码型，直接呼出微信二维码模态框）
   const handleWechatLogin = () => {
-    // 跳转到微信授权页面
-    window.location.href = "/api/auth/wechat";
+    const meta = getOAuthChannelMeta("wechat");
+    setQrModalChannel(meta);
   };
 
-  // QQ 登录处理
+  // QQ 登录处理（直接跳转 QQ 互联网页授权通道）
   const handleQQLogin = () => {
-    // 跳转到 QQ 授权页面
     window.location.href = "/api/auth/qq";
+  };
+
+  // 混合型渠道（如 QQ、微博、飞书、钉钉等）从扫码弹窗内一键切换至网页跳转
+  const handleSwitchToRedirect = (channelMeta: OAuthChannelMeta) => {
+    setQrModalChannel(null);
+    if (channelMeta.type === "qq") {
+      handleQQLogin();
+    } else if (channelMeta.type === "github") {
+      handleGithubLogin();
+    } else {
+      window.location.href = channelMeta.defaultCallback;
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -1503,7 +1517,7 @@ function LoginForm() {
           {(() => {
             const activeChannels =
               publicConfig.oauth?.channels && publicConfig.oauth.channels.length > 0
-                ? publicConfig.oauth.channels.filter((c) => c.enabled)
+                ? publicConfig.oauth.channels.filter((c) => c.enabled).slice(0, 2)
                 : [
                     ...(publicConfig.oauth?.github?.enabled
                       ? [{ id: "github", type: "github", name: "GitHub" }]
@@ -1511,7 +1525,7 @@ function LoginForm() {
                     ...(publicConfig.oauth?.wechat?.enabled
                       ? [{ id: "wechat", type: "wechat", name: "微信扫码" }]
                       : []),
-                  ];
+                  ].slice(0, 2);
 
             if (isLocked || activeChannels.length === 0) return null;
 
@@ -1529,17 +1543,69 @@ function LoginForm() {
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   {activeChannels.map((channel) => {
+                    const meta = getOAuthChannelMeta(channel.type || channel.id);
+
                     const handleChannelClick = () => {
-                      if (channel.type === "github" || channel.id === "github") {
-                        handleGithubLogin();
-                      } else if (channel.type === "wechat" || channel.id === "wechat") {
-                        handleWechatLogin();
+                      // 纯扫码型（如微信）或混合双模型（如 QQ、微博、飞书、钉钉）：统一弹出扫码快捷登录弹窗
+                      if (meta.authMode === "qrcode" || meta.authMode === "hybrid") {
+                        setQrModalChannel(meta);
                       } else {
-                        toast.info(`正在调起【${channel.name}】第三方快捷授权通道...`);
+                        // 纯跳转型（如 GitHub、Google、Gitee）
+                        if (meta.type === "github" || meta.id === "github") {
+                          handleGithubLogin();
+                        } else {
+                          window.location.href = meta.defaultCallback;
+                        }
                       }
                     };
 
                     const renderIcon = () => {
+                      // 优先使用 public/icons 下的官方图标
+                      if (meta.iconUrl) {
+                        return (
+                          <img
+                            src={meta.iconUrl}
+                            alt={channel.name}
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
+                        );
+                      }
+                      if (channel.type === "wechat" || channel.id === "wechat") {
+                        return (
+                          <img
+                            src="/icons/wechat.png"
+                            alt="微信"
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
+                        );
+                      }
+                      if (channel.type === "qq") {
+                        return (
+                          <img
+                            src="/icons/QQ.png"
+                            alt="QQ"
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
+                        );
+                      }
+                      if (channel.type === "weibo") {
+                        return (
+                          <img
+                            src="/icons/xinlang.png"
+                            alt="微博"
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
+                        );
+                      }
+                      if (channel.type === "alipay") {
+                        return (
+                          <img
+                            src="/icons/alipay.png"
+                            alt="支付宝"
+                            className="w-5 h-5 object-contain shrink-0"
+                          />
+                        );
+                      }
                       if (channel.type === "github" || channel.id === "github") {
                         return (
                           <svg className="w-5 h-5 text-slate-800 group-hover:text-black transition-colors" viewBox="0 0 24 24" fill="currentColor">
@@ -1547,47 +1613,36 @@ function LoginForm() {
                           </svg>
                         );
                       }
-                      if (channel.type === "wechat" || channel.id === "wechat") {
+                      if (channel.type === "feishu") {
                         return (
-                          <Image
-                            src="/icons/wechat.png"
-                            alt="微信"
-                            width={20}
-                            height={20}
-                            className="w-5 h-5"
-                          />
+                          <div className="w-5 h-5 rounded-md bg-[#00d6b9] text-white flex items-center justify-center text-[10px] font-black shadow-xs">
+                            飞
+                          </div>
                         );
                       }
-                      if (channel.type === "qq") {
+                      if (channel.type === "dingtalk") {
                         return (
-                          <div className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-black">
-                            QQ
+                          <div className="w-5 h-5 rounded-md bg-[#0089ff] text-white flex items-center justify-center text-[10px] font-black shadow-xs">
+                            钉
                           </div>
                         );
                       }
                       if (channel.type === "gitee") {
                         return (
-                          <div className="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px] font-black">
+                          <div className="w-5 h-5 rounded-md bg-rose-600 text-white flex items-center justify-center text-[10px] font-black shadow-xs">
                             G
                           </div>
                         );
                       }
                       if (channel.type === "google") {
                         return (
-                          <div className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-black">
+                          <div className="w-5 h-5 rounded-md bg-amber-500 text-white flex items-center justify-center text-[10px] font-black shadow-xs">
                             G+
                           </div>
                         );
                       }
-                      if (channel.type === "feishu") {
-                        return (
-                          <div className="w-5 h-5 rounded-full bg-cyan-600 text-white flex items-center justify-center text-[10px] font-black">
-                            飞
-                          </div>
-                        );
-                      }
                       return (
-                        <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">
+                        <div className="w-5 h-5 rounded-md bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black shadow-xs">
                           {channel.name.slice(0, 1)}
                         </div>
                       );
@@ -1605,6 +1660,11 @@ function LoginForm() {
                         <span className="text-xs font-semibold text-slate-700">
                           {channel.name.replace(/开发者授权登录|开放平台扫码登录|互联快捷登录|联合登录|企业扫码登录/g, "").trim() || channel.name}
                         </span>
+                        {meta.authMode === "qrcode" && (
+                          <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded font-normal">
+                            扫码
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -1633,6 +1693,14 @@ function LoginForm() {
           onClose={() => setShowAppealModal(false)}
         />
       )}
+
+      {/* 第三方扫码登录模态框（微信/QQ/微博/飞书/钉钉/支付宝等） */}
+      <OAuthQRCodeModal
+        isOpen={!!qrModalChannel}
+        onClose={() => setQrModalChannel(null)}
+        channel={qrModalChannel}
+        onSwitchToRedirect={handleSwitchToRedirect}
+      />
     </div>
   );
 }
