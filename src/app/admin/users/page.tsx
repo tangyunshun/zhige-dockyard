@@ -23,6 +23,7 @@ import {
   AlertCircle,
   AlertTriangle,
   RotateCcw,
+  Zap,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import DataTableFilter, {
@@ -70,6 +71,8 @@ interface User {
   status: string;
   avatar?: string | null;
   membershipLevel: string;
+  tokenBalance?: number;
+  points?: number;
   tenantId?: string | null;
   lastLoginAt?: string | null;
   isOnline: boolean;
@@ -1031,6 +1034,9 @@ export default function AdminUsersPage() {
                         会员等级
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        可用算力点
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         角色
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
@@ -1056,7 +1062,7 @@ export default function AdminUsersPage() {
                   >
                     {!userData?.users || userData.users.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-20 text-center">
+                        <td colSpan={11} className="px-6 py-20 text-center">
                           <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                             <Users className="w-8 h-8 text-slate-400" />
                           </div>
@@ -1131,6 +1137,12 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {getMembershipLevelBadge(user.membershipLevel)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/70 text-[#3182ce] text-xs font-black font-mono shadow-2xs">
+                              <Zap className="w-3.5 h-3.5 fill-[#3182ce]" />
+                              <span>{user.tokenBalance ?? user.points ?? 100} 点</span>
+                            </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {getRoleBadge(user.role)}
@@ -1561,8 +1573,14 @@ export default function AdminUsersPage() {
                 </div>
               </div>
 
-              {/* 核心资产与统计指标 Banner (4-Grid) */}
-              <div className="grid grid-cols-4 gap-3">
+              {/* 核心资产与统计指标 Banner (5-Grid) */}
+              <div className="grid grid-cols-5 gap-3">
+                <div className="p-3 bg-blue-50/60 rounded-2xl border border-blue-100 text-center">
+                  <div className="text-[10px] text-[#3182ce] font-bold mb-0.5">可用算力点</div>
+                  <div className="text-base font-black text-[#2b6cb0]">
+                    {viewingUser.tokenBalance ?? viewingUser.points ?? 100} <span className="text-[10px] font-normal text-slate-400">点</span>
+                  </div>
+                </div>
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
                   <div className="text-[10px] text-slate-400 font-bold mb-0.5">归属工作空间</div>
                   <div className="text-base font-black text-[#3182ce]">

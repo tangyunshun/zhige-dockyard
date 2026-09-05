@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/with-auth";
 import { getDeletionCooldownDays } from "@/lib/account-deletion";
@@ -49,9 +49,26 @@ export const GET = withAuth(async (req, user) => {
       deletionCooldownDays = await getDeletionCooldownDays();
     }
 
+    // 附带查询用户当前个人空间的可用算力点（保底自愈 100 点）
+    let tokenBalance = 100;
+    try {
+      const personalWs = await prisma.workspace.findFirst({
+        where: { ownerId: user.id, type: "PERSONAL" },
+        include: { workspacequota: true },
+      });
+      if (personalWs?.workspacequota && Number(personalWs.workspacequota.tokenBalance) > 0) {
+        tokenBalance = Number(personalWs.workspacequota.tokenBalance);
+      }
+    } catch (e) {
+      console.warn("[profile] 查询算力非致命提示:", e);
+    }
+
     return NextResponse.json({
       success: true,
-      data: dbUser,
+      data: {
+        ...dbUser,
+        tokenBalance,
+      },
       deletionCooldownDays,
       user: {
         isPendingDeletion,

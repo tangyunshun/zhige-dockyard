@@ -9,14 +9,25 @@ export async function GET(request: NextRequest) {
       return authResult.errorResponse!;
     }
 
-    const [total, published, categories, usage] = await Promise.all([
+    const [total, published, categories, usage, stageCountsGroup] = await Promise.all([
       prisma.componentcatalog.count(),
       prisma.componentcatalog.count({ where: { isPublished: true } }),
       prisma.componentcategory.count(),
       prisma.componentcatalog.aggregate({
         _sum: { usageCount: true },
       }),
+      prisma.componentcatalog.groupBy({
+        by: ["category"],
+        _count: true,
+      }),
     ]);
+
+    const stageCounts: Record<string, number> = {};
+    stageCountsGroup.forEach((g: any) => {
+      if (g.category) {
+        stageCounts[g.category] = typeof g._count === "number" ? g._count : (g._count?._all || 0);
+      }
+    });
 
     return NextResponse.json({
       success: true,
@@ -25,6 +36,7 @@ export async function GET(request: NextRequest) {
         published,
         stages: categories,
         totalUsage: Number(usage._sum.usageCount || 0),
+        stageCounts,
       },
     });
   } catch (error) {

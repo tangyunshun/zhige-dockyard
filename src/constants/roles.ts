@@ -212,11 +212,14 @@ export function getRoleDefaultPermissions(role: string): string[] {
     case PlatformRole.BILLING_ADMIN:
       return ["billing:*", "workspace:read", "user:read"];
 
-    // 企业级角色
+    // 企业级角色（同时兼容数据库枚举值 OWNER / ADMIN / MEMBER）
+    case "OWNER":
     case EnterpriseRole.WORKSPACE_OWNER:
       return ["workspace:*", "post:*", "member:*", "project:*"];
+    case "ADMIN":
     case EnterpriseRole.WORKSPACE_ADMIN:
       return ["post:*", "member:read", "project:*"];
+    case "MEMBER":
     case EnterpriseRole.MEMBER:
       return ["component:execute", "project:read"];
     case EnterpriseRole.FINANCIAL_ROLE:

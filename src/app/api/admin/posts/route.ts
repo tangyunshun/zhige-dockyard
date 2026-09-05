@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 
@@ -25,18 +25,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
-    // 获取工作空间 ID
+    // 获取工作空间 ID（支持全平台查询）
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
-    if (!workspaceId) {
-      return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
-    }
+    // 若未指定 workspaceId 或传 ALL，则查询全平台所有工作空间的岗位（管理员全局视角）
+    const whereCondition = workspaceId && workspaceId !== "ALL" ? { workspaceId } : {};
 
-    // 获取所有岗位及其成员和权限
+    // 获取所有岗位及其所属工作空间、成员和权限
     const posts = await prisma.workspacepost.findMany({
-      where: { workspaceId },
+      where: whereCondition,
       include: {
+        workspace: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         postmember: {
           include: {
             user: {
@@ -56,7 +62,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 格式化返回数据
+    // 格式化返回数据（增加所属空间字段）
     const formattedPosts = posts.map((post) => ({
       id: post.id,
       name: post.name,
@@ -66,6 +72,14 @@ export async function GET(request: NextRequest) {
       isSystem: post.isSystem,
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
+      workspaceId: post.workspaceId,
+      workspace: post.workspace
+        ? {
+            id: post.workspace.id,
+            name: post.workspace.name,
+            description: post.workspace.description,
+          }
+        : null,
       members: post.postmember.map((pm) => ({
         userId: pm.userId,
         userName: pm.user.name,

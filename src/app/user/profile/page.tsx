@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Trash2,
   Clock,
+  Zap,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
 
@@ -320,6 +321,63 @@ export default function UserProfilePage() {
               <p className="text-xs text-slate-400">
                 支持 JPG、PNG 格式，大小不超过 5MB
               </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 账号权益与算力资产卡片 */}
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
+        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#10b981]/10 opacity-50 blur-3xl"></div>
+        <div className="relative">
+          <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+            <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#10b981] rounded-full"></div>
+            算力资产与会员权益
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-100 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500 font-bold mb-1">当前可用算力点</div>
+                <div className="text-2xl font-black text-[#2b6cb0] flex items-center gap-1.5 font-mono">
+                  <Zap className="w-5 h-5 fill-[#3182ce] text-[#3182ce]" />
+                  <span>{userInfo?.tokenBalance ?? 100}</span>
+                  <span className="text-xs font-normal text-slate-500 font-sans">点</span>
+                </div>
+              </div>
+              <a
+                href="/user/billing-center"
+                className="px-3 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-lg transition-all shadow-xs"
+              >
+                充值 / 账单
+              </a>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500 font-bold mb-1">会员等级</div>
+                <div className="text-base font-black text-slate-800">
+                  {userInfo?.membershipLevel || "非会员"}
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-slate-200/70 text-slate-600 text-xs font-bold rounded-md">
+                基础版
+              </span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500 font-bold mb-1">账号角色</div>
+                <div className="text-base font-black text-slate-800">
+                  {userInfo?.role === "super_admin"
+                    ? "超级管理员"
+                    : userInfo?.role === "admin"
+                    ? "平台管理员"
+                    : "标准用户"}
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-xs font-bold rounded-md">
+                正常使用
+              </span>
             </div>
           </div>
         </div>

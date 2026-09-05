@@ -36,10 +36,18 @@ interface EnterprisePost {
   isDefault: boolean;
   isSystem?: boolean;
   color?: string;
+  icon?: string;
   description?: string;
 }
 
 type PermissionMatrix = Record<string, string[]>; // Key: PostId, Value: ComponentId[]
+
+// 新建自定义岗位时可选的岗位图标（emoji，跨平台渲染一致）
+const POST_ICON_OPTIONS = [
+  "👑", "🛡️", "💼", "📄", "🧩", "📐",
+  "💻", "🗄️", "✅", "🐳", "👁️", "⚙️",
+  "🚀", "🔧", "📊", "🎯", "🔒", "🌟",
+];
 
 export default function WorkspacePermissionsPage() {
   const router = useRouter();
@@ -70,6 +78,7 @@ export default function WorkspacePermissionsPage() {
     code: "",
     description: "",
     color: "#3182ce",
+    icon: "💼",
   });
 
   // 从官方标准库引入岗位状态
@@ -84,12 +93,9 @@ export default function WorkspacePermissionsPage() {
   const [showDeleteBlockedModal, setShowDeleteBlockedModal] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
 
-  // 默认备用岗位列表（当接口未返回时使用）
-  const fallbackPosts: EnterprisePost[] = [
-    { id: 'post_owner', name: '空间所有者', code: 'OWNER', isDefault: true, isSystem: true, color: '#2b6cb0', description: '企业空间创建者与最高统括负责人' },
-    { id: 'post_admin', name: '空间管理员', code: 'ADMIN', isDefault: true, isSystem: false, color: '#805ad5', description: '空间协管员' },
-    { id: 'post_auditor', name: '空间审计员', code: 'AUDITOR', isDefault: true, isSystem: false, color: '#718096', description: '合规与安全监督审计' },
-  ];
+  // 岗位数据一律以数据库返回为准（后端空岗位库时自动按 platformstandardpost 表装配基石岗位）；
+  // 接口异常时不展示任何虚假岗位数据
+  const fallbackPosts: EnterprisePost[] = [];
 
   // 加载空间真实岗位列表与数据库持久化权限
   const loadWorkspacePosts = useCallback(async () => {
@@ -111,6 +117,7 @@ export default function WorkspacePermissionsPage() {
             isDefault: p.isDefault || false,
             isSystem: p.isSystem || false,
             color: p.color || '#3182ce',
+            icon: p.icon || undefined,
             description: p.description || '',
           }));
           setPosts(mapped);
@@ -289,7 +296,8 @@ export default function WorkspacePermissionsPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setStandardPosts(data.posts || []);
+        // 系统保留岗位（如空间所有者）不允许被空间引入
+        setStandardPosts((data.posts || []).filter((p: any) => !p.isSystemReserved));
       } else {
         toast.error("加载官方岗位库失败");
       }
@@ -396,6 +404,7 @@ export default function WorkspacePermissionsPage() {
       code: "",
       description: "",
       color: "#3182ce",
+      icon: "💼",
     });
     setShowCreateModal(true);
   };
@@ -432,6 +441,7 @@ export default function WorkspacePermissionsPage() {
           code,
           description: newPostForm.description.trim(),
           color: newPostForm.color,
+          icon: newPostForm.icon,
           syncToSystem,
         }),
       });
@@ -553,10 +563,13 @@ export default function WorkspacePermissionsPage() {
                         >
                           <div className="flex flex-col items-center gap-2">
                             <div 
-                              className="px-3 py-1.5 rounded-[4px] text-white text-xs font-black shadow-xs tracking-wide"
+                              className="px-3 py-1.5 rounded-[4px] text-white text-xs font-black shadow-xs tracking-wide flex items-center justify-center gap-1.5"
                               style={{ backgroundColor: post.color || '#2b6cb0' }}
                             >
-                              {post.name}
+                              {post.icon ? (
+                                <span className="text-sm leading-none">{post.icon}</span>
+                              ) : null}
+                              <span>{post.name}</span>
                             </div>
                             
                             {isOwner ? (
@@ -771,6 +784,28 @@ export default function WorkspacePermissionsPage() {
                   placeholder="例如：QUANT_ANALYST (留空则自动生成)"
                   className="w-full px-3.5 py-2 text-xs font-mono border border-slate-200 rounded-xl focus:outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-blue-100 uppercase"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  选择图标
+                </label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {POST_ICON_OPTIONS.map((ic) => (
+                    <button
+                      key={ic}
+                      type="button"
+                      onClick={() => setNewPostForm({ ...newPostForm, icon: ic })}
+                      className={`w-8 h-8 rounded-lg border text-base leading-none flex items-center justify-center transition-all ${
+                        newPostForm.icon === ic
+                          ? "border-[#3182ce] bg-blue-50 scale-110 shadow-xs"
+                          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      {ic}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
 import { getMembershipTokenLimit, UNLIMITED_TOKEN, isUnlimitedTokenLimit } from "@/lib/quota-token";
+import { grantNewUserGift, recordMembershipBaseGrant } from "@/lib/credit-service";
 
 // 与 /api/workspace/list 自愈创建逻辑保持一致的配额初始化：
 // tokenLimit 一律从 membershiplevel 表读取真实值（不再写死 FREE=10000/GOLD=50000/其它=100000），
@@ -36,6 +37,18 @@ async function ensureWorkspaceQuota(
       updatedAt: new Date(),
     },
   });
+
+  // 会员基础额度补记账：quota 已直接写入 tokenLimit，补齐 grant+ledger 保持对账一致
+  if (tokenLimit > 0) {
+    await recordMembershipBaseGrant({
+      workspaceId,
+      workspaceName: null,
+      workspaceType: "PERSONAL",
+      points: tokenLimit,
+      idempotencyKey: `MEMBERSHIP_BASE:${workspaceId}`,
+      remark: "自愈补建空间配额时的会员基础算力额度",
+    }).catch((e) => console.warn("[create-personal] 会员基础额度补记账警告:", e));
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -124,6 +137,27 @@ export async function POST(request: NextRequest) {
         console.log("Workspace 存在但 WorkspaceQuota 缺失，正在补创建配额");
         await ensureWorkspaceQuota(userId, existingWorkspace.id);
         console.log("WorkspaceQuota 补创建成功");
+      } else if (Number(existingQuota.tokenBalance) <= 0 && (user.membershipLevel || "FREE") === "FREE") {
+        await prisma.workspacequota.update({
+          where: { id: existingQuota.id },
+          data: {
+            tokenBalance: BigInt(100),
+            updatedAt: new Date(),
+          },
+        });
+        console.log("WorkspaceQuota 存量 0 算力自愈赠送 100 点成功");
+        // 自愈赠送部分补记账（grant+ledger），保持与「账户实际余额」对账一致
+        const topUpPoints = 100 - Number(existingQuota.tokenBalance);
+        if (topUpPoints > 0) {
+          await recordMembershipBaseGrant({
+            workspaceId: existingWorkspace.id,
+            workspaceName: existingWorkspace.name,
+            workspaceType: "PERSONAL",
+            points: topUpPoints,
+            idempotencyKey: `MEMBERSHIP_TOPUP:${existingWorkspace.id}:${Date.now()}`,
+            remark: "FREE 空间余额为 0 自愈赠送 100 点",
+          }).catch((e) => console.warn("[create-personal] 自愈赠送补记账警告:", e));
+        }
       }
 
       // 如果已存在个人空间，直接返回
@@ -143,6 +177,10 @@ export async function POST(request: NextRequest) {
     const now = new Date();
 
     console.log("创建个人空间 userId:", userId);
+
+    // 会员基础额度（事务内初始化配额、事务外补记账均需引用，避免作用域断裂）
+    const membershipLevelForCreate = user.membershipLevel || "FREE";
+    const membershipBaseTokenLimit = await getMembershipTokenLimit(membershipLevelForCreate);
 
     // 事务化创建：workspace + workspacemember + workspacequota + lastWorkspaceId 原子提交，
     // 任一步失败整体回滚，杜绝"个人空间已创建但没有配额"的脏数据。
@@ -178,7 +216,7 @@ export async function POST(request: NextRequest) {
 
       // 同步创建 WorkspaceQuota 配额（与 /api/workspace/list 自愈创建逻辑一致，
       // 按用户 membershipLevel 初始化 tokenBalance）
-      const membershipLevel = user.membershipLevel || "FREE";
+      const membershipLevel = membershipLevelForCreate;
       let ml = await tx.membershiplevel.findUnique({
         where: { id: membershipLevel },
       });
@@ -186,11 +224,12 @@ export async function POST(request: NextRequest) {
         ml = await tx.membershiplevel.findFirst();
       }
       const mlId = ml?.id || "FREE";
-      const tierTokenLimit = await getMembershipTokenLimit(membershipLevel);
-      // 免费赠送 100 算力点仅对有限额度档位生效；无限额度（-1）保持 -1，不做加法
+      const tierTokenLimit = membershipBaseTokenLimit;
+      // 免费赠送 100 算力点统一由 credit-service 以「分桶 + 流水」方式发放（见下方 grantNewUserGift），
+      // 此处仅按会员等级初始化基础额度，不再叠加，避免重复赠送。
       const tokenBalance = isUnlimitedTokenLimit(tierTokenLimit)
         ? UNLIMITED_TOKEN
-        : tierTokenLimit + BigInt(100);
+        : tierTokenLimit;
 
       await tx.workspacequota.create({
         data: {
@@ -214,6 +253,25 @@ export async function POST(request: NextRequest) {
 
       console.log("个人空间创建完成", workspace.id);
     });
+
+    // 会员基础额度补记账：quota 已直接写入 tokenBalance，补齐 grant+ledger 保持对账一致
+    await recordMembershipBaseGrant({
+      workspaceId,
+      workspaceName,
+      workspaceType: "PERSONAL",
+      points: Number(membershipBaseTokenLimit),
+      idempotencyKey: `MEMBERSHIP_BASE:${workspaceId}`,
+      remark: "创建个人空间时的会员基础算力额度",
+      createdAt: now,
+    }).catch((e) => console.warn("[create-personal] 会员基础额度补记账非致命提示:", e));
+
+    // 新用户赠送 100 算力点：写入个人空间专属分桶（3 个月有效）+ 入账流水（幂等）
+    await grantNewUserGift({
+      userId,
+      workspaceId,
+      workspaceName,
+      userEmail: user.email || null,
+    }).catch((e) => console.warn("[create-personal] 赠送新用户算力点非致命提示:", e));
 
     return NextResponse.json({
       workspace: {

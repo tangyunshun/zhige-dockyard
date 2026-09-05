@@ -227,7 +227,7 @@ export default function DocsPage() {
           title: "产品概览与全栈解耦架构",
           summary: "知阁·舟坊是一个专为现代软件开发及企业数字化转型设计的全栈自动化任务装配与工作流中枢。结合低代码控制台与高可用 REST API。",
           category: "新手指南",
-          fullContent: "知阁·舟坊平台架构采用全栈解耦模型，集成组件大厅、算力额度审计、任务流调配与多租户权限隔离机制。无论是个人的轻量化 API 调用，还是企业级别的私有化云编排，均可提供一致的安全保障。",
+          fullContent: "知阁·舟坊平台架构采用全栈解耦模型，集成组件大厅、算力额度审计、任务流调配与企业级权限隔离机制。无论是个人的轻量化 API 调用，还是企业级别的私有化云编排，均可提供一致的安全保障。",
           updateTime: "2026-08-25",
           helpfulCount: 42,
           relatedLink: { label: "访问空间中枢", path: "/workspace-hub" }
@@ -235,7 +235,7 @@ export default function DocsPage() {
         {
           id: "start-2",
           title: "空间中枢：个人空间 vs 企业空间",
-          summary: "登录工作台后的集中管控中心。区分个人隔离测试环境与支持多租户协作、白名单组件矩阵的企业空间。",
+          summary: "登录工作台后的集中管控中心。区分个人隔离测试环境与支持团队协作、自定义组件权限的企业空间。",
           category: "核心概念",
           fullContent: "在空间中枢中，个人空间提供每月 100 点的免费试用额度；而企业空间则支持绑专属域名、多因素身份校验（MFA）与独立组件授权矩阵。",
           updateTime: "2026-08-20",
@@ -359,11 +359,11 @@ export default function DocsPage() {
       id: "enterprise",
       title: "企业私有部署与合规",
       icon: Shield,
-      description: "多租户数据沙箱隔离、专有云 K8s 部署、离线镜像包与 MFA",
+      description: "企业数据沙箱隔离、专有云 K8s 部署、离线镜像包与 MFA",
       articles: [
         {
           id: "ent-1",
-          title: "企业多租户数据沙箱隔离",
+          title: "企业数据独立沙箱隔离",
           summary: "在企业空间架构下，系统通过物理数据库表分片与独占存储桶保证业务标书、设计图纸的绝对隔离与绝密存储。",
           category: "数据安全",
           fullContent: "所有数据上传后传输全程基于 TLS 1.3 算法加密，且绝对不会将企业商业机密数据用于二次模型训练。",

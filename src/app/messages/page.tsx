@@ -57,7 +57,13 @@ export default function MessagesPage() {
   }, []);
 
   // 标记单条为已读
+  // 标记单条为已读（乐观更新，静默变更）
   const handleMarkAsRead = async (id: string) => {
+    // 立即乐观变更前端状态，消除延迟与未读红点
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       const res = await fetch("/api/user/notifications/read", {
@@ -90,8 +96,10 @@ export default function MessagesPage() {
     }
   };
 
-  // 一键全部标记为已读
+  // 一键全部标记为已读（乐观更新，静默生效，不弹扰民Toast）
   const handleMarkAllRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       const res = await fetch("/api/user/notifications/read", {
@@ -106,14 +114,13 @@ export default function MessagesPage() {
       if (res.ok) {
         const json = await res.json();
         setNotifications(json.data?.list || []);
-        toast.success("已将所有消息标记为已读");
-        // 全局广播通知事件
+        // 静默生效，移除多余提示语
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("zhige_notifications_updated"));
         }
       }
     } catch (e) {
-      toast.error("操作失败");
+      console.error("操作失败:", e);
     }
   };
 
@@ -423,7 +430,13 @@ export default function MessagesPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          router.push(getActionLink(item)!);
+                          if (!item.isRead) {
+                            handleMarkAsRead(item.id);
+                          }
+                          const targetLink = getActionLink(item);
+                          if (targetLink) {
+                            router.push(targetLink);
+                          }
                         }}
                         className="px-2.5 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-[11px] font-black rounded-lg transition-all cursor-pointer flex items-center gap-1 active:scale-95"
                       >
@@ -477,11 +490,8 @@ export default function MessagesPage() {
                 {detailNotify.content}
               </div>
 
-              <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-xs text-[#2b6cb0] font-semibold flex items-center justify-between">
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-500 font-semibold flex items-center justify-between">
                 <span>消息编号: <strong className="font-mono">{detailNotify.id}</strong></span>
-                <span className="text-emerald-600 font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> 已自动同步标记为已读
-                </span>
               </div>
             </div>
 
@@ -490,10 +500,16 @@ export default function MessagesPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (!detailNotify.isRead) {
+                      handleMarkAsRead(detailNotify.id);
+                    }
+                    const targetLink = getActionLink(detailNotify);
                     setDetailNotify(null);
-                    router.push(getActionLink(detailNotify)!);
+                    if (targetLink) {
+                      router.push(targetLink);
+                    }
                   }}
-                  className="zg-btn zg-btn-primary h-9 px-4 text-xs font-bold flex items-center gap-1.5"
+                  className="zg-btn zg-btn-primary h-9 px-4 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" /> 进入功能
                 </button>

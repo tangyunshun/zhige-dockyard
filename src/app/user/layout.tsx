@@ -13,6 +13,7 @@ import {
   Code2,
   ArrowLeft,
   Zap,
+  Coins,
   Menu,
   X,
   Shield,
@@ -84,6 +85,12 @@ export default function UserDashboardLayout({
           label: "套餐与计费",
           href: "/user/billing-center",
           description: "会员套餐、空间扩容、账单管理",
+        },
+        {
+          icon: Coins,
+          label: "我的算力",
+          href: "/user/points",
+          description: "算力点余额、赠送、消耗与充值流水",
         },
         {
           icon: FolderOpen,

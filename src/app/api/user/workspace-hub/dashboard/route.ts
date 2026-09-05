@@ -90,19 +90,23 @@ export async function GET(request: NextRequest) {
       where: { ownerId: userId },
     });
 
-    // 本月组件使用记录（按组件 ID 分组，用于结合 estimatedTokens 统计真实 Token 消耗）
-    const monthUsagePromise = prisma.componentusage.findMany({
+    // 本月组件真实任务执行扣费消耗（从 componenttask 统计真实发生的算力扣费）
+    const monthTasksPromise = prisma.componenttask.findMany({
       where: {
         userId,
-        usedAt: { gte: startOfMonth },
+        createdAt: { gte: startOfMonth },
+        status: { in: ["SUCCESS", "RUNNING"] },
       },
-      select: { componentId: true },
+      select: { config: true },
     });
 
-    // 历史累计组件使用记录
-    const totalUsagePromise = prisma.componentusage.findMany({
-      where: { userId },
-      select: { componentId: true },
+    // 历史累计组件真实任务执行扣费消耗
+    const totalTasksPromise = prisma.componenttask.findMany({
+      where: {
+        userId,
+        status: { in: ["SUCCESS", "RUNNING"] },
+      },
+      select: { config: true },
     });
 
     // 查询最近 3 次安全登录历史记录
@@ -119,27 +123,28 @@ export async function GET(request: NextRequest) {
     });
 
     // 并行运行基础用户数据查询
-    const [workspaceMembers, ownedWorkspaces, monthUsageRows, totalUsageRows, loginHistory] = await Promise.all([
+    const [workspaceMembers, ownedWorkspaces, monthTasksRows, totalTasksRows, loginHistory] = await Promise.all([
       workspaceMembersPromise,
       ownedWorkspacesPromise,
-      monthUsagePromise,
-      totalUsagePromise,
+      monthTasksPromise,
+      totalTasksPromise,
       loginHistoryPromise,
     ]);
 
-
-
-    // Token 消耗真实统计：各组件使用次数 × 组件目录 estimatedTokens 基准
-    const usageTokenBase = await prisma.componentcatalog.findMany({
-      select: { id: true, estimatedTokens: true },
-    });
-    const usageTokenMap = new Map(usageTokenBase.map((c) => [c.id, Number(c.estimatedTokens)]));
-    const monthUsageCount = monthUsageRows.length;
-    const totalUsageCount = totalUsageRows.length;
-    const calcUsageTokens = (rows: { componentId: string }[]) =>
-      rows.reduce((sum, r) => sum + (usageTokenMap.get(r.componentId) ?? 0), 0);
-    const monthTokenUsed = calcUsageTokens(monthUsageRows);
-    const totalTokenUsed = calcUsageTokens(totalUsageRows);
+    // Token 消耗真实统计：遍历真实执行的任务 config.tokenCost
+    const sumTaskCost = (tasks: { config: any }[]) => {
+      let sum = 0;
+      tasks.forEach((t) => {
+        const cfg = (t.config && typeof t.config === "object" ? t.config : {}) as any;
+        const cost = Number(cfg?.tokenCost ?? 0);
+        if (Number.isFinite(cost) && cost > 0) {
+          sum += cost;
+        }
+      });
+      return sum;
+    };
+    const monthTokenUsed = sumTaskCost(monthTasksRows);
+    const totalTokenUsed = sumTaskCost(totalTasksRows);
 
     // 合并并去重工作空间
     const workspaceMap = new Map<string, any>();
@@ -191,6 +196,13 @@ export async function GET(request: NextRequest) {
     });
     const publishedComponentIdSet = new Set(publishedCatalogRows.map(c => c.id));
 
+    // 批量拉取所有关联空间的真实配额数据，供空间卡片与全局算力资产统筹
+    const workspaceIdList = Array.from(workspaceMap.keys());
+    const quotaRecords = await prisma.workspacequota.findMany({
+      where: { workspaceId: { in: workspaceIdList } },
+    });
+    const quotaByWsId = new Map(quotaRecords.map(q => [q.workspaceId, q]));
+
     const workspacesWithCounts = await Promise.all(
       Array.from(workspaceMap.values()).map(async (ws) => {
         // 自动完成兜底自愈初始化（仅全新空间初始化默认组件，不覆盖用户装配/解除结果）
@@ -221,14 +233,25 @@ export async function GET(request: NextRequest) {
           }
         });
 
-
-
         const componentCount = boundIdSet.size;
+        const wsQuota = quotaByWsId.get(ws.id);
+        const serializedQuota = wsQuota ? {
+          id: wsQuota.id,
+          workspaceId: wsQuota.workspaceId,
+          membershipLevelId: wsQuota.membershipLevelId,
+          tokenBalance: Number(wsQuota.tokenBalance),
+          storageUsed: Number(wsQuota.storageUsed || 0),
+          storageLimit: Number(wsQuota.storageLimit || 0),
+          apiCallsUsed: Number(wsQuota.apiCallsUsed || 0),
+          apiCallsLimit: Number(wsQuota.apiCallsLimit || 0),
+        } : null;
 
         return {
           ...ws,
           componentCount,
           memberCount,
+          quota: serializedQuota,
+          workspacequota: serializedQuota,
         };
       })
     );
@@ -259,13 +282,58 @@ export async function GET(request: NextRequest) {
     }
 
     // 存储用量真实统计：聚合用户所有空间的 workspacequota 记录
-    const workspaceIdList = Array.from(workspaceMap.keys());
-    const storageQuotas = await prisma.workspacequota.findMany({
-      where: { workspaceId: { in: workspaceIdList } },
-      select: { storageUsed: true, storageLimit: true },
-    });
+    const storageQuotas = quotaRecords;
     const storageUsed = storageQuotas.reduce((s, q) => s + Number(q.storageUsed), 0);
     const storageLimitAgg = storageQuotas.reduce((s, q) => s + Number(q.storageLimit), 0);
+
+    // 真实算力点：区分用户在不同空间角色的归属与流通规则
+    // 1. 个人空间算力（新用户赠送 100 点，老用户为其实际配额）
+    let personalTokens = 0;
+    if (personalWorkspace) {
+      const pQuota = quotaByWsId.get(personalWorkspace.id);
+      if (pQuota) {
+        personalTokens = Number(pQuota.tokenBalance);
+      }
+    }
+    // 仅在纯免费个人新用户（无任何企业空间且个人算力 <= 0）时兜底 100 初始点
+    if (personalTokens <= 0 && membershipLevel === "FREE" && enterpriseCount === 0) {
+      personalTokens = 100;
+    }
+
+    // 2. 企业空间所有者（Owner）算力池：
+    // 用户作为企业空间所有者，企业空间配额池属于其本人资产，个人空间和企业空间均可调度使用，
+    // 并且所有者可分配给协同成员使用。
+    let ownedEnterpriseTokens = 0;
+    enterpriseWorkspaces.forEach((ws) => {
+      const isOwner = ws.role === "OWNER" || ws.isOwner || ws.ownerId === userId;
+      if (isOwner) {
+        const eq = quotaByWsId.get(ws.id);
+        if (eq) {
+          ownedEnterpriseTokens += Number(eq.tokenBalance);
+        }
+      }
+    });
+
+    // 3. 企业空间普通协同成员（Member）被分配的月度可用额度：
+    // 若用户作为普通成员加入企业空间，其在该空间可调度的额度为 Owner 分配的 monthlyTokenLimit - monthlyTokenUsed
+    let memberAllocatedTokens = 0;
+    workspaceMembers.forEach((wm) => {
+      if (wm.workspace && wm.workspace.type === "ENTERPRISE" && wm.workspace.ownerId !== userId) {
+        const limit = wm.monthlyTokenLimit ? Number(wm.monthlyTokenLimit) : 0;
+        const used = Number(wm.monthlyTokenUsed || 0);
+        if (limit > 0 && limit > used) {
+          memberAllocatedTokens += (limit - used);
+        }
+      }
+    });
+
+    // 全场景综合可用算力余额：
+    // - 新用户（未充值、无企业空间）：personalTokens = 100，owned = 0，member = 0 => 100 点
+    // - 老用户（拥有企业空间 Owner 资产）：个人空间 + 企业空间共享池（如 test-01: 10000 + 11490 = 21490 点）
+    // - 协同成员用户：个人空间 + 被分配的企业额度
+    const userAvailableTokens = personalTokens + ownedEnterpriseTokens + memberAllocatedTokens;
+
+    const calculatedTotalTokens = tokenLimit === -1 ? -1 : Math.max(tokenLimit, userAvailableTokens + monthTokenUsed);
 
     const userQuota = {
       isVip: membershipLevel !== "FREE",
@@ -291,10 +359,13 @@ export async function GET(request: NextRequest) {
         maxApiCalls,
         // 无限额度（tokenLimit = -1）：available 同样标记为 -1，避免被 Math.max(0, ...) 折叠成「0」
         tokenBalance: {
-          total: tokenLimit,
-          used: monthTokenUsed, // 本月 Token 消耗（真实统计）
-          available: tokenLimit === -1 ? -1 : Math.max(0, tokenLimit - monthTokenUsed),
-          historyTotalUsed: totalTokenUsed, // 历史累计 Token 消耗（真实统计）
+          total: calculatedTotalTokens,
+          used: monthTokenUsed, // 本月真实任务消耗（新用户为 0）
+          available: tokenLimit === -1 ? -1 : userAvailableTokens,
+          historyTotalUsed: totalTokenUsed, // 历史累计任务消耗
+          personalTokens,
+          ownedEnterpriseTokens,
+          memberAllocatedTokens,
         }
       }
     };
@@ -305,6 +376,13 @@ export async function GET(request: NextRequest) {
 
     if (isAdmin) {
       // 并行拉取全系统关键运维指标（Token 消耗按组件目录 estimatedTokens 基准真实统计）
+      const usageTokenMap = new Map(
+        (await prisma.componentcatalog.findMany({ select: { id: true, estimatedTokens: true } }))
+          .map((c) => [c.id, Number(c.estimatedTokens)])
+      );
+      const calcUsageTokens = (rows: { componentId: string }[]) =>
+        rows.reduce((sum, r) => sum + (usageTokenMap.get(r.componentId) ?? 0), 0);
+
       const [
         totalUsers,
         totalWorkspaces,

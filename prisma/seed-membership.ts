@@ -15,7 +15,8 @@ const membershipLevels = [
     maxTeamSize: BigInt(5),
     maxStorage: BigInt(1073741824), // 1GB
     maxApiCalls: BigInt(1000),
-    tokenLimit: BigInt(500), // 每月 500 算力点
+    // 免费版标准额度：100 算力点（与新用户注册赠送的 100 点口径保持一致）
+    tokenLimit: BigInt(100),
     features: [
       "基础组件库访问",
       "标准技术支持",

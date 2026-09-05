@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
 import { useAppContext } from "@/contexts/AppContext";
 import AvatarDropdown from "@/components/AvatarDropdown";
@@ -600,8 +601,8 @@ export default function PersonalTasksManagementPage() {
         const errMsg = data?.error || "任务创建失败，请重试";
         toast.error(errMsg);
         if (errMsg.includes("算力") || errMsg.includes("配额") || errMsg.includes("余额不足")) {
-          setTimeout(() => {
-            if (confirm("当前工作空间算力点余额不足，是否立即前往工作控制台充值算力包？")) {
+          setTimeout(async () => {
+            if (await confirm({ title: "算力不足", message: "当前工作空间算力点余额不足，是否立即前往工作控制台充值算力包？", type: "warning" })) {
               router.push(`/workspace/${createTaskWorkspaceId}/members`);
             }
           }, 500);

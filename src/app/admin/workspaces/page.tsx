@@ -16,6 +16,7 @@ import {
   XCircle,
   X,
   RotateCcw,
+  Zap,
 } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
 import Pagination from "@/components/Pagination";
@@ -745,6 +746,9 @@ export default function AdminWorkspacesPage() {
                       组件数量
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                      可用算力
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                       审核状态
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
@@ -759,7 +763,7 @@ export default function AdminWorkspacesPage() {
                   {workspaceData?.workspaces.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={10}
                         className="px-6 py-20 text-center text-slate-400"
                       >
                         暂无工作空间数据
@@ -834,6 +838,16 @@ export default function AdminWorkspacesPage() {
                               {workspace.componentCount} 个
                             </span>
                           </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/70 text-[#3182ce] text-xs font-black font-mono shadow-2xs">
+                            <Zap className="w-3.5 h-3.5 fill-[#3182ce]" />
+                            <span>
+                              {workspace.quota?.tokenBalance !== undefined && workspace.quota?.tokenBalance !== null
+                                ? `${Number(workspace.quota.tokenBalance).toLocaleString()} 点`
+                                : workspace.type === "ENTERPRISE" ? "0 点" : "100 点"}
+                            </span>
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {workspace.status === "ACTIVE" ? (

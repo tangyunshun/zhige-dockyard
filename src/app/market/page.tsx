@@ -1,4 +1,7 @@
-// 该路由已由中间件统一重定向至 /studio，本文件仅保留极简空占位符以确保构建成功
+import { redirect } from "next/navigation";
+
+// 该路由统一重定向至 /studio
 export default function MarketPagePlaceholder() {
-  return null;
+  redirect("/studio");
 }
+

@@ -111,24 +111,37 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "asc" },
     });
 
-    const extendedRoleMap: Record<string, string> = {};
+    const extendedRoleMap: Record<string, string[]> = {};
     roleLogs.forEach((log) => {
       const details = log.details as any;
-      if (details && typeof details === "object" && details.targetUserId && details.newRole) {
-        extendedRoleMap[details.targetUserId] = details.newRole;
+      if (details && typeof details === "object" && details.targetUserId) {
+        if (Array.isArray(details.roles) && details.roles.length > 0) {
+          extendedRoleMap[details.targetUserId] = details.roles;
+        } else if (typeof details.newRole === "string" && details.newRole.trim()) {
+          extendedRoleMap[details.targetUserId] = details.newRole
+            .split(",")
+            .map((r: string) => r.trim())
+            .filter(Boolean);
+        }
       }
     });
 
     return NextResponse.json({
       success: true,
-      members: members.map((m) => ({
-        userId: m.userId,
-        name: m.user?.name || "极客成员",
-        email: m.user?.email || "未绑定邮箱",
-        avatar: m.user?.avatar || null,
-        role: extendedRoleMap[m.userId] || m.role,
-        joinedAt: m.joinedAt,
-      })),
+      members: members.map((m) => {
+        const assignedRoles = extendedRoleMap[m.userId] && extendedRoleMap[m.userId].length > 0
+          ? extendedRoleMap[m.userId]
+          : [m.role];
+        return {
+          userId: m.userId,
+          name: m.user?.name || "极客成员",
+          email: m.user?.email || "未绑定邮箱",
+          avatar: m.user?.avatar || null,
+          role: assignedRoles[0] || m.role,
+          roles: assignedRoles,
+          joinedAt: m.joinedAt,
+        };
+      }),
       activeInvitations,
     });
   } catch (error) {
@@ -137,7 +150,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 2. PATCH: 变更空间内某个成员的角色 (仅 OWNER 有权)
+// 2. PATCH: 变更空间内某个成员的角色与多兼任岗位 (仅 OWNER 有权)
 export async function PATCH(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -149,10 +162,16 @@ export async function PATCH(request: NextRequest) {
 
     const userId = authResult.user!.id;
     const body = await request.json();
-    const { workspaceId, targetUserId, newRole } = body;
+    const { workspaceId, targetUserId, newRole, newRoles } = body;
 
-    if (!workspaceId || !targetUserId || !newRole) {
-      return NextResponse.json({ error: "缺少必要参数" }, { status: 400 });
+    const rolesArray: string[] = Array.isArray(newRoles)
+      ? newRoles
+      : typeof newRole === "string"
+      ? newRole.split(",").map((r: string) => r.trim()).filter(Boolean)
+      : [];
+
+    if (!workspaceId || !targetUserId || rolesArray.length === 0) {
+      return NextResponse.json({ error: "缺少必要参数或未指定分配岗位" }, { status: 400 });
     }
 
     // 校验请求者必须是该空间的 OWNER 或 空间创建者
@@ -174,13 +193,13 @@ export async function PATCH(request: NextRequest) {
     const isOwnerRole = (currentMembership?.role || "").toUpperCase() === "OWNER";
 
     if (!isSpaceOwner && !isOwnerRole) {
-      return NextResponse.json({ error: "只有空间所有者有权修改角色" }, { status: 403 });
+      return NextResponse.json({ error: "只有空间所有者有权修改角色与岗位" }, { status: 403 });
     }
 
-    // 安全映射：将 5 大全系统业务岗位安全转换为 Prisma 数据库合法的 Enum (OWNER | ADMIN | MEMBER)
+    // 安全映射：提取最高级别合法枚举 (OWNER | ADMIN | MEMBER)
     const validDbRole: "OWNER" | "ADMIN" | "MEMBER" =
-      newRole === "OWNER" ? "OWNER" :
-      newRole === "ADMIN" ? "ADMIN" : "MEMBER";
+      rolesArray.includes("OWNER") ? "OWNER" :
+      rolesArray.includes("ADMIN") ? "ADMIN" : "MEMBER";
 
     // 更新角色（采用 upsert 容错，防止记录不存在时更新抛错）
     const updatedMember = await prisma.workspacemember.upsert({
@@ -201,7 +220,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    // 写入扩展岗位操作日志，供多账号协同服务端全局共享
+    // 写入扩展岗位操作日志（同时记录 roles 数组与 newRole 字符串，供全局共享）
     await prisma.operationlog.create({
       data: {
         id: `op_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -209,9 +228,38 @@ export async function PATCH(request: NextRequest) {
         userId,
         action: "UPDATE_MEMBER_ROLE",
         resource: targetUserId,
-        details: { targetUserId, newRole },
+        details: { targetUserId, newRole: rolesArray.join(","), roles: rolesArray },
       },
     }).catch((e) => console.error("Write member role log error:", e));
+
+    // 同步维护 postmember 关联表，形成底层关系数据强一致闭环
+    try {
+      const workspacePosts = await prisma.workspacepost.findMany({
+        where: { workspaceId },
+        select: { id: true, name: true }
+      });
+      const validPostIds = new Set<string>();
+      workspacePosts.forEach(wp => {
+        if (rolesArray.includes(wp.id) || rolesArray.includes(wp.name)) {
+          validPostIds.add(wp.id);
+        }
+      });
+      if (validPostIds.size > 0) {
+        await prisma.postmember.deleteMany({
+          where: { workspaceId, userId: targetUserId }
+        });
+        await prisma.postmember.createMany({
+          data: Array.from(validPostIds).map(postId => ({
+            id: `pm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            userId: targetUserId,
+            postId,
+            workspaceId,
+          }))
+        });
+      }
+    } catch (e) {
+      console.warn("Sync postmember error:", e);
+    }
 
     return NextResponse.json({
       success: true,
@@ -219,7 +267,8 @@ export async function PATCH(request: NextRequest) {
         id: updatedMember.id,
         userId: updatedMember.userId,
         workspaceId: updatedMember.workspaceId,
-        role: updatedMember.role,
+        role: rolesArray[0] || validDbRole,
+        roles: rolesArray,
         monthlyTokenLimit: updatedMember.monthlyTokenLimit !== null && updatedMember.monthlyTokenLimit !== undefined ? Number(updatedMember.monthlyTokenLimit) : null,
         monthlyTokenUsed: Number(updatedMember.monthlyTokenUsed || 0),
       },

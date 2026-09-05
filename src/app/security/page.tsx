@@ -33,8 +33,8 @@ const securityFeatures = [
   {
     icon: <Lock className="w-6 h-6" />,
     title: "零信任数据隔离沙箱",
-    description: "基于组件级微租户运行环境做强力隔离，细粒度控制访问输入，核心数据阅后即焚。",
-    highlights: ["微租户沙箱", "动态最小授权", "实时阻断审计"],
+    description: "基于独立的组件运行沙箱做强力隔离，严格控制访问权限，核心数据阅后即焚。",
+    highlights: ["独立沙箱隔离", "动态最小授权", "实时安全审计"],
   },
   {
     icon: <Database className="w-6 h-6" />,
@@ -352,7 +352,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                     <Eye className="w-5 h-5" />
                   </div>
                   <span className="text-xs text-white font-black">3. 原子沙箱</span>
-                  <span className="text-[10px] text-slate-500 mt-1">临时微租户运行时空间</span>
+                  <span className="text-[10px] text-slate-500 mt-1">临时安全隔离运行空间</span>
                 </button>
 
                 {/* Node 4: Local Model */}

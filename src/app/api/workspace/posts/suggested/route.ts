@@ -46,9 +46,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
 
-    // 1. 获取平台启用的标准岗位
+    // 1. 获取平台启用的标准岗位（排除系统保留岗位，如空间所有者）
     const standardPosts = await getStandardPostsFromDB();
-    const activePosts = standardPosts.filter((p) => p.status === "ACTIVE");
+    const activePosts = standardPosts.filter((p) => p.status === "ACTIVE" && !p.isSystemReserved);
 
     // 2. 获取当前空间已存在的岗位名称
     const existingPosts = await prisma.workspacepost.findMany({
@@ -103,7 +103,9 @@ export async function POST(request: NextRequest) {
 
     // 1. 获取全部标准岗位
     const standardPosts = await getStandardPostsFromDB();
-    const targetPosts = standardPosts.filter((p) => postIds.includes(p.id) && p.status === "ACTIVE");
+    const targetPosts = standardPosts.filter(
+      (p) => postIds.includes(p.id) && p.status === "ACTIVE" && !p.isSystemReserved
+    );
 
     if (targetPosts.length === 0) {
       return NextResponse.json({ error: "未找到有效的待导入标准岗位" }, { status: 400 });

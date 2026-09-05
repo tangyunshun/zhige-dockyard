@@ -115,12 +115,24 @@ export async function GET(request: NextRequest) {
                   id: crypto.randomUUID(),
                   workspaceId: ws.id,
                   membershipLevelId: mlId,
-                  tokenBalance: BigInt(tokenLimit),
+                  tokenBalance: BigInt(tokenLimit > 0 ? tokenLimit : 100),
                   updatedAt: new Date()
                 }
               });
             } catch (e) {
               console.error("兜底创建配额记录失败:", e);
+            }
+          } else if (Number(wsQuota.tokenBalance) <= 0 && membershipLevel === "FREE") {
+            try {
+              wsQuota = await prisma.workspacequota.update({
+                where: { id: wsQuota.id },
+                data: {
+                  tokenBalance: BigInt(tokenLimit > 0 ? tokenLimit : 100),
+                  updatedAt: new Date(),
+                },
+              });
+            } catch (e) {
+              console.warn("自愈补偿算力点失败:", e);
             }
           }
 

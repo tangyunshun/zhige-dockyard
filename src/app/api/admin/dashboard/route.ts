@@ -72,9 +72,9 @@ export async function GET(request: NextRequest) {
         where: { status: "active" },
       }),
 
-      // 9. 待审核升级申请数
-      prisma.upgradeapplication.count({
-        where: { status: "PENDING" },
+      // 9. 待处理风控申诉工单数
+      prisma.accountappeal.count({
+        where: { status: "pending" },
       }),
 
       // 10. 最近 5 个用户（包含 avatar）

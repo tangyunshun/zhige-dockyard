@@ -103,7 +103,12 @@ export async function seedDefaultTokenPacks(prisma: PrismaClient) {
     const model = getTokenPackModel(prisma);
     if (!model) return;
 
+    // 已被管理员彻底删除的预置包不再自动补回（避免“删不掉”）
+    const deletedIds = await getDeletedTokenPackIds(prisma);
+
     for (const item of DEFAULT_TOKEN_PACKS) {
+      if (deletedIds.has(item.id)) continue;
+
       const existing = await model.findUnique({
         where: { id: item.id },
       }).catch(() => null);
@@ -141,10 +146,50 @@ export function removeTokenPackMemoryCache(id: string) {
   delete memoryTokenPacksCache[id];
 }
 
+/** systemconfig 键：已被管理员彻底删除的算力包 ID（用于阻止预置包被 seed 自动补回） */
+const DELETED_TOKEN_PACK_IDS_KEY = "deleted_token_pack_ids";
+
+async function getDeletedTokenPackIds(prisma: any): Promise<Set<string>> {
+  try {
+    const row = await prisma.systemconfig
+      ?.findUnique({ where: { key: DELETED_TOKEN_PACK_IDS_KEY } })
+      .catch(() => null);
+    if (row?.value) {
+      const arr = JSON.parse(row.value);
+      if (Array.isArray(arr)) return new Set(arr.map(String));
+    }
+  } catch (e) {
+    console.warn("读取已删除算力包标记失败:", e);
+  }
+  return new Set();
+}
+
+/** 记录“该算力包已被彻底删除”，持久化到 systemconfig，跨进程/重启生效 */
+export async function markTokenPackDeleted(prisma: any, id: string): Promise<void> {
+  try {
+    const deleted = await getDeletedTokenPackIds(prisma);
+    if (deleted.has(id)) return;
+    deleted.add(id);
+    const value = JSON.stringify([...deleted]);
+    await prisma.systemconfig
+      ?.upsert({
+        where: { key: DELETED_TOKEN_PACK_IDS_KEY },
+        create: { key: DELETED_TOKEN_PACK_IDS_KEY, value },
+        update: { value },
+      })
+      .catch(() => null);
+  } catch (e) {
+    console.warn("写入已删除算力包标记失败:", e);
+  }
+}
+
 /**
  * 100% 实时从 MySQL 数据库查询算力加油包列表 (融合双重最新修改防护)
  */
 export async function getAllTokenPacks(prisma: PrismaClient, onlyActive: boolean = false): Promise<TokenPackItem[]> {
+  // 已被管理员彻底删除的算力包 ID（预置包与运行时包均不再展示/补回）
+  const deletedIds = await getDeletedTokenPackIds(prisma);
+
   try {
     // 自动预置校验 (仅缺失时补齐，不覆盖已修改记录)
     await seedDefaultTokenPacks(prisma);
@@ -181,7 +226,7 @@ export async function getAllTokenPacks(prisma: PrismaClient, onlyActive: boolean
     }
 
     if (items.length === 0) {
-      items = DEFAULT_TOKEN_PACKS.map((p) => {
+      items = DEFAULT_TOKEN_PACKS.filter((p) => !deletedIds.has(p.id)).map((p) => {
         if (memoryTokenPacksCache[p.id]) {
           return { ...p, ...memoryTokenPacksCache[p.id] };
         }
@@ -217,7 +262,9 @@ export async function getAllTokenPacks(prisma: PrismaClient, onlyActive: boolean
     return items;
   } catch (error) {
     console.warn("查询 tokenpack 数据库异常:", error);
-    let items = DEFAULT_TOKEN_PACKS.map((p) => (memoryTokenPacksCache[p.id] ? { ...p, ...memoryTokenPacksCache[p.id] } : p));
+    let items = DEFAULT_TOKEN_PACKS.filter((p) => !deletedIds.has(p.id)).map((p) =>
+      memoryTokenPacksCache[p.id] ? { ...p, ...memoryTokenPacksCache[p.id] } : p
+    );
     return onlyActive ? items.filter((p) => p.isActive) : items;
   }
 }

@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { recordMembershipBaseGrant } from "@/lib/credit-service";
 
 /**
  * 计算下一个自然月初 (下个月 1 日 00:00:00)
@@ -40,6 +41,20 @@ export async function checkAndResetQuotaCycle(
           updatedAt: now,
         },
       }).catch((e) => console.warn("[算力重置] 空间算力月度自动重置警告:", e));
+
+      // 月度重置把余额补足到会员默认额度的部分：补齐 grant+ledger，保持「流水理论余额」与「账户实际余额」对账一致
+      const topUpPoints = Number(newTokenBalance - currentBalance);
+      if (topUpPoints > 0) {
+        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        await recordMembershipBaseGrant({
+          workspaceId,
+          workspaceName: null,
+          workspaceType: null,
+          points: topUpPoints,
+          idempotencyKey: `MEMBERSHIP_RESET:${workspaceId}:${ym}`,
+          remark: "空间算力月度自动重置补足至会员默认额度",
+        }).catch((e) => console.warn("[算力重置] 会员额度补记账警告:", e));
+      }
     }
   }
 

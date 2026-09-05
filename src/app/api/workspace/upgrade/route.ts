@@ -253,6 +253,25 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // 同步创建企业空间配额记录（初始算力点为 0，需充值或购买配额包后使用）
+      try {
+        await prisma.workspacequota.create({
+          data: {
+            id: crypto.randomUUID(),
+            workspaceId: newWorkspaceId,
+            membershipLevelId: "STANDARD",
+            tokenBalance: BigInt(0),
+            storageLimit: BigInt(10 * 1024 * 1024 * 1024),
+            apiCallsLimit: BigInt(50000),
+            storageUsed: BigInt(0),
+            apiCallsUsed: BigInt(0),
+            updatedAt: new Date(),
+          },
+        });
+      } catch (quotaErr) {
+        console.warn("[upgrade] 创建企业空间配额记录非致命提示:", quotaErr);
+      }
+
       resultWorkspaceId = newWorkspace.id;
 
       // 仅"迁移模式"删除原个人空间；并行/替换模式均保留个人空间

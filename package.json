@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "cron:expire-points": "tsx --tsconfig tsconfig.json scripts/expire-points-cron.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed-components.ts && npx tsx prisma/seed-membership.ts && npx tsx prisma/seed-positions.ts && npx tsx prisma/seed-system-documents.ts && npx tsx prisma/seed-test-data.ts"

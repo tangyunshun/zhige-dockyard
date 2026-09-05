@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, useParams, usePathname, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { confirm } from "@/components/GlobalConfirmProvider";
 import { 
   ArrowLeft, Settings, ChevronDown, Plus, FileText, Layers, Database, Layout, Box,
   Server, ShieldCheck, Check, ArrowRight, BookOpen, AlertCircle, 
   CheckCircle2, Play, Users, BarChart2, ShieldAlert, FileDown, Clipboard, Trash2, Edit2, HelpCircle, Info,
   Upload, Save, AlertTriangle, Copy, KeyRound, ExternalLink, Share2, Ban, Clock, History, Zap, PenLine, Eye,
-  Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock, Sparkles
+  Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock, Sparkles,
+  SlidersHorizontal, Briefcase, Crown
 } from "lucide-react";
 import AvatarDropdown from "@/components/AvatarDropdown";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
@@ -46,12 +48,13 @@ import TasksTab from "@/components/studio/TasksTab";
 import AssetsTab, { AssetPermissions } from "@/components/studio/AssetsTab";
 import OverviewTab from "@/components/studio/OverviewTab";
 import UsageStatsTab from "@/components/studio/UsageStatsTab";
-import PositionsConfigTab, { PositionConfig } from "@/components/studio/PositionsConfigTab";
+import WorkspacePostsPermissionsTab from "@/components/studio/WorkspacePostsPermissionsTab";
 import { ResultViewer, ResultViewerTask } from "@/components/studio/ResultViewer";
 import KnowledgeTab from "@/components/studio/KnowledgeTab";
 import LogsTab from "@/components/studio/LogsTab";
 import PointsLedgerTab from "@/components/studio/PointsLedgerTab";
 import SafeUninstallModal from "@/components/studio/SafeUninstallModal";
+import { PostIcon } from "@/components/studio/PostIcon";
 import type { PositionDefinition } from "@/constants/positions";
 import { getAuthToken, getCurrentUserId } from "@/utils/auth";
 import { formatTokenBalance, isUnlimitedToken } from "@/utils/quota";
@@ -297,6 +300,34 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [workspaceToken, setWorkspaceToken] = useState<number>(12580);
   const [restrictedComponentIds, setRestrictedComponentIds] = useState<string[]>([]);
   const [customPositions, setCustomPositions] = useState<PositionDefinition[]>([]);
+  // 当前空间在权限中心实际装配引入的岗位集合
+  const [workspaceInstalledPosts, setWorkspaceInstalledPosts] = useState<Array<{
+    id: string;
+    name: string;
+    code?: string;
+    color?: string;
+    icon?: string | null;
+    description?: string;
+  }>>([]);
+  // 多岗位兼任分配模态框状态
+  const [configuringRoleMember, setConfiguringRoleMember] = useState<any | null>(null);
+  const [selectedRoleCodes, setSelectedRoleCodes] = useState<string[]>([]);
+  const [roleSearchQuery, setRoleSearchQuery] = useState<string>("");
+  const [savingMemberRoles, setSavingMemberRoles] = useState<boolean>(false);
+  // 成员列表岗位筛选自定义 Popover 状态（支持 50+ 岗位实时检索与优雅滚动）
+  const [isRoleFilterOpen, setIsRoleFilterOpen] = useState(false);
+  const [roleFilterSearch, setRoleFilterSearch] = useState("");
+  const roleFilterDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutsideRoleFilter(event: MouseEvent) {
+      if (roleFilterDropdownRef.current && !roleFilterDropdownRef.current.contains(event.target as Node)) {
+        setIsRoleFilterOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutsideRoleFilter);
+    return () => document.removeEventListener("mousedown", handleClickOutsideRoleFilter);
+  }, []);
   const [showSpaceManagementDropdown, setShowSpaceManagementDropdown] = useState(false);
   const spaceManagementDropdownRef = useRef<HTMLDivElement>(null);
   const [targetTaskId, setTargetTaskId] = useState<string | null>(null);
@@ -318,6 +349,18 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [showRechargeModal, setShowRechargeModal] = useState<boolean>(false);
   // 充值成功信号：递增后通知「算力点」页签自动刷新流水
   const [rechargeSignal, setRechargeSignal] = useState<number>(0);
+  // 充值弹窗：在线充值 / 对公转账工单 双 Tab
+  const [rechargeTab, setRechargeTab] = useState<"online" | "offline">("online");
+  const [offlineForm, setOfflineForm] = useState({
+    points: "",
+    invoiceTitle: "",
+    taxNo: "",
+    bankName: "",
+    bankAccount: "",
+    remark: "",
+  });
+  const [submittingOffline, setSubmittingOffline] = useState(false);
+  const [offlineResultOrderNo, setOfflineResultOrderNo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 自动匹配面板的文件上传（仅支持纯文本）
   const [aiMatchFileMeta, setAiMatchFileMeta] = useState<{ name: string; size: string; sizeBytes?: number } | null>(null);
@@ -821,14 +864,22 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     contactPhone: false,
   });
 
-  // 当外部传入的 workspaceName / workspaceType 等 Props 变动时，实时同步赋值
+  // 仅当切换工作空间 ID 时重新初始化设置表单，防止在当前空间编辑输入时被重置
   useEffect(() => {
-    setWorkspaceInfo((prev: any) => ({
-      ...prev,
-      id: workspaceId || prev.id,
-      name: prev.name || workspaceName || "",
-      type: workspaceType || prev.type,
-    }));
+    if (workspaceId) {
+      setWorkspaceInfo((prev: any) => {
+        // 如果空间未变，保留当前用户已输入的表单草稿，不覆盖输入
+        if (prev.id === workspaceId) {
+          return prev;
+        }
+        return {
+          ...prev,
+          id: workspaceId,
+          name: workspaceName || "",
+          type: workspaceType || "PERSONAL",
+        };
+      });
+    }
   }, [workspaceId, workspaceName, workspaceType]);
 
   // 自动从数据库加载最新空间设置信息
@@ -972,6 +1023,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           setWorkspaceQuotaInfo((prev) => ({
             ...prev,
             tokenBalance: val,
+            levelName: data.membershipLevelName || prev.levelName,
+            levelTokenLimit: data.tokenLimit || prev.levelTokenLimit,
             unallocatedBalance: Math.max(0, val - (prev.totalAllocatedToMembers || 0)),
           }));
         }
@@ -1029,6 +1082,48 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       toast.error("充值处理异常");
     } finally {
       setRecharging(false);
+    }
+  };
+
+  // 提交线下对公转账 / 合同结算充值工单（审批通过并确认收款后自动入账）
+  const submitOfflineOrder = async () => {
+    if (!workspaceId) return;
+    const pts = Number(offlineForm.points);
+    if (!pts || pts <= 0) {
+      toast.error("请输入有效的充值算力点数");
+      return;
+    }
+    setSubmittingOffline(true);
+    try {
+      const token = getAuthToken();
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch("/api/workspace/quota/recharge-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        credentials: "include",
+        body: JSON.stringify({
+          workspaceId,
+          points: pts,
+          paymentMethod: "OFFLINE_BANK",
+          invoiceTitle: offlineForm.invoiceTitle || null,
+          taxNo: offlineForm.taxNo || null,
+          bankName: offlineForm.bankName || null,
+          bankAccount: offlineForm.bankAccount || null,
+          remark: offlineForm.remark || null,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || "充值工单已提交，等待平台审批与确认收款");
+        setOfflineResultOrderNo(data.order?.orderNo || null);
+      } else {
+        toast.error(data.error || "提交失败");
+      }
+    } catch (error: any) {
+      console.error("提交线下充值工单失败:", error);
+      toast.error("提交异常");
+    } finally {
+      setSubmittingOffline(false);
     }
   };
 
@@ -1178,11 +1273,75 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     }
   }, [workspaceId, workspaceType, userState, currentMemberRole]);
 
+  // 从空间枢纽岗位接口加载当前空间实际装配/引入的所有岗位（含官方标准岗位与空间自定义岗位）
+  const loadWorkspaceInstalledPosts = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`/api/user/workspace-hub/posts?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data?.posts)) {
+          setWorkspaceInstalledPosts(data.data.posts);
+        }
+      }
+    } catch (err) {
+      console.error("加载空间装配岗位失败:", err);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (workspaceId) {
+      loadWorkspaceInstalledPosts();
+    }
+  }, [workspaceId, loadWorkspaceInstalledPosts]);
+
+  // 加载当前用户在当前空间下的岗位受限组件列表 (安全隔离闭环)
+  const loadRestrictedComponentIds = useCallback(async (targetWsId?: string) => {
+    const id = targetWsId || workspaceId;
+    if (!id) return;
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`/api/studio?action=restricted&workspaceId=${encodeURIComponent(id)}&t=${Date.now()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+      });
+      if (res.ok) {
+        const rData = await res.json();
+        if (rData.success && Array.isArray(rData.data)) {
+          setRestrictedComponentIds(rData.data);
+        }
+      }
+    } catch (e) {
+      console.warn("[WorkspaceLayout] 加载受限组件失败:", e);
+    }
+  }, [workspaceId]);
+
   useEffect(() => {
     if (activeTab === "members" && workspaceId) {
       loadTabMembers();
+      loadWorkspaceInstalledPosts();
     }
-  }, [activeTab, workspaceId, loadTabMembers]);
+    if ((activeTab === "components" || activeTab === "quick") && workspaceId) {
+      loadRestrictedComponentIds(workspaceId);
+    }
+  }, [activeTab, workspaceId, loadTabMembers, loadWorkspaceInstalledPosts, loadRestrictedComponentIds]);
+
+  // 监听跨组件权限更新事件，即时同步受限组件状态
+  useEffect(() => {
+    const handlePermissionsUpdated = () => {
+      if (workspaceId) {
+        loadRestrictedComponentIds(workspaceId);
+      }
+    };
+    window.addEventListener("workspace-permissions-updated", handlePermissionsUpdated);
+    return () => {
+      window.removeEventListener("workspace-permissions-updated", handlePermissionsUpdated);
+    };
+  }, [workspaceId, loadRestrictedComponentIds]);
 
   // 岗位配置加载闭环：权限 Tab 打开且当前用户为空间 OWNER / ADMIN 时，从后端拉取已保存的自定义岗位
   // 注意：useToast 返回的 toast 对象随 ToastProvider 重渲染而不稳定，不可作为 useCallback 依赖，
@@ -1219,25 +1378,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       loadPositions();
     }
   }, [activeTab, workspaceId, loadPositions, userRole, membersList]);
-
-  // 岗位配置保存闭环：持久化当前 customPositions 到后端（后端 checkWorkspaceManager 强校验 OWNER/ADMIN）
-  const handleSavePositions = useCallback(async (positions: PositionDefinition[]) => {
-    const res = await fetch("/api/studio", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
-      },
-      credentials: "include",
-      body: JSON.stringify({ action: "save-positions", workspaceId, positions }),
-    });
-    const data = await res.json().catch(() => ({ success: false, error: "服务器响应解析失败" }));
-    if (!res.ok || data.success === false) {
-      // 抛出后端具体错误（如 403 越权），由 PositionsConfigTab 提示，不伪报成功
-      throw new Error(data.error || `岗位配置保存失败（HTTP ${res.status}）`);
-    }
-    return data;
-  }, [workspaceId]);
 
   const handleTabGenerateCode = async () => {
     try {
@@ -1345,9 +1485,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     }
   };
 
-  const handleTabChangeRole = async (targetUserId: string, newRole: string) => {
+  const handleTabChangeRole = async (targetUserId: string, newRoleOrRoles: string | string[]) => {
     try {
+      setSavingMemberRoles(true);
       const authToken = getAuthToken();
+      const rolesArray = Array.isArray(newRoleOrRoles)
+        ? newRoleOrRoles
+        : [newRoleOrRoles];
+
       const res = await fetch("/api/workspace/members", {
         method: "PATCH",
         headers: {
@@ -1357,19 +1502,23 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         body: JSON.stringify({
           workspaceId,
           targetUserId,
-          newRole,
+          newRoles: rolesArray,
+          newRole: rolesArray.join(","),
         }),
       });
 
       if (res.ok) {
-        toast.success("成员角色调整成功");
+        toast.success("成员岗位分配已更新");
+        setConfiguringRoleMember(null);
         loadTabMembers();
       } else {
         const err = await res.json();
-        throw new Error(err.error || "调整角色失败");
+        throw new Error(err.error || "分配岗位失败");
       }
     } catch (error: any) {
-      toast.error(error.message || "操作失败，只有所有者有权调整成员角色");
+      toast.error(error.message || "操作失败，只有所有者有权调整成员岗位");
+    } finally {
+      setSavingMemberRoles(false);
     }
   };
 
@@ -1711,8 +1860,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       setWorkspaceId(id);
       setWorkspaceName(workspace.name);
       setWorkspaceType(workspace.type);
-      const initialTokens = workspace.workspacequota ? Number(workspace.workspacequota.tokenBalance) : workspace.quota?.tokenBalance ? Number(workspace.quota.tokenBalance) : 0;
+      const initialTokens = workspace.workspacequota ? Number(workspace.workspacequota.tokenBalance) : workspace.quota?.tokenBalance ? Number(workspace.quota.tokenBalance) : (workspace.type === "PERSONAL" ? 100 : 0);
       setWorkspaceToken(initialTokens);
+      setWorkspaceQuotaInfo((prev) => ({
+        ...prev,
+        tokenBalance: initialTokens,
+        unallocatedBalance: Math.max(0, initialTokens - (prev.totalAllocatedToMembers || 0)),
+      }));
 
       const getNormalizedRole = (role: string): "Owner" | "Admin" | "ComponentManager" | "KnowledgeManager" | "Member" => {
         if (!role) return "Member";
@@ -1763,15 +1917,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           refreshBoundComponents(id).catch(e => console.warn("[WorkspaceLayout] 静默组件绑定刷新失败", e)),
 
           // 辅助 3: 静默受限组件列表
-          fetch(`/api/studio?action=restricted&workspaceId=${id}`, {
-            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-            credentials: "include",
-          }).then(async r => {
-            if (r.ok) {
-              const rData = await r.json();
-              if (rData.success) setRestrictedComponentIds(rData.data || []);
-            }
-          }).catch(e => console.warn("[WorkspaceLayout] 静默拉取受限组件失败", e)),
+          loadRestrictedComponentIds(id),
 
           // 辅助 4: 实时配额余额计算与同步
           fetchRealWorkspaceQuota(id),
@@ -2095,69 +2241,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   // 杜绝总览"已装配组件数"先显示旧空间数据、再跳变到新空间数据的闪烁问题。
   const effectiveBoundComponentIds = boundComponentsWorkspaceId === workspaceId ? boundComponentIds : [];
 
-  // 岗位配置类型适配：PositionDefinition（后端持久化格式）⇄ PositionConfig（配置面板展示格式）
-  // 转换规则：allowedComponentIds ↔ defaultAllowedComponentIds；status 缺省按 ACTIVE；保留 id/editable 等后端字段
-  const toPositionConfigs = useCallback(
-    (defs: PositionDefinition[]): PositionConfig[] =>
-      defs.map((p) => ({
-        code: p.code,
-        name: p.name,
-        badge: p.badge,
-        colorCls: p.colorCls,
-        icon: p.icon,
-        description: p.description,
-        isPreset: p.isPreset,
-        status: p.status || "ACTIVE",
-        allowedComponentIds: p.defaultAllowedComponentIds || effectiveBoundComponentIds,
-      })),
-    [effectiveBoundComponentIds]
-  );
-
-  const toPositionDefinitions = useCallback(
-    (configs: PositionConfig[]): PositionDefinition[] =>
-      configs.map((p) => {
-        const prev = customPositions.find((cp) => cp.code === p.code);
-        return {
-          ...(prev || {}),
-          id: prev?.id || p.code,
-          code: p.code,
-          name: p.name,
-          badge: p.badge,
-          colorCls: p.colorCls,
-          icon: p.icon,
-          description: p.description,
-          isPreset: p.isPreset,
-          editable: prev?.editable ?? !p.isPreset,
-          status: p.status,
-          defaultAllowedComponentIds: p.allowedComponentIds,
-        };
-      }),
-    [customPositions]
-  );
-
-  // 配置面板更新回调：将展示格式的变更同步回后端持久化格式
-  const handleCustomPositionsChange = useCallback(
-    (updater: React.SetStateAction<PositionConfig[]>) => {
-      setCustomPositions((prev) => {
-        const nextConfigs = typeof updater === "function" ? updater(toPositionConfigs(prev)) : updater;
-        return toPositionDefinitions(nextConfigs);
-      });
-    },
-    [setCustomPositions, toPositionConfigs, toPositionDefinitions]
-  );
-
-  // 配置面板保存回调：展示格式 → 后端持久化格式
-  const handleSavePositionConfigs = useCallback(
-    async (configs: PositionConfig[]) => {
-      await handleSavePositions(toPositionDefinitions(configs));
-    },
-    [handleSavePositions, toPositionDefinitions]
-  );
-
   // 严格以当前工作空间在数据库中真实装配的组件为基准（保证空间枢纽与工作台内 100% 同步隔离）
   const allowedComponentIds = Array.from(new Set([...effectiveBoundComponentIds, ...(newBoundComponentId ? [newBoundComponentId] : [])]));
 
-  const hasComponentPermission = (componentId: string) => allowedComponentIds.includes(componentId);
+  const isManager = ["OWNER", "ADMIN", "Owner", "Admin", "COMPONENT_MANAGER", "ComponentManager"].includes(userRole);
+  const hasComponentPermission = (componentId: string) => {
+    if (!allowedComponentIds.includes(componentId)) return false;
+    if (workspaceType === "ENTERPRISE" && !isManager && restrictedComponentIds.includes(componentId)) {
+      return false;
+    }
+    return true;
+  };
 
   const applyComponentSwitch = (comp: ZhiGeComponent, actionType: "keep" | "clear" = "keep") => {
     if (actionType === "clear") {
@@ -2268,8 +2362,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         fileSize: null,
       };
     }
-    if (workspaceType === "ENTERPRISE" && selectedComp?.isPremium && restrictedComponentIds.includes(execCompId)) {
-      toast.error("执行拦截：当前用户岗位受矩阵规则限制，无法执行该受保护组件！");
+    if (workspaceType === "ENTERPRISE" && !isManager && restrictedComponentIds.includes(execCompId)) {
+      toast.error("执行拦截：当前用户岗位受矩阵规则限制，无法执行该受限组件！");
       return;
     }
     if (workspaceType === "ENTERPRISE" && workspaceToken !== -1 && workspaceToken < estimatedCost) {
@@ -2748,7 +2842,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
   // 批量删除资料 handler
   const handleBatchDeleteAssets = async (assetIds: string[]) => {
-    if (!confirm(`确定要彻底删除选中的 ${assetIds.length} 项资料吗？`)) return;
+    if (!(await confirm({ title: "确认删除", message: `确定要彻底删除选中的 ${assetIds.length} 项资料吗？`, type: "danger" }))) return;
     try {
       const res = await fetch("/api/studio", {
         method: "POST",
@@ -2891,16 +2985,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-500 font-bold">当前可用点数</span>
                   <span className="text-slate-900 font-mono font-black">
-                    {workspaceType === "PERSONAL" ? "无配额限制" : isUnlimitedToken(workspaceToken) ? "无限" : `${workspaceToken.toLocaleString()} 点`}
+                    {isUnlimitedToken(workspaceToken) ? "无限" : `${workspaceToken.toLocaleString()} 点`}
                   </span>
                 </div>
-                {workspaceType === "ENTERPRISE" && (
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-gradient-to-r from-[#3182ce] to-[#10b981] h-full transition-all duration-500" style={{ width: `${isUnlimitedToken(workspaceToken) ? 100 : Math.min(100, (workspaceToken / 20000) * 100)}%` }} />
-                  </div>
-                )}
-                {workspaceType === "ENTERPRISE" && workspaceToken !== -1 && workspaceToken < 1000 && (
-                  <p className="text-[11px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">⚠️ 可用额度不足 1,000 点，请及时补充</p>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div className="bg-gradient-to-r from-[#3182ce] to-[#10b981] h-full transition-all duration-500" style={{ width: `${isUnlimitedToken(workspaceToken) ? 100 : Math.min(100, (workspaceToken / (workspaceType === "PERSONAL" ? 100 : 20000)) * 100)}%` }} />
+                </div>
+                {workspaceToken !== -1 && workspaceToken < (workspaceType === "PERSONAL" ? 10 : 1000) && (
+                  <p className="text-[11px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">⚠️ 可用额度不足，请及时补充</p>
                 )}
               </div>
               <button onClick={handleUpgradeClick} className="w-full h-9 bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] text-white text-xs font-black rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center justify-center gap-1.5">
@@ -3406,6 +3498,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                                   {c.name}
                                                 </span>
                                                 <span className="text-[10px] font-mono text-slate-400 font-bold shrink-0">[{c.id}]</span>
+                                                {workspaceType === "ENTERPRISE" && !isManager && restrictedComponentIds.includes(c.id) && (
+                                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded border bg-amber-50 text-amber-600 border-amber-200 shrink-0">
+                                                    🔒 岗位受限
+                                                  </span>
+                                                )}
                                               </div>
                                               <span className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
                                                 分类: {catName}
@@ -4261,19 +4358,139 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           return `(还剩 ${diffHours} 小时)`;
         };
 
-        // 计算排序和过滤后的协同成员 (与数据库 workspacepost 岗位代码 100% 联动过滤)
+        // 全局标准岗位代码与中文名称映射表
+        const SYSTEM_ROLE_NAME_MAP: Record<string, { name: string; icon: string }> = {
+          OWNER: { name: "空间所有者", icon: "Crown" },
+          ADMIN: { name: "空间管理员", icon: "Wallet" },
+          MEMBER: { name: "协同成员", icon: "Users" },
+          DEVELOPER: { name: "研发工程师", icon: "Braces" },
+          PRODUCT_MANAGER: { name: "产品经理", icon: "PenTool" },
+          PROJECT_MANAGER: { name: "项目经理", icon: "ClipboardList" },
+          FRONTEND_DEV: { name: "前端开发工程师", icon: "Braces" },
+          FRONTEND_ENGINEER: { name: "前端开发工程师", icon: "Braces" },
+          BACKEND_DEV: { name: "后端开发工程师", icon: "UserCog" },
+          BACKEND_ENGINEER: { name: "后端开发工程师", icon: "UserCog" },
+          TEST_QA: { name: "测试工程师", icon: "Wrench" },
+          TEST_ENGINEER: { name: "测试工程师", icon: "Wrench" },
+          QA_ENGINEER: { name: "测试工程师", icon: "Wrench" },
+          QA_MANAGER: { name: "质量经理", icon: "Wrench" },
+          UI_UX_DESIGNER: { name: "UI/UX交互设计师", icon: "BadgeCheck" },
+          DESIGNER: { name: "UI/UX交互设计师", icon: "BadgeCheck" },
+          DEVOPS_ENGINEER: { name: "运维工程师", icon: "ShieldCheck" },
+          DEVOPS: { name: "运维工程师", icon: "ShieldCheck" },
+          SYSTEM_ARCHITECT: { name: "系统架构师", icon: "Database" },
+          ARCHITECT: { name: "系统架构师", icon: "Database" },
+          ALGORITHM_ENGINEER: { name: "算法工程师", icon: "Package" },
+          HARDWARE_ENGINEER: { name: "硬件工程师", icon: "Gavel" },
+          SECURITY_AUDITOR: { name: "空间审计员", icon: "Banknote" },
+          SECURITY_EXPERT: { name: "安全专家", icon: "ShieldCheck" },
+          TECH_LEAD: { name: "技术主管", icon: "Receipt" },
+          DELIVERY_LEAD: { name: "交付负责人", icon: "Bug" },
+          QUANT_STRATEGIST: { name: "量化策略分析师", icon: "ChartColumn" },
+        };
+
+        // 中文名称到系统英文代号的反向查找表
+        const NAME_TO_SYS_CODES: Record<string, string[]> = {};
+        Object.entries(SYSTEM_ROLE_NAME_MAP).forEach(([c, meta]) => {
+          if (!NAME_TO_SYS_CODES[meta.name]) NAME_TO_SYS_CODES[meta.name] = [];
+          NAME_TO_SYS_CODES[meta.name].push(c);
+        });
+
+        // 统一岗位归一化解析函数：传入任何标识（ID、中文名、英文代码），返回其所有等价标识集合
+        const resolveEquivalentRoleKeys = (token: string): Set<string> => {
+          const res = new Set<string>();
+          if (!token) return res;
+          const clean = String(token).trim();
+          const upper = clean.toUpperCase();
+          res.add(clean);
+          res.add(upper);
+
+          // 1. 系统字典映射
+          const sys = SYSTEM_ROLE_NAME_MAP[upper];
+          if (sys) {
+            res.add(sys.name);
+            res.add(sys.name.toUpperCase());
+          }
+          const sysCodes = NAME_TO_SYS_CODES[clean] || NAME_TO_SYS_CODES[upper];
+          if (sysCodes) {
+            sysCodes.forEach(sc => {
+              res.add(sc);
+              res.add(sc.toUpperCase());
+            });
+          }
+
+          // 2. 数据库已装配岗位匹配 (支持按 ID、名称与代码三向互通)
+          (workspaceInstalledPosts || []).forEach(p => {
+            const isMatch = p.id.toUpperCase() === upper ||
+              p.name.toUpperCase() === upper ||
+              (p.code && p.code.toUpperCase() === upper) ||
+              (sys && p.name === sys.name) ||
+              (sysCodes && (sysCodes.includes(p.id.toUpperCase()) || (p.code && sysCodes.includes(p.code.toUpperCase()))));
+            
+            if (isMatch) {
+              res.add(p.id);
+              res.add(p.id.toUpperCase());
+              res.add(p.name);
+              res.add(p.name.toUpperCase());
+              if (p.code) {
+                res.add(p.code);
+                res.add(p.code.toUpperCase());
+              }
+              const pCodes = NAME_TO_SYS_CODES[p.name];
+              if (pCodes) {
+                pCodes.forEach(pc => {
+                  res.add(pc);
+                  res.add(pc.toUpperCase());
+                });
+              }
+            }
+          });
+
+          return res;
+        };
+
+        // 计算目标筛选岗位的所有等价 Key 集合
+        const targetFilterKeys = memberRoleFilter === "ALL" 
+          ? new Set<string>() 
+          : resolveEquivalentRoleKeys(memberRoleFilter);
+
+        // 计算排序和过滤后的协同成员 (全链路双向等价判定，100% 精准筛选)
         const filteredMembers = membersList
           .filter(m => {
             const nameMatch = (m.name || "").toLowerCase().includes(memberSearchTerm.toLowerCase());
             const emailMatch = (m.email || "").toLowerCase().includes(memberSearchTerm.toLowerCase());
-            const memberPosCode = ((m as any).positionCode || m.role || "").toUpperCase();
-            const filterPosCode = memberRoleFilter.toUpperCase();
-            const positionMatch = memberRoleFilter === "ALL" || memberPosCode === filterPosCode || (m.role || "").toUpperCase() === filterPosCode;
-            return (nameMatch || emailMatch) && positionMatch;
+            if (!nameMatch && !emailMatch) return false;
+
+            if (memberRoleFilter === "ALL") return true;
+
+            // 提取成员的所有分配岗位标识（包含兼任数组 roles、positionCode、主角色 role）
+            const memberTokens: string[] = [
+              ...(Array.isArray((m as any).roles) ? (m as any).roles : []),
+              (m as any).positionCode,
+              m.role
+            ].filter(Boolean);
+
+            if (memberTokens.length === 0) {
+              return targetFilterKeys.has("MEMBER") || targetFilterKeys.has("协同成员");
+            }
+
+            // 只要成员的任意一个岗位标识的等价集合与筛选器选中的等价集合有交集，即为匹配
+            return memberTokens.some(tok => {
+              const tokKeys = resolveEquivalentRoleKeys(tok);
+              for (const k of tokKeys) {
+                if (targetFilterKeys.has(k)) return true;
+              }
+              return false;
+            });
           })
           .sort((a, b) => {
-            const timeA = new Date(a.joinedAt).getTime();
-            const timeB = new Date(b.joinedAt).getTime();
+            const parseJoinedTime = (val: any) => {
+              if (!val) return 0;
+              const t = new Date(val).getTime();
+              return isNaN(t) ? 0 : t;
+            };
+            const timeA = parseJoinedTime(a.joinedAt);
+            const timeB = parseJoinedTime(b.joinedAt);
             return memberTimeSort === "asc" ? timeA - timeB : timeB - timeA;
           });
 
@@ -4336,9 +4553,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 正在拉取空间协作者列表...
               </div>
             ) : (
-              <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className={`bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 shadow-sm relative overflow-visible transition-all ${isRoleFilterOpen ? "z-50" : "z-10"}`}>
                 {/* 5.1 标题头 */}
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-t-2xl">
                   <span className="text-xs font-black text-slate-800">当前空间协同协作者 ({filteredMembers.length} 人)</span>
                   {workspaceType === "ENTERPRISE" && (
                     <span className="text-[10px] px-2 py-0.5 bg-blue-50 text-[#3182ce] rounded border border-blue-100 font-bold">
@@ -4349,7 +4566,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
                 {/* 5.2 局部搜索与双维度筛选器 */}
                 {workspaceType === "ENTERPRISE" && (
-                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/20 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/20 flex flex-col sm:flex-row gap-3 items-center justify-between relative z-30">
                     <div className="w-full sm:w-64 relative">
                       <input
                         type="text"
@@ -4360,26 +4577,113 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       />
                     </div>
                     <div className="flex items-center gap-3.5 w-full sm:w-auto shrink-0 justify-end flex-wrap">
-                      {/* 岗位筛选下拉框：动态读取全局岗位列表与数据库 workspacepost 岗位，实现真正 100% 岗位联动 */}
-                      <div className="flex items-center gap-1.5">
+                      {/* 岗位筛选组件：100% 从数据库 workspacepost 读取当前空间真实装配岗位，支持 50+ 岗位快速搜索与滚动 */}
+                      <div className="flex items-center gap-1.5 relative" ref={roleFilterDropdownRef}>
                         <span className="text-[10px] text-slate-400 font-bold">岗位筛选:</span>
-                        <select
-                          value={memberRoleFilter}
-                          onChange={(e) => setMemberRoleFilter(e.target.value)}
-                          className="h-8 px-2 bg-white border border-slate-200 rounded-lg text-[11px] font-extrabold text-slate-600 cursor-pointer focus:outline-none focus:border-[#3182ce]"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsRoleFilterOpen(!isRoleFilterOpen);
+                            setRoleFilterSearch("");
+                          }}
+                          className="h-8 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-[#3182ce] rounded-lg text-[11px] font-bold text-slate-700 transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs select-none"
                         >
-                          <option value="ALL">全部岗位</option>
                           {(() => {
-                            const posMap = new Map<string, PositionDefinition>();
-                            (presetPositions || []).forEach(p => posMap.set(p.code, p));
-                            customPositions.forEach(p => posMap.set(p.code, p));
-                            return Array.from(posMap.values()).map(pos => (
-                              <option key={pos.code} value={pos.code}>
-                                {pos.icon} {pos.name}
-                              </option>
-                            ));
+                            if (memberRoleFilter === "ALL") {
+                              return (
+                                <>
+                                  <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                  <span>全部岗位</span>
+                                </>
+                              );
+                            }
+                            const matched = workspaceInstalledPosts.find(p => p.id === memberRoleFilter || p.name === memberRoleFilter || (p.code && p.code.toUpperCase() === memberRoleFilter.toUpperCase()));
+                            const sysMatched = !matched ? SYSTEM_ROLE_NAME_MAP[memberRoleFilter.toUpperCase()] : null;
+                            const displayName = matched?.name || sysMatched?.name || memberRoleFilter;
+                            const displayIcon = matched?.icon || sysMatched?.icon;
+                            return (
+                              <>
+                                <PostIcon iconKey={displayIcon} className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
+                                <span className="text-[#2b6cb0] font-black">{displayName}</span>
+                              </>
+                            );
                           })()}
-                        </select>
+                          <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${isRoleFilterOpen ? "rotate-180" : ""}`} />
+                        </button>
+
+                        {/* 下拉浮层面板：内置搜索与优雅滚动限制，解决多岗位体验痛点 */}
+                        {isRoleFilterOpen && (
+                          <div className="absolute right-0 top-full mt-1.5 w-64 bg-white rounded-xl border border-slate-200 shadow-2xl z-[100] p-2.5 space-y-2 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5">
+                            {/* 快速搜索框 */}
+                            <div className="relative">
+                              <Search className="w-3 h-3 absolute left-2.5 top-2 text-slate-400" />
+                              <input
+                                type="text"
+                                placeholder="搜索岗位名称..."
+                                value={roleFilterSearch}
+                                onChange={(e) => setRoleFilterSearch(e.target.value)}
+                                className="w-full h-7 pl-7 pr-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#3182ce] focus:bg-white"
+                                autoFocus
+                              />
+                            </div>
+
+                            {/* 岗位选项列表 (100% 数据库 workspacepost 真实装配岗位) */}
+                            <div className="max-h-56 overflow-y-auto space-y-0.5 divide-y divide-slate-50">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMemberRoleFilter("ALL");
+                                  setIsRoleFilterOpen(false);
+                                }}
+                                className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
+                                  memberRoleFilter === "ALL"
+                                    ? "bg-blue-50 text-[#2b6cb0]"
+                                    : "text-slate-700 hover:bg-slate-100"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                  <span>全部岗位</span>
+                                </div>
+                                {memberRoleFilter === "ALL" && <Check className="w-3.5 h-3.5 text-[#3182ce] shrink-0 stroke-[2.5]" />}
+                              </button>
+
+                              {workspaceInstalledPosts
+                                .filter(p => !roleFilterSearch || p.name.toLowerCase().includes(roleFilterSearch.toLowerCase()))
+                                .map(pos => {
+                                  const isSelected = memberRoleFilter === pos.id || 
+                                    (memberRoleFilter !== "ALL" && (targetFilterKeys.has(pos.id.toUpperCase()) || targetFilterKeys.has(pos.name.toUpperCase())));
+                                  return (
+                                    <button
+                                      key={pos.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setMemberRoleFilter(pos.id);
+                                        setIsRoleFilterOpen(false);
+                                      }}
+                                      className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
+                                        isSelected
+                                          ? "bg-blue-50 text-[#2b6cb0]"
+                                          : "text-slate-700 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <PostIcon iconKey={pos.icon} className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
+                                        <span className="truncate">{pos.name}</span>
+                                      </div>
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-[#3182ce] shrink-0 stroke-[2.5]" />}
+                                    </button>
+                                  );
+                                })}
+
+                              {workspaceInstalledPosts.filter(p => !roleFilterSearch || p.name.toLowerCase().includes(roleFilterSearch.toLowerCase())).length === 0 && (
+                                <div className="py-3 text-center text-xs text-slate-400 font-medium">
+                                  未找到匹配岗位
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -4398,7 +4702,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 )}
 
                 {/* 5.3 成员循环列表 */}
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-slate-100 min-h-[160px]">
                   {membersList.length === 0 ? (
                     <p className="text-xs text-slate-400 font-bold text-center py-10">当前空间暂无协同成员</p>
                   ) : filteredMembers.length === 0 ? (
@@ -4430,10 +4734,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         (myUserId !== m.userId);
 
                       return (
-                        <div key={m.userId} className="p-4 grid grid-cols-1 md:grid-cols-12 items-center gap-4 hover:bg-slate-50/50 transition-colors text-left border-b border-slate-100 last:border-b-0">
+                        <div key={m.userId} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors text-left border-b border-slate-100 last:border-b-0">
                           
-                          {/* 1. 成员头像与基本信息 (4 Cols) */}
-                          <div className="md:col-span-4 flex items-center gap-3 min-w-0">
+                          {/* 1. 成员头像与基本信息 (左段：定宽舒展，文本优雅截断) */}
+                          <div className="flex items-center gap-3 min-w-[220px] max-w-[280px] shrink-0">
                             <div className="relative flex-shrink-0">
                               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-[#3182ce] flex items-center justify-center text-white text-xs font-black shadow-sm overflow-hidden">
                                 {m.avatar ? (
@@ -4464,13 +4768,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             </div>
                           </div>
 
-                          {/* 2. 月度算力配额展示块 (5 Cols，垂直划一对齐) */}
-                          <div className="md:col-span-5 flex items-center justify-start md:justify-center">
-                            <div className="flex items-center gap-2 bg-slate-50/90 px-3 py-1.5 rounded-xl border border-slate-200/90 text-[10px] w-full max-w-[290px] shadow-2xs">
+                          {/* 2. 月度算力配额展示块 (中段：居中对齐，配置算力按钮绝不截断换行) */}
+                          <div className="flex items-center justify-start md:justify-center flex-1 min-w-0 px-2">
+                            <div className="inline-flex items-center gap-3 bg-slate-50/90 px-3.5 py-1.5 rounded-xl border border-slate-200/90 text-xs shadow-2xs shrink-0">
                               <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
-                              <div className="flex flex-col flex-1 min-w-0">
-                                <span className="text-slate-400 font-bold">本月算力额度</span>
-                                <span className="font-mono font-black text-slate-700 truncate">
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-[10px] text-slate-400 font-bold leading-tight">本月算力额度</span>
+                                <span className="font-mono font-black text-slate-700 text-xs truncate">
                                   {isTargetOwner || isTargetAdmin ? (
                                     <span className="text-emerald-600 font-bold">共享池(无限制)</span>
                                   ) : m.monthlyTokenLimit === null || m.monthlyTokenLimit === undefined ? (
@@ -4488,96 +4792,142 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     setEditingQuotaMember(m);
                                     setInputQuotaValue(m.monthlyTokenLimit !== null && m.monthlyTokenLimit !== undefined ? String(m.monthlyTokenLimit) : "");
                                   }}
-                                  className="px-2.5 py-1 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white text-[10px] font-black rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
+                                  className="px-2.5 py-1 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white text-[10px] font-black rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95 whitespace-nowrap ml-1"
                                   title="设置或分配该成员的月度算力上限"
                                 >
-                                  <Zap className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                                  <Zap className="w-2.5 h-2.5 text-amber-300 fill-amber-300 shrink-0" />
                                   <span>配置算力</span>
                                 </button>
                               )}
                             </div>
                           </div>
 
-                          {/* 3. 岗位与操作区 (3 Cols，右对齐) */}
-                          <div className="md:col-span-3 flex items-center justify-end gap-2">
-                            <div className="text-[10px] text-slate-400 font-semibold whitespace-nowrap hidden lg:inline mr-1">
+                          {/* 3. 核心岗位与操作区 (右段：右对齐，加入时间 + 纯中文岗位胶囊 + 醒目调整岗位按钮 + 移出按钮) */}
+                          <div className="flex items-center justify-end gap-3 shrink-0">
+                            <div className="text-[10px] text-slate-400 font-mono font-semibold whitespace-nowrap hidden lg:inline mr-1">
                               {joinedStr}
                             </div>
 
-                            {/* 岗位切换下拉框 */}
+                            {/* 岗位展示与兼任配置区 */}
                             {(() => {
-                              const posMap = new Map<string, PositionDefinition>();
-                              (presetPositions || []).forEach(p => posMap.set(p.code, p));
-                              customPositions.forEach(p => posMap.set(p.code, p));
-                              const allPositionsList = Array.from(posMap.values());
+                              // 全局标准岗位代码中英文映射字典（100% 杜绝输出英文字符串）
+                              const SYSTEM_ROLE_NAME_MAP: Record<string, { name: string; icon: string }> = {
+                                OWNER: { name: "空间所有者", icon: "Crown" },
+                                ADMIN: { name: "空间管理员", icon: "Wallet" },
+                                MEMBER: { name: "协同成员", icon: "Users" },
+                                DEVELOPER: { name: "研发工程师", icon: "Braces" },
+                                PRODUCT_MANAGER: { name: "产品经理", icon: "PenTool" },
+                                PROJECT_MANAGER: { name: "项目经理", icon: "ClipboardList" },
+                                FRONTEND_DEV: { name: "前端开发工程师", icon: "Braces" },
+                                FRONTEND_ENGINEER: { name: "前端开发工程师", icon: "Braces" },
+                                BACKEND_DEV: { name: "后端开发工程师", icon: "UserCog" },
+                                BACKEND_ENGINEER: { name: "后端开发工程师", icon: "UserCog" },
+                                TEST_QA: { name: "测试工程师", icon: "Wrench" },
+                                TEST_ENGINEER: { name: "测试工程师", icon: "Wrench" },
+                                QA_ENGINEER: { name: "测试工程师", icon: "Wrench" },
+                                QA_MANAGER: { name: "质量经理", icon: "Wrench" },
+                                UI_UX_DESIGNER: { name: "UI/UX交互设计师", icon: "BadgeCheck" },
+                                DESIGNER: { name: "UI/UX交互设计师", icon: "BadgeCheck" },
+                                DEVOPS_ENGINEER: { name: "运维工程师", icon: "ShieldCheck" },
+                                DEVOPS: { name: "运维工程师", icon: "ShieldCheck" },
+                                SYSTEM_ARCHITECT: { name: "系统架构师", icon: "Database" },
+                                ARCHITECT: { name: "系统架构师", icon: "Database" },
+                                ALGORITHM_ENGINEER: { name: "算法工程师", icon: "Package" },
+                                HARDWARE_ENGINEER: { name: "硬件工程师", icon: "Gavel" },
+                                SECURITY_AUDITOR: { name: "空间审计员", icon: "Banknote" },
+                                SECURITY_EXPERT: { name: "安全专家", icon: "ShieldCheck" },
+                                TECH_LEAD: { name: "技术主管", icon: "Receipt" },
+                                DELIVERY_LEAD: { name: "交付负责人", icon: "Bug" },
+                                QUANT_STRATEGIST: { name: "量化策略分析师", icon: "ChartColumn" },
+                              };
 
-                              const matchedPos = allPositionsList.find(p => p.code === m.role || p.code === (m as any).positionCode);
+                              // 岗位字典：优先读取数据库真实装配岗位
+                              const posMap = new Map<string, { id: string; name: string; icon?: string | null; color?: string }>();
+                              (workspaceInstalledPosts || []).forEach(p => {
+                                posMap.set(p.id.toUpperCase(), p);
+                                posMap.set(p.name.toUpperCase(), p);
+                                if (p.code) posMap.set(p.code.toUpperCase(), p);
+                              });
 
-                              return canChangeTargetRole ? (
-                                <select
-                                  value={(m as any).positionCode || m.role}
-                                  onChange={(e) => handleTabChangeRole(m.userId, e.target.value)}
-                                  className="px-2 py-1 text-[11px] bg-white border border-slate-300 rounded-lg focus:outline-none font-bold cursor-pointer text-slate-800 hover:border-[#3182ce] transition-colors shadow-2xs max-w-[150px] truncate"
-                                >
-                                  {allPositionsList.map(pos => (
-                                    <option key={pos.code} value={pos.code}>
-                                      {pos.icon} {pos.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span className={`text-[11px] px-2.5 py-1 rounded-lg font-extrabold select-none border shadow-2xs truncate max-w-[150px] ${matchedPos?.colorCls || roleBadgeCls}`}>
-                                  {matchedPos
-                                    ? `${matchedPos.icon} ${matchedPos.name}`
-                                    : isTargetOwner
-                                    ? "👑 空间所有者"
-                                    : isTargetAdmin
-                                    ? "🔧 空间管理员"
-                                    : "👤 协同成员"}
-                                </span>
+                              // 获取纯中文岗位名称和矢量图标
+                              const getRoleMeta = (code: string) => {
+                                const upper = String(code).trim().toUpperCase();
+                                const found = posMap.get(upper);
+                                if (found) return { name: found.name, icon: found.icon || "Briefcase" };
+                                const sys = SYSTEM_ROLE_NAME_MAP[upper];
+                                if (sys) return sys;
+                                return { name: code === "DEVELOPER" ? "研发工程师" : code.replace(/_/g, " "), icon: "Briefcase" };
+                              };
+
+                              if (isTargetOwner) {
+                                return (
+                                  <span className="text-xs px-3 py-1.5 rounded-lg font-black select-none border border-amber-200 bg-amber-50 text-amber-800 shadow-2xs flex items-center gap-1.5 shrink-0">
+                                    <Crown className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span>空间所有者</span>
+                                  </span>
+                                );
+                              }
+
+                              // 提取目标成员的兼任岗位代号数组
+                              const memberRolesList: string[] = Array.isArray((m as any).roles) && (m as any).roles.length > 0
+                                ? (m as any).roles
+                                : [(m as any).positionCode || m.role || ""].filter(Boolean);
+
+                              return (
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {/* 渲染成员已分配的全部岗位标签 (纯中文 + 矢量 SVG 图标，绝无英文代码) */}
+                                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                    {memberRolesList.map((code) => {
+                                      const meta = getRoleMeta(code);
+                                      return (
+                                        <span
+                                          key={code}
+                                          className="text-xs px-2.5 py-1 rounded-lg font-bold select-none border border-blue-200/90 bg-blue-50/90 text-[#2b6cb0] shadow-2xs whitespace-nowrap flex items-center gap-1.5"
+                                        >
+                                          <PostIcon iconKey={meta.icon} className="w-3.5 h-3.5 text-[#2b6cb0] shrink-0" />
+                                          <span>{meta.name}</span>
+                                        </span>
+                                      );
+                                    })}
+                                    {memberRolesList.length === 0 && (
+                                      <span className="text-xs px-2.5 py-1 rounded-lg font-bold select-none border border-slate-200 bg-slate-50 text-slate-600 shadow-2xs whitespace-nowrap flex items-center gap-1.5">
+                                        <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        <span>协同成员</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* 核心主操作：醒目实心高亮调整岗位按钮 (仅所有者可操作) */}
+                                  {canChangeTargetRole && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfiguringRoleMember(m);
+                                        setSelectedRoleCodes(memberRolesList);
+                                        setRoleSearchQuery("");
+                                      }}
+                                      className="px-3 py-1.5 bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] hover:from-[#2c5282] hover:to-[#2b6cb0] text-white text-xs font-black rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0 ring-2 ring-blue-500/20 whitespace-nowrap"
+                                      title="点击为该成员分配或调整空间兼任岗位（核心管理）"
+                                    >
+                                      <SlidersHorizontal className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                                      <span>调整岗位</span>
+                                    </button>
+                                  )}
+                                </div>
                               );
                             })()}
-                            
-                            {canTabManage && (
-                              <label className="absolute inset-0 bg-black/45 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-[10px] font-bold gap-0.5">
-                                <Upload className="w-3 h-3" />
-                                <span>更换</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleSettingsLogoUpload}
-                                  disabled={logoUploading}
-                                  className="hidden"
-                                />
-                              </label>
-                            )}
-                            
-                            {canTabManage && workspaceInfo.logo && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setWorkspaceInfo((prev: any) => ({ ...prev, logo: "" }));
-                                  toast.info("已重置 Logo 为系统默认图标，点击下方 “保存修改” 后在全空间生效");
-                                }}
-                                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95 shrink-0"
-                                title="移除自定义 Logo 并恢复为默认空间图标"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                                <span>恢复默认 Logo</span>
-                              </button>
-                            )}
 
                             {/* 移出空间按钮 */}
                             {canRemoveTarget ? (
                               <button
                                 onClick={() => handleTabRemoveMember(m.userId, m.name)}
-                                className="p-1.5 bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 rounded-lg cursor-pointer transition-colors"
+                                className="p-1.5 bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 rounded-lg cursor-pointer transition-colors shrink-0"
                                 title="移出此空间"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             ) : (
-                              <div className="w-7 h-7" />
+                              <div className="w-7 h-7 shrink-0" />
                             )}
                           </div>
 
@@ -4811,12 +5161,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
       case "permissions":
         return (
-          <PositionsConfigTab
+          <WorkspacePostsPermissionsTab
             workspaceId={workspaceId}
             boundComponentIds={effectiveBoundComponentIds}
-            customPositions={toPositionConfigs(customPositions)}
-            setCustomPositions={handleCustomPositionsChange}
-            onSaveToServer={handleSavePositionConfigs}
           />
         );
 
@@ -4956,7 +5303,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                           空间名称
                         </label>
                         <span className="text-[10px] text-slate-400 font-semibold">
-                          {(workspaceInfo.name || workspaceName || "").length}/20 字
+                          {(workspaceInfo.name ?? "").length}/20 字
                         </span>
                       </div>
                       <input
@@ -4965,7 +5312,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         required
                         maxLength={20}
                         placeholder="请输入空间名称（最多 20 字，如：研发一组空间）"
-                        value={workspaceInfo.name || workspaceName || ""}
+                        value={workspaceInfo.name ?? ""}
                         onChange={handleSettingsInputChange}
                         className={`zg-input ${settingsErrors.name ? "is-error" : ""}`}
                       />
@@ -5344,8 +5691,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               };
 
               const allWs = userState?.workspaces || [];
-              const personalWs = allWs.filter(w => w.type === "PERSONAL" || w.id.includes("personal") || w.name.includes("个人"));
-              const enterpriseWs = allWs.filter(w => !personalWs.includes(w));
+              // 空间分组唯一金标准：严格以数据库真实类型 type === "ENTERPRISE" 优先判定企业空间，拒绝按名称关键字误判
+              const enterpriseWs = allWs.filter(w => 
+                (w.type || "").toUpperCase() === "ENTERPRISE" || 
+                (typeof w.id === "string" && w.id.startsWith("ws-enterprise"))
+              );
+              const personalWs = allWs.filter(w => !enterpriseWs.includes(w));
 
               return (
                 <div
@@ -6566,6 +6917,32 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               </button>
             </div>
 
+            {/* 充值方式 Tab：在线充值 / 对公转账工单 */}
+            <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setRechargeTab("online")}
+                className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  rechargeTab === "online"
+                    ? "bg-white shadow-sm text-[#3182ce]"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                在线充值
+              </button>
+              <button
+                type="button"
+                onClick={() => setRechargeTab("offline")}
+                className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  rechargeTab === "offline"
+                    ? "bg-white shadow-sm text-[#3182ce]"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                对公转账 / 合同
+              </button>
+            </div>
+
             {/* 极致压缩高度的配额提示卡片 */}
             <div className="bg-amber-50/90 p-3.5 rounded-2xl border border-amber-200/90 space-y-2 text-xs text-amber-900 shrink-0">
               <div className="font-black text-sm flex items-center justify-between">
@@ -6587,6 +6964,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             </div>
 
             {/* 固定的标题文字，放在 overflow 滚动区的外面，彻底消除遮挡叠字 */}
+            {rechargeTab === "online" && (
+            <>
             <label className="block text-xs font-black text-slate-700 shrink-0 pt-1">
               请选择所需申购的算力加油包：
             </label>
@@ -6711,6 +7090,96 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   : `立即确认充值 (${selectedRechargePack.points.toLocaleString()} 点 / ¥${applyMemberDiscount(selectedRechargePack.price ?? pointsToYuan(selectedRechargePack.points), rechargeMemberDiscount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`}
               </button>
             </div>
+          </>
+          )}
+          {rechargeTab === "offline" && (
+            <div className="shrink-0 space-y-3 border-t border-slate-100 pt-3">
+              <div className="bg-blue-50/80 border border-blue-200 rounded-xl px-3 py-2 text-[11px] font-bold text-blue-800 leading-relaxed">
+                对公转账 / 合同结算：提交后将生成充值工单，由平台管理员审批并通过后自动入账至本空间对应算力账户。请按提示完成对公打款并准确回填凭证信息，便于财务对账。
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">充值算力点数 *</label>
+                <input
+                  type="number" min="1"
+                  value={offlineForm.points}
+                  onChange={(e) => setOfflineForm({ ...offlineForm, points: e.target.value })}
+                  placeholder="例如 10000"
+                  className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">发票抬头</label>
+                  <input
+                    value={offlineForm.invoiceTitle}
+                    onChange={(e) => setOfflineForm({ ...offlineForm, invoiceTitle: e.target.value })}
+                    placeholder="单位名称"
+                    className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">税号</label>
+                  <input
+                    value={offlineForm.taxNo}
+                    onChange={(e) => setOfflineForm({ ...offlineForm, taxNo: e.target.value })}
+                    placeholder="纳税人识别号"
+                    className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">开户银行</label>
+                  <input
+                    value={offlineForm.bankName}
+                    onChange={(e) => setOfflineForm({ ...offlineForm, bankName: e.target.value })}
+                    placeholder="如：招商银行XX支行"
+                    className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">银行账号</label>
+                  <input
+                    value={offlineForm.bankAccount}
+                    onChange={(e) => setOfflineForm({ ...offlineForm, bankAccount: e.target.value })}
+                    placeholder="对公账号"
+                    className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">备注</label>
+                <textarea
+                  value={offlineForm.remark}
+                  onChange={(e) => setOfflineForm({ ...offlineForm, remark: e.target.value })}
+                  placeholder="合同编号、付款用途等"
+                  rows={2}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none resize-none"
+                />
+              </div>
+              {offlineResultOrderNo ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-[11px] font-bold text-emerald-700">
+                  工单已提交，单号：{offlineResultOrderNo}。可在「我的算力」页面查看审批进度。
+                </div>
+              ) : (
+                <div className="flex items-center justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowRechargeModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitOfflineOrder}
+                    disabled={submittingOffline}
+                    className="px-5 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    {submittingOffline ? "提交中..." : "提交充值工单"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           </div>
         </div>
       )}
@@ -6795,6 +7264,188 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     {savingQuota ? "保存中..." : "确认保存配额"}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 成员兼任多岗位分配与配置 Modal */}
+      {configuringRoleMember && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-xl rounded-2xl border border-slate-200 shadow-2xl overflow-hidden text-left font-sans flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] p-5 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center border border-white/20">
+                  <Briefcase className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm">配置成员空间岗位 (支持兼任多岗)</h3>
+                  <p className="text-[11px] text-blue-100 mt-0.5">
+                    为成员分配空间装配的专属岗位，各岗位职责权限即时生效
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfiguringRoleMember(null)}
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
+            </div>
+
+            {/* Target Member Info */}
+            <div className="p-4 bg-slate-50 border-b border-slate-100 shrink-0 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">成员对象:</span>
+                <span className="text-xs font-black text-slate-800">
+                  {configuringRoleMember.name || configuringRoleMember.userName || "协同成员"}
+                </span>
+                {configuringRoleMember.email && (
+                  <span className="text-[11px] text-slate-400 font-mono">({configuringRoleMember.email})</span>
+                )}
+              </div>
+              <span className="text-[11px] px-2 py-0.5 rounded bg-blue-50 text-[#3182ce] border border-blue-100 font-bold font-mono">
+                已选中 {selectedRoleCodes.length} 个岗位
+              </span>
+            </div>
+
+            {/* Search and Fast Action Filter */}
+            <div className="p-4 border-b border-slate-100 shrink-0 bg-white">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="搜索岗位名称或代号..."
+                  value={roleSearchQuery}
+                  onChange={(e) => setRoleSearchQuery(e.target.value)}
+                  className="w-full h-9 pl-9 pr-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#3182ce]"
+                />
+              </div>
+            </div>
+
+            {/* Posts Multi-select Cards List (100% 来源于数据库当前空间真实装配岗位，杜绝假数据) */}
+            <div className="p-4 overflow-y-auto space-y-2 flex-1 divide-y divide-slate-50">
+              {(() => {
+                // 仅读取数据库当前空间真实装配引入的岗位
+                const allAvailablePosts = workspaceInstalledPosts || [];
+                const filteredPosts = allAvailablePosts.filter(p => {
+                  if (!roleSearchQuery) return true;
+                  const q = roleSearchQuery.toLowerCase();
+                  return p.name.toLowerCase().includes(q) || (p.code && p.code.toLowerCase().includes(q)) || (p.description || "").toLowerCase().includes(q);
+                });
+
+                if (filteredPosts.length === 0) {
+                  return (
+                    <div className="py-10 text-center text-xs text-slate-400 font-bold">
+                      {roleSearchQuery ? "未检索到匹配的岗位" : "当前空间暂未装配其他岗位，可前往「岗位与权限」中心引入"}
+                    </div>
+                  );
+                }
+
+                return filteredPosts.map(pos => {
+                  const isChecked = selectedRoleCodes.some(c => 
+                    c.toUpperCase() === pos.id.toUpperCase() || 
+                    c.toUpperCase() === pos.name.toUpperCase() || 
+                    (pos.code && c.toUpperCase() === pos.code.toUpperCase())
+                  );
+                  return (
+                    <div
+                      key={pos.id}
+                      onClick={() => {
+                        setSelectedRoleCodes(prev => {
+                          const exists = prev.some(c => 
+                            c.toUpperCase() === pos.id.toUpperCase() || 
+                            c.toUpperCase() === pos.name.toUpperCase() || 
+                            (pos.code && c.toUpperCase() === pos.code.toUpperCase())
+                          );
+                          if (exists) {
+                            return prev.filter(c => 
+                              c.toUpperCase() !== pos.id.toUpperCase() && 
+                              c.toUpperCase() !== pos.name.toUpperCase() && 
+                              (!pos.code || c.toUpperCase() !== pos.code.toUpperCase())
+                            );
+                          } else {
+                            return [...prev, pos.id];
+                          }
+                        });
+                      }}
+                      className={`pt-2.5 pb-2.5 px-3.5 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                        isChecked
+                          ? "bg-blue-50/70 border-[#3182ce] shadow-2xs ring-1 ring-[#3182ce]/30"
+                          : "bg-white hover:bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                          isChecked
+                            ? "bg-[#3182ce] border-[#3182ce] text-white"
+                            : "bg-white border-slate-300"
+                        }`}>
+                          {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <PostIcon iconKey={pos.icon} className="w-4 h-4 text-[#3182ce] shrink-0" />
+                            <span className="text-xs font-black text-slate-800">{pos.name}</span>
+                          </div>
+                          {pos.description && (
+                            <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                              {pos.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 shrink-0 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRoleCodes([])}
+                  className="text-xs text-slate-500 hover:text-red-600 font-bold transition-colors cursor-pointer"
+                >
+                  清空选择
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setConfiguringRoleMember(null)}
+                  className="px-4 h-9 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (configuringRoleMember) {
+                      handleTabChangeRole(configuringRoleMember.userId, selectedRoleCodes);
+                    }
+                  }}
+                  disabled={savingMemberRoles}
+                  className="px-5 h-9 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {savingMemberRoles ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>正在更新岗位...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>保存岗位配置 ({selectedRoleCodes.length})</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

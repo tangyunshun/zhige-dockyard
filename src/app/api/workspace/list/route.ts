@@ -297,7 +297,14 @@ export async function GET(request: NextRequest) {
     }
     } // end P1-2 自愈节流
 
-    // 获取每个工作空间的组件数量
+    // 批量拉取所有工作空间的配额信息，保证前端 WorkspaceInternalLayoutV3 与组件调度面板能准确读取 tokenBalance
+    const allWsIds = Array.from(workspaceMap.keys());
+    const quotaRecords = await prisma.workspacequota.findMany({
+      where: { workspaceId: { in: allWsIds } },
+    });
+    const quotaMap = new Map<string, any>(quotaRecords.map(q => [q.workspaceId, q]));
+
+    // 获取每个工作空间的组件数量与配额挂载
     const workspacesWithComponents = await Promise.all(
       Array.from(workspaceMap.values()).map(async (workspace) => {
         // 执行自愈兜底初始化（仅全新空间初始化默认组件，不覆盖用户装配/解除结果）
@@ -306,9 +313,68 @@ export async function GET(request: NextRequest) {
         // 组件数统计与空间内 bound 口径一致（仅计真实装配记录）
         const componentCount = await getBoundComponentCount(workspace.id);
 
+        let wsQuota = quotaMap.get(workspace.id);
+
+        // 自愈哨兵：若个人空间缺失配额或免费个人空间算力 <= 0，自动创建/补偿为 100 算力点
+        if (workspace.type === "PERSONAL") {
+          const userDb = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { membershipLevel: true },
+          });
+          const mLevel = userDb?.membershipLevel || "FREE";
+          const defaultLimit = Number(await getMembershipTokenLimit(mLevel));
+          const targetTokens = defaultLimit > 0 ? defaultLimit : 100;
+
+          if (!wsQuota) {
+            let ml = await prisma.membershiplevel.findUnique({ where: { id: mLevel } });
+            try {
+              wsQuota = await prisma.workspacequota.create({
+                data: {
+                  id: crypto.randomUUID(),
+                  workspaceId: workspace.id,
+                  membershipLevelId: ml?.id || "FREE",
+                  tokenBalance: BigInt(targetTokens),
+                  updatedAt: new Date(),
+                },
+              });
+              quotaMap.set(workspace.id, wsQuota);
+            } catch (e) {
+              console.warn("[/api/workspace/list] 补齐个人空间配额非致命提示:", e);
+            }
+          } else if (Number(wsQuota.tokenBalance) <= 0 && mLevel === "FREE") {
+            try {
+              wsQuota = await prisma.workspacequota.update({
+                where: { id: wsQuota.id },
+                data: {
+                  tokenBalance: BigInt(targetTokens),
+                  updatedAt: new Date(),
+                },
+              });
+              quotaMap.set(workspace.id, wsQuota);
+            } catch (e) {
+              console.warn("[/api/workspace/list] 补偿个人空间 0 算力非致命提示:", e);
+            }
+          }
+        }
+
+        const serializedQuota = wsQuota ? {
+          id: wsQuota.id,
+          workspaceId: wsQuota.workspaceId,
+          membershipLevelId: wsQuota.membershipLevelId,
+          tokenBalance: Number(wsQuota.tokenBalance),
+          enterpriseSlots: Number(wsQuota.enterpriseSlots || 0),
+          usedSlots: Number(wsQuota.usedSlots || 0),
+          storageUsed: Number(wsQuota.storageUsed || 0),
+          storageLimit: Number(wsQuota.storageLimit || 0),
+          apiCallsUsed: Number(wsQuota.apiCallsUsed || 0),
+          apiCallsLimit: Number(wsQuota.apiCallsLimit || 0),
+        } : null;
+
         return {
           ...workspace,
           componentCount,
+          quota: serializedQuota,
+          workspacequota: serializedQuota,
         };
       }),
     );

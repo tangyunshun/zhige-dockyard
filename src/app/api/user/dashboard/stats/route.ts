@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -66,6 +66,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 获取用户个人空间算力点余额（支持免费/新用户自愈补齐 100 点）
+    let tokenBalance = 100;
+    try {
+      const personalWs = await prisma.workspace.findFirst({
+        where: { ownerId: userId, type: "PERSONAL" },
+        include: { workspacequota: true },
+      });
+      if (personalWs) {
+        if (personalWs.workspacequota && Number(personalWs.workspacequota.tokenBalance) > 0) {
+          tokenBalance = Number(personalWs.workspacequota.tokenBalance);
+        } else {
+          // 自愈补齐 100 算力点
+          tokenBalance = 100;
+          if (personalWs.workspacequota) {
+            prisma.workspacequota.update({
+              where: { id: personalWs.workspacequota.id },
+              data: { tokenBalance: BigInt(100), updatedAt: new Date() },
+            }).catch(() => {});
+          } else {
+            prisma.workspacequota.create({
+              data: {
+                id: crypto.randomUUID(),
+                workspaceId: personalWs.id,
+                membershipLevelId: "FREE",
+                tokenBalance: BigInt(100),
+                updatedAt: new Date(),
+              },
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch (quotaErr) {
+      console.warn("[dashboard/stats] 查询/自愈算力配额非致命提示:", quotaErr);
+    }
+
     // 获取已使用的 API 调用次数和存储空间
     // TODO: 实现具体的统计逻辑
     const apiCallsUsed = 0;
@@ -76,6 +111,7 @@ export async function GET(request: NextRequest) {
       data: {
         workspaceCount,
         componentCount,
+        tokenBalance,
         apiCallsUsed,
         apiCallsLimit,
         storageUsed,

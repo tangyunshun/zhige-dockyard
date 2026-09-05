@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
@@ -38,6 +38,8 @@ import {
   Coins,
   X,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 interface Component {
@@ -152,12 +154,48 @@ export default function AdminComponentsPage() {
   // 批量操作：当前页选中的组件 ID 集合
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<{
+    total: number;
+    published: number;
+    stages: number;
+    totalUsage: number;
+    stageCounts?: Record<string, number>;
+  }>({
     total: 0,
     published: 0,
     stages: 0,
     totalUsage: 0,
+    stageCounts: {},
   });
+
+  // 快捷分类横向滚动容器与左右推进控制
+  const categoryScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScrollButtons = () => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  };
+
+  useEffect(() => {
+    checkScrollButtons();
+    window.addEventListener("resize", checkScrollButtons);
+    return () => window.removeEventListener("resize", checkScrollButtons);
+  }, [types]);
+
+  const handleScroll = (direction: "left" | "right") => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const scrollAmount = 240;
+    el.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
+    });
+    setTimeout(checkScrollButtons, 320);
+  };
 
   // 确认对话框状态
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -529,10 +567,10 @@ export default function AdminComponentsPage() {
 
           <div className="flex items-center gap-3">
             <Link
-              href="/components"
+              href="/studio"
               target="_blank"
               className="inline-flex items-center gap-1.5 px-4 h-9 bg-white hover:bg-slate-50 text-[#3182ce] border border-[#3182ce]/30 hover:border-[#3182ce] rounded-xl text-xs font-bold transition-all shadow-2xs group"
-              title="前往用户前台组件中心查看实际展示与调度情况"
+              title="前往用户前台组件工坊查看实际展示与调度情况"
             >
               <span>直达前台组件集市</span>
               <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
@@ -621,21 +659,6 @@ export default function AdminComponentsPage() {
                 </div>
 
                 <select
-                  value={filters.stage}
-                  onChange={(e) =>
-                    setFilters({ ...filters, stage: e.target.value })
-                  }
-                  className="px-3 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white/80 whitespace-nowrap"
-                >
-                  <option value="">全部领域阶段</option>
-                  {types.map((stage) => (
-                    <option key={stage} value={stage}>
-                      {getStageCNLabel(stage)}
-                    </option>
-                  ))}
-                </select>
-
-                <select
                   value={filters.published}
                   onChange={(e) =>
                     setFilters({ ...filters, published: e.target.value })
@@ -673,40 +696,82 @@ export default function AdminComponentsPage() {
               </div>
             </div>
 
-            {/* 快捷领域分类标签栏 */}
-            <div className="flex items-center gap-1.5 pt-2.5 border-t border-slate-100 overflow-x-auto pb-0.5 text-xs">
-              <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap mr-1">快捷分类:</span>
+            {/* 快捷领域分类标签栏（左右平滑推拉 + 各分类真实数量统计） */}
+            <div className="flex items-center gap-2 pt-2.5 border-t border-slate-100 text-xs min-w-0">
+              <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap shrink-0">快捷分类:</span>
+
+              {/* 左翻页推拉按钮 */}
               <button
                 type="button"
-                onClick={() => {
-                  setFilters({ ...filters, stage: "" });
-                  setCurrentPage(1);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  filters.stage === ""
-                    ? "bg-[#3182ce] text-white shadow-xs"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                onClick={() => handleScroll("left")}
+                disabled={!canScrollLeft}
+                className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                  canScrollLeft
+                    ? "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-[#3182ce] shadow-2xs cursor-pointer active:scale-95"
+                    : "border-slate-100 bg-slate-50 text-slate-300 opacity-40 cursor-not-allowed"
                 }`}
+                title="向左推进滚动分类"
               >
-                全部阶段 ({stats.total})
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              {types.slice(0, 8).map((stage) => (
+
+              {/* 横向滚动分类容器 */}
+              <div
+                ref={categoryScrollRef}
+                onScroll={checkScrollButtons}
+                className="flex items-center gap-1.5 overflow-x-auto py-0.5 min-w-0 flex-1 scroll-smooth"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
                 <button
-                  key={stage}
                   type="button"
                   onClick={() => {
-                    setFilters({ ...filters, stage });
+                    setFilters({ ...filters, stage: "" });
                     setCurrentPage(1);
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                    filters.stage === stage
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                    filters.stage === ""
                       ? "bg-[#3182ce] text-white shadow-xs"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  {getStageCNLabel(stage)}
+                  全部阶段 ({stats.total || 0})
                 </button>
-              ))}
+                {types.map((stage) => {
+                  const stageCount = stats.stageCounts?.[stage] ?? 0;
+                  return (
+                    <button
+                      key={stage}
+                      type="button"
+                      onClick={() => {
+                        setFilters({ ...filters, stage });
+                        setCurrentPage(1);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                        filters.stage === stage
+                          ? "bg-[#3182ce] text-white shadow-xs"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {getStageCNLabel(stage)} ({stageCount})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 右翻页推拉按钮 */}
+              <button
+                type="button"
+                onClick={() => handleScroll("right")}
+                disabled={!canScrollRight}
+                className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                  canScrollRight
+                    ? "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-[#3182ce] shadow-2xs cursor-pointer active:scale-95"
+                    : "border-slate-100 bg-slate-50 text-slate-300 opacity-40 cursor-not-allowed"
+                }`}
+                title="向右推进滚动分类"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>

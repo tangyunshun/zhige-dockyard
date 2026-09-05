@@ -109,10 +109,43 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const defaultLimit = Number(await getMembershipTokenLimit(user.membershipLevel));
+    const targetLimit = defaultLimit > 0 ? defaultLimit : 100;
+
     // 无配额记录时回退到会员等级真实 tokenLimit，不再写死 10000
-    const currentTokenBalance = workspaceQuotaRecord
+    let currentTokenBalance = workspaceQuotaRecord
       ? Number(workspaceQuotaRecord.tokenBalance)
-      : Number(await getMembershipTokenLimit(user.membershipLevel));
+      : targetLimit;
+
+    // 自愈哨兵：若免费用户当前空间算力为 0，自动补全 100 算力点体验额度并持久化
+    if ((user.membershipLevel || "FREE") === "FREE" && currentTokenBalance <= 0) {
+      currentTokenBalance = 100;
+      if (workspaceQuotaRecord) {
+        try {
+          await prisma.workspacequota.update({
+            where: { id: workspaceQuotaRecord.id },
+            data: { tokenBalance: BigInt(100), updatedAt: new Date() },
+          });
+          workspaceQuotaRecord.tokenBalance = BigInt(100);
+        } catch (e) {
+          console.warn("[/api/workspace/quota] 补偿 100 算力点非致命提示:", e);
+        }
+      } else if (workspaceIdParam) {
+        try {
+          workspaceQuotaRecord = await prisma.workspacequota.create({
+            data: {
+              id: crypto.randomUUID(),
+              workspaceId: workspaceIdParam,
+              membershipLevelId: "FREE",
+              tokenBalance: BigInt(100),
+              updatedAt: new Date(),
+            },
+          });
+        } catch (e) {
+          console.warn("[/api/workspace/quota] 补创建配额记录非致命提示:", e);
+        }
+      }
+    }
 
     // 累计历史算力消耗（真实统计）：各组件使用次数 × 组件目录 estimatedTokens 基准
     const usageTokenBase = await prisma.componentcatalog.findMany({
@@ -152,7 +185,6 @@ export async function GET(request: NextRequest) {
       quota: workspaceQuotaRecord ? {
         workspaceId: workspaceQuotaRecord.workspaceId,
         tokenBalance: Number(workspaceQuotaRecord.tokenBalance),
-        cycleResetDay: workspaceQuotaRecord.cycleResetDay,
         resetAt,
       } : { tokenBalance: currentTokenBalance, resetAt },
       data: {

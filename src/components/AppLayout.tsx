@@ -8,6 +8,7 @@ import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import RouterGuards from "@/components/RouterGuards";
 import GlobalHeader from "@/components/GlobalHeader";
 import { ToastProvider } from "@/components/Toast";
+import { GlobalConfirmProvider } from "@/components/GlobalConfirmProvider";
 import AuthCheck from "@/components/AuthCheck";
 import ActivityMonitor from "@/components/ActivityMonitor";
 import { ResponsiveProvider } from "@/contexts/ResponsiveContext";
@@ -60,8 +61,9 @@ export default function AppLayout({
           {/* 全局工作空间上下文：WorkspaceKickoutGuard 等组件依赖 useWorkspace，必须提供 Provider */}
           <WorkspaceProvider>
             <ToastProvider>
-              <AuthCheck>
-                <RouterGuards>
+              <GlobalConfirmProvider>
+                <AuthCheck>
+                  <RouterGuards>
                   {/* 根据路由显示或隐藏 GlobalHeader */}
                   {shouldHideGlobalHeader ? (
                     <>
@@ -103,9 +105,10 @@ export default function AppLayout({
                   )}
                 </RouterGuards>
               </AuthCheck>
-              <ActivityMonitor />
-              <OAuthProfilePrompt />
-              {shouldShowGlobalFeedback && <GlobalFeedbackModal />}
+                <ActivityMonitor />
+                <OAuthProfilePrompt />
+                {shouldShowGlobalFeedback && <GlobalFeedbackModal />}
+              </GlobalConfirmProvider>
             </ToastProvider>
           </WorkspaceProvider>
         </AppProvider>

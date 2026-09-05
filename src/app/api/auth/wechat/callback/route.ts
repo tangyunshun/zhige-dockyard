@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getMembershipTokenLimit } from '@/lib/quota-token';
+import { grantNewUserGift } from '@/lib/credit-service';
 import { seedDefaultWelcomeNotifications } from '@/lib/notifications-store';
 import { SignJWT } from 'jose';
 
@@ -145,6 +146,14 @@ export async function GET(request: NextRequest) {
               updatedAt: new Date(),
             },
           }).catch((e) => console.warn("[wechat-callback] 创建默认空间配额警告:", e));
+
+          // 新用户赠送 100 算力点：写入个人空间专属分桶（3 个月有效）+ 入账流水（幂等）
+          await grantNewUserGift({
+            userId: user.id,
+            workspaceId: newWorkspace.id,
+            workspaceName: newWorkspace.name,
+            userEmail: user.email || null,
+          }).catch((e) => console.warn("[wechat-callback] 赠送新用户算力点非致命提示:", e));
 
           // 更新用户的 lastWorkspaceId
           await prisma.user.update({

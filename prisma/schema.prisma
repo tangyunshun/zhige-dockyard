@@ -639,6 +639,7 @@ model workspacepost {
   name                String
   description         String?
   color               String                @default("#64748b")
+  icon                String?               // 岗位图标（emoji 或 lucide 图标标识），用于权限矩阵表头展示
   isDefault           Boolean               @default(false)
   isSystem            Boolean               @default(false)
   createdBy           String
@@ -664,6 +665,69 @@ model postmember {
   @@unique([userId, postId], map: "PostMember_userId_postId_key")
   @@index([postId], map: "PostMember_postId_idx")
   @@index([workspaceId], map: "PostMember_workspaceId_idx")
+}
+
+/// 全平台官方标准岗位库（唯一权威数据源）
+/// 运行时所有岗位信息一律从此表查询，代码中不得硬编码任何岗位数据
+model platformstandardpost {
+  id                 String   @id
+  name               String   @unique
+  code               String
+  description        String?
+  color              String   @default("#3182ce")
+  icon               String?
+  status             String   @default("ACTIVE")
+  sortOrder          Int      @default(0)
+  /// 是否作为新建工作空间的默认基石岗位（自动装配）
+  isWorkspaceDefault Boolean  @default(false)
+  /// 是否为系统保留岗位（空间所有者等，不允许手动引入/移除）
+  isSystemReserved   Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([code], map: "PlatformStandardPost_code_idx")
+  @@index([sortOrder], map: "PlatformStandardPost_sortOrder_idx")
+}
+
+/// 平台岗位商务图标库（lucide 图标名称为唯一标识，前端据此渲染）
+/// 岗位图标的可选集合与选择器数据一律从本表查询，代码中不硬编码任何岗位图标
+model posticonlibrary {
+  id        String   @id
+  /// lucide 图标组件名（如 Crown / UserCog / Briefcase）
+  iconKey   String   @unique(map: "PostIconLibrary_iconKey_key")
+  /// 图标用途说明（中文）
+  name      String?
+  /// 图标分组：governance / team / business / finance / delivery / dev / audit
+  category  String   @default("general")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category], map: "PostIconLibrary_category_idx")
+  @@index([sortOrder], map: "PostIconLibrary_sortOrder_idx")
+}
+
+/// 岗位名称别名表（用于空间岗位与标准岗位的名称归集匹配）
+model postalias {
+  id        String   @id
+  postName  String
+  alias     String
+  createdAt DateTime @default(now())
+
+  @@unique([postName, alias], map: "PostAlias_postName_alias_key")
+  @@index([postName], map: "PostAlias_postName_idx")
+}
+
+/// 岗位代码别名表（用于空间成员角色 code 与标准岗位 code 的归集匹配）
+model postcodealias {
+  id        String   @id
+  postCode  String
+  roleCode  String
+  createdAt DateTime @default(now())
+
+  @@unique([postCode, roleCode], map: "PostCodeAlias_postCode_roleCode_key")
+  @@index([postCode], map: "PostCodeAlias_postCode_idx")
 }
 
 model componentpermission {
@@ -986,6 +1050,141 @@ model tokenpack {
 
   @@index([isActive], map: "TokenPack_isActive_idx")
   @@index([sortOrder], map: "TokenPack_sortOrder_idx")
+}
+
+/// 用户算力钱包：跨空间通用的算力点余额（快照，真源为 pointgrant 分桶剩余量之和）
+/// 说明：钱包中的算力点可在个人空间与企业空间中通用消费。
+model userwallet {
+  id        String   @id
+  userId    String   @unique(map: "UserWallet_userId_key")
+  balance   BigInt   @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId], map: "UserWallet_userId_idx")
+}
+
+/// 算力分桶（发放批次）：每一笔发放（赠送 / 在线充值 / 线下工单入账 / 退款 / 后台调整）
+/// 生成一个独立分桶，记录发放量、剩余量与到期时间。
+/// 消耗时按「最早到期优先」逐桶扣减；到期未用完的桶由到期清算任务清零。
+model pointgrant {
+  id          String    @id
+  /// 归属范围：WALLET 用户钱包（跨空间通用）| WORKSPACE 空间共享池 | PERSONAL_GIFT 个人空间专属赠送
+  scope       String
+  userId      String?
+  workspaceId String?
+  /// 本桶发放总量
+  points      BigInt
+  /// 本桶剩余可用量
+  remaining   BigInt
+  /// 来源类型：GIFT_REGISTER / RECHARGE / OFFLINE_ORDER / MEMBERSHIP / REFUND / MANUAL
+  sourceType  String
+  /// 关联单号（充值订单号 / 工单号 / 流水号）
+  sourceId    String?
+  /// 到期时间，null 表示永不过期（赠送点默认 3 个月有效）
+  expiresAt   DateTime?
+  /// ACTIVE 可用 | EXPIRED 已到期清零 | EXHAUSTED 已用完
+  status      String    @default("ACTIVE")
+  /// 发放人（后台人工入账/审批人）
+  operatorId  String?
+  title       String?
+  remark      String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status], map: "PointGrant_userId_status_idx")
+  @@index([workspaceId, status], map: "PointGrant_workspaceId_status_idx")
+  @@index([status, expiresAt], map: "PointGrant_status_expiresAt_idx")
+}
+
+/// 算力点流水总账：所有入账与出账的唯一权威记录，用于明细呈现、统计与对账
+model pointledger {
+  id            String   @id
+  /// 方向：IN 入账 | OUT 出账
+  direction     String
+  /// 类型：GIFT_REGISTER 新用户赠送 | GIFT_EXPIRE 赠送到期清零 | RECHARGE 在线充值
+  ///      OFFLINE_RECHARGE 线下工单入账 | MEMBERSHIP_GRANT 会员额度 | CONSUME 组件消耗
+  ///      REFUND 退回 | MANUAL_ADJUST 后台人工调整
+  type          String
+  /// 归属范围：WALLET | WORKSPACE | PERSONAL_GIFT
+  scope         String
+  userId        String?
+  userEmail     String?
+  workspaceId   String?
+  workspaceName String?
+  /// 空间类型：PERSONAL | ENTERPRISE（便于个人/企业消耗分账统计）
+  workspaceType String?
+  /// 操作人（消费者 / 后台操作人 / 审批人）
+  operatorId    String?
+  /// 变动点数（正数，增减由 direction 决定）
+  points        BigInt
+  /// 变动后该账户余额快照（用于对账）
+  balanceAfter  BigInt   @default(0)
+  /// 实付金额（单位：分），赠送/消耗为 0
+  amountCents   Int      @default(0)
+  /// 支付方式：WECHAT_PAY | ALIPAY | OFFLINE_BANK | CONTRACT | SYSTEM | MANUAL
+  paymentMethod String?
+  /// 关联订单号 / 工单号
+  orderNo       String?
+  /// 关联分桶 ID
+  grantId       String?
+  componentId   String?
+  componentName String?
+  taskId        String?
+  title         String
+  remark        String?  @db.Text
+  /// 幂等键（赠送、扣费、入账均需携带，防止重复记账）
+  idempotencyKey String? @unique(map: "PointLedger_idempotencyKey_key")
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt], map: "PointLedger_userId_createdAt_idx")
+  @@index([workspaceId, createdAt], map: "PointLedger_workspaceId_createdAt_idx")
+  @@index([type], map: "PointLedger_type_idx")
+  @@index([direction], map: "PointLedger_direction_idx")
+  @@index([createdAt], map: "PointLedger_createdAt_idx")
+}
+
+/// 线下充值工单（对公转账 / 合同结算），审批通过后确认收款再自动入账，形成闭环
+model tokenrechargeorder {
+  id            String    @id
+  orderNo       String    @unique(map: "TokenRechargeOrder_orderNo_key")
+  workspaceId   String
+  workspaceName String?
+  /// 入账范围：WALLET 个人钱包 | WORKSPACE 企业空间共享池
+  scope         String
+  applicantId   String
+  applicantName String?
+  packId        String?
+  packName      String?
+  points        BigInt
+  /// 应付金额（单位：分）
+  amountCents   Int       @default(0)
+  /// OFFLINE_BANK 对公转账 | CONTRACT 合同结算
+  paymentMethod String    @default("OFFLINE_BANK")
+  /// 发票信息
+  invoiceTitle  String?
+  taxNo         String?
+  bankName      String?
+  bankAccount   String?
+  /// 付款凭证（截图/回单链接或 base64 标识）
+  voucherUrl    String?
+  remark        String?   @db.Text
+  /// PENDING 待审批 | APPROVED 审批通过待收款 | PAID 已收款已入账
+  /// REJECTED 已驳回 | CANCELLED 已撤销
+  status        String    @default("PENDING")
+  reviewerId    String?
+  reviewerName  String?
+  reviewNote    String?   @db.Text
+  reviewedAt    DateTime?
+  paidAt        DateTime?
+  /// 入账后生成的流水号
+  ledgerId      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([workspaceId, status], map: "TokenRechargeOrder_workspaceId_status_idx")
+  @@index([applicantId], map: "TokenRechargeOrder_applicantId_idx")
+  @@index([status, createdAt], map: "TokenRechargeOrder_status_createdAt_idx")
 }
 
 // ============================================================

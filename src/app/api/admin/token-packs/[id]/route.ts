@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { getTokenPackModel, updateTokenPackMemoryCache, removeTokenPackMemoryCache } from "@/lib/token-pack-service";
+import { getTokenPackModel, updateTokenPackMemoryCache, removeTokenPackMemoryCache, markTokenPackDeleted } from "@/lib/token-pack-service";
 import { pointsToYuan } from "@/lib/point-rate";
 
 /**
@@ -131,8 +131,19 @@ export async function DELETE(
 
     const model = getTokenPackModel(prisma);
     if (model) {
-      await model.delete({ where: { id } }).catch(() => null);
+      try {
+        await model.delete({ where: { id } });
+      } catch (err: any) {
+        // P2025 = 目标记录不存在（例如预置包此前已被删除），仍视为删除成功并写墓碑
+        if (err?.code !== "P2025") {
+          console.error("物理删除 tokenpack 失败:", err);
+          return NextResponse.json({ error: "删除失败，请稍后重试" }, { status: 500 });
+        }
+      }
     }
+
+    // 持久化删除标记，避免预置包在下一次列表加载时被自动补回
+    await markTokenPackDeleted(prisma, id);
 
     return NextResponse.json({
       success: true,

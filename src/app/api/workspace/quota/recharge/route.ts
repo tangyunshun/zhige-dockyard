@@ -6,6 +6,7 @@ import { validateUser } from "@/lib/auth";
 import { requireWorkspaceMembership } from "@/lib/security";
 import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
 import { pointsToCents, discountedCents, formatDiscountLabel } from "@/lib/point-rate";
+import { grantPoints, getBalanceSummary } from "@/lib/credit-service";
 
 /**
  * POST /api/workspace/quota/recharge
@@ -55,8 +56,9 @@ export async function POST(request: NextRequest) {
     // 4. 解析在售加油包与当前会员折扣（价格一律以数据库为准，杜绝前端/硬编码定价）
     const buyer = await prisma.user.findUnique({
       where: { id: auth.user.id },
-      select: { membershipLevel: true },
+      select: { membershipLevel: true, email: true },
     });
+    const buyerEmail = buyer?.email || null;
     const membershipLevel = await prisma.membershiplevel.findUnique({
       where: { id: buyer?.membershipLevel || "FREE" },
       select: { id: true, nameZh: true, tokenPackDiscount: true },
@@ -80,25 +82,36 @@ export async function POST(request: NextRequest) {
       ? discountedCents(matchedPack!.price, discountPercent)
       : originalAmountCents;
 
-    // 5. 查询并向空间全局算力池累加点数
-    const quota = await prisma.workspacequota.findUnique({ where: { workspaceId } });
-
-    if (!quota) {
-      return NextResponse.json({ error: "未查找到该工作空间绑定的算力配额记录" }, { status: 404 });
-    }
-
-    const updatedQuota = await prisma.workspacequota.update({
-      where: { workspaceId },
-      data: {
-        tokenBalance: { increment: BigInt(effectivePoints) },
-        updatedAt: new Date(),
-      },
-    });
-
-    // 6. 写入交易流转账单明细 (billing_record)，形成订单与财务合规全闭环
-    //    金额以数据库包价 × 会员折扣权威计算，原价与优惠一并留痕，便于对账。
+    // 5. 订单号与包名：先生成，供算力流水与财务账单共用
     const rechargeOrderNo = `TR_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const finalPackName = packName || matchedPack?.name || "算力加油包";
+
+    // 6. 入账归属：企业空间默认进入企业共享池（成员共用），个人空间充值进入用户钱包（跨空间通用）
+    const scope: "WALLET" | "WORKSPACE" =
+      ws?.type === "ENTERPRISE" && body.scope !== "WALLET" ? "WORKSPACE" : "WALLET";
+
+    const grantResult = await grantPoints({
+      scope,
+      userId: auth.user.id,
+      workspaceId,
+      points: effectivePoints,
+      sourceType: "RECHARGE",
+      type: "RECHARGE",
+      title: `充值 ${effectivePoints.toLocaleString()} 算力点（${finalPackName}）`,
+      amountCents,
+      paymentMethod: paymentMethod || "ONLINE_PAY",
+      orderNo: rechargeOrderNo,
+      sourceId: rechargeOrderNo,
+      workspaceType: ws?.type || null,
+      workspaceName: ws?.name || null,
+      userEmail: buyerEmail,
+      remark: discountLabel
+        ? `会员${discountLabel}优惠，实付 ¥${(amountCents / 100).toFixed(2)}`
+        : null,
+      idempotencyKey: rechargeOrderNo,
+    });
+
+    // 7. 写入交易流转账单明细 (billing_record)，形成订单与财务合规全闭环
     const billingModel = (prisma as any).billing_record || (prisma as any).billingrecord;
     if (billingModel && typeof billingModel.create === "function") {
       await billingModel.create({
@@ -127,7 +140,9 @@ export async function POST(request: NextRequest) {
       }).catch((e: any) => console.warn("写入算力充值账单记录警告:", e));
     }
 
-    const newBalanceNum = Number(updatedQuota.tokenBalance);
+    // balanceAfter 即入账账户（钱包或企业共享池）变动后的余额
+    const newBalanceNum = grantResult.balanceAfter;
+    const summary = await getBalanceSummary(auth.user.id, workspaceId);
 
     return NextResponse.json({
       success: true,
@@ -138,6 +153,8 @@ export async function POST(request: NextRequest) {
       tokenBalance: newBalanceNum,
       amountCents,
       discountPercent,
+      scope,
+      balance: summary,
     });
   } catch (error) {
     console.error("充值算力包失败:", error);

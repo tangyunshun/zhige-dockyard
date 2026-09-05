@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 // Refresh Turbopack compilation cache
 import { prisma } from "@/lib/prisma";
 import { getMembershipTokenLimit } from "@/lib/quota-token";
+import { grantNewUserGift, recordMembershipBaseGrant } from "@/lib/credit-service";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
@@ -400,6 +401,25 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
         updatedAt: now
       }
     });
+
+    // 会员基础额度补记账：quota 已直接写入 tokenLimit，此处补齐 grant+ledger，避免与流水对账出现差异
+    await recordMembershipBaseGrant({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      workspaceType: "PERSONAL",
+      points: tokenLimit,
+      idempotencyKey: `MEMBERSHIP_BASE:${workspace.id}`,
+      remark: "注册自动开通个人空间时的会员基础算力额度",
+      createdAt: now,
+    }).catch((e) => console.warn("[注册] 会员基础额度补记账失败:", e));
+
+    // 新用户注册赠送 100 算力点：写入个人空间专属分桶（3 个月有效）+ 入账流水（幂等）
+    await grantNewUserGift({
+      userId,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      userEmail: email || null,
+    }).catch((e) => console.warn("[注册] 赠送新用户算力点非致命提示:", e));
 
     // 更新用户的 lastWorkspaceId
     await prisma.user.update({

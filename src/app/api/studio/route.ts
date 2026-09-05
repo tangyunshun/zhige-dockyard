@@ -33,6 +33,7 @@ import { saveAssetFile, deleteAssetFile } from "@/lib/file-store";
 import { getFileExtension } from "@/lib/file-type";
 import { extractTextFromBuffer } from "@/lib/text-extract";
 import { UNLIMITED_TOKEN, isUnlimitedTokenLimit, getMembershipTokenLimit } from "@/lib/quota-token";
+import { consumePoints, InsufficientPointsError } from "@/lib/credit-service";
 
 // 获取真实用户 ID：统一走 validateUser 的合法 JWT 校验
 // （Authorization Bearer JWT 或 Cookie auth_token 均强制验签，
@@ -1007,19 +1008,19 @@ async function getOrCreateQuota(workspaceId: string, userId: string) {
   return quota;
 }
 
-// 岗位受限组件 ID 列表获取辅助函数 (闭环安全隔离)
+// 岗位受限组件 ID 列表获取辅助函数 (闭环安全隔离，100% 联动真实岗位权限矩阵 componentpermission)
 async function getRestrictedComponentIds(workspaceId: string, userId: string): Promise<string[]> {
   const ws = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     select: { type: true, ownerId: true }
   });
 
-  // 0. 空间不存在时绝不返回空数组放行（所有调用方必须先通过 checkWorkspaceAccess）
+  // 0. 空间不存在时绝不返回空数组放行
   if (!ws) {
     throw new Error("工作空间不存在");
   }
 
-  // 1. 若为个人空间，或者当前用户是空间所有者，无限制
+  // 1. 若为个人空间，或者当前用户是空间创建者/所有者，拥有全量特权，无任何受限
   if (ws.type === "PERSONAL" || ws.ownerId === userId) {
     return [];
   }
@@ -1034,44 +1035,184 @@ async function getRestrictedComponentIds(workspaceId: string, userId: string): P
     },
   });
 
-  // 3. 查询最新的扩展岗位变更日志，解析全系统拓展岗位
-  const roleLog = await prisma.operationlog.findFirst({
-    where: {
-      workspaceId,
-      action: "UPDATE_MEMBER_ROLE",
-      resource: userId,
-    },
-    orderBy: { createdAt: "desc" }
+  // 查当前空间装配的所有有效组件（去重且优先取带装配标记的记录）
+  const usages = await prisma.componentusage.findMany({
+    where: { workspaceId },
+    select: { componentId: true, metadata: true }
   });
 
-  const extendedRole = (roleLog?.details as any)?.newRole || memberRecord?.role || "MEMBER";
+  const boundComponentMap = new Map<string, string>(); // UpperCase -> 原始ID
+  usages.forEach(u => {
+    if (!u.componentId) return;
+    const original = u.componentId.trim();
+    if (!original) return;
+    const upper = original.toUpperCase();
+    if (!u.metadata) {
+      if (!boundComponentMap.has(upper)) boundComponentMap.set(upper, original);
+      return;
+    }
+    try {
+      const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : (u.metadata as any);
+      if (meta && typeof meta.enabled === "boolean") {
+        boundComponentMap.set(upper, original);
+      } else if (!boundComponentMap.has(upper)) {
+        boundComponentMap.set(upper, original);
+      }
+    } catch {
+      if (!boundComponentMap.has(upper)) boundComponentMap.set(upper, original);
+    }
+  });
 
-  // 4. 特权岗位（所有者 OWNER、管理员 ADMIN、项目经理 PROJECT_MANAGER）全流程全量开放！全无限制！
-  if (ws.ownerId === userId || memberRecord?.role === "OWNER" || memberRecord?.role === "ADMIN" || extendedRole === "PROJECT_MANAGER" || extendedRole === "OWNER" || extendedRole === "ADMIN") {
+  // 兜底：如果全空间绑定记录为空，则取系统默认装配的 5 套件组件
+  if (boundComponentMap.size === 0) {
+    ["C01", "C02", "C07", "C11", "C12"].forEach(id => boundComponentMap.set(id.toUpperCase(), id));
+  }
+
+  const installedComponentIds = Array.from(boundComponentMap.values());
+
+  // 非空间成员：全量组件均受限
+  if (!memberRecord) {
+    return installedComponentIds;
+  }
+
+  // 空间底层所有者角色的成员全无限制
+  if (memberRecord.role === "OWNER") {
     return [];
   }
 
-  // 5. 若只读观察员 VIEWER：限制全量组件调度
-  if (extendedRole === "VIEWER") {
-    const usages = await prisma.componentusage.findMany({
-      where: { workspaceId },
-      select: { componentId: true }
-    });
-    return usages.map(u => u.componentId);
-  }
+  // 3. 收集该成员在当前空间被赋予的全部岗位标识 (支持 postmember 关系表与 operationlog 扩展兼任岗位)
+  const memberRoleTokens = new Set<string>();
+  if (memberRecord.role) memberRoleTokens.add(memberRecord.role.trim());
+  if ((memberRecord as any).positionCode) memberRoleTokens.add(String((memberRecord as any).positionCode).trim());
 
-  // 6. 普通研发工程师 DEVELOPER / MEMBER：获取所有者在安全矩阵中配置的真实受限列表
-  const restrictLog = await prisma.operationlog.findFirst({
-    where: { workspaceId, action: "SET_RESTRICTED_COMPONENTS" },
-    orderBy: { createdAt: "desc" }
+  // 查 postmember 关联表（包含 post 关联对象）
+  const postMembers = await prisma.postmember.findMany({
+    where: { workspaceId, userId },
+    include: { post: true }
+  });
+  postMembers.forEach(pm => {
+    if (pm.postId) memberRoleTokens.add(pm.postId.trim());
+    if (pm.post?.name) memberRoleTokens.add(pm.post.name.trim());
   });
 
-  if (restrictLog && restrictLog.details) {
-    const ids = (restrictLog.details as any)?.restrictedIds;
-    if (Array.isArray(ids)) return ids;
+  // 查 operationlog 变更日志（支持 resource 为 userId，或 details 中包含 targetUserId 为当前用户）
+  const roleLogs = await prisma.operationlog.findMany({
+    where: {
+      workspaceId,
+      action: "UPDATE_MEMBER_ROLE",
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+
+  for (const log of roleLogs) {
+    const details = log.details as any;
+    const isTarget = log.resource === userId || 
+      (details && typeof details === "object" && (details.targetUserId === userId || details.userId === userId));
+    
+    if (isTarget && details) {
+      if (Array.isArray(details.roles)) {
+        details.roles.forEach((r: any) => r && memberRoleTokens.add(String(r).trim()));
+      } else if (typeof details.newRole === "string" && details.newRole.trim()) {
+        details.newRole.split(",").forEach((r: string) => r.trim() && memberRoleTokens.add(r.trim()));
+      }
+      break; // 仅取最新一条该成员的岗位分配记录
+    }
   }
 
-  return [];
+  // 4. 查询当前空间已装配引入的所有岗位对象
+  const allWorkspacePosts = await prisma.workspacepost.findMany({
+    where: { workspaceId },
+    select: { id: true, name: true, isSystem: true }
+  });
+
+  // 系统英文代号与中文名称标准映射字典
+  const SYSTEM_ROLE_NAME_MAP: Record<string, string> = {
+    OWNER: "空间所有者",
+    ADMIN: "空间管理员",
+    MEMBER: "协同成员",
+    DEVELOPER: "研发工程师",
+    PRODUCT_MANAGER: "产品经理",
+    PROJECT_MANAGER: "项目经理",
+    FRONTEND_DEV: "前端开发工程师",
+    FRONTEND_ENGINEER: "前端开发工程师",
+    BACKEND_DEV: "后端开发工程师",
+    BACKEND_ENGINEER: "后端开发工程师",
+    TEST_QA: "测试工程师",
+    TEST_ENGINEER: "测试工程师",
+    QA_ENGINEER: "测试工程师",
+    QA_MANAGER: "质量经理",
+    UI_UX_DESIGNER: "UI/UX交互设计师",
+    DESIGNER: "UI/UX交互设计师",
+    DEVOPS_ENGINEER: "运维工程师",
+    DEVOPS: "运维工程师",
+    SYSTEM_ARCHITECT: "系统架构师",
+    ARCHITECT: "系统架构师",
+    ALGORITHM_ENGINEER: "算法工程师",
+    HARDWARE_ENGINEER: "硬件工程师",
+    SECURITY_AUDITOR: "空间审计员",
+    SECURITY_EXPERT: "安全专家",
+    TECH_LEAD: "技术主管",
+    DELIVERY_LEAD: "交付负责人",
+    QUANT_STRATEGIST: "量化策略分析师",
+  };
+
+  // 匹配属于该成员的岗位 Post ID 集合
+  const matchedPostIds = new Set<string>();
+  allWorkspacePosts.forEach(post => {
+    const postNameUpper = post.name.toUpperCase().trim();
+    for (const token of memberRoleTokens) {
+      const tokenUpper = token.toUpperCase().trim();
+      if (
+        post.id.toUpperCase() === tokenUpper ||
+        postNameUpper === tokenUpper ||
+        (SYSTEM_ROLE_NAME_MAP[tokenUpper] && post.name === SYSTEM_ROLE_NAME_MAP[tokenUpper]) ||
+        (tokenUpper.includes("PRODUCT") || tokenUpper.includes("产品")) && (post.name.includes("产品") || post.name.toUpperCase().includes("PRODUCT"))
+      ) {
+        matchedPostIds.add(post.id);
+      }
+    }
+  });
+
+  // 特权检查：如果成员匹配到“空间所有者”岗位，全放行无限制
+  const ownerPost = allWorkspacePosts.find(p => p.isSystem || p.name === "空间所有者");
+  if (ownerPost && matchedPostIds.has(ownerPost.id)) {
+    return [];
+  }
+
+  // 5. 检查当前空间在 componentpermission 中是否配置过岗位权限矩阵
+  const totalPermCount = await prisma.componentpermission.count({
+    where: {
+      post: {
+        workspaceId,
+      },
+    },
+  });
+
+  // 如果当前空间从未配置过权限矩阵，普通成员默认不限制（冷启动平滑可用）
+  if (totalPermCount === 0) {
+    return [];
+  }
+
+  // 6. 如果成员已分配具体岗位：查询这些岗位所有被授权可执行（canExecute === true）的组件
+  if (matchedPostIds.size > 0) {
+    const permissions = await prisma.componentpermission.findMany({
+      where: {
+        postId: { in: Array.from(matchedPostIds) },
+        canExecute: true,
+      },
+      select: { componentId: true },
+    });
+
+    const allowedComponentUpperSet = new Set(permissions.map(p => p.componentId.trim().toUpperCase()));
+
+    // 受限组件 = 当前空间已装配的组件中，不在已授权列表里的所有组件
+    const restricted = installedComponentIds.filter(cid => !allowedComponentUpperSet.has(cid.trim().toUpperCase()));
+    return restricted;
+  }
+
+  // 如果空间已有权限管控矩阵，而该成员未被授予任何已知岗位，则所有装配组件均受限不可用
+  return installedComponentIds;
 }
 
 // POST - 执行组件相关操作
@@ -1236,16 +1377,11 @@ export async function POST(request: NextRequest) {
         // 自然月跨月算力配额自动重置
         await checkAndResetQuotaCycle(prisma, workspaceId, userId);
 
-        // 1. 校验空间算力余额
+        // 1. 确保空间配额记录存在（算力点真源为 pointgrant 分桶，此处仅保证配额行存在）
         const quota = await getOrCreateQuota(workspaceId, userId);
 
-        // 无限额度（tokenBalance = -1）不限制扣费，直接放行
-        if (Number(quota.tokenBalance) !== -1 && Number(quota.tokenBalance) < deductTokens) {
-          return NextResponse.json({ 
-            success: false, 
-            error: "当前工作空间算力 Token 余额不足，请联系管理员充值" 
-          }, { status: 400 });
-        }
+        // 任务 ID 先行生成：作为扣费幂等键与算力流水关联的任务号
+        const taskId = crypto.randomUUID();
 
         // 2. 校验成员月度算力额度 (若管理员显式为该成员配置了额度)
         const currentMember = await prisma.workspacemember.findUnique({
@@ -1313,6 +1449,31 @@ export async function POST(request: NextRequest) {
           fileSize: typeof reqInputSource?.fileSize === "number" ? reqInputSource.fileSize : null,
         };
 
+        // ===== 算力点扣费：按分桶「到期最早优先」扣减，写入算力流水（幂等）=====
+        // 可用额度 = 用户钱包（跨空间通用）+ 当前空间池（企业共享池 / 个人专属赠送）
+        try {
+          await consumePoints({
+            workspaceId,
+            userId,
+            points: deductTokens,
+            componentId: comp.id,
+            componentName: comp.name || componentId,
+            taskId,
+            workspaceType: ws?.type || null,
+            workspaceName: ws?.name || null,
+            idempotencyKey: `CONSUME:${taskId}`,
+          });
+        } catch (consumeErr) {
+          if (consumeErr instanceof InsufficientPointsError) {
+            return NextResponse.json({
+              success: false,
+              code: "POINTS_INSUFFICIENT",
+              error: `算力点余额不足：当前可用 ${consumeErr.available} 点，本次需要 ${consumeErr.required} 点，请充值后再试`,
+            }, { status: 400 });
+          }
+          throw consumeErr;
+        }
+
         // 服务端感知组件属性（category, contract, previewData, inputMode）生成差异化结果
         const outputData = buildComponentResult(comp, inputMaterial);
         const taskStatus = "SUCCESS"; // 模拟执行已完成，服务端判定成功
@@ -1326,17 +1487,9 @@ export async function POST(request: NextRequest) {
             create: { id: workspaceId, name: ws?.name || workspaceId, updatedAt: new Date() },
           });
 
-          // 无限额度（tokenBalance = -1）不扣减，保持 -1 语义；其余正常递减
-          const updatedQuota = await tx.workspacequota.update({
+          // 算力点已由 credit-service 在事务外按分桶扣减并写入流水，此处仅回读最新余额
+          const updatedQuota = await tx.workspacequota.findUnique({
             where: { workspaceId },
-            data: Number(quota.tokenBalance) === -1
-              ? { updatedAt: new Date() }
-              : {
-                  tokenBalance: {
-                    decrement: BigInt(deductTokens)
-                  },
-                  updatedAt: new Date()
-                }
           });
 
           // 若存在成员记录，同时更新成员已使用额度
@@ -1383,7 +1536,7 @@ export async function POST(request: NextRequest) {
 
           const task = await tx.componenttask.create({
             data: {
-              id: crypto.randomUUID(),
+              id: taskId,
               name: taskName || `${comp.name || componentId} 运行任务`,
               description: safeDescription,
               type: componentId,
@@ -1417,7 +1570,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          tokenBalance: Number(taskResult.quota.tokenBalance),
+          tokenBalance: taskResult.quota ? Number(taskResult.quota.tokenBalance) : 0,
           cost: deductTokens,
           task: {
             id: taskResult.task.id,

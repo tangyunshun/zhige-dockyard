@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
+import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, isPriceMatchingRule } from "@/lib/point-rate";
 import { Zap, Plus, Edit2, Trash2, ShieldAlert, Sparkles, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList } from "lucide-react";
@@ -146,7 +147,7 @@ export default function AdminTokenPacksPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`确定要删除算力加油包 [${name}] 吗？`)) return;
+    if (!(await confirm({ title: "确认删除", message: `确定要删除算力加油包 [${name}] 吗？`, type: "danger" }))) return;
 
     try {
       const token = getAuthToken();

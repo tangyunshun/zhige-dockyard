@@ -73,6 +73,17 @@ export default function GlobalHeader() {
   }, []);
 
   const handleMarkAsRead = async (id?: string) => {
+    // 立即乐观更新本地状态
+    if (id) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } else {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    }
+
     try {
       const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       const res = await fetch("/api/user/notifications/read", {
@@ -88,7 +99,7 @@ export default function GlobalHeader() {
         const json = await res.json();
         setNotifications(json.data.list || []);
         setUnreadCount(json.data.unreadCount || 0);
-        toast.success(id ? "已标记已读" : "已全部标记为已读");
+        // 静默变更，不弹扰民 Toast 提示
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("zhige_notifications_updated"));
         }

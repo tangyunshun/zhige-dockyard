@@ -28,6 +28,9 @@ import {
   Key,
   Wrench,
   ShieldAlert,
+  Briefcase,
+  Banknote,
+  ReceiptText,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
@@ -64,7 +67,7 @@ const adminMenuItems: AdminMenuItem[] = [
   },
   {
     icon: FolderKanban,
-    label: "企业空间管理",
+    label: "工作空间管理",
     href: "/admin/workspaces",
     description: "工作空间审查与资源配额",
     requiredPermission: "workspace:read",
@@ -75,6 +78,13 @@ const adminMenuItems: AdminMenuItem[] = [
     href: "/admin/workspace/plans",
     description: "配置企业空间套餐价格与配额",
     requiredPermission: "workspace:plan_manage",
+  },
+  {
+    icon: Briefcase,
+    label: "岗位管理",
+    href: "/admin/posts",
+    description: "平台官方标准岗位库与一键分发",
+    requiredPermission: "post:read",
   },
   {
     icon: Package,
@@ -94,6 +104,20 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "算力加油包管理",
     href: "/admin/membership/token-packs",
     description: "后台维护与上下架充值算力包",
+  },
+  {
+    icon: Banknote,
+    label: "充值工单审批",
+    href: "/admin/finance/recharge-orders",
+    description: "对公转账 / 合同结算充值工单审批与确认到账",
+    requiredPermission: "order:read",
+  },
+  {
+    icon: ReceiptText,
+    label: "算力总账",
+    href: "/admin/finance/points",
+    description: "平台算力点发放、消耗、对账与到期清算",
+    requiredPermission: "order:read",
   },
   {
     icon: ClipboardList,

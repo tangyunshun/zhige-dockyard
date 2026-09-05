@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force Turbopack Reload Stamp: 2026-08-24-webhooks-fixed
+// Force Turbopack Reload Stamp: 2026-09-05-post-sync-v1
 
 // 自动生成并同步无变形的立体 1:1 比例 Icon 资源
 try {

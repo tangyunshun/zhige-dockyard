@@ -32,9 +32,15 @@ import {
   ShieldAlert,
   Hash,
 } from "lucide-react";
+import {
+  PostIcon,
+  POST_ICON_MAP,
+  DEFAULT_POST_ICON,
+} from "@/components/studio/PostIcon";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import Link from "next/link";
+import { StandardPostDetailModal } from "@/components/studio/StandardPostDetailModal";
 
 interface UsedWorkspaceInfo {
   id: string;
@@ -61,12 +67,14 @@ export interface SubmittedPostItem {
   code: string;
   description: string;
   color: string;
+  icon?: string;
   workspaceId: string;
   workspaceName: string;
   submittedByUserId: string;
   submittedByUserName?: string;
   status: "PENDING" | "ACCEPTED" | "REJECTED";
   adminNote?: string;
+  reviewedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,6 +85,7 @@ interface StandardPost {
   code: string;
   description: string;
   color: string;
+  icon?: string | null;
   status: "ACTIVE" | "DISABLED";
   sortOrder: number;
   usageCount: number;
@@ -129,14 +138,9 @@ function AdminPostsContent() {
     submission: SubmittedPostItem;
     action: "ACCEPT" | "REJECT";
   } | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [viewingSubmission, setViewingSubmission] = useState<SubmittedPostItem | null>(null);
-  const [editingSubmission, setEditingSubmission] = useState<SubmittedPostItem | null>(null);
-  const [editSubmissionForm, setEditSubmissionForm] = useState({
-    name: "",
-    code: "",
-    description: "",
-    color: "#3182ce",
-  });
+
 
   // 分页状态
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -164,9 +168,13 @@ function AdminPostsContent() {
     code: "",
     description: "",
     color: "#3182ce",
+    icon: DEFAULT_POST_ICON,
     status: "ACTIVE" as "ACTIVE" | "DISABLED",
     sortOrder: 1,
   });
+
+  // 平台岗位商务图标库（来自数据库 posticonlibrary，供新建/编辑标准岗位时选择）
+  const [iconLibrary, setIconLibrary] = useState<{ iconKey: string; name: string; category: string }[]>([]);
 
   // 查看详情弹窗状态
   const [viewingPost, setViewingPost] = useState<StandardPost | null>(null);
@@ -193,6 +201,28 @@ function AdminPostsContent() {
     loadStandardPosts();
     loadWorkspaceList();
   }, [searchParams]);
+
+  // 加载平台岗位商务图标库（posticonlibrary），供新建/编辑标准岗位时选择图标
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/user/workspace-hub/post-icons", {
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (alive && res.ok && data.success) {
+          setIconLibrary(Array.isArray(data.icons) ? data.icons : []);
+        }
+      } catch (err) {
+        console.error("加载岗位商务图标库失败", err);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // 当搜索词或状态筛选变动时，重置分页到第 1 页
   useEffect(() => {
@@ -263,6 +293,7 @@ function AdminPostsContent() {
       code: "",
       description: "",
       color: "#3182ce",
+      icon: DEFAULT_POST_ICON,
       status: "ACTIVE",
       sortOrder: standardPosts.length + 1,
     });
@@ -278,6 +309,7 @@ function AdminPostsContent() {
       code: post.code,
       description: post.description || "",
       color: post.color || "#3182ce",
+      icon: post.icon || DEFAULT_POST_ICON,
       status: post.status,
       sortOrder: post.sortOrder || 1,
     });
@@ -399,10 +431,11 @@ function AdminPostsContent() {
     }
   };
 
-  // 超级管理员审核空间提报岗位：接收（纳入系统标准库）或 不接收（拒绝纳入）
+  // 超级管理员审核空间提报岗位：接收（纳入系统标准库）或 不接收（拒绝纳入并反馈意见）
   const handleReviewSubmission = async (
     submission: SubmittedPostItem,
-    action: "ACCEPT" | "REJECT"
+    action: "ACCEPT" | "REJECT",
+    adminNote?: string
   ) => {
     setReviewingSubmissionId(submission.id);
     try {
@@ -416,6 +449,7 @@ function AdminPostsContent() {
         body: JSON.stringify({
           submissionId: submission.id,
           action,
+          adminNote: adminNote?.trim(),
         }),
       });
 
@@ -434,49 +468,8 @@ function AdminPostsContent() {
     }
   };
 
-  // 打开编辑空间提报弹窗
-  const handleOpenEditSubmission = (submission: SubmittedPostItem) => {
-    setEditingSubmission(submission);
-    setEditSubmissionForm({
-      name: submission.name,
-      code: submission.code,
-      description: submission.description || "",
-      color: submission.color || "#3182ce",
-    });
-  };
 
-  // 保存超管对提报岗位的微调
-  const handleSaveEditSubmission = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSubmission) return;
-    try {
-      const token = getAuthToken();
-      const res = await fetch("/api/admin/posts/submissions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          submissionId: editingSubmission.id,
-          action: "EDIT",
-          editData: editSubmissionForm,
-        }),
-      });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success("提报岗位属性微调成功");
-        setEditingSubmission(null);
-        loadStandardPosts();
-      } else {
-        toast.error(data.error || "保存失败");
-      }
-    } catch (err) {
-      console.error("Edit submission error:", err);
-      toast.error("网络异常，保存失败");
-    }
-  };
 
   // 过滤标准岗位
   const filteredStandardPosts = useMemo(() => {
@@ -802,10 +795,10 @@ function AdminPostsContent() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-xs shrink-0"
+                            className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
                             style={{ backgroundColor: post.color }}
                           >
-                            {post.name.substring(0, 1)}
+                            <PostIcon iconKey={post.icon} className="w-5 h-5" />
                           </div>
                           <div className="min-w-0 flex-1">
                             {/* 岗位标题：设置 whitespace-nowrap 与 truncate，结合 3 列充裕宽度彻底杜绝折行 */}
@@ -1318,10 +1311,10 @@ function AdminPostsContent() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <div
-                              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-xs shrink-0"
+                              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
                               style={{ backgroundColor: sub.color || "#3182ce" }}
                             >
-                              {sub.name.substring(0, 1)}
+                              <PostIcon iconKey={sub.icon} className="w-5 h-5" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -1388,9 +1381,42 @@ function AdminPostsContent() {
 
                       {/* 底部 4 大操作按钮 */}
                       <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {new Date(sub.createdAt).toLocaleDateString()}
-                        </span>
+                        <div className="flex flex-col gap-0.5 text-[10px]">
+                          <span className="text-slate-400 font-medium">
+                            提报时间：{(() => {
+                              const d = new Date(sub.createdAt);
+                              return isNaN(d.getTime())
+                                ? sub.createdAt
+                                : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+                            })()}
+                          </span>
+                          {isAccepted && (
+                            <span className="text-emerald-600 font-bold flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-emerald-500" />
+                              <span>
+                                接收时间：{(() => {
+                                  const d = new Date(sub.reviewedAt || sub.updatedAt || sub.createdAt);
+                                  return isNaN(d.getTime())
+                                    ? ""
+                                    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+                                })()}
+                              </span>
+                            </span>
+                          )}
+                          {isRejected && (
+                            <span className="text-slate-500 font-medium flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span>
+                                审核时间：{(() => {
+                                  const d = new Date(sub.reviewedAt || sub.updatedAt || sub.createdAt);
+                                  return isNaN(d.getTime())
+                                    ? ""
+                                    : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+                                })()}
+                              </span>
+                            </span>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-1.5">
                           {/* 1. 查看详情 */}
@@ -1404,52 +1430,59 @@ function AdminPostsContent() {
                             <span>详情</span>
                           </button>
 
-                          {/* 2. 编辑微调 */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditSubmission(sub)}
-                            className="px-2.5 py-1 text-xs font-bold text-[#3182ce] hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                            title="编辑岗位属性"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span>编辑</span>
-                          </button>
+                          {/* 仅在待审阅（PENDING）状态下显示【接收】和【不接收】 */}
+                          {sub.status === "PENDING" && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={reviewingSubmissionId === sub.id}
+                                onClick={() => {
+                                  setRejectReason("");
+                                  setConfirmReview({ submission: sub, action: "ACCEPT" });
+                                }}
+                                className="px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-2xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                                title="直接接收该岗位并将其正式升级为全平台官方标准岗位（发送通过提醒）"
+                              >
+                                {reviewingSubmissionId === sub.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Check className="w-3.5 h-3.5" />
+                                )}
+                                <span>接收</span>
+                              </button>
 
-                          {/* 3. 接收（纳入系统标准库） */}
-                          <button
-                            type="button"
-                            disabled={reviewingSubmissionId === sub.id || isAccepted}
-                            onClick={() => setConfirmReview({ submission: sub, action: "ACCEPT" })}
-                            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-2xs cursor-pointer ${
-                              isAccepted
-                                ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                                : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                            }`}
-                            title="接收该岗位并将其正式升级为全平台官方标准岗位"
-                          >
-                            {reviewingSubmissionId === sub.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Check className="w-3.5 h-3.5" />
-                            )}
-                            <span>{isAccepted ? "已接收" : "接收"}</span>
-                          </button>
+                              {/* 不接收（拒绝纳入系统标准库并附带审核意见反馈用户） */}
+                              <button
+                                type="button"
+                                disabled={reviewingSubmissionId === sub.id}
+                                onClick={() => {
+                                  setRejectReason("");
+                                  setConfirmReview({ submission: sub, action: "REJECT" });
+                                }}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 text-red-600 hover:bg-red-50 border border-red-200/70 cursor-pointer"
+                                title="拒绝纳入全平台官方库并输入审核意见通知提报用户（保留空间内部自治使用）"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>不接收</span>
+                              </button>
+                            </>
+                          )}
 
-                          {/* 4. 不接收（拒绝纳入系统标准库） */}
-                          <button
-                            type="button"
-                            disabled={reviewingSubmissionId === sub.id || isRejected}
-                            onClick={() => setConfirmReview({ submission: sub, action: "REJECT" })}
-                            className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                              isRejected
-                                ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                                : "text-red-600 hover:bg-red-50 border border-red-200/70"
-                            }`}
-                            title="拒绝纳入全平台官方库（但仍保留在提报空间内部自治使用）"
-                          >
-                            <X className="w-3 h-3" />
-                            <span>{isRejected ? "已拒绝" : "不接收"}</span>
-                          </button>
+                          {/* 已接收状态：仅展示已入库标记，不展示任何不接收或冗余操作 */}
+                          {isAccepted && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/70 rounded-lg">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>已纳入标准库</span>
+                            </span>
+                          )}
+
+                          {/* 已拒绝状态：仅展示空间自治标记，不展示接收操作 */}
+                          {isRejected && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg">
+                              <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
+                              <span>已留存空间自治</span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1460,196 +1493,17 @@ function AdminPostsContent() {
         </div>
       )}
 
-      {/* ======================= MODAL: 查看岗位全息详情 ======================= */}
+      {/* ======================= MODAL: 查看岗位全息详情（复用公共 StandardPostDetailModal 组件） ======================= */}
       {viewingPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh]">
-            {/* 弹窗头部 */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-base shadow-xs shrink-0"
-                  style={{ backgroundColor: viewingPost.color }}
-                >
-                  {viewingPost.name.substring(0, 1)}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black text-slate-800">
-                      {viewingPost.name}
-                    </h3>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-                        viewingPost.status === "ACTIVE"
-                          ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                          : "bg-slate-100 text-slate-500 border-slate-200"
-                      }`}
-                    >
-                      {viewingPost.status === "ACTIVE" ? "启用分发中" : "已停用"}
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-slate-400 font-mono font-bold">
-                    唯一标识代码：{viewingPost.code}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setViewingPost(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* 详情主体内容区 */}
-            <div className="p-6 overflow-y-auto space-y-5 text-left">
-              {/* 核心属性栅格 */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <span className="text-[10px] text-slate-400 font-bold block">全网装配量</span>
-                  <span className="text-base font-black text-[#3182ce] mt-1 block">
-                    {viewingPost.usageCount || 0} 个空间
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <span className="text-[10px] text-slate-400 font-bold block">排序权重</span>
-                  <span className="text-base font-black text-slate-700 mt-1 block">
-                    No. {viewingPost.sortOrder || 1}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <span className="text-[10px] text-slate-400 font-bold block">主题配色</span>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span
-                      className="w-4 h-4 rounded-md shrink-0 shadow-2xs"
-                      style={{ backgroundColor: viewingPost.color }}
-                    />
-                    <span className="text-xs font-mono font-bold text-slate-700">
-                      {viewingPost.color}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 职责描述与业务定位全景 */}
-              <div>
-                <h4 className="text-xs font-black text-slate-700 mb-1.5 flex items-center gap-1.5">
-                  <Briefcase className="w-3.5 h-3.5 text-[#3182ce]" />
-                  <span>岗位职责描述与业务定位</span>
-                </h4>
-                <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 text-xs text-slate-700 leading-relaxed font-medium">
-                  {viewingPost.description || "暂未录入该岗位的详细业务定位与职责说明。"}
-                </div>
-              </div>
-
-              {/* 已装配此岗位的企业空间列表透视 */}
-              <div>
-                <h4 className="text-xs font-black text-slate-700 mb-2 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-[#3182ce]" />
-                    <span>已装配此岗位的企业空间清单</span>
-                  </span>
-                  <span className="text-[11px] font-bold text-slate-500">
-                    已装配 {viewingPost.usageCount || 0} 个空间 · 共 {viewingPost.totalAssignedMembers || 0} 位在编成员
-                  </span>
-                </h4>
-
-                {viewingPost.usedWorkspaces && viewingPost.usedWorkspaces.length > 0 ? (
-                  <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto">
-                    {viewingPost.usedWorkspaces.map((ws) => (
-                      <div
-                        key={ws.id}
-                        className="p-2.5 px-3 flex items-center justify-between text-xs hover:bg-white transition-colors"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Building2 className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
-                          <span className="font-black text-slate-700 truncate">{ws.name}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#3182ce] font-bold shrink-0">
-                            {ws.memberCount} 位在编成员
-                          </span>
-                        </div>
-                        <Link
-                          href={`/admin/matrix/${ws.id}`}
-                          onClick={() => setViewingPost(null)}
-                          className="text-[11px] font-bold text-[#3182ce] hover:underline flex items-center gap-1 shrink-0 ml-2"
-                        >
-                          <span>空间权限矩阵</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200 text-xs text-slate-400 text-center font-medium">
-                    全平台暂无企业空间装配此岗位。各空间负责人可在其企业权限矩阵中一键导入使用。
-                  </div>
-                )}
-              </div>
-
-              {/* 推荐 60 组件权限范式说明 */}
-              <div>
-                <h4 className="text-xs font-black text-slate-700 mb-1.5 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>企业空间导入预设权限范式</span>
-                </h4>
-                <div className="p-3.5 rounded-xl bg-blue-50/40 border border-blue-100 text-xs text-slate-600 space-y-1.5 leading-relaxed">
-                  <p className="font-bold text-[#2b6cb0]">
-                    ✓ 企业空间一键导入此岗位后，系统将自动建立开箱即用的访问权限
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    默认预置：基础研发组件查看与执行权限。空间管理员可随时在【企业权限矩阵】中精细调整各阶段专属组件授权。
-                  </p>
-                </div>
-              </div>
-
-              {/* 时间戳流水 */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                <span>创制时间：{new Date(viewingPost.createdAt).toLocaleString()}</span>
-                <span>更新时间：{new Date(viewingPost.updatedAt).toLocaleString()}</span>
-              </div>
-            </div>
-
-            {/* 弹窗底部操作 */}
-            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => handleToggleStatus(viewingPost)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-colors ${
-                  viewingPost.status === "ACTIVE"
-                    ? "text-slate-600 hover:bg-slate-200/70"
-                    : "text-emerald-600 hover:bg-emerald-50"
-                }`}
-              >
-                {viewingPost.status === "ACTIVE" ? "停用该岗位分发" : "启用该岗位分发"}
-              </button>
-
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setViewingPost(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors"
-                >
-                  关闭
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = viewingPost;
-                    setViewingPost(null);
-                    handleOpenEdit(target);
-                  }}
-                  className="px-4 py-2 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl shadow-xs transition-all flex items-center gap-1.5"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>编辑此岗位</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <StandardPostDetailModal
+          post={viewingPost}
+          onClose={() => setViewingPost(null)}
+          onToggleStatus={(target) => handleToggleStatus(target as any)}
+          onEdit={(target) => {
+            setViewingPost(null);
+            handleOpenEdit(target as any);
+          }}
+        />
       )}
 
       {/* ======================= MODAL: 新建 / 编辑标准岗位 ======================= */}
@@ -1733,6 +1587,49 @@ function AdminPostsContent() {
                       )}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* 岗位商务图标选择（可选集合来自数据库 posticonlibrary） */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">
+                  岗位商务图标
+                </label>
+                <div className="flex items-center gap-2 mb-2">
+                  <span
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
+                    style={{ backgroundColor: formData.color || "#3182ce" }}
+                  >
+                    <PostIcon iconKey={formData.icon} className="w-4 h-4" />
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-500 truncate">
+                    {iconLibrary.find((i) => i.iconKey === formData.icon)?.name || formData.icon}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-0.5">
+                  {iconLibrary.filter((i) => i.iconKey in POST_ICON_MAP).length === 0 ? (
+                    <div className="py-2 text-[11px] text-slate-400 font-semibold">
+                      商务图标库加载中或暂无可选图标，保存后将使用默认图标
+                    </div>
+                  ) : (
+                    iconLibrary
+                      .filter((i) => i.iconKey in POST_ICON_MAP)
+                      .map((item) => (
+                        <button
+                          key={item.iconKey}
+                          type="button"
+                          title={item.name || item.iconKey}
+                          onClick={() => setFormData({ ...formData, icon: item.iconKey })}
+                          className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
+                            formData.icon === item.iconKey
+                              ? "bg-blue-50 border-[#3182ce] shadow-xs scale-105"
+                              : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          <PostIcon iconKey={item.iconKey} className="w-4 h-4 text-slate-600" />
+                        </button>
+                      ))
+                  )}
                 </div>
               </div>
 
@@ -1871,7 +1768,7 @@ function AdminPostsContent() {
                   className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-xs"
                   style={{ backgroundColor: viewingSubmission.color || "#3182ce" }}
                 >
-                  <Briefcase className="w-4 h-4" />
+                  <PostIcon iconKey={viewingSubmission.icon} className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -1964,32 +1861,46 @@ function AdminPostsContent() {
               </button>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = viewingSubmission;
-                    setViewingSubmission(null);
-                    handleOpenEditSubmission(target);
-                  }}
-                  className="px-3 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors flex items-center gap-1.5"
-                >
-                  <Edit2 className="w-3.5 h-3.5 text-[#3182ce]" />
-                  <span>编辑微调</span>
-                </button>
-
-                {viewingSubmission.status !== "ACCEPTED" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = viewingSubmission;
-                      setViewingSubmission(null);
-                      setConfirmReview({ submission: target, action: "ACCEPT" });
-                    }}
-                    className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>接收并入库</span>
-                  </button>
+                {/* 仅在待审阅（PENDING）状态下才提供审核决策按钮 */}
+                {viewingSubmission.status === "PENDING" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingSubmission;
+                        setViewingSubmission(null);
+                        setRejectReason("");
+                        setConfirmReview({ submission: target, action: "ACCEPT" });
+                      }}
+                      className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>接收并入库</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingSubmission;
+                        setViewingSubmission(null);
+                        setRejectReason("");
+                        setConfirmReview({ submission: target, action: "REJECT" });
+                      }}
+                      className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>不接收</span>
+                    </button>
+                  </>
+                ) : viewingSubmission.status === "ACCEPTED" ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>已纳入标准库</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-xl">
+                    <AlertCircle className="w-4 h-4 text-slate-400" />
+                    <span>已留存空间自治</span>
+                  </span>
                 )}
               </div>
             </div>
@@ -1997,99 +1908,10 @@ function AdminPostsContent() {
         </div>
       )}
 
-      {/* ======================= MODAL: 超管编辑微调空间提报岗位 ======================= */}
-      {editingSubmission && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center gap-2">
-                <Edit2 className="w-4 h-4 text-[#3182ce]" />
-                <h3 className="text-sm font-black text-slate-800">编辑企业提报岗位信息</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingSubmission(null)}
-                className="w-7 h-7 rounded-lg hover:bg-slate-200/70 text-slate-400 hover:text-slate-600 flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditSubmission} className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">岗位名称</label>
-                <input
-                  type="text"
-                  required
-                  value={editSubmissionForm.name}
-                  onChange={(e) => setEditSubmissionForm({ ...editSubmissionForm, name: e.target.value })}
-                  className="w-full px-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-[#3182ce]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">唯一代码</label>
-                <input
-                  type="text"
-                  required
-                  value={editSubmissionForm.code}
-                  onChange={(e) => setEditSubmissionForm({ ...editSubmissionForm, code: e.target.value })}
-                  className="w-full px-3.5 py-2 text-xs font-mono uppercase border border-slate-200 rounded-xl focus:outline-none focus:border-[#3182ce]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">定位与职责描述</label>
-                <textarea
-                  rows={2}
-                  value={editSubmissionForm.description}
-                  onChange={(e) => setEditSubmissionForm({ ...editSubmissionForm, description: e.target.value })}
-                  className="w-full px-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-[#3182ce] resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">专属颜色</label>
-                <div className="flex items-center gap-2">
-                  {["#3182ce", "#2b6cb0", "#805ad5", "#38a169", "#dd6b20", "#e53e3e", "#4a5568"].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setEditSubmissionForm({ ...editSubmissionForm, color: c })}
-                      className={`w-6 h-6 rounded-full border-2 transition-transform ${
-                        editSubmissionForm.color === c ? "border-slate-800 scale-110 shadow-xs" : "border-transparent hover:scale-105"
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setEditingSubmission(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl shadow-xs transition-all flex items-center gap-1.5"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>保存修改</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ======================= MODAL: 审核操作二次确认（接收 / 不接收） ======================= */}
+      {/* ======================= MODAL: 审核操作二次确认（接收 / 不接收与审核意见反馈） ======================= */}
       {confirmReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden">
             <div className="p-6 text-left space-y-4">
               <div className="flex items-start gap-3.5">
                 <div
@@ -2108,55 +1930,105 @@ function AdminPostsContent() {
                 <div>
                   <h3 className="text-base font-black text-slate-800">
                     {confirmReview.action === "ACCEPT"
-                      ? "确认接收并纳入系统标准库？"
-                      : "确认不接收该提报岗位？"}
+                      ? "确认接收并纳入系统官方标准库？"
+                      : "不接收该岗位提报（附审核意见反馈）"}
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
-                    岗位：<strong>{confirmReview.submission.name}</strong>
-                    {confirmReview.action === "ACCEPT" ? (
-                      <>（来自 {confirmReview.submission.workspaceName}）</>
-                    ) : (
-                      <>（将仅保留在 {confirmReview.submission.workspaceName} 内部自治使用）</>
-                    )}
+                    岗位：<strong>{confirmReview.submission.name}</strong>（代号：
+                    <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-700">
+                      {confirmReview.submission.code}
+                    </code>
+                    ）· 提报自：<strong>{confirmReview.submission.workspaceName}</strong>
                   </p>
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 leading-relaxed">
-                {confirmReview.action === "ACCEPT" ? (
-                  <p>
-                    接收后，该岗位将被正式升级为<strong className="text-emerald-700">全平台官方标准岗位</strong>
-                    ，并面向所有企业空间开放使用。此操作将同时更新该岗位在提报空间内的标准状态。
+              {confirmReview.action === "ACCEPT" ? (
+                <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/60 text-xs text-emerald-800 leading-relaxed space-y-1.5">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>便捷接收模式（自动同意并推送站内提醒）：</span>
                   </p>
-                ) : (
-                  <p>
-                    不接收后，该岗位将<strong className="text-slate-700">仅保留在提报空间内部自治使用</strong>
-                    ，不会被纳入全平台官方标准库，亦不会向其他空间分发。
+                  <p className="text-emerald-700">
+                    无需单独输入意见。接收后，该岗位将正式晋升为<strong>全平台官方标准岗位</strong>，面向所有企业空间开放使用，并在系统岗位库中统一维护；同时系统将自动向提报用户发送“审核通过”消息提醒。
                   </p>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-xs text-amber-800 leading-relaxed">
+                    <p>
+                      不接收后，该岗位将<strong>仅保留在提报空间内部自治使用</strong>，不会向平台其他空间开放。请输入不接收原因，系统将以消息提醒形式通知提报人。
+                    </p>
+                  </div>
 
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      审核意见 / 驳回原因 <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      placeholder="请输入不予纳入全平台标准库的具体理由或改进建议（将以站内信同步通知提报用户）..."
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20 resize-none transition-all placeholder:text-slate-400"
+                    />
+
+                    {/* 快捷理由预设胶囊 */}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className="text-[11px] text-slate-600 font-bold self-center">快捷填入：</span>
+                      {[
+                        "已有相似功能的平台官方标准岗位",
+                        "岗位职责界定不充分，建议在空间内完善",
+                        "偏企业内部定制业务，暂不具备全平台通用性",
+                        "岗位代号或命名规范需调整",
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setRejectReason(preset)}
+                          className="px-2 py-0.5 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md transition-colors cursor-pointer"
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   disabled={reviewingSubmissionId === confirmReview.submission.id}
                   onClick={() => setConfirmReview(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="button"
-                  disabled={reviewingSubmissionId === confirmReview.submission.id}
+                  disabled={
+                    reviewingSubmissionId === confirmReview.submission.id ||
+                    (confirmReview.action === "REJECT" && !rejectReason.trim())
+                  }
                   onClick={async () => {
                     const target = confirmReview;
+                    if (target.action === "REJECT" && !rejectReason.trim()) {
+                      toast.error("请输入不接收的审核意见 / 驳回理由");
+                      return;
+                    }
                     setConfirmReview(null);
-                    await handleReviewSubmission(target.submission, target.action);
+                    await handleReviewSubmission(
+                      target.submission,
+                      target.action,
+                      target.action === "REJECT" ? rejectReason.trim() : undefined
+                    );
                   }}
-                  className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 ${
+                  className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
                     confirmReview.action === "ACCEPT"
                       ? "bg-emerald-600 hover:bg-emerald-700"
-                      : "bg-red-600 hover:bg-red-700"
+                      : "bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   }`}
                 >
                   {reviewingSubmissionId === confirmReview.submission.id ? (
@@ -2171,7 +2043,7 @@ function AdminPostsContent() {
                       ) : (
                         <X className="w-3.5 h-3.5" />
                       )}
-                      <span>{confirmReview.action === "ACCEPT" ? "确认接收" : "确认不接收"}</span>
+                      <span>{confirmReview.action === "ACCEPT" ? "确认直接接收" : "确认不接收并通知提报人"}</span>
                     </>
                   )}
                 </button>

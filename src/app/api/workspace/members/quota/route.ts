@@ -38,19 +38,39 @@ export async function GET(request: NextRequest) {
 
     const isOwner = ws?.ownerId === auth.user.id || requesterMember?.role === "OWNER";
     const isAdmin = requesterMember?.role === "ADMIN";
-
-    if (!isOwner && !isAdmin) {
-      return NextResponse.json({ error: "越权警告：仅空间管理员或所有者可查看成员算力配额" }, { status: 403 });
-    }
+    const canManageQuota = isOwner || isAdmin;
 
     // 3. 返回数据前，调用跨自然月重置预检
     await checkAndResetQuotaCycle(prisma, workspaceId, auth.user.id);
 
-    // 4. 查询空间的全局算力池
-    const quota = await prisma.workspacequota.findUnique({
+    // 4. 查询空间的全局算力池（若不存在则自动执行自愈初始化）
+    let quota = await prisma.workspacequota.findUnique({
       where: { workspaceId },
       include: { membershiplevel: true },
     });
+
+    if (!quota) {
+      try {
+        const isEnterprise = ws?.type === "ENTERPRISE";
+        const defaultBalance = isEnterprise ? 0 : 100;
+        quota = await prisma.workspacequota.create({
+          data: {
+            id: crypto.randomUUID(),
+            workspaceId,
+            membershipLevelId: isEnterprise ? "STANDARD" : "FREE",
+            tokenBalance: BigInt(defaultBalance),
+            storageLimit: BigInt(isEnterprise ? 10 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024),
+            apiCallsLimit: BigInt(isEnterprise ? 50000 : 1000),
+            storageUsed: BigInt(0),
+            apiCallsUsed: BigInt(0),
+            updatedAt: new Date(),
+          },
+          include: { membershiplevel: true },
+        });
+      } catch (createErr) {
+        console.warn("[members/quota] 空间配额自愈创建非致命提示:", createErr);
+      }
+    }
 
     // 5. 查询最新的成员列表与额度
     const members = await prisma.workspacemember.findMany({
@@ -86,7 +106,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const tokenBalanceNum = quota ? Number(quota.tokenBalance) : 0;
+    const tokenBalanceNum = quota ? Number(quota.tokenBalance) : (ws?.type === "ENTERPRISE" ? 0 : 100);
     const levelTokenLimitNum = quota?.membershiplevel ? Number(quota.membershiplevel.tokenLimit || 1000) : 1000;
     const allocatedNum = Number(totalAllocated);
     // 无限额度（tokenBalance = -1）：未锁定池同样标记为无限（-1），避免被 Math.max(0, ...) 折叠成「0」
@@ -94,10 +114,11 @@ export async function GET(request: NextRequest) {
     const unallocatedBalance = isUnlimited ? -1 : Math.max(0, tokenBalanceNum - allocatedNum);
 
     return NextResponse.json({
+      canManageQuota,
       members: serializedMembers,
       workspaceQuota: {
         tokenBalance: tokenBalanceNum,
-        levelName: quota?.membershiplevel?.nameZh || "免费版",
+        levelName: quota?.membershiplevel?.nameZh || (ws?.type === "ENTERPRISE" ? "企业标准版" : "免费版"),
         levelTokenLimit: levelTokenLimitNum,
         totalAllocatedToMembers: allocatedNum,
         unallocatedBalance,

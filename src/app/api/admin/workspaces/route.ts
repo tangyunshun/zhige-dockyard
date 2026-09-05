@@ -108,9 +108,10 @@ export async function GET(request: NextRequest) {
         const componentCountValue = await prisma.componenttask.count({
           where: { userId: { in: memberIds } },
         });
-        const quota = await prisma.workspacequota.findUnique({
+        let quota = await prisma.workspacequota.findUnique({
           where: { workspaceId: workspace.id },
           select: {
+            id: true,
             tokenBalance: true,
             membershipLevelId: true,
             storageUsed: true,
@@ -119,21 +120,43 @@ export async function GET(request: NextRequest) {
             apiCallsLimit: true,
           },
         });
+
+        // 算力配额：个人空间新用户初始赠送/保底 100 点；企业空间初始为 0（需充值购买）
+        const isEnterprise = workspace.type === "ENTERPRISE";
+        let effectiveBalance = quota ? Number(quota.tokenBalance) : 0;
+        if (!isEnterprise && effectiveBalance <= 0) {
+          effectiveBalance = 100;
+          if (quota) {
+            prisma.workspacequota.update({
+              where: { id: quota.id },
+              data: { tokenBalance: BigInt(100), updatedAt: new Date() },
+            }).catch(() => {});
+          } else {
+            prisma.workspacequota.create({
+              data: {
+                id: crypto.randomUUID(),
+                workspaceId: workspace.id,
+                membershipLevelId: "FREE",
+                tokenBalance: BigInt(100),
+                updatedAt: new Date(),
+              },
+            }).catch(() => {});
+          }
+        }
+
         // 剔除原始 workspacemember（含 BigInt 字段），避免 JSON 序列化报错
         const { workspacemember, ...workspaceBase } = workspace;
         return {
           ...workspaceBase,
           componentCount: componentCountValue,
-          quota: quota
-            ? {
-                tokenBalance: Number(quota.tokenBalance),
-                membershipLevelId: quota.membershipLevelId,
-                storageUsed: Number(quota.storageUsed || 0),
-                storageLimit: Number(quota.storageLimit || 0),
-                apiCallsUsed: Number(quota.apiCallsUsed || 0),
-                apiCallsLimit: Number(quota.apiCallsLimit || 0),
-              }
-            : null,
+          quota: {
+            tokenBalance: effectiveBalance,
+            membershipLevelId: quota?.membershipLevelId || (isEnterprise ? "STANDARD" : "FREE"),
+            storageUsed: Number(quota?.storageUsed || 0),
+            storageLimit: Number(quota?.storageLimit || (isEnterprise ? 10 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024)),
+            apiCallsUsed: Number(quota?.apiCallsUsed || 0),
+            apiCallsLimit: Number(quota?.apiCallsLimit || (isEnterprise ? 50000 : 1000)),
+          },
           members: workspacemember.map((m) => ({
             ...m,
             monthlyTokenLimit: m.monthlyTokenLimit ? Number(m.monthlyTokenLimit) : null,

@@ -28,7 +28,8 @@ export default function ResourceOverview({
   const tokenUsed = tokenQuota?.used || 0;
   // 无限额度（total = -1）：不进入比率计算，单独标记
   const tokenUnlimited = (tokenQuota?.total ?? 0) === -1;
-  const tokenTotal = tokenUnlimited ? -1 : (tokenQuota?.total ?? 100);
+  const tokenAvailable = tokenUnlimited ? -1 : (tokenQuota?.available ?? 100);
+  const tokenTotal = tokenUnlimited ? -1 : Math.max(tokenQuota?.total ?? 100, tokenAvailable + tokenUsed);
   const tokenRatio = tokenUnlimited ? 0 : (tokenTotal > 0 ? Math.min(100, Math.round((tokenUsed / tokenTotal) * 100)) : 0);
 
   // 根据会员级别设置圆环颜色 (唯一真理系统 V6.0 配色体系)
@@ -149,14 +150,27 @@ export default function ResourceOverview({
           </div>
         </div>
 
-        {/* 消耗数值 */}
+        {/* 消耗数值与可用余额 */}
         <div className="min-w-0 flex-1">
-          <span className="text-xs text-slate-400 font-bold block mb-1">本月算力点</span>
-          <div className="text-sm font-bold text-slate-800 truncate leading-none">
-            {tokenUsed.toLocaleString("zh-CN")} <span className="text-xs font-semibold text-slate-400">/ {tokenUnlimited ? "无限" : `${tokenTotal.toLocaleString("zh-CN")} 点`}</span>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-slate-500 font-bold">算力点可用余额</span>
+            <span className="text-xs font-mono font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+              {tokenUnlimited ? "无限" : `${tokenAvailable.toLocaleString("zh-CN")} 点`}
+            </span>
           </div>
-          <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-normal">
-            {level === "FREE" ? "算力不足时可升级会员套餐" : tokenUnlimited ? "当前算力无限制" : "当前算力充沛"}
+          <div className="text-xs font-bold text-slate-600 truncate leading-none">
+            已用 <span className="font-mono text-slate-800">{tokenUsed.toLocaleString("zh-CN")}</span> <span className="text-slate-400 font-normal">/ 总额 {tokenUnlimited ? "无限" : `${tokenTotal.toLocaleString("zh-CN")} 点`}</span>
+          </div>
+          <span className="text-[11px] text-slate-400 font-semibold block mt-1.5 leading-normal">
+            {tokenQuota?.ownedEnterpriseTokens > 0
+              ? `已统筹企业共享池 (${tokenQuota.ownedEnterpriseTokens.toLocaleString("zh-CN")} 点)，双端通用`
+              : tokenQuota?.personalTokens > 100
+                ? "个人空间算力充沛"
+                : level === "FREE"
+                  ? "新用户首登已赠送 100 算力点"
+                  : tokenUnlimited
+                    ? "当前会员享有无限算力"
+                    : "当前算力充沛"}
           </span>
         </div>
       </div>

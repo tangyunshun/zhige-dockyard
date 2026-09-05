@@ -228,7 +228,7 @@ export default function AdminTenantsPage() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="搜索租户名称..."
+              placeholder="搜索企业组织名称..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
@@ -253,7 +253,7 @@ export default function AdminTenantsPage() {
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
               <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-600 font-medium">加载租户列表中...</p>
+              <p className="text-slate-600 font-medium">加载企业组织列表中...</p>
             </div>
           </div>
         ) : tenantData?.tenants.length === 0 ? (
@@ -261,7 +261,7 @@ export default function AdminTenantsPage() {
             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
               <Building2 className="w-8 h-8 text-slate-400" />
             </div>
-            <p className="text-slate-500 font-medium text-sm">暂无租户数据</p>
+            <p className="text-slate-500 font-medium text-sm">暂无企业组织数据</p>
           </div>
         ) : (
           <div className="relative overflow-x-auto">
@@ -269,7 +269,7 @@ export default function AdminTenantsPage() {
               <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                    租户信息
+                    企业组织信息
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                     状态

@@ -18,6 +18,20 @@ export interface Workspace {
   isOwner?: boolean;
   description?: string;
   upgraded?: boolean;
+  /** 空间共享算力池信息（来自 dashboard 序列化） */
+  quota?: {
+    id?: string;
+    tokenBalance?: number | null;
+    storageUsed?: number;
+    storageLimit?: number;
+    apiCallsUsed?: number;
+    apiCallsLimit?: number;
+  } | null;
+  /** 兼容旧字段：与 quota 同值 */
+  workspacequota?: {
+    id?: string;
+    tokenBalance?: number | null;
+  } | null;
 }
 
 export interface EnterpriseQuota {

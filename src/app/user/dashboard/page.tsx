@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -15,6 +15,7 @@ interface UserDashboardData {
   stats: {
     workspaceCount: number;
     componentCount: number;
+    tokenBalance?: number;
     apiCallsUsed: number;
     apiCallsLimit: number;
     storageUsed: number;
@@ -29,6 +30,15 @@ export default function UserDashboardPage() {
   const [userRole, setUserRole] = useState<string>("");
 
   const statCards = [
+    {
+      icon: Zap,
+      label: "可用算力点",
+      value: `${(dashboardData?.stats as any)?.tokenBalance ?? 100} 点`,
+      change: "充足",
+      trend: "up" as const,
+      color: "text-[#3182ce]",
+      bgColor: "bg-[#3182ce]/15",
+    },
     {
       icon: FolderOpen,
       label: "工作空间",
@@ -152,7 +162,7 @@ export default function UserDashboardPage() {
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 shrink-0">
         {statCards.map((card, index) => {
           const Icon = card.icon;
           return (
@@ -238,7 +248,7 @@ export default function UserDashboardPage() {
               </button>
             ) : (
               <button
-                onClick={() => (window.location.href = "/components")}
+                onClick={() => (window.location.href = "/studio")}
                 className="group flex items-center gap-4 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#10b981]/5 hover:to-[#059669]/5 border border-slate-200 hover:border-[#10b981]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg text-left"
               >
                 <div className="w-12 h-12 rounded-xl bg-[#10b981]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">

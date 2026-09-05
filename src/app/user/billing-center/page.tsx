@@ -133,8 +133,8 @@ export default function BillingCenterPage() {
   const [workspaceQuota, setWorkspaceQuota] = useState<any>({
     membershipLevel: "FREE",
     membershipLevelName: "免费体验版",
-    tokenBalance: 0,
-    tokenLimit: 10000,
+    tokenBalance: 100,
+    tokenLimit: 100,
     totalUsedTokens: 0,
     renewDate: getNextMonthFirstDay(),
   });
@@ -236,8 +236,8 @@ export default function BillingCenterPage() {
             membershipLevel: qData.membershipLevel || "FREE",
             membershipLevelName:
               qData.membershipLevelName || qData.membershipLevel || "免费体验版",
-            tokenBalance: qData.tokenBalance ?? 0,
-            tokenLimit: qData.tokenLimit ?? 10000,
+            tokenBalance: (typeof qData.tokenBalance === "number" && qData.tokenBalance > 0) ? qData.tokenBalance : ((qData.membershipLevel || "FREE") === "FREE" ? 100 : (qData.tokenBalance ?? 0)),
+            tokenLimit: qData.tokenLimit ?? ((qData.membershipLevel || "FREE") === "FREE" ? 100 : 10000),
             totalUsedTokens: qData.totalUsedTokens || 0,
             renewDate: resetAt,
           });

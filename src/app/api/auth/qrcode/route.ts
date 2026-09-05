@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getMembershipTokenLimit } from "@/lib/quota-token";
+import { grantNewUserGift } from "@/lib/credit-service";
 import { SignJWT } from "jose";
 
 export const dynamic = "force-dynamic";
@@ -120,6 +121,14 @@ export async function POST(request: NextRequest) {
             updatedAt: new Date(),
           },
         }).catch((e) => console.warn("[qrcode] 创建默认空间配额警告:", e));
+
+        // 新用户赠送 100 算力点：写入个人空间专属分桶（3 个月有效）+ 入账流水（幂等）
+        await grantNewUserGift({
+          userId: user.id,
+          workspaceId: newWs.id,
+          workspaceName: newWs.name,
+          userEmail: user.email || null,
+        }).catch((e) => console.warn("[qrcode] 赠送新用户算力点非致命提示:", e));
 
         await prisma.user.update({
           where: { id: user.id },

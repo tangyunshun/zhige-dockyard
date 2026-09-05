@@ -172,6 +172,8 @@ export default function ComponentDispatcherPanel({
               resData.data.workspaces.forEach((w: any) => {
                 if (w.quota) {
                   quotaMap[w.id] = Number(w.quota.tokenBalance);
+                } else if (w.type === "PERSONAL") {
+                  quotaMap[w.id] = 100;
                 }
               });
             }
@@ -583,8 +585,8 @@ export default function ComponentDispatcherPanel({
                               </div>
                               <div className="text-[9px] text-slate-400 font-bold mt-0.5 flex items-center gap-1.5">
                                 <span>算力:</span>
-                                <span className={tokenBalance < 100 ? "text-red-500 font-black font-mono" : "text-slate-500 font-black font-mono"}>
-                                  {tokenBalance.toLocaleString()}
+                                <span className={tokenBalance <= 0 ? "text-red-500 font-black font-mono" : "text-emerald-600 font-black font-mono"}>
+                                  {tokenBalance.toLocaleString()} 点
                                 </span>
                               </div>
                             </div>
