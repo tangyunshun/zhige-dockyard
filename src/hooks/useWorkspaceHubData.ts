@@ -34,12 +34,13 @@ export const derivePersonalState = (
   upgradeMode: string | null,
   isDeleted: boolean
 ): PersonalState => {
+  // 个人空间只要实际存在，就以数据为准展示（NORMAL），避免遗留的升级模式标记
+  // 将已存在的个人空间误判为 PARALLEL/REPLACE/MIGRATE 而隐藏卡片。
+  if (workspace) return "NORMAL";
   if (isDeleted) return "DELETED";
-  if (!workspace) return "NONE";
-  if (upgradeMode === "parallel") return "PARALLEL";
-  if (upgradeMode === "replace") return "REPLACE";
   if (upgradeMode === "migrate") return "MIGRATE";
-  return "NORMAL";
+  if (upgradeMode === "replace") return "REPLACE";
+  return "NONE";
 };
 
 export function useWorkspaceHubData() {
@@ -205,6 +206,11 @@ export function useWorkspaceHubData() {
       console.error("加载聚合数据失败:", error);
     } finally {
       setIsLoading(false);
+      // 升级流程遗留的标记仅用于一次性判断；数据加载完成后清除，
+      // 避免刷新后缓存的 upgradeMode/personalWorkspaceUpgraded 误判个人空间状态而隐藏卡片
+      //（此前必须重新登录才会被 auth/login 清除才恢复，故刷新无效）。
+      localStorage.removeItem("personalWorkspaceUpgraded");
+      localStorage.removeItem("upgradeMode");
     }
   };
 

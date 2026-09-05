@@ -221,19 +221,14 @@ export async function POST(request: NextRequest) {
     let message = "";
 
     // 根据选项执行不同的升级逻辑
-    if (option === "upgrade") {
-      // 选项 C：直接升级（数据迁移）
-      await prisma.workspace.update({
-        where: { id: workspaceId },
-        data: { type: "ENTERPRISE" },
-      });
-
-      message = "空间已成功升级为企业空间";
-    } else if (option === "retain" || option === "delete") {
-      // 选项 A 或 B：创建新的企业空间
+    // 统一保留用户原有的【个人工作空间】：仅"迁移模式(delete)"会删除原个人空间，
+    // 其余方案（并行/替换）均在创建企业空间的同时保留个人空间，
+    // 以保证升级后用户仍能在空间中枢同时看到【个人空间】与【企业空间】。
+    if (option === "upgrade" || option === "retain" || option === "delete") {
+      // 创建新的企业空间（保留原个人空间）
       const newWorkspaceId = `ws-enterprise-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const now = new Date();
-      
+
       // 先创建工作空间
       const newWorkspace = await prisma.workspace.create({
         data: {
@@ -260,7 +255,7 @@ export async function POST(request: NextRequest) {
 
       resultWorkspaceId = newWorkspace.id;
 
-      // 如果选择删除个人空间
+      // 仅"迁移模式"删除原个人空间；并行/替换模式均保留个人空间
       if (option === "delete") {
         // 删除个人空间的成员关系
         await prisma.workspacemember.deleteMany({
@@ -276,6 +271,8 @@ export async function POST(request: NextRequest) {
       } else {
         message = "企业空间创建成功，个人空间已保留";
       }
+    } else {
+      return NextResponse.json({ error: "无效的升级选项" }, { status: 400 });
     }
 
     // 记录操作日志

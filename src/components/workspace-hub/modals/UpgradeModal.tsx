@@ -156,7 +156,7 @@ export default function UpgradeModal({
                   <span className="text-xs font-bold text-slate-800">替换模式 (推荐)</span>
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  直接将当前的个人工作空间无缝改写升级为企业协作空间，个人空间被替代且资产平滑保留。
+                  保留当前个人工作空间的同时，额外创建一个企业协作空间，个人空间与企业空间并存、资产各自独立。
                 </p>
               </div>
               <span className="text-[10px] font-bold text-[#2b6cb0] bg-blue-100/60 px-2 py-0.5 rounded self-start mt-2">
