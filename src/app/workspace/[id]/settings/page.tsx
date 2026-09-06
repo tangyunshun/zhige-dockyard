@@ -342,10 +342,17 @@ export default function WorkspaceSettingsPage() {
             </div>
             <div>
               <span className="text-xs text-slate-400 font-bold block">当前状态</span>
-              <span className="text-sm font-bold text-emerald-600 mt-1.5 block flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                正常运行中
-              </span>
+              {workspace.status === "DISABLED" ? (
+                <span className="text-sm font-bold text-red-600 mt-1.5 block flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                  停用管控中
+                </span>
+              ) : (
+                <span className="text-sm font-bold text-emerald-600 mt-1.5 block flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  正常运行中
+                </span>
+              )}
             </div>
           </div>
         )}

@@ -1509,9 +1509,9 @@ function AdminPostsContent() {
       {/* ======================= MODAL: 新建 / 编辑标准岗位 ======================= */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             {/* 弹窗头部 */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <div className="flex items-center gap-2">
                 <Briefcase className="w-5 h-5 text-[#3182ce]" />
                 <h3 className="text-base font-black text-slate-800">
@@ -1519,6 +1519,7 @@ function AdminPostsContent() {
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
@@ -1526,176 +1527,180 @@ function AdminPostsContent() {
               </button>
             </div>
 
-            {/* 弹窗表单 */}
-            <form onSubmit={handleSaveStandardPost} className="p-6 space-y-4">
-              {/* 岗位名称 */}
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1">
-                  岗位名称 <span className="text-red-500 font-bold ml-0.5">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="例如：系统架构师、前端开发工程师"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white"
-                />
-              </div>
-
-              {/* 岗位代号 */}
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1">
-                  英文唯一标识代号 <span className="text-red-500 font-bold ml-0.5">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.code}
-                  onChange={(e) =>
-                    setFormData({ ...formData, code: e.target.value.toUpperCase() })
-                  }
-                  placeholder="例如：SYSTEM_ARCHITECT、FRONTEND_DEV"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white"
-                />
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  大写英文英文字符与下划线，用于系统底层识别
-                </span>
-              </div>
-
-              {/* 主题配色选择 */}
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1.5">
-                  标识主题配色
-                </label>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {PRESET_COLORS.map((c) => (
-                    <button
-                      key={c.value}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, color: c.value })}
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
-                        formData.color === c.value
-                          ? "ring-2 ring-offset-2 ring-[#3182ce] scale-110"
-                          : "hover:scale-105"
-                      }`}
-                      style={{ backgroundColor: c.value }}
-                      title={c.name}
-                    >
-                      {formData.color === c.value && (
-                        <span className="w-2 h-2 rounded-full bg-white" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 岗位商务图标选择（可选集合来自数据库 posticonlibrary） */}
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1.5">
-                  岗位商务图标
-                </label>
-                <div className="flex items-center gap-2 mb-2">
-                  <span
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
-                    style={{ backgroundColor: formData.color || "#3182ce" }}
-                  >
-                    <PostIcon iconKey={formData.icon} className="w-4 h-4" />
-                  </span>
-                  <span className="text-[11px] font-bold text-slate-500 truncate">
-                    {iconLibrary.find((i) => i.iconKey === formData.icon)?.name || formData.icon}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-0.5">
-                  {iconLibrary.filter((i) => i.iconKey in POST_ICON_MAP).length === 0 ? (
-                    <div className="py-2 text-[11px] text-slate-400 font-semibold">
-                      商务图标库加载中或暂无可选图标，保存后将使用默认图标
-                    </div>
-                  ) : (
-                    iconLibrary
-                      .filter((i) => i.iconKey in POST_ICON_MAP)
-                      .map((item) => (
-                        <button
-                          key={item.iconKey}
-                          type="button"
-                          title={item.name || item.iconKey}
-                          onClick={() => setFormData({ ...formData, icon: item.iconKey })}
-                          className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
-                            formData.icon === item.iconKey
-                              ? "bg-blue-50 border-[#3182ce] shadow-xs scale-105"
-                              : "bg-slate-50 border-slate-200 hover:bg-slate-100"
-                          }`}
-                        >
-                          <PostIcon iconKey={item.iconKey} className="w-4 h-4 text-slate-600" />
-                        </button>
-                      ))
-                  )}
-                </div>
-              </div>
-
-              {/* 职责与定位说明 */}
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1">
-                  职责描述与定位说明
-                </label>
-                <textarea
-                  rows={3}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="简述该标准岗位的职责范围，企业空间导入时将展示此说明..."
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:border-[#3182ce] focus:bg-white"
-                />
-              </div>
-
-              {/* 启用状态与排序 */}
-              <div className="grid grid-cols-2 gap-4">
+            {/* 弹窗表单：采用 flex-col + 内部滚动 + 底部常驻按钮条，杜绝截断 */}
+            <form onSubmit={handleSaveStandardPost} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* 可滚动的表单主体内容区域 */}
+              <div className="p-6 space-y-4 flex-1 min-h-0 overflow-y-auto">
+                {/* 岗位名称 */}
                 <div>
                   <label className="block text-xs font-black text-slate-700 mb-1">
-                    启用分发状态
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        status: e.target.value as "ACTIVE" | "DISABLED",
-                      })
-                    }
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
-                  >
-                    <option value="ACTIVE">已启用 (推荐导入)</option>
-                    <option value="DISABLED">已停用 (暂停分发)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1">
-                    排序权重
+                    岗位名称 <span className="text-red-500 font-bold ml-0.5">*</span>
                   </label>
                   <input
-                    type="number"
-                    value={formData.sortOrder}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 1 })
-                    }
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="例如：系统架构师、前端开发工程师"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white"
                   />
+                </div>
+
+                {/* 岗位代号 */}
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">
+                    英文唯一标识代号 <span className="text-red-500 font-bold ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.code}
+                    onChange={(e) =>
+                      setFormData({ ...formData, code: e.target.value.toUpperCase() })
+                    }
+                    placeholder="例如：SYSTEM_ARCHITECT、FRONTEND_DEV"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    大写英文英文字符与下划线，用于系统底层识别
+                  </span>
+                </div>
+
+                {/* 主题配色选择 */}
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">
+                    标识主题配色
+                  </label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {PRESET_COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, color: c.value })}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                          formData.color === c.value
+                            ? "ring-2 ring-offset-2 ring-[#3182ce] scale-110"
+                            : "hover:scale-105"
+                        }`}
+                        style={{ backgroundColor: c.value }}
+                        title={c.name}
+                      >
+                        {formData.color === c.value && (
+                          <span className="w-2 h-2 rounded-full bg-white" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 岗位商务图标选择（可选集合来自数据库 posticonlibrary） */}
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">
+                    岗位商务图标
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
+                      style={{ backgroundColor: formData.color || "#3182ce" }}
+                    >
+                      <PostIcon iconKey={formData.icon} className="w-4 h-4" />
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-500 truncate">
+                      {iconLibrary.find((i) => i.iconKey === formData.icon)?.name || formData.icon}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-0.5">
+                    {iconLibrary.filter((i) => i.iconKey in POST_ICON_MAP).length === 0 ? (
+                      <div className="py-2 text-[11px] text-slate-400 font-semibold">
+                        商务图标库加载中或暂无可选图标，保存后将使用默认图标
+                      </div>
+                    ) : (
+                      iconLibrary
+                        .filter((i) => i.iconKey in POST_ICON_MAP)
+                        .map((item) => (
+                          <button
+                            key={item.iconKey}
+                            type="button"
+                            title={item.name || item.iconKey}
+                            onClick={() => setFormData({ ...formData, icon: item.iconKey })}
+                            className={`w-8 h-8 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
+                              formData.icon === item.iconKey
+                                ? "bg-blue-50 border-[#3182ce] shadow-xs scale-105"
+                                : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            <PostIcon iconKey={item.iconKey} className="w-4 h-4 text-slate-600" />
+                          </button>
+                        ))
+                    )}
+                  </div>
+                </div>
+
+                {/* 职责与定位说明 */}
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">
+                    职责描述与定位说明
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="简述该标准岗位的职责范围，企业空间导入时将展示此说明..."
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:border-[#3182ce] focus:bg-white resize-none"
+                  />
+                </div>
+
+                {/* 启用状态与排序 */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1">
+                      启用分发状态
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          status: e.target.value as "ACTIVE" | "DISABLED",
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                    >
+                      <option value="ACTIVE">已启用 (推荐导入)</option>
+                      <option value="DISABLED">已停用 (暂停分发)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1">
+                      排序权重
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.sortOrder}
+                      onChange={(e) =>
+                        setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 1 })
+                      }
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                    >
+                    </input>
+                  </div>
                 </div>
               </div>
 
-              {/* 弹窗操作 */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+              {/* 弹窗常驻底部操作栏（固定锁定在视口底部，不随内容滚动，杜绝截断） */}
+              <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/80 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl shadow-xs transition-all disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-5 py-2 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl shadow-xs transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                 >
                   {submitting ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1911,8 +1916,8 @@ function AdminPostsContent() {
       {/* ======================= MODAL: 审核操作二次确认（接收 / 不接收与审核意见反馈） ======================= */}
       {confirmReview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden">
-            <div className="p-6 text-left space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-6 text-left space-y-4 flex-1 min-h-0 overflow-y-auto">
               <div className="flex items-start gap-3.5">
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
@@ -1996,58 +2001,58 @@ function AdminPostsContent() {
                   </div>
                 </div>
               )}
+            </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  disabled={reviewingSubmissionId === confirmReview.submission.id}
-                  onClick={() => setConfirmReview(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    reviewingSubmissionId === confirmReview.submission.id ||
-                    (confirmReview.action === "REJECT" && !rejectReason.trim())
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2.5 bg-slate-50/80 shrink-0">
+              <button
+                type="button"
+                disabled={reviewingSubmissionId === confirmReview.submission.id}
+                onClick={() => setConfirmReview(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={
+                  reviewingSubmissionId === confirmReview.submission.id ||
+                  (confirmReview.action === "REJECT" && !rejectReason.trim())
+                }
+                onClick={async () => {
+                  const target = confirmReview;
+                  if (target.action === "REJECT" && !rejectReason.trim()) {
+                    toast.error("请输入不接收的审核意见 / 驳回理由");
+                    return;
                   }
-                  onClick={async () => {
-                    const target = confirmReview;
-                    if (target.action === "REJECT" && !rejectReason.trim()) {
-                      toast.error("请输入不接收的审核意见 / 驳回理由");
-                      return;
-                    }
-                    setConfirmReview(null);
-                    await handleReviewSubmission(
-                      target.submission,
-                      target.action,
-                      target.action === "REJECT" ? rejectReason.trim() : undefined
-                    );
-                  }}
-                  className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                    confirmReview.action === "ACCEPT"
-                      ? "bg-emerald-600 hover:bg-emerald-700"
-                      : "bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  }`}
-                >
-                  {reviewingSubmissionId === confirmReview.submission.id ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>处理中...</span>
-                    </>
-                  ) : (
-                    <>
-                      {confirmReview.action === "ACCEPT" ? (
-                        <Check className="w-3.5 h-3.5" />
-                      ) : (
-                        <X className="w-3.5 h-3.5" />
-                      )}
-                      <span>{confirmReview.action === "ACCEPT" ? "确认直接接收" : "确认不接收并通知提报人"}</span>
-                    </>
-                  )}
-                </button>
-              </div>
+                  setConfirmReview(null);
+                  await handleReviewSubmission(
+                    target.submission,
+                    target.action,
+                    target.action === "REJECT" ? rejectReason.trim() : undefined
+                  );
+                }}
+                className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  confirmReview.action === "ACCEPT"
+                    ? "bg-emerald-600 hover:bg-emerald-700"
+                    : "bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                }`}
+              >
+                {reviewingSubmissionId === confirmReview.submission.id ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>处理中...</span>
+                  </>
+                ) : (
+                  <>
+                    {confirmReview.action === "ACCEPT" ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <X className="w-3.5 h-3.5" />
+                    )}
+                    <span>{confirmReview.action === "ACCEPT" ? "确认直接接收" : "确认不接收并通知提报人"}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

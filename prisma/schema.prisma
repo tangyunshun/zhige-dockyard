@@ -1316,3 +1316,36 @@ model documentshare {
   @@index([documentId], map: "DocumentShare_documentId_idx")
   @@index([workspaceId], map: "DocumentShare_workspaceId_idx")
 }
+
+// 通知受众群组：支撑系统通知的「按角色推送」与「自定义人群推送」
+// type=system：系统角色群组，roleKey 对应 user.role 的值，基础人群由 role 动态算出（不再硬编码）
+// type=custom：自定义群组，人群完全来自 notificationgroupmember 的 include 名单
+model notificationgroup {
+  id          String                     @id @default(cuid())
+  name        String
+  type        String                     @default("custom") // system | custom
+  roleKey     String? // 仅系统群组使用：对应的 user.role 枚举值
+  description String?
+  createdBy   String?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  members     notificationgroupmember[]
+
+  @@index([type], map: "NotificationGroup_type_idx")
+  @@index([roleKey], map: "NotificationGroup_roleKey_idx")
+}
+
+// 群组成员增删名单：exclude=从群组基础人群中剔除，include=额外追加进群组
+// 最终推送人群 = (系统群组基础人群 − exclude) ∪ include
+model notificationgroupmember {
+  id        String             @id @default(cuid())
+  groupId   String
+  userId    String
+  action    String             @default("include") // include | exclude
+  createdAt DateTime           @default(now())
+  group     notificationgroup  @relation(fields: [groupId], references: [id], onDelete: Cascade, map: "NotificationGroupMember_groupId_fkey")
+
+  @@unique([groupId, userId], map: "NotificationGroupMember_groupId_userId_key")
+  @@index([groupId], map: "NotificationGroupMember_groupId_idx")
+  @@index([userId], map: "NotificationGroupMember_userId_idx")
+}

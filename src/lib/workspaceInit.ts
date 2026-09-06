@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import crypto from "crypto";
+import { serverCacheGet, serverCacheSet, clearServerCache } from "./serverCache";
 
 /**
  * 统计指定工作空间的"已装配组件数"。
@@ -11,6 +12,18 @@ import crypto from "crypto";
  * 该函数是空间中枢、空间列表、企业空间列表等所有组件数量展示的唯一权威来源。
  */
 export async function getBoundComponentCount(workspaceId: string): Promise<number> {
+  // P3 优化：组件数是页面加载时被反复计算的昂贵只读数据（中枢/空间列表/进入空间都会触发）。
+  // 加 3 秒短缓存；装配/解绑/清空等写路径成功后调用 clearServerCache 立即失效，保证计数即时准确。
+  const cacheKey = `ws:boundCount:${workspaceId}`;
+  const cached = serverCacheGet<number>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const count = await computeBoundComponentCount(workspaceId);
+  serverCacheSet(cacheKey, 3000, count);
+  return count;
+}
+
+async function computeBoundComponentCount(workspaceId: string): Promise<number> {
   const usages = await prisma.componentusage.findMany({
     where: { workspaceId },
     select: { componentId: true, metadata: true },
@@ -128,6 +141,8 @@ export async function ensureDefaultComponents(workspaceId: string, userId?: stri
       });
 
       console.log(`[自愈哨兵] 空间 ${workspaceId} 组件装配初始化完成！新装配: [${missingIds.join(", ")}]`);
+      // 自愈写入了默认装配，立即失效组件数缓存，避免本请求后续 getBoundComponentCount 读到旧值
+      clearServerCache();
     }
   } catch (error) {
     console.error(`[自愈哨兵] 初始化空间 ${workspaceId} 默认组件失败:`, error);

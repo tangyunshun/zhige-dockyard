@@ -23,6 +23,7 @@ import {
   Zap,
   Tag,
   Building2,
+  AlertCircle,
 } from "lucide-react";
 
 interface WorkspacePlan {
@@ -137,6 +138,7 @@ export default function WorkspacePlansAdminPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkspacePlan | null>(null);
   const [form, setForm] = useState<Partial<WorkspacePlan>>(DEFAULT_PLAN);
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkspacePlan | null>(null);
 
@@ -185,12 +187,14 @@ export default function WorkspacePlansAdminPage() {
 
   const openCreate = () => {
     setEditingPlan(null);
+    setFormErrors({});
     setForm({ ...DEFAULT_PLAN, key: "", name: "", sortOrder: plans.length + 1, features: [] });
     setModalOpen(true);
   };
 
   const openEdit = (plan: WorkspacePlan) => {
     setEditingPlan(plan);
+    setFormErrors({});
     // 从 plan.features 中抽离自定义特性，过滤掉属于 4 大核心配额的旧静态文本
     const customFeatures = (plan.features || []).filter((f) => !isCoreQuotaFeatureText(f));
     setForm({ ...plan, features: customFeatures });
@@ -199,6 +203,7 @@ export default function WorkspacePlansAdminPage() {
 
   const openClone = (plan: WorkspacePlan) => {
     setEditingPlan(null);
+    setFormErrors({});
     const customFeatures = (plan.features || []).filter((f) => !isCoreQuotaFeatureText(f));
     setForm({
       ...plan,
@@ -214,14 +219,27 @@ export default function WorkspacePlansAdminPage() {
   const closeModal = () => {
     setModalOpen(false);
     setEditingPlan(null);
+    setFormErrors({});
     setForm(DEFAULT_PLAN);
   };
 
   const handleSave = async () => {
-    if (!form.key || !form.name) {
-      toastError("套餐标识和名称为必填项");
-      return;
+    const errors: { [key: string]: string } = {};
+    if (!form.key || !form.key.trim()) {
+      errors.key = "套餐标识为必填项，请输入唯一代号";
+    } else if (!/^[A-Z0-9_]+$/.test(form.key.trim())) {
+      errors.key = "套餐标识仅支持大写英文字母、数字和下划线";
     }
+
+    if (!form.name || !form.name.trim()) {
+      errors.name = "套餐名称为必填项，请输入展示名称";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return; // 坚决不弹 Toast，只在对应输入框下方显示行内红色提示！
+    }
+    setFormErrors({});
     setSaving(true);
     try {
       // 动态依据数据库字段生成 4 项基准特性，并与附加扩展特性合并，确保数据 100% 动态驱动
@@ -492,7 +510,7 @@ export default function WorkspacePlansAdminPage() {
                   <th className="px-6 py-4 min-w-[420px]">配额与参数</th>
                   <th className="px-6 py-4 min-w-[160px]">价格阶梯 (CNY)</th>
                   <th className="px-6 py-4 w-28">状态</th>
-                  <th className="px-6 py-4 text-right w-40">操作</th>
+                  <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4.5 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -594,7 +612,7 @@ export default function WorkspacePlansAdminPage() {
                       </button>
                     </td>
 
-                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                    <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-4.5 py-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => !plan.isActive && openEdit(plan)}
@@ -688,12 +706,33 @@ export default function WorkspacePlansAdminPage() {
                     </label>
                     <input
                       value={form.key}
-                      onChange={(e) => setForm({ ...form, key: e.target.value.toUpperCase() })}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        setForm({ ...form, key: val });
+                        if (formErrors.key) {
+                          setFormErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.key;
+                            return next;
+                          });
+                        }
+                      }}
                       disabled={!!editingPlan}
                       placeholder="如 STANDARD, PRO, ENTERPRISE"
-                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] disabled:bg-slate-100 disabled:text-slate-400"
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all focus:outline-none focus:ring-2 disabled:bg-slate-100 disabled:text-slate-400 ${
+                        formErrors.key
+                          ? "bg-red-50/20 border border-red-400 text-slate-800 focus:ring-red-200 focus:border-red-500"
+                          : "bg-slate-50/50 border border-slate-200 text-slate-800 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
+                      }`}
                     />
-                    <p className="mt-1 text-[10px] text-slate-400 font-medium">大写英文，创建后不可修改</p>
+                    {formErrors.key ? (
+                      <p className="mt-1.5 text-[11px] font-bold text-red-500 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{formErrors.key}</span>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[10px] text-slate-400 font-medium">大写英文，创建后不可修改</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -701,10 +740,29 @@ export default function WorkspacePlansAdminPage() {
                     </label>
                     <input
                       value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      onChange={(e) => {
+                        setForm({ ...form, name: e.target.value });
+                        if (formErrors.name) {
+                          setFormErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.name;
+                            return next;
+                          });
+                        }
+                      }}
                       placeholder="如 专业版"
-                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all focus:outline-none focus:ring-2 ${
+                        formErrors.name
+                          ? "bg-red-50/20 border border-red-400 text-slate-800 focus:ring-red-200 focus:border-red-500"
+                          : "bg-slate-50/50 border border-slate-200 text-slate-800 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
+                      }`}
                     />
+                    {formErrors.name && (
+                      <p className="mt-1.5 text-[11px] font-bold text-red-500 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{formErrors.name}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">排序权重</label>

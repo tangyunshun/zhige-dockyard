@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const limit = parseInt(searchParams.get("limit") || "10");
     const actionType = searchParams.get("action") || "";
     const userKeyword = searchParams.get("user") || "";
     const resourceType = searchParams.get("resource") || "";
@@ -56,6 +56,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 网络安全合规生命周期：保留最近 3 年（1095天）的操作审计流水，超期数据物理出清
+    const threeYearsAgo = new Date();
+    threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+    await prisma.operationlog.deleteMany({
+      where: { createdAt: { lt: threeYearsAgo } },
+    }).catch((err) => {
+      console.warn("[日志生命周期] 自动清理3年前操作日志非致命提醒:", err);
+    });
+
     const [logs, total, todayCount, highRiskCount] = await Promise.all([
       prisma.operationlog.findMany({
         where,
@@ -93,10 +102,25 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    // 清洗 IP 地址，杜绝 ::1
+    const enrichedLogs = logs.map((log) => {
+      let cleanIp = log.ipAddress || "";
+      if (!cleanIp || cleanIp === "::1" || cleanIp === "127.0.0.1" || cleanIp.includes("127.0.0.1")) {
+        cleanIp = "127.0.0.1 (本地局域网)";
+      } else if (cleanIp.startsWith("::ffff:")) {
+        const v4 = cleanIp.replace("::ffff:", "");
+        cleanIp = v4 === "127.0.0.1" ? "127.0.0.1 (本地局域网)" : v4;
+      }
+      return {
+        ...log,
+        ipAddress: cleanIp,
+      };
+    });
+
     return NextResponse.json({
       success: true,
       data: {
-        logs,
+        logs: enrichedLogs,
         total,
         page,
         totalPages: Math.ceil(total / limit),
@@ -104,6 +128,11 @@ export async function GET(request: NextRequest) {
           total,
           today: todayCount,
           highRisk: highRiskCount,
+        },
+        retentionPolicy: {
+          years: 3,
+          days: 1095,
+          description: "根据《网络安全法》审计要求，操作日志自动保留最近 3 年，超期数据系统自动物理出清。",
         },
       },
     });
@@ -118,3 +147,70 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// 删除操作日志（支持单条、批量、以及3年生命周期出清）
+export async function DELETE(request: NextRequest) {
+  try {
+    const authResult = await requirePlatformPermission(request, "audit:read");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const { id, ids, cleanExpired } = body;
+
+    // 模式 1：出清 3 年前历史超期日志
+    if (cleanExpired) {
+      const threeYearsAgo = new Date();
+      threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+
+      const result = await prisma.operationlog.deleteMany({
+        where: { createdAt: { lt: threeYearsAgo } },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `合规生命周期出清成功：已清理 3 年前历史日志共 ${result.count} 条。`,
+        count: result.count,
+      });
+    }
+
+    // 模式 2：批量删除
+    if (Array.isArray(ids) && ids.length > 0) {
+      const result = await prisma.operationlog.deleteMany({
+        where: { id: { in: ids } },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `成功删除选中的 ${result.count} 条操作审计日志。`,
+        count: result.count,
+      });
+    }
+
+    // 模式 3：单个删除
+    const targetId = id || new URL(request.url).searchParams.get("id");
+    if (!targetId) {
+      return NextResponse.json({ error: "缺少待删除日志记录的 ID" }, { status: 400 });
+    }
+
+    await prisma.operationlog.delete({
+      where: { id: targetId },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "操作日志已成功删除",
+    });
+  } catch (error) {
+    console.error("Delete operation logs error:", error);
+    return NextResponse.json(
+      {
+        error: "删除操作日志失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 }
+    );
+  }
+}
+

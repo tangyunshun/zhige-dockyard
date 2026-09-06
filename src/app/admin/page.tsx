@@ -452,40 +452,40 @@ export default function AdminDashboard() {
           </h2>
           <span className="text-[11px] text-slate-400 font-medium">点击卡片可直达对应管理中心</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
           {statCards.map((card, index) => {
             const Icon = card.icon;
             return (
               <div
                 key={index}
                 onClick={() => card.path && router.push(card.path)}
-                className={`group relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
+                className={`group relative bg-white/85 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
               >
                 {/* 装饰渐变光晕 */}
                 <div
-                  className={`absolute -right-4 -top-4 w-24 h-24 rounded-full ${card.bgColor} opacity-20 blur-2xl group-hover:scale-125 transition-transform duration-500`}
+                  className={`absolute -right-3 -top-3 w-16 h-16 rounded-full ${card.bgColor} opacity-20 blur-xl group-hover:scale-125 transition-transform duration-500`}
                 ></div>
 
                 <div className="relative">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-2">
                     <div
-                      className={`w-12 h-12 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform duration-300`}
+                      className={`w-9.5 h-9.5 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform duration-300`}
                     >
-                      <Icon className={`w-6 h-6 ${card.color}`} />
+                      <Icon className={`w-4.5 h-4.5 ${card.color}`} />
                     </div>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100/80 text-slate-600 group-hover:bg-[#3182ce]/10 group-hover:text-[#3182ce] transition-colors">
+                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100/80 text-slate-600 group-hover:bg-[#3182ce]/10 group-hover:text-[#3182ce] transition-colors">
                       {card.badgeText}
                       <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                     </span>
                   </div>
-                  <div className="text-2xl lg:text-3xl font-black text-slate-800 mb-1 tracking-tight truncate">
+                  <div className="text-xl lg:text-2xl font-black font-mono text-slate-800 mb-0.5 tracking-tight truncate">
                     {card.value.toLocaleString()}
                   </div>
                   <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-slate-500 truncate">
+                    <div className="text-xs font-bold text-slate-600 truncate">
                       {card.label}
                     </div>
-                    <div className="text-[11px] text-slate-400 font-medium truncate">
+                    <div className="text-[10.5px] text-slate-400 font-medium truncate">
                       {card.subLabel}
                     </div>
                   </div>
@@ -498,14 +498,14 @@ export default function AdminDashboard() {
 
       {/* 系统运行与监控卡片 - 支持交互闭环 */}
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2.5">
           <h2 className="text-sm font-black text-slate-700 flex items-center gap-2">
             <div className="w-1 h-4 bg-[#10b981] rounded-full"></div>
             平台运行态势
           </h2>
           <span className="text-[11px] text-slate-400 font-medium">实时健康监测与异常拦截</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
           {systemCards.map((card, index) => {
             const Icon = card.icon;
             return (
@@ -515,22 +515,22 @@ export default function AdminDashboard() {
                   if (card.path) router.push(card.path);
                   if (card.onClick) card.onClick();
                 }}
-                className={`group relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
+                className={`group relative bg-white/85 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
               >
                 {/* 装饰背景 */}
                 <div
-                  className={`absolute -right-4 -top-4 w-24 h-24 rounded-full ${card.bgColor} opacity-20 blur-2xl group-hover:scale-125 transition-transform duration-500`}
+                  className={`absolute -right-3 -top-3 w-16 h-16 rounded-full ${card.bgColor} opacity-20 blur-xl group-hover:scale-125 transition-transform duration-500`}
                 ></div>
 
                 <div className="relative">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-2">
                     <div
-                      className={`w-12 h-12 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform duration-300`}
+                      className={`w-9.5 h-9.5 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform duration-300`}
                     >
-                      <Icon className={`w-6 h-6 ${card.color}`} />
+                      <Icon className={`w-4.5 h-4.5 ${card.color}`} />
                     </div>
                     <span
-                      className={`inline-flex shrink-0 items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                      className={`inline-flex shrink-0 items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold ${
                         card.isAlert
                           ? "bg-amber-100 text-amber-700 animate-pulse"
                           : `${card.color} bg-slate-100/80`
@@ -540,14 +540,14 @@ export default function AdminDashboard() {
                       <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                     </span>
                   </div>
-                  <div className="text-2xl lg:text-3xl font-black text-slate-800 mb-1 tracking-tight truncate">
+                  <div className="text-xl lg:text-2xl font-black font-mono text-slate-800 mb-0.5 tracking-tight truncate">
                     {card.value}
                   </div>
                   <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-slate-500 truncate">
+                    <div className="text-xs font-bold text-slate-600 truncate">
                       {card.label}
                     </div>
-                    <div className="text-[11px] text-slate-400 font-medium truncate">
+                    <div className="text-[10.5px] text-slate-400 font-medium truncate">
                       {card.subLabel}
                     </div>
                   </div>

@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 
@@ -106,6 +106,134 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 统计全局真实指标（不受当前条件和分页截断影响）
+    const allStageRecords = allRecords.filter(
+      (record) => (record.config as any)?.isStageConfig === true,
+    );
+    const summary = {
+      totalStages: allStageRecords.length,
+      activeStages: allStageRecords.filter((r) => r.isPublished).length,
+      inactiveStages: allStageRecords.filter((r) => !r.isPublished).length,
+      totalComponents: nonStageRecords.length,
+    };
+
+    // 趋势与分布分析聚合 (供 Tab 2 阶段多维趋势与分布分析)
+    const timeRange = searchParams.get("timeRange") || "halfYear"; // "week" | "month" | "halfYear" | "year" | "custom"
+    const analyticsStart = searchParams.get("analyticsStart");
+    const analyticsEnd = searchParams.get("analyticsEnd");
+
+    // 计算各阶段组件分布
+    const stageDistribution = allStageRecords.map((st) => {
+      const count = typeCountMap.get(st.type) || 0;
+      const percentage = nonStageRecords.length > 0
+        ? Math.round((count / nonStageRecords.length) * 100)
+        : 0;
+      return {
+        stageId: st.id,
+        stageName: st.name,
+        description: st.description || "",
+        sortOrder: st.sortOrder,
+        componentCount: count,
+        percentage,
+        isActive: st.isPublished,
+        // 健康度/活跃等级判定
+        activityLevel: count > 5 ? "HIGH" : count > 0 ? "NORMAL" : "IDLE",
+      };
+    }).sort((a, b) => b.componentCount - a.componentCount);
+
+    // 多维关键分析指标
+    const emptyStages = stageDistribution.filter((s) => s.componentCount === 0);
+    const topStage = stageDistribution.length > 0 ? stageDistribution[0] : null;
+    const activeRate = allStageRecords.length > 0
+      ? Math.round((allStageRecords.filter((r) => r.isPublished).length / allStageRecords.length) * 100)
+      : 0;
+
+    const metrics = {
+      activeRate, // 阶段启用率 %
+      topStageName: topStage ? topStage.stageName : "暂无",
+      topStageCount: topStage ? topStage.componentCount : 0,
+      topStagePercentage: topStage ? topStage.percentage : 0,
+      emptyStageCount: emptyStages.length, // 尚无组件挂载的阶段数
+      avgComponentsPerStage: allStageRecords.length > 0
+        ? Number((nonStageRecords.length / allStageRecords.length).toFixed(1))
+        : 0,
+    };
+
+    // 计算时间趋势点
+    const now = new Date();
+    const trendBuckets: { label: string; start: Date; end: Date }[] = [];
+
+    if (timeRange === "week") {
+      // 本周：按 7 天切分
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const label = `${d.getMonth() + 1}/${d.getDate()}`;
+        const start = new Date(d);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(d);
+        end.setHours(23, 59, 59, 999);
+        trendBuckets.push({ label, start, end });
+      }
+    } else if (timeRange === "month") {
+      // 本月：按近 30 天切分 6 个时间区间（每 5 天一组）
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 5 * 24 * 60 * 60 * 1000);
+        const label = `${d.getMonth() + 1}/${d.getDate()}`;
+        const start = new Date(d);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start.getTime() + 5 * 24 * 60 * 60 * 1000);
+        trendBuckets.push({ label, start, end });
+      }
+    } else if (timeRange === "year") {
+      // 本年度：12 个月切分
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const nextM = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+        const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        trendBuckets.push({ label, start: d, end: nextM });
+      }
+    } else if (timeRange === "custom" && analyticsStart && analyticsEnd) {
+      const sDate = new Date(analyticsStart);
+      const eDate = new Date(analyticsEnd);
+      const diffDays = Math.max(1, Math.round((eDate.getTime() - sDate.getTime()) / (24 * 60 * 60 * 1000)));
+      const step = Math.max(1, Math.floor(diffDays / 6));
+      for (let i = 0; i < 6; i++) {
+        const curStart = new Date(sDate.getTime() + i * step * 24 * 60 * 60 * 1000);
+        const curEnd = new Date(sDate.getTime() + (i + 1) * step * 24 * 60 * 60 * 1000);
+        trendBuckets.push({
+          label: `${curStart.getMonth() + 1}/${curStart.getDate()}`,
+          start: curStart,
+          end: curEnd,
+        });
+      }
+    } else {
+      // 默认近半年：最近 6 个月切分
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const nextM = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+        const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        trendBuckets.push({ label, start: d, end: nextM });
+      }
+    }
+
+    const trendPoints = trendBuckets.map((bucket) => {
+      const bucketComponents = nonStageRecords.filter((rec) => {
+        const recDate = new Date(rec.createdAt);
+        return recDate >= bucket.start && recDate < bucket.end;
+      });
+
+      const stageBreakdown: Record<string, number> = {};
+      allStageRecords.slice(0, 6).forEach((st) => {
+        stageBreakdown[st.name] = bucketComponents.filter((r) => r.type === st.type).length;
+      });
+
+      return {
+        label: bucket.label,
+        total: bucketComponents.length,
+        ...stageBreakdown,
+      };
+    });
+
     // 分页
     const total = filteredStages.length;
     const stages = filteredStages.slice(skip, skip + limit);
@@ -117,6 +245,13 @@ export async function GET(request: NextRequest) {
         total,
         page,
         limit,
+        totalPages: Math.ceil(total / limit),
+        summary,
+        analytics: {
+          metrics,
+          distribution: stageDistribution,
+          trend: trendPoints,
+        },
       },
     });
   } catch (error) {
@@ -182,8 +317,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - 更新阶段
-export async function PUT(request: NextRequest) {
+// 统一更新阶段逻辑（支持 PUT 和 PATCH）
+async function handleUpdateStage(request: NextRequest) {
   try {
     // 验证管理员权限
     const auth = await validateUser(request.headers.get("Authorization"), request);
@@ -200,14 +335,21 @@ export async function PUT(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const stageId = searchParams.get("id");
+    let stageId = searchParams.get("id");
+
+    const body = await request.json().catch(() => ({}));
+    if (!stageId && body.id) {
+      stageId = body.id;
+    }
 
     if (!stageId) {
       return NextResponse.json({ error: "缺少阶段 ID" }, { status: 400 });
     }
 
-    const body = await request.json();
-    const { name, description, sortOrder, isPublished } = body;
+    const { name, description, sortOrder, isPublished, isActive } = body;
+
+    // 兼容 isActive 和 isPublished
+    const targetPublished = isActive !== undefined ? isActive : isPublished;
 
     const stage = await prisma.componenttask.update({
       where: { id: stageId },
@@ -215,8 +357,8 @@ export async function PUT(request: NextRequest) {
         name: name || undefined,
         description: description !== undefined ? description : undefined,
         type: name || undefined, // 如果名称改变，类型也改变
-        sortOrder: sortOrder !== undefined ? sortOrder : undefined,
-        isPublished: isPublished !== undefined ? isPublished : undefined,
+        sortOrder: sortOrder !== undefined ? Number(sortOrder) : undefined,
+        isPublished: targetPublished !== undefined ? Boolean(targetPublished) : undefined,
       },
     });
 
@@ -232,6 +374,16 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// PUT - 更新阶段
+export async function PUT(request: NextRequest) {
+  return handleUpdateStage(request);
+}
+
+// PATCH - 更新阶段（支持部分字段及状态开关）
+export async function PATCH(request: NextRequest) {
+  return handleUpdateStage(request);
 }
 
 // DELETE - 删除阶段

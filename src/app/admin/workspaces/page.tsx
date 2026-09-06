@@ -17,8 +17,9 @@ import {
   X,
   RotateCcw,
   Zap,
+  Search,
+  Clock,
 } from "lucide-react";
-import SearchInput from "@/components/common/SearchInput";
 import Pagination from "@/components/Pagination";
 
 interface Workspace {
@@ -32,6 +33,14 @@ interface Workspace {
   status: "ACTIVE" | "DISABLED";
   createdAt: string;
   componentCount: number;
+  memberCount?: number;
+  isProtected?: boolean;
+  owner?: { id: string; name: string; email?: string; role?: string } | null;
+  disabledUntil?: string | null;
+  disabledReason?: string | null;
+  disabledDuration?: string | null;
+  appealStatus?: string;
+  appealCount?: number;
   quota?: {
     tokenBalance: number | string;
     membershipLevelId?: string;
@@ -47,7 +56,7 @@ interface Workspace {
     monthlyTokenUsed?: number;
     user: { name: string | null; email: string | null };
   }>;
-  _count: { members: number };
+  _count: { members?: number; workspacemember?: number };
 }
 
 const WORKSPACE_PLAN_BADGES: Record<string, { label: string; badge: string }> = {
@@ -117,6 +126,12 @@ export default function AdminWorkspacesPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [confirmMessage, setConfirmMessage] = useState("");
+
+  // 工作空间停用管控弹窗状态
+  const [disablingWorkspace, setDisablingWorkspace] = useState<Workspace | null>(null);
+  const [disableReason, setDisableReason] = useState<string>("违反平台运营与合规规范");
+  const [disableDuration, setDisableDuration] = useState<string>("7d");
+  const [disableSubmitting, setDisableSubmitting] = useState<boolean>(false);
 
   useEffect(() => {
     // 获取当前用户 ID
@@ -237,51 +252,89 @@ export default function AdminWorkspacesPage() {
     }
   };
 
-  const handleToggleStatus = async (workspace: Workspace) => {
-    const newStatus = workspace.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
+  // 唤起工作空间停用管控弹窗
+  const handleOpenDisableModal = (workspace: Workspace) => {
+    // 再次前置防护：如果是受保护的超级管理员/管理员空间，直接拦截提示
+    if (workspace.isProtected || workspace.ownerId === currentUserId) {
+      showToast("超级管理员与系统管理员的工作空间受系统安全保护，不可停用", "error");
+      return;
+    }
+    setDisablingWorkspace(workspace);
+    setDisableReason("违反平台运营与合规规范");
+    setDisableDuration("7d");
+  };
 
-    // 检查是否是自己的空间
-    if (workspace.ownerId === currentUserId) {
-      showToast("不能禁用自己创建的空间", "error");
+  // 确认执行停用管控操作（携带理由调用 API 并向成员发送站内信通知）
+  const handleConfirmDisable = async () => {
+    if (!disablingWorkspace) return;
+    if (!disableReason.trim()) {
+      showToast("请填写或选择停用管控原因", "error");
       return;
     }
 
-    // 检查是否是管理员空间（owner 是 admin 或 super_admin）
-    if (workspace.type === "PERSONAL") {
-      if (workspace.name.includes("admin")) {
-        showToast("不能禁用管理员的个人空间", "error");
+    try {
+      setDisableSubmitting(true);
+      const res = await fetch("/api/admin/workspaces/toggle-status", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          workspaceId: disablingWorkspace.id,
+          status: "DISABLED",
+          reason: disableReason.trim(),
+          duration: disableDuration,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        showToast(data.error || data.message || "停用工作空间失败", "error");
         return;
       }
-    }
 
+      showToast(`工作空间【${disablingWorkspace.name}】已停用管控，已向所有成员推送系统通知`, "success");
+      setDisablingWorkspace(null);
+      loadWorkspaces(currentPage);
+    } catch (err) {
+      console.error("停用工作空间出错:", err);
+      showToast("操作失败，请稍后重试", "error");
+    } finally {
+      setDisableSubmitting(false);
+    }
+  };
+
+  // 解除管控并恢复启用工作空间
+  const handleEnableWorkspace = async (workspace: Workspace) => {
     showConfirm(
-      `确定要${newStatus === "ACTIVE" ? "启用" : "禁用"}该空间吗？`,
+      `确定要解除对工作空间【${workspace.name}】的管控并恢复启用吗？解除后系统将自动向所有成员发送服务恢复通知。`,
       async () => {
         try {
           setTogglingId(workspace.id);
-          const res = await fetch(
-            `/api/admin/workspaces/toggle-status?workspaceId=${workspace.id}&status=${newStatus}`,
-            {
-              method: "PATCH",
-              headers: {
-                Authorization: `Bearer ${getAuthToken()}`,
-              },
+          const res = await fetch("/api/admin/workspaces/toggle-status", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${getAuthToken()}`,
             },
-          );
+            body: JSON.stringify({
+              workspaceId: workspace.id,
+              status: "ACTIVE",
+            }),
+          });
 
-          if (!res.ok) {
-            // 不显示错误，ActivityMonitor 会处理超时跳转
-            console.error("Toggle workspace status failed:", res.status);
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            showToast(data.error || "恢复启用失败", "error");
             return;
           }
 
-          showToast(
-            `空间已${newStatus === "ACTIVE" ? "启用" : "禁用"}`,
-            "success",
-          );
+          showToast(`工作空间【${workspace.name}】已恢复启用，通知已推送`, "success");
           loadWorkspaces(currentPage);
         } catch (error) {
-          console.error("Toggle workspace status error:", error);
+          console.error("恢复启用工作空间出错:", error);
           showToast("操作失败", "error");
         } finally {
           setTogglingId(null);
@@ -291,22 +344,11 @@ export default function AdminWorkspacesPage() {
   };
 
   const showToast = (message: string, type: "success" | "error") => {
-    const container = document.getElementById("zg-toast-container");
-    if (!container) return;
-
-    const toast = document.createElement("div");
-    toast.className = `zg-toast ${type === "success" ? "show" : ""}`;
-    toast.innerHTML = `
-      <span class="${type === "success" ? "text-emerald-600" : "text-red-600"} font-bold">
-        ${type === "success" ? "✓" : "✕"}
-      </span>
-      <span class="text-sm font-medium text-slate-700">${message}</span>
-    `;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-      toast.remove();
-    }, 3000);
+    if (type === "success") {
+      toast.success(message);
+    } else {
+      toast.error(message);
+    }
   };
 
   const showConfirm = (message: string, action: () => void) => {
@@ -526,134 +568,171 @@ export default function AdminWorkspacesPage() {
         </p>
       </div>
 
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#3182ce]/10 opacity-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 rounded-xl bg-[#3182ce]/10 flex items-center justify-center shadow-sm">
-                <Building2 className="w-7 h-7 text-[#3182ce]" />
-              </div>
-            </div>
-            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+      {/* 统计卡片 (与全站管理后台标准指标卡片规格保持 100% 一致) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between hover:shadow-md transition-all">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">总工作空间数</div>
+            <div className="text-2xl font-black font-mono text-slate-800 tracking-tight">
               {workspaceData?.total || 0}
             </div>
-            <div className="text-sm text-slate-500 font-semibold">
-              总工作空间数
-            </div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100/80 text-[#3182ce] flex items-center justify-center font-bold shrink-0 shadow-2xs">
+            <Building2 className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/10 opacity-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 rounded-xl bg-[#10b981]/10 flex items-center justify-center shadow-sm">
-                <Users className="w-7 h-7 text-[#10b981]" />
-              </div>
-            </div>
-            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between hover:shadow-md transition-all">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">总成员数</div>
+            <div className="text-2xl font-black font-mono text-emerald-600 tracking-tight">
               {workspaceData?.stats?.totalMembers || 0}
             </div>
-            <div className="text-sm text-slate-500 font-semibold">总成员数</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100/80 text-emerald-600 flex items-center justify-center font-bold shrink-0 shadow-2xs">
+            <Users className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#8b5cf6]/10 opacity-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center shadow-sm">
-                <Building2 className="w-7 h-7 text-[#8b5cf6]" />
-              </div>
-            </div>
-            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between hover:shadow-md transition-all">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">组件总数</div>
+            <div className="text-2xl font-black font-mono text-purple-600 tracking-tight">
               {workspaceData?.stats?.totalComponentCount || 0}
             </div>
-            <div className="text-sm text-slate-500 font-semibold">组件总数</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100/80 text-purple-600 flex items-center justify-center font-bold shrink-0 shadow-2xs">
+            <Building2 className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/10 opacity-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 rounded-xl bg-[#f59e0b]/10 flex items-center justify-center shadow-sm">
-                <AlertCircle className="w-7 h-7 text-[#f59e0b]" />
-              </div>
-            </div>
-            <div className="text-3xl font-black text-slate-800 mb-1 tracking-tight">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between hover:shadow-md transition-all">
+          <div>
+            <div className="text-xs text-slate-500 font-bold mb-1">待审核空间</div>
+            <div className="text-2xl font-black font-mono text-amber-600 tracking-tight">
               {workspaceData?.stats?.pendingCount || 0}
             </div>
-            <div className="text-sm text-slate-500 font-semibold">
-              待审核空间
-            </div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100/80 text-amber-600 flex items-center justify-center font-bold shrink-0 shadow-2xs">
+            <AlertCircle className="w-5 h-5" />
           </div>
         </div>
       </div>
 
-      {/* 筛选工具栏 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/90 shadow-sm overflow-hidden">
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
-
-        <div className="relative flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <SearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onSearch={handleRealTimeSearch}
-              placeholder="搜索工作空间名称..."
-              debounceMs={300}
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
+      {/* 筛选工具栏 (圆润 16px 规范卡片 + 双行清晰分治架构) */}
+      <div className="bg-white/90 backdrop-blur-md p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+        {/* 第一行：多维分类筛选标签下拉框 */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-bold">空间类型:</span>
             <select
               value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+              onChange={(e) => {
+                setFilterType(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
             >
-              <option value="all">所有类型</option>
-              <option value="PERSONAL">个人空间</option>
-              <option value="ENTERPRISE">企业空间</option>
+              <option value="all">全部类型</option>
+              <option value="PERSONAL">👤 个人空间</option>
+              <option value="ENTERPRISE">🏢 企业空间</option>
             </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-bold">组件装配:</span>
             <select
               value={filterComponentCount}
-              onChange={(e) => setFilterComponentCount(e.target.value)}
-              className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-sm font-medium transition-all bg-white/80"
+              onChange={(e) => {
+                setFilterComponentCount(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
             >
-              <option value="all">所有数量</option>
+              <option value="all">全部数量</option>
               <option value="0">0 个组件</option>
               <option value="1-10">1-10 个组件</option>
               <option value="11-50">11-50 个组件</option>
               <option value="51-100">51-100 个组件</option>
               <option value="100+">100+ 个组件</option>
             </select>
-            <button
-              onClick={() => handleSearch()}
-              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-            >
-              <Filter className="w-4 h-4 mr-2" />
-              筛选
-            </button>
-            <button
-              onClick={() => {
-                loadWorkspaces(currentPage);
-                toast.success("空间数据已刷新！");
-              }}
-              disabled={loading}
-              className="inline-flex items-center px-4 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all duration-200 cursor-pointer shadow-2xs border border-slate-200/80 active:scale-95 disabled:opacity-50"
-              title="点击刷新空间列表最新数据"
-            >
-              <RotateCcw className={`w-4 h-4 mr-1.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
-              刷新数据
-            </button>
           </div>
+        </div>
+
+        {/* 第二行：加长舒展搜索框与快捷操作 */}
+        <div className="flex flex-wrap items-center gap-2.5 pt-1 border-t border-slate-100">
+          <div className="relative w-80 sm:w-96 lg:w-[420px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSearch();
+                }
+              }}
+              placeholder="搜索工作空间名称 / 关键词..."
+              className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setCurrentPage(1);
+                  loadWorkspaces(1, "");
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded-full bg-slate-200/70 hover:bg-slate-300 text-slate-500 transition-colors cursor-pointer"
+                title="清空搜索"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleSearch()}
+            className="px-4 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
+          >
+            搜索
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadWorkspaces(currentPage)}
+            disabled={loading}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-slate-200/80 active:scale-95 disabled:opacity-50"
+            title="点击刷新空间列表最新数据"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
+            <span>刷新数据</span>
+          </button>
+
+          {(searchQuery || filterType !== "all" || filterComponentCount !== "all") && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setFilterType("all");
+                setFilterComponentCount("all");
+                setCurrentPage(1);
+                loadWorkspaces(1, "");
+              }}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
+            >
+              重置
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 工作空间列表 */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* 工作空间列表 (圆润 16px 卡片 + 操作列粘性固定) */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* 批量操作工具栏 */}
         {showBatchActions &&
           (() => {
@@ -707,16 +786,17 @@ export default function AdminWorkspacesPage() {
           })()}
 
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-12 h-12 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin"></div>
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-10 h-10 border-3 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mb-3"></div>
+            <p className="text-xs text-slate-500 font-bold">正在加载工作空间数据...</p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full table-auto">
-                <thead className="bg-slate-50 border-b border-slate-200">
+            <div className="overflow-x-auto min-h-[300px]">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-bold">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       <input
                         type="checkbox"
                         checked={
@@ -730,40 +810,38 @@ export default function AdminWorkspacesPage() {
                         className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
                       />
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       工作空间
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       类型
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       套餐档位
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       成员数
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       组件数量
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       可用算力
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                      审核状态
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       创建时间
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    {/* 操作列：粘性吸附在最右侧，无论横向怎么滚动均可见 */}
+                    <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">
                       操作
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-100">
                   {workspaceData?.workspaces.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={9}
                         className="px-6 py-20 text-center text-slate-400"
                       >
                         暂无工作空间数据
@@ -773,9 +851,9 @@ export default function AdminWorkspacesPage() {
                     workspaceData?.workspaces.map((workspace) => (
                       <tr
                         key={workspace.id}
-                        className="hover:bg-slate-50 transition-colors"
+                        className="group hover:bg-slate-50/80 transition-colors"
                       >
-                        <td className="px-6 py-4">
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
                           <input
                             type="checkbox"
                             checked={selectedWorkspaces.has(workspace.id)}
@@ -783,20 +861,32 @@ export default function AdminWorkspacesPage() {
                             className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
                           />
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center">
-                              <Building2 className="w-5 h-5 text-white" />
+                            <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white shadow-2xs">
+                              <Building2 className="w-4.5 h-4.5" />
                             </div>
                             <div className="min-w-0">
-                              <div
-                                className="text-sm font-bold text-slate-800 truncate"
-                                title={workspace.name}
-                              >
-                                {workspace.name}
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="text-xs font-black text-slate-800 truncate max-w-[150px]"
+                                  title={workspace.name}
+                                >
+                                  {workspace.name}
+                                </span>
+                                {workspace.status === "DISABLED" && (
+                                  <span className="shrink-0 px-1.5 py-0.2 rounded text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200/80">
+                                    管控中
+                                  </span>
+                                )}
+                                {workspace.appealStatus === "pending" && (
+                                  <span className="shrink-0 px-1.5 py-0.2 rounded text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200/80 animate-pulse">
+                                    申诉待审
+                                  </span>
+                                )}
                               </div>
                               <div
-                                className="text-xs text-slate-500 truncate"
+                                className="text-[11px] text-slate-400 truncate max-w-[180px]"
                                 title={workspace.description || "无描述"}
                               >
                                 {workspace.description || "无描述"}
@@ -804,44 +894,42 @@ export default function AdminWorkspacesPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
                           {workspace.type === "PERSONAL" ? (
-                            <span className="px-2 py-1 bg-blue-100 text-[#2b6cb0] text-xs font-bold rounded-full">
+                            <span className="px-2 py-0.5 bg-blue-50 text-[#2b6cb0] border border-blue-200 text-[10px] font-black rounded-lg">
                               个人空间
                             </span>
                           ) : (
-                            <span className="px-2 py-1 bg-purple-100 text-[#805ad5] text-xs font-bold rounded-full">
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-black rounded-lg">
                               企业空间
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
                           {(() => {
                             const planKey = (workspace.plan || "STANDARD").toUpperCase();
                             const meta = WORKSPACE_PLAN_BADGES[planKey] || { label: planKey, badge: "bg-slate-50 text-slate-600 border-slate-200" };
                             return (
-                              <span className={`px-2 py-0.5 rounded border text-[11px] font-bold ${meta.badge}`}>
+                              <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-black ${meta.badge}`}>
                                 {meta.label}
                               </span>
                             );
                           })()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <Users className="w-4 h-4 shrink-0" />
-                            <span>{workspace._count.members} 人</span>
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-700 font-bold font-mono">
+                            <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>{(workspace as any).memberCount ?? workspace._count?.workspacemember ?? workspace._count?.members ?? workspace.members?.length ?? 0} 人</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="px-2 py-1 bg-emerald-100 text-emerald-600 rounded-full font-bold">
-                              {workspace.componentCount} 个
-                            </span>
-                          </div>
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
+                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-black font-mono">
+                            {workspace.componentCount} 个
+                          </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/70 text-[#3182ce] text-xs font-black font-mono shadow-2xs">
-                            <Zap className="w-3.5 h-3.5 fill-[#3182ce]" />
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/70 text-[#3182ce] text-[11px] font-black font-mono shadow-2xs">
+                            <Zap className="w-3 h-3 fill-[#3182ce]" />
                             <span>
                               {workspace.quota?.tokenBalance !== undefined && workspace.quota?.tokenBalance !== null
                                 ? `${Number(workspace.quota.tokenBalance).toLocaleString()} 点`
@@ -849,30 +937,31 @@ export default function AdminWorkspacesPage() {
                             </span>
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {workspace.status === "ACTIVE" ? (
-                            <span className="px-2 py-1 bg-emerald-100 text-emerald-600 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
-                              <CheckCircle className="w-3 h-3 shrink-0" />
-                              已审核
-                            </span>
-                          ) : (
-                            <span className="px-2 py-1 bg-amber-100 text-amber-600 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
-                              <AlertCircle className="w-3 h-3 shrink-0" />
-                              待审核
-                            </span>
-                          )}
+                        {/* 创建时间：年月日上面，时分秒在下面 */}
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
+                          {(() => {
+                            const d = new Date(workspace.createdAt);
+                            const isValid = !isNaN(d.getTime());
+                            const datePart = isValid
+                              ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+                              : workspace.createdAt;
+                            const timePart = isValid
+                              ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`
+                              : "";
+                            return (
+                              <div className="flex flex-col font-mono leading-tight">
+                                <span className="text-xs font-bold text-slate-700">{datePart}</span>
+                                <span className="text-[11px] text-slate-400 font-medium mt-0.5">{timePart}</span>
+                              </div>
+                            );
+                          })()}
                         </td>
-                        <td
-                          className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap"
-                          title={formatTimeAgo(workspace.createdAt)}
-                        >
-                          {formatTimeAgo(workspace.createdAt)}
-                        </td>
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-2">
+                        {/* 操作列：粘性吸附在最右侧，无论横向怎么滚动均触手可及 */}
+                        <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => handleView(workspace)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
                               title="查看工作空间成员与资产详情"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -880,21 +969,35 @@ export default function AdminWorkspacesPage() {
                             </button>
 
                             {workspace.status === "ACTIVE" ? (
-                              <button
-                                onClick={() => handleToggleStatus(workspace)}
-                                disabled={togglingId === workspace.id}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
-                                title="停用管控该工作空间"
-                              >
-                                <EyeOff className="w-3.5 h-3.5" />
-                                <span>停用</span>
-                              </button>
+                              // 用户核心批注：受管理员安全保护的工作空间（超级管理员/系统管理员）直接隐藏停用按钮
+                              workspace.isProtected ? null : (
+                                <button
+                                  onClick={() => handleOpenDisableModal(workspace)}
+                                  disabled={togglingId === workspace.id}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                  title="停用管控该工作空间"
+                                >
+                                  <EyeOff className="w-3.5 h-3.5" />
+                                  <span>停用</span>
+                                </button>
+                              )
                             ) : (
                               <>
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 bg-amber-50/95 text-amber-700 border border-amber-200/80 rounded-lg shadow-2xs whitespace-nowrap"
+                                  title={`【工作空间管控中】\n管控截止：${workspace.disabledUntil ? new Date(workspace.disabledUntil).toLocaleString("zh-CN") : "永久管控"}\n停用原因：${workspace.disabledReason || "未登记"}\n说明：到达截止时间后，系统将自动解除管控恢复正常启用。`}
+                                >
+                                  <Clock className="w-3 h-3 text-amber-500 shrink-0" />
+                                  <span>
+                                    {workspace.disabledUntil
+                                      ? `停用至 ${new Date(workspace.disabledUntil).getMonth() + 1}月${new Date(workspace.disabledUntil).getDate()}日`
+                                      : "永久管控"}
+                                  </span>
+                                </span>
                                 <button
-                                  onClick={() => handleToggleStatus(workspace)}
+                                  onClick={() => handleEnableWorkspace(workspace)}
                                   disabled={togglingId === workspace.id}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
                                   title="恢复启用该工作空间"
                                 >
                                   <CheckCircle className="w-3.5 h-3.5" />
@@ -903,7 +1006,7 @@ export default function AdminWorkspacesPage() {
                                 <button
                                   onClick={() => handleDelete(workspace.id)}
                                   disabled={deletingId === workspace.id}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
                                   title="解散并彻底删除该工作空间"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -957,14 +1060,6 @@ export default function AdminWorkspacesPage() {
                   <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">
                     基本信息与业务归属
                   </h3>
-                  <button
-                    onClick={() => window.open(`/workspace/${viewingWorkspace.id}`, "_blank")}
-                    className="text-xs font-bold text-[#3182ce] hover:underline flex items-center gap-1 cursor-pointer"
-                    title="新窗口打开该工作空间前台视图"
-                  >
-                    <span>进入前台工作台</span>
-                    <Building2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
@@ -1010,8 +1105,8 @@ export default function AdminWorkspacesPage() {
                   </div>
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
                     <div className="text-[11px] text-slate-400 font-bold mb-1">成员规模</div>
-                    <div className="text-xs font-bold text-slate-800">
-                      {viewingWorkspace._count.members} 人
+                    <div className="text-xs font-bold text-slate-800 font-mono">
+                      {(viewingWorkspace as any).memberCount ?? viewingWorkspace._count?.workspacemember ?? viewingWorkspace._count?.members ?? viewingWorkspace.members?.length ?? 0} 人
                     </div>
                   </div>
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
@@ -1250,6 +1345,185 @@ export default function AdminWorkspacesPage() {
                   确认
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 工作空间停用管控确认模态弹窗（带原因录入、全员站内信推送与防截断架构） */}
+      {disablingWorkspace && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* 头部 */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-amber-50/40 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">工作空间停用管控确认</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">请谨慎评估，停用后将冻结空间组件与算力</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDisablingWorkspace(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 内容滚动区 */}
+            <div className="p-6 space-y-4 flex-1 min-h-0 overflow-y-auto">
+              {/* 空间基本信息概要卡片 */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-bold">目标工作空间:</span>
+                  <span className="font-black text-slate-800 text-sm">{disablingWorkspace.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-bold">所属拥有者:</span>
+                  <span className="font-bold text-slate-700">
+                    {disablingWorkspace.owner?.name || "空间管理员"}
+                    {disablingWorkspace.owner?.email ? ` (${disablingWorkspace.owner.email})` : ""}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-bold">空间规模:</span>
+                  <span className="font-bold text-slate-700">
+                    {(disablingWorkspace as any).memberCount ?? disablingWorkspace.members?.length ?? 0} 位成员 · {disablingWorkspace.componentCount} 个组件
+                  </span>
+                </div>
+              </div>
+
+              {/* 停用期限选择（1天、3天、7天、1个月、1年、永久） */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-black text-slate-700">
+                    停用期限 <span className="text-red-500 font-bold ml-0.5">*</span>
+                  </label>
+                  <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+                    到期系统将自动解除管控
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-2">
+                  {[
+                    { key: "1d", label: "1 天", desc: "短时管控" },
+                    { key: "3d", label: "3 天", desc: "合规核验" },
+                    { key: "7d", label: "7 天", desc: "标准整改" },
+                    { key: "30d", label: "1 个月", desc: "严肃惩戒" },
+                    { key: "365d", label: "1 年", desc: "长期管控" },
+                    { key: "permanent", label: "永久", desc: "永久封禁" },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setDisableDuration(item.key)}
+                      className={`px-1.5 py-2 rounded-xl border text-center transition-all cursor-pointer whitespace-nowrap ${
+                        disableDuration === item.key
+                          ? "bg-amber-500 text-white border-amber-600 shadow-sm font-black scale-[1.02]"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 font-bold"
+                      }`}
+                    >
+                      <div className="text-xs font-black">{item.label}</div>
+                      <div className={`text-[10px] mt-0.5 font-medium ${disableDuration === item.key ? "text-amber-100 font-bold" : "text-slate-400"}`}>
+                        {item.desc}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* 预计自动解封时间展示 */}
+                <div className="p-2.5 rounded-xl bg-blue-50/60 border border-blue-200/60 text-xs flex items-center justify-between">
+                  <span className="text-slate-600 font-medium">预计自动解封节点：</span>
+                  <span className="font-mono font-bold text-[#2b6cb0]">
+                    {(() => {
+                      if (disableDuration === "permanent") return "永久封禁（无自动解封节点，须提交申诉经风控审核）";
+                      const daysMap: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30, "365d": 365 };
+                      const days = daysMap[disableDuration] || 7;
+                      const target = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+                      return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")} ${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")} (${days}天后)`;
+                    })()}
+                  </span>
+                </div>
+              </div>
+
+              {/* 停用原因选择 */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">
+                  停用管控原因 <span className="text-red-500 font-bold ml-0.5">*</span>
+                </label>
+
+                {/* 快捷原因胶囊 */}
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
+                  {[
+                    "违反平台运营与合规规范",
+                    "涉嫌数据违规爬取或接口滥用",
+                    "空间安全与风控合规审查",
+                    "长期闲置沉睡空间清理",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setDisableReason(preset)}
+                      className={`px-2.5 py-1 text-xs rounded-lg border font-bold transition-all cursor-pointer ${
+                        disableReason === preset
+                          ? "bg-amber-500 text-white border-amber-500 shadow-2xs"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  rows={3}
+                  required
+                  value={disableReason}
+                  onChange={(e) => setDisableReason(e.target.value)}
+                  placeholder="请输入详细的停用管控理由（该理由将以站内信通知该空间的全体在编成员）..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500 focus:bg-white resize-none transition-all placeholder:text-slate-400"
+                />
+              </div>
+
+              {/* 管控影响警示 */}
+              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-800 leading-relaxed space-y-1">
+                <div className="font-black flex items-center gap-1 text-amber-900">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>执行停用管控后的系统联动效果：</span>
+                </div>
+                <p>1. 系统将自动向该工作空间的所有者及全体成员发送系统安全管控通知；</p>
+                <p>2. 前台中枢将对该空间高亮标红「已停用管控」，阻断进入和敏感配置；</p>
+                <p>3. 空间内所有组件算力调用与数据写入操作将被冻结，直至管理员解除管控。</p>
+              </div>
+            </div>
+
+            {/* 底部操作常驻条 */}
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/80 shrink-0">
+              <button
+                type="button"
+                disabled={disableSubmitting}
+                onClick={() => setDisablingWorkspace(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={disableSubmitting || !disableReason.trim()}
+                onClick={handleConfirmDisable}
+                className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                {disableSubmitting ? (
+                  <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <EyeOff className="w-3.5 h-3.5" />
+                )}
+                <span>确认实施停用管控</span>
+              </button>
             </div>
           </div>
         </div>

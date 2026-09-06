@@ -43,43 +43,44 @@ export async function GET(request: NextRequest) {
     }
 
     // 查询用户的所有工作空间（包括作为成员和作为所有者的空间）
-    const workspaceMembers = await prisma.workspacemember.findMany({
-      where: { userId },
-      include: {
-        workspace: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-            ownerId: true,
-            description: true,
-            logo: true,
-            createdAt: true,
-            updatedAt: true,
+    // P3 优化：成员列表与"作为所有者"的列表互不依赖，并行发起缩短总等待
+    const [workspaceMembers, ownedWorkspaces] = await Promise.all([
+      prisma.workspacemember.findMany({
+        where: { userId },
+        include: {
+          workspace: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              ownerId: true,
+              description: true,
+              logo: true,
+              createdAt: true,
+              updatedAt: true,
+            },
           },
         },
-      },
-      orderBy: {
-        joinedAt: "desc",
-      },
-    });
-
-    // 同时查询用户作为所有者的工作空间（防止 workspacemember 记录缺失）
-    const ownedWorkspaces = await prisma.workspace.findMany({
-      where: {
-        ownerId: userId,
-      },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        ownerId: true,
-        description: true,
-        logo: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+        orderBy: {
+          joinedAt: "desc",
+        },
+      }),
+      prisma.workspace.findMany({
+        where: {
+          ownerId: userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          ownerId: true,
+          description: true,
+          logo: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
 
     // 合并两个结果集，去重
     const workspaceMap = new Map<string, any>();

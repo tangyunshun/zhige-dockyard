@@ -8,6 +8,7 @@ import {
   VALIDATE_ERROR_TO_SESSION_CODE,
   SESSION_ERROR_CODES,
 } from "@/lib/session-constants";
+import { dedupeFetch } from "@/lib/requestDedupe";
 import { getAuthToken, getCurrentUserId } from "@/utils/auth";
 
 // 不需要检查的公共路径 - 营销页面所有人都能访问
@@ -127,8 +128,8 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // 调用 API 验证
-      const res = await fetch("/api/auth/me", {
+      // 调用 API 验证（并发去重：与 AppProvider 等全局组件的同刻 /me 合并为一次）
+      const res = await dedupeFetch("/api/auth/me", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
         signal: AbortSignal.timeout(10000),

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { dedupeFetch } from "@/lib/requestDedupe";
 
 export interface Workspace {
   id: string;
@@ -18,6 +19,11 @@ export interface Workspace {
   isOwner?: boolean;
   description?: string;
   upgraded?: boolean;
+  disabledUntil?: string | null;
+  disabledReason?: string | null;
+  disabledDuration?: string | null;
+  appealStatus?: "none" | "pending" | "approved" | "rejected";
+  appealCount?: number;
   /** 空间共享算力池信息（来自 dashboard 序列化） */
   quota?: {
     id?: string;
@@ -78,10 +84,26 @@ export function useWorkspaceHubData() {
   const loadUserInfo = async () => {
     try {
       const authToken = getAuthToken();
-      const res = await fetch("/api/auth/me", {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      const authHeaders: Record<string, string> = authToken
+        ? { Authorization: `Bearer ${authToken}` }
+        : {};
+
+      // P1 优化：互不依赖的请求并行发起（网络耗时从“相加”降为“取最大”），
+      // 且走 dedupeFetch 并发去重，与全局 AppProvider / WorkspaceProvider /
+      // AuthCheck 等同刻请求共享同一次往返，避免同接口重复打库。
+      const meReq = dedupeFetch("/api/auth/me", {
+        headers: authHeaders,
         credentials: "include",
       });
+      // P2 优化：dashboard 聚合接口已内含用户/空间列表/配额/计数等全部展示数据，
+      // 因此中枢不再默认额外请求 /api/workspace/list；仅当 dashboard 不可用时才兜底补拉。
+      const dashboardReq = dedupeFetch(`/api/user/workspace-hub/dashboard?_t=${Date.now()}`, {
+        headers: authHeaders,
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const res = await meReq;
 
       if (!res.ok) {
         if (res.status === 404 || res.status === 401) {
@@ -117,51 +139,17 @@ export function useWorkspaceHubData() {
       if (!data) return;
       setUser(data.user);
 
-      // 加载所有的工作空间列表 (禁用 HTTP/Next 强缓存)
-      const workspacesRes = await fetch(`/api/workspace/list?_t=${Date.now()}`, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      if (workspacesRes.ok) {
-        const wsContentType = workspacesRes.headers.get("content-type");
-        if (wsContentType && wsContentType.includes("application/json")) {
-          const workspacesData = await workspacesRes.json().catch(() => null);
-
-          if (workspacesData && workspacesData.workspaces) {
-            const personal = workspacesData.workspaces.find(
-              (w: Workspace) => w.type === "PERSONAL" && (w.role === "OWNER" || w.isOwner)
-            );
-            const enterprise = workspacesData.workspaces.find(
-              (w: Workspace) => w.type === "ENTERPRISE"
-            );
-
-            // 如果获取到个人空间，重置已删除标记
-            if (personal) {
-              setPersonalWorkspace(personal);
-              setPersonalWorkspaceDeleted(false);
-              localStorage.setItem("personalWorkspaceDeleted", "false");
-            } else {
-              setPersonalWorkspace(null);
-            }
-            setEnterpriseWorkspace(enterprise || null);
-          }
-        }
-      }
-
-      // 获取用户主工作区看板聚合数据 (禁用 HTTP/Next 强缓存)
-      const dashboardRes = await fetch(`/api/user/workspace-hub/dashboard?_t=${Date.now()}`, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-        credentials: "include",
-        cache: "no-store",
-      });
+      // P2 优化：以 dashboard 聚合接口为主数据源（它已包含 user / 空间列表 / 计数 / 配额）。
+      // 仅当 dashboard 不可用时才兜底请求 /api/workspace/list，避免进入中枢重复触发重量级列表。
+      const dashboardRes = await dashboardReq;
+      let dashboardOk = false;
 
       if (dashboardRes.ok) {
         const dbContentType = dashboardRes.headers.get("content-type");
         if (dbContentType && dbContentType.includes("application/json")) {
           const resData = await dashboardRes.json().catch(() => null);
           if (resData && resData.success && resData.data) {
+            dashboardOk = true;
             const bentoData = resData.data;
             setDashboardData(bentoData);
             setNeedsPersonalWorkspace(!!bentoData.needsPersonalWorkspace);
@@ -173,6 +161,9 @@ export function useWorkspaceHubData() {
               setPersonalWorkspace(bentoData.personalWorkspace);
               setPersonalWorkspaceDeleted(false);
               localStorage.setItem("personalWorkspaceDeleted", "false");
+            } else {
+              // dashboard 明确无个人空间时同样置空，避免旧状态残留
+              setPersonalWorkspace(null);
             }
             if (bentoData.enterpriseWorkspaces) {
               setEnterpriseWorkspace(bentoData.enterpriseWorkspaces[0] || null);
@@ -194,6 +185,8 @@ export function useWorkspaceHubData() {
                       ),
                 },
               });
+            } else {
+              setEnterpriseWorkspace(null);
             }
 
             if (bentoData.userQuota) {
@@ -212,6 +205,41 @@ export function useWorkspaceHubData() {
                 monthlyTokens: quotas.tokenBalance.used,
                 totalTokens: quotas.tokenBalance.historyTotalUsed || quotas.tokenBalance.used,
               });
+            }
+          }
+        }
+      }
+
+      // 兜底：dashboard 异常时回退到 workspace/list，保证中枢仍能展示基础空间卡片
+      if (!dashboardOk) {
+        const workspacesRes = await dedupeFetch(`/api/workspace/list?_t=${Date.now()}`, {
+          headers: authHeaders,
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (workspacesRes.ok) {
+          const wsContentType = workspacesRes.headers.get("content-type");
+          if (wsContentType && wsContentType.includes("application/json")) {
+            const workspacesData = await workspacesRes.json().catch(() => null);
+
+            if (workspacesData && workspacesData.workspaces) {
+              const personal = workspacesData.workspaces.find(
+                (w: Workspace) => w.type === "PERSONAL" && (w.role === "OWNER" || w.isOwner)
+              );
+              const enterprise = workspacesData.workspaces.find(
+                (w: Workspace) => w.type === "ENTERPRISE"
+              );
+
+              // 如果获取到个人空间，重置已删除标记
+              if (personal) {
+                setPersonalWorkspace(personal);
+                setPersonalWorkspaceDeleted(false);
+                localStorage.setItem("personalWorkspaceDeleted", "false");
+              } else {
+                setPersonalWorkspace(null);
+              }
+              setEnterpriseWorkspace(enterprise || null);
             }
           }
         }

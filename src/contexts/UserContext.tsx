@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { dedupeFetch } from "@/lib/requestDedupe";
 
 export interface UserInfo {
   id: string;
@@ -40,7 +41,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     
     try {
       const authToken = getAuthToken();
-      const res = await fetch("/api/auth/me", {
+      const res = await dedupeFetch("/api/auth/me", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
         cache: "no-store", // 强制不缓存，每次从数据库查询最新数据

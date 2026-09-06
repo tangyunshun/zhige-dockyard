@@ -112,6 +112,10 @@ export async function POST(req: NextRequest) {
       await ensureDefaultComponents(workspaceId, userId);
     }
 
+    // P3：空间数据已清空，立即失效组件数/中枢等只读缓存，保证回中枢后计数即时归位
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
     return NextResponse.json({
       success: true,
       message: "个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配",

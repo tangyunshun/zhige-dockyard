@@ -185,7 +185,34 @@ export default function AvatarDropdown({
             </div>
           )}
 
-          {/* 菜单项区块一：个人中心与设置 */}
+          {/* 菜单项区块一：管理入口（优先置顶于个人中心前方） */}
+          {adminEntry && (
+            <>
+              <div className="space-y-0.5">
+                <button
+                  onClick={() => { router.push(adminEntry.path); setShowDropdown(false); }}
+                  className="group w-full flex items-center justify-between px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <adminEntry.icon className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
+                    <span className="group-hover:translate-x-0.5 transition-transform">{adminEntry.label}</span>
+                  </div>
+                  {adminEntry.label === "平台后台" && (
+                    <span className={`px-1.5 py-0.2 rounded text-[8px] font-black shrink-0 select-none border shadow-sm ${
+                      isSuperAdmin 
+                        ? "bg-amber-50 text-amber-600 border-amber-100" 
+                        : "bg-red-50 text-red-500 border-red-100"
+                    }`}>
+                      {isSuperAdmin ? "超管" : "管理"}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <div className="h-px bg-slate-100/80 my-1" />
+            </>
+          )}
+
+          {/* 菜单项区块二：个人中心与设置 */}
           <div className="space-y-0.5">
             <button
               onClick={() => { router.push("/user/profile"); setShowDropdown(false); }}
@@ -216,33 +243,6 @@ export default function AvatarDropdown({
               <span className="group-hover:translate-x-0.5 transition-transform">开发者设置</span>
             </button>
           </div>
-
-          {/* 菜单项区块二：管理入口 */}
-          {adminEntry && (
-            <>
-              <div className="h-px bg-slate-100/80 my-1" />
-              <div className="space-y-0.5">
-                <button
-                  onClick={() => { router.push(adminEntry.path); setShowDropdown(false); }}
-                  className="group w-full flex items-center justify-between px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <adminEntry.icon className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
-                    <span className="group-hover:translate-x-0.5 transition-transform">{adminEntry.label}</span>
-                  </div>
-                  {adminEntry.label === "平台后台" && (
-                    <span className={`px-1.5 py-0.2 rounded text-[8px] font-black shrink-0 select-none border shadow-sm ${
-                      isSuperAdmin 
-                        ? "bg-amber-50 text-amber-600 border-amber-100" 
-                        : "bg-red-50 text-red-500 border-red-100"
-                    }`}>
-                      {isSuperAdmin ? "超管" : "管理"}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </>
-          )}
 
           <div className="h-px bg-slate-100/80 my-1" />
 

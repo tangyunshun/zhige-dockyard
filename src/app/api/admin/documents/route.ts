@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search");
     const category = searchParams.get("category");
     const published = searchParams.get("published") || searchParams.get("isPublished");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
 
     const where: any = {};
     
@@ -39,7 +41,14 @@ export async function GET(request: NextRequest) {
       where.isPublished = published === "true";
     }
 
-    const [documents, total] = await Promise.all([
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(`${startDate}T00:00:00.000Z`);
+      if (endDate) where.createdAt.lte = new Date(`${endDate}T23:59:59.999Z`);
+    }
+
+    // 聚合全局真实统计指标（不受分页截断影响）
+    const [documents, total, totalAll, publishedCount, unPublishedCount, viewAggResult, categoryStats] = await Promise.all([
       prisma.systemdocument.findMany({
         where,
         include: {
@@ -54,10 +63,31 @@ export async function GET(request: NextRequest) {
         },
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
       }),
       prisma.systemdocument.count({ where }),
+      prisma.systemdocument.count(),
+      prisma.systemdocument.count({ where: { isPublished: true } }),
+      prisma.systemdocument.count({ where: { isPublished: false } }),
+      prisma.systemdocument.aggregate({ _sum: { viewCount: true } }),
+      prisma.systemdocument.groupBy({
+        by: ["category"],
+        _count: { id: true },
+      }),
     ]);
+
+    const categoryCountMap: Record<string, number> = {};
+    categoryStats.forEach((cat) => {
+      categoryCountMap[cat.category] = cat._count.id;
+    });
+
+    const summary = {
+      totalDocs: totalAll,
+      publishedDocs: publishedCount,
+      unPublishedDocs: unPublishedCount,
+      totalViews: viewAggResult._sum.viewCount || 0,
+      categoryCounts: categoryCountMap,
+    };
 
     const totalPages = Math.ceil(total / limit);
 
@@ -68,6 +98,7 @@ export async function GET(request: NextRequest) {
         total,
         totalPages,
         page,
+        summary,
       },
     });
   } catch (error) {
@@ -191,6 +222,22 @@ export async function DELETE(request: NextRequest) {
 
     if (!documentId) {
       return NextResponse.json({ error: "缺少文档 ID" }, { status: 400 });
+    }
+
+    const targetDoc = await prisma.systemdocument.findUnique({
+      where: { id: documentId },
+      select: { id: true, isPublished: true, title: true },
+    });
+
+    if (!targetDoc) {
+      return NextResponse.json({ error: "文档不存在或已被删除" }, { status: 404 });
+    }
+
+    if (targetDoc.isPublished) {
+      return NextResponse.json(
+        { error: `文档《${targetDoc.title}》当前处于已发布上线状态，禁止直接删除。请先执行下架为草稿后再进行删除。` },
+        { status: 400 }
+      );
     }
 
     await prisma.systemdocument.delete({ where: { id: documentId } });

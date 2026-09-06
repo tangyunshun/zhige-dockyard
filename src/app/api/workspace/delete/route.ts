@@ -106,6 +106,10 @@ export async function DELETE(request: NextRequest) {
       });
     }
 
+    // P3：删除空间后立即失效只读缓存，避免中枢短暂展示已删除空间
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
     return NextResponse.json({
       success: true,
       message: "工作空间已删除",

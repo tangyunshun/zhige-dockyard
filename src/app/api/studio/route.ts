@@ -34,6 +34,7 @@ import { getFileExtension } from "@/lib/file-type";
 import { extractTextFromBuffer } from "@/lib/text-extract";
 import { UNLIMITED_TOKEN, isUnlimitedTokenLimit, getMembershipTokenLimit } from "@/lib/quota-token";
 import { consumePoints, InsufficientPointsError } from "@/lib/credit-service";
+import { clearServerCache } from "@/lib/serverCache";
 
 // 获取真实用户 ID：统一走 validateUser 的合法 JWT 校验
 // （Authorization Bearer JWT 或 Cookie auth_token 均强制验签，
@@ -3242,6 +3243,8 @@ export async function POST(request: NextRequest) {
           metadata: { enabled: true },
         },
       });
+      // P3：装配成功会改变组件数等只读缓存，立即整体失效保证计数即时准确
+      clearServerCache();
 
       // 写入空间操作审计日志
       await prisma.operationlog.create({
@@ -3297,6 +3300,8 @@ export async function POST(request: NextRequest) {
           componentId,
         },
       });
+      // P3：解绑成功会改变组件数等只读缓存，立即整体失效保证计数即时准确
+      clearServerCache();
 
       // 写入空间操作审计日志
       await prisma.operationlog.create({
@@ -3471,6 +3476,8 @@ export async function POST(request: NextRequest) {
           metadata: { enabled }
         }
       });
+      // P3：启停会改变装配状态口径，立即失效组件数与中枢缓存
+      clearServerCache();
 
       // 写入审计日志
       await prisma.operationlog.create({

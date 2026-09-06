@@ -1,7 +1,8 @@
-﻿﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import Pagination from "@/components/Pagination";
@@ -15,6 +16,7 @@ import {
   Calendar,
   Crown,
 } from "lucide-react";
+import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 
 interface MemberUser {
   id: string;
@@ -113,28 +115,17 @@ export default function AdminMembershipUsersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#ebf8ff] via-[#f0f8ff] to-[#ffffff]">
-      {/* 顶部导航 */}
-      <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-slate-600 hover:text-[#3182ce] transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              <span className="font-medium">返回</span>
-            </button>
-            <h1 className="text-xl font-bold text-slate-800">会员用户管理</h1>
-            <div className="w-20" />
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6 pb-12">
+      {/* 顶部统一导航 */}
+      <MembershipNavHeader
+        title="会员用户管理"
+        subtitle="集中检索全站付费与特殊权益会员，追踪身份等级、到期时效与账号画像"
+      />
 
       {/* 主内容区 */}
-      <main className="px-6 py-8">
-        {/* 操作栏 */}
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 mb-6 overflow-hidden">
+      <div>
+        {/* 操作过滤栏 */}
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/90 shadow-2xs p-4 mb-5 overflow-hidden">
           <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -198,7 +189,7 @@ export default function AdminMembershipUsersPage() {
             <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
               <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
               <div className="relative overflow-x-auto">
-                <table className="w-full table-auto">
+                <table className="w-full table-auto min-w-[860px]">
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
@@ -209,6 +200,9 @@ export default function AdminMembershipUsersPage() {
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         注册时间
+                      </th>
+                      <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200">
+                        操作
                       </th>
                     </tr>
                   </thead>
@@ -300,6 +294,18 @@ export default function AdminMembershipUsersPage() {
                             </span>
                           </div>
                         </td>
+                        <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-6 py-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/admin/users?search=${encodeURIComponent(user.email || user.id)}`}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-[#3182ce] text-[#3182ce] hover:text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                              title="前往用户管理中心查看或调整该用户"
+                            >
+                              <User className="w-3.5 h-3.5" />
+                              <span>用户画像</span>
+                            </Link>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -321,7 +327,7 @@ export default function AdminMembershipUsersPage() {
             )}
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }

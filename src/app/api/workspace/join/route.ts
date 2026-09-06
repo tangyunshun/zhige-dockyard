@@ -141,6 +141,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // P3：加入后用户空间列表/中枢将发生变化，立即失效只读缓存
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
     return NextResponse.json({
       success: true,
       message: "加入工作空间成功",

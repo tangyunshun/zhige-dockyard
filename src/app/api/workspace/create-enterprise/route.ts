@@ -193,6 +193,10 @@ export async function POST(request: NextRequest) {
       )
     );
 
+    // P3：创建工作空间改变了中枢列表/配额等只读缓存内容，立即失效
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
     return NextResponse.json({
       success: true,
       message: "企业空间创建成功",

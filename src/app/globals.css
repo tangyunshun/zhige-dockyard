@@ -341,7 +341,10 @@ body {
   min-height: 100vh;
   width: 100%;
   overflow-x: hidden;
-  font-family: "Inter", "Noto Sans SC", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

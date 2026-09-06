@@ -283,9 +283,15 @@ export default function WorkspaceHub() {
     fetchAllWorkspaceBindings();
   }, [personalWorkspace, enterpriseData, dashboardData]);
 
-  // 7. 进入空间跳转与包装 (升级为无缝即时物理跳转)
+  // 7. 进入空间跳转与包装 (升级为无缝即时物理跳转并拦截停用空间)
   const handleEnterWorkspace = (workspace: any) => {
     if (workspace && workspace.id) {
+      if (workspace.status === "DISABLED") {
+        toast.error(
+          "该工作空间已被系统管理员实施停用管控，所有服务已冻结。详情请查看站内通知或提交申诉工单。"
+        );
+        return;
+      }
       toast.info("正在进入工作空间...", 600);
       try {
         localStorage.setItem("currentWorkspaceId", workspace.id);
@@ -709,6 +715,7 @@ export default function WorkspaceHub() {
                 }
               }}
               showUpgradeLink={quota ? (enterpriseData?.workspaces || []).filter((ws: any) => ws.role === "OWNER" || ws.isOwner).length < quota.maxEnterprise : false}
+              onRefresh={refresh}
             />
 
             <EnterpriseWorkspaceList
@@ -729,6 +736,7 @@ export default function WorkspaceHub() {
               onLeave={handleLeaveWorkspaceClick}
               onUpgrade={openUpgradeHub}
               onJoinClick={() => setShowJoinModal(true)}
+              onRefresh={refresh}
             />
           </div>
 

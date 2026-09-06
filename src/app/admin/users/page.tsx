@@ -24,12 +24,9 @@ import {
   AlertTriangle,
   RotateCcw,
   Zap,
+  Search,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import DataTableFilter, {
-  FilterConfig,
-} from "@/components/common/DataTableFilter";
-import SearchInput from "@/components/common/SearchInput";
 import Pagination from "@/components/Pagination";
 
 /** 用户列表每页固定展示 10 条 */
@@ -872,89 +869,146 @@ export default function AdminUsersPage() {
         </p>
       </div>
 
-      {/* 筛选工具栏 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/90 shadow-sm overflow-hidden">
-        {/* 装饰背景 */}
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
+      {/* 筛选控制面板 (与申诉/工单大厂双行圆角胶囊布局 100% 一致) */}
+      <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+        {/* 第一行：多维业务过滤器 */}
+        <div className="flex flex-wrap items-center gap-4">
+          {/* 角色权限 */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500 font-bold flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5 text-[#3182ce]" />
+              角色权限:
+            </label>
+            <select
+              value={filterRole}
+              onChange={(e) => {
+                setFilterRole(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+            >
+              <option value="all">全部角色</option>
+              {ROLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div className="relative flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <SearchInput
+          {/* 账号状态 */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500 font-bold">账号状态:</label>
+            <select
+              value={filterAccountStatus}
+              onChange={(e) => {
+                setFilterAccountStatus(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+            >
+              <option value="all">全部账号状态</option>
+              {ACCOUNT_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 登录状态 */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500 font-bold">登录状态:</label>
+            <select
+              value={filterLoginStatus}
+              onChange={(e) => {
+                setFilterLoginStatus(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+            >
+              <option value="all">全部登录状态</option>
+              {LOGIN_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 等级 */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500 font-bold">会员等级:</label>
+            <select
+              value={filterMembershipLevel}
+              onChange={(e) => {
+                setFilterMembershipLevel(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+            >
+              <option value="all">全部等级</option>
+              {MEMBERSHIP_LEVEL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 第二行：关键字搜索与快捷操作 */}
+        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+          <div className="relative w-72 sm:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
               value={searchQuery}
-              onChange={setSearchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSearch();
+                }
+              }}
               placeholder="搜索用户名、邮箱、手机号..."
-              debounceMs={300}
+              className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setCurrentPage(1);
+                  loadUsers(1, "");
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded-full bg-slate-200/70 hover:bg-slate-300 text-slate-500 transition-colors"
+                title="清空搜索"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <DataTableFilter
-              filters={[
-                {
-                  key: "role",
-                  label: "角色",
-                  placeholder: "所有角色",
-                  options: ROLE_OPTIONS,
-                },
-                {
-                  key: "accountStatus",
-                  label: "账号状态",
-                  placeholder: "所有账号状态",
-                  options: ACCOUNT_STATUS_OPTIONS,
-                },
-                {
-                  key: "loginStatus",
-                  label: "登录状态",
-                  placeholder: "所有登录状态",
-                  options: LOGIN_STATUS_OPTIONS,
-                },
-                {
-                  key: "membershipLevel",
-                  label: "等级",
-                  placeholder: "所有等级",
-                  options: MEMBERSHIP_LEVEL_OPTIONS,
-                },
-              ]}
-              values={{
-                role: filterRole,
-                accountStatus: filterAccountStatus,
-                loginStatus: filterLoginStatus,
-                membershipLevel: filterMembershipLevel,
-              }}
-              onChange={(key, value) => {
-                if (key === "role") setFilterRole(value);
-                if (key === "accountStatus") setFilterAccountStatus(value);
-                if (key === "loginStatus") setFilterLoginStatus(value);
-                if (key === "membershipLevel") setFilterMembershipLevel(value);
-              }}
-              showResetButton={false}
-            />
-            <button
-              onClick={handleSearch}
-              className="inline-flex items-center px-5 h-11 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-semibold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-            >
-              <Filter className="w-4 h-4 mr-2" />
-              筛选
-            </button>
-            <button
-              onClick={() => {
-                loadUsers(currentPage);
-                toast.success("用户列表已刷新！");
-              }}
-              disabled={loading}
-              className="inline-flex items-center px-4 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all duration-200 cursor-pointer shadow-2xs border border-slate-200/80 active:scale-95 disabled:opacity-50"
-              title="点击刷新用户列表最新数据"
-            >
-              <RotateCcw className={`w-4 h-4 mr-1.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
-              刷新数据
-            </button>
-          </div>
+          <button
+            onClick={handleSearch}
+            className="px-4 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
+          >
+            搜索
+          </button>
+          <button
+            type="button"
+            onClick={() => loadUsers(currentPage)}
+            disabled={loading}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-slate-200/80 active:scale-95 disabled:opacity-50"
+            title="点击刷新当前页最新数据"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
+            <span>刷新数据</span>
+          </button>
         </div>
       </div>
 
-      {/* 用户列表 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm">
-        {/* 装饰背景 */}
-        <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
+      {/* 用户列表卡片 (圆润优雅 16px 大圆角与微阴影) */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
 
         {/* 批量操作工具栏 */}
         {showBatchActions && (
@@ -1051,7 +1105,7 @@ export default function AdminUsersPage() {
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         注册时间
                       </th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                      <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4.5 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">
                         操作
                       </th>
                     </tr>
@@ -1087,33 +1141,33 @@ export default function AdminUsersPage() {
                               className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
                             />
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-3.5 whitespace-nowrap">
                             <div className="flex items-center gap-3">
                               {user.avatar ? (
                                 <img
                                   src={user.avatar}
                                   alt={user.name || "用户头像"}
-                                  className="w-12 h-12 shrink-0 rounded-xl object-cover shadow-md group-hover:scale-110 transition-transform duration-300 border border-slate-100"
+                                  className="w-9 h-9 shrink-0 rounded-full object-cover shadow-xs border border-slate-200"
                                   onError={(e) => {
                                     (e.target as HTMLElement).style.display = "none";
                                   }}
                                 />
                               ) : (
-                                <div className="w-12 h-12 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
+                                <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shadow-xs">
                                   {user.name?.charAt(0) ||
                                     user.email?.charAt(0) ||
                                     "U"}
                                 </div>
                               )}
-                              <div>
+                              <div className="min-w-0">
                                 <div
-                                  className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors"
+                                  className="text-xs font-bold text-slate-800 truncate max-w-[140px]"
                                   title={user.name || "匿名用户"}
                                 >
                                   {user.name || "匿名用户"}
                                 </div>
                                 <div
-                                  className="text-xs text-slate-500 font-medium"
+                                  className="text-[11px] text-slate-400 font-medium truncate max-w-[160px]"
                                   title={user.email || "未设置邮箱"}
                                 >
                                   {user.email || "未设置邮箱"}
@@ -1121,10 +1175,10 @@ export default function AdminUsersPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-3.5 whitespace-nowrap">
                             {user.phone ? (
                               <div
-                                className="text-sm text-slate-700 font-medium"
+                                className="text-xs text-slate-700 font-medium font-mono"
                                 title={user.phone}
                               >
                                 {user.phone}
@@ -1185,7 +1239,7 @@ export default function AdminUsersPage() {
                               );
                             })()}
                           </td>
-                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => handleViewDetails(user)}

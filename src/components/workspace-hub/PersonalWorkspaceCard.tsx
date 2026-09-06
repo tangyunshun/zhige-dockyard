@@ -11,8 +11,13 @@ import {
   Eye,
   Plus,
   Zap,
+  ShieldAlert,
+  Clock,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 import { Workspace, PersonalState } from "@/hooks/useWorkspaceHubData";
+import WorkspaceAppealModal from "./WorkspaceAppealModal";
 
 interface PersonalWorkspaceCardProps {
   state: PersonalState;
@@ -26,6 +31,7 @@ interface PersonalWorkspaceCardProps {
   onViewEnterprise: () => void;
   showUpgradeLink: boolean;
   onDelete: (id: string) => void;
+  onRefresh?: () => void;
 }
 
 export default function PersonalWorkspaceCard({
@@ -40,8 +46,10 @@ export default function PersonalWorkspaceCard({
   onViewEnterprise,
   showUpgradeLink,
   onDelete,
+  onRefresh,
 }: PersonalWorkspaceCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [appealModalOpen, setAppealModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // 点击外部关闭 ⋮ 菜单
@@ -57,6 +65,14 @@ export default function PersonalWorkspaceCard({
 
   // 获取状态的标签徽章 (彻底去掉 border 边框线，避免突兀黑框)
   const getStatusBadge = () => {
+    if (workspace?.status === "DISABLED") {
+      return (
+        <span className="px-2.5 py-0.5 bg-red-50 text-red-700 text-xs font-bold rounded border border-red-200/80 inline-flex items-center gap-1.5 shrink-0">
+          <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+          <span>停用管控中</span>
+        </span>
+      );
+    }
     switch (state) {
       case "NORMAL":
         return (
@@ -191,7 +207,14 @@ export default function PersonalWorkspaceCard({
               <h4 className="text-sm font-bold text-slate-800 truncate leading-none">
                 {workspace?.name || "个人空间"}
               </h4>
-              {getStatusBadge()}
+              {workspace?.status === "DISABLED" ? (
+                <span className="px-2.5 py-0.5 bg-red-100 text-red-700 text-xs font-black rounded border border-red-200 inline-flex items-center gap-1.5 shrink-0">
+                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                  <span>已停用管控</span>
+                </span>
+              ) : (
+                getStatusBadge()
+              )}
               <span className="px-2 py-0.5 bg-blue-50 text-[#2b6cb0] border border-blue-100/50 text-xs font-bold rounded">
                 独立沙箱
               </span>
@@ -225,73 +248,137 @@ export default function PersonalWorkspaceCard({
                 return null;
               })()}
             </div>
+
+            {/* 个人空间管控期限与申诉指引横条 */}
+            {workspace?.status === "DISABLED" && (
+              <div className="mt-2.5 p-3 rounded-lg bg-red-50/90 border border-red-200 text-xs text-red-800 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>
+                    管控截止节点：
+                    <span className="font-mono text-red-950 font-black">
+                      {workspace.disabledUntil
+                        ? (() => {
+                            const d = new Date(workspace.disabledUntil);
+                            const msLeft = d.getTime() - Date.now();
+                            const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+                            const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+                            return `${dateStr} (${daysLeft > 0 ? `剩余 ${daysLeft} 天` : "即将解封"} · 到期自动恢复)`;
+                          })()
+                        : "永久管控（需提交申诉人工审核解封）"}
+                    </span>
+                  </span>
+                </div>
+                {workspace.disabledReason && (
+                  <div className="text-[11px] text-red-700 font-medium">
+                    管控原因: {workspace.disabledReason}
+                  </div>
+                )}
+                <div className="pt-1.5 border-t border-red-200/70 text-[11px] text-red-600 flex items-center gap-1">
+                  <span>💡 提示：管控期间空间处于冻结保护状态，所有配置与数据修改已被锁定。若有异议，请点击右上角「去申诉」提交解封申请。</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (workspace) {
-                  onEnter(workspace);
-                }
-              }}
-              className="zg-btn zg-btn-primary px-4.5 h-[38px] text-sm font-semibold rounded-lg flex items-center gap-1.5 hover:-translate-y-0.5 transition-all cursor-pointer bg-gradient-to-b from-[#4299e1] to-[#3182ce] hover:brightness-105 border-t border-[#63b3ed] text-white shadow-sm shrink-0"
-            >
-              <span>进入空间</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-
-            {/* ⋮ 下拉菜单 */}
-            <div className="relative" ref={menuRef}>
+            {workspace?.status === "DISABLED" ? (
+              workspace.appealStatus === "pending" ? (
+                <button
+                  disabled
+                  className="zg-btn px-4 h-[38px] text-xs font-bold rounded-lg bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1.5 cursor-not-allowed shrink-0"
+                >
+                  <Clock className="w-3.5 h-3.5 text-purple-600 animate-spin" />
+                  <span>申诉审核中</span>
+                </button>
+              ) : workspace.appealStatus === "rejected" || (workspace.appealCount || 0) >= 1 ? (
+                <button
+                  disabled
+                  className="zg-btn px-4 h-[38px] text-xs font-bold rounded-lg bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1.5 cursor-not-allowed shrink-0"
+                  title="每个工作空间仅限 1 次申诉机会，当前已被驳回，请等待到期自动恢复"
+                >
+                  <XCircle className="w-3.5 h-3.5 text-slate-400" />
+                  <span>申诉已驳回</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAppealModalOpen(true)}
+                  className="zg-btn px-4.5 h-[38px] text-sm font-bold rounded-lg flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white shadow-sm shrink-0 cursor-pointer transition-all hover:scale-[1.02]"
+                  title="该空间已被系统管控，点击向合规中心提交解封申诉"
+                >
+                  <ShieldAlert className="w-4 h-4 text-white" />
+                  <span>去申诉</span>
+                </button>
+              )
+            ) : (
               <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded border border-slate-200 transition-all cursor-pointer flex items-center justify-center w-[38px] h-[38px] shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (workspace) {
+                    onEnter(workspace);
+                  }
+                }}
+                className="zg-btn zg-btn-primary px-4.5 h-[38px] text-sm font-semibold rounded-lg flex items-center gap-1.5 hover:-translate-y-0.5 transition-all cursor-pointer bg-gradient-to-b from-[#4299e1] to-[#3182ce] hover:brightness-105 border-t border-[#63b3ed] text-white shadow-sm shrink-0"
               >
-                <MoreVertical className="w-3.5 h-3.5" />
+                <span>进入空间</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
-              {menuOpen && (
-                <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1.5 animate-in fade-in duration-150 text-left">
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      if (workspace) onRename(workspace.id, workspace.name, workspace.description || "");
-                    }}
-                    className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                  >
-                    <Edit3 className="w-3.5 h-3.5 text-slate-400" />
-                    <span>空间设置</span>
-                  </button>
+            )}
 
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onReset();
-                    }}
-                    className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
-                    <span>重置空间数据</span>
-                  </button>
+            {/* ⋮ 下拉菜单（仅在正常启用时展示，停用管控期间彻底隐藏，禁止任何设置/重置/注销等写操作） */}
+            {workspace?.status !== "DISABLED" && (
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded border border-slate-200 transition-all cursor-pointer flex items-center justify-center w-[38px] h-[38px] shrink-0"
+                >
+                  <MoreVertical className="w-3.5 h-3.5" />
+                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1.5 animate-in fade-in duration-150 text-left">
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        if (workspace) onRename(workspace.id, workspace.name, workspace.description || "");
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+                      <span>空间设置</span>
+                    </button>
 
-                  <div className="border-t border-slate-100 my-1" />
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onReset();
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                      <span>重置空间数据</span>
+                    </button>
 
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      if (workspace) onDelete(workspace.id);
-                    }}
-                    className="w-full text-left px-3.5 py-2 text-xs font-bold text-red-600 hover:text-red-600 hover:bg-red-50 flex items-center gap-2"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-red-600" />
-                    <span>注销个人空间</span>
-                  </button>
-                </div>
-              )}
-            </div>
+                    <div className="border-t border-slate-100 my-1" />
+
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        if (workspace) onDelete(workspace.id);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-bold text-red-600 hover:text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-red-600" />
+                      <span>注销个人空间</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {showUpgradeLink && state === "NORMAL" && (
+        {showUpgradeLink && state === "NORMAL" && workspace?.status !== "DISABLED" && (
           <div className="p-3.5 bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white border border-blue-100/50 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 leading-normal">
               需要团队协作时，可将个人空间升级为企业空间，保留已有组件与数据。
@@ -305,6 +392,16 @@ export default function PersonalWorkspaceCard({
             </button>
           </div>
         )}
+
+        {/* 工作空间解封申诉模态框 */}
+        <WorkspaceAppealModal
+          isOpen={appealModalOpen}
+          workspace={workspace}
+          onClose={() => setAppealModalOpen(false)}
+          onSuccess={() => {
+            if (onRefresh) onRefresh();
+          }}
+        />
       </div>
     );
   };

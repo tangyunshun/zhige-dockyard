@@ -3265,7 +3265,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     },
     settings: {
       title: "工作空间基本与高级配置",
-      subtitle: "本模块管理工作空间的基本名称、项目描述与空间 Logo 徽章图标。同时提供数据自愈与高危空间注销等全生命周期管理功能。",
+      subtitle: "本模块管理工作空间的基本名称、项目描述与空间 Logo 徽章图标。同时提供数据重置与空间注销等管理功能。",
       icon: <Settings className="w-4 h-4 text-slate-700" />,
       tagText: "全生命周期设置"
     }
@@ -5221,10 +5221,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold block">当前状态</span>
-                  <span className="text-xs font-bold text-emerald-600 mt-1.5 block flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    正常运行中
-                  </span>
+                  {workspaceInfo.status === "DISABLED" ? (
+                    <span className="text-xs font-bold text-red-600 mt-1.5 block flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                      停用管控中
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold text-emerald-600 mt-1.5 block flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      正常运行中
+                    </span>
+                  )}
                 </div>
               </div>
             )}

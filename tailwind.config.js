@@ -40,8 +40,16 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
-        display: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+        sans: [
+          '-apple-system', 'BlinkMacSystemFont', '"PingFang SC"',
+          '"Hiragino Sans GB"', '"Microsoft YaHei"', '"Segoe UI"',
+          'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif',
+        ],
+        display: [
+          '-apple-system', 'BlinkMacSystemFont', '"PingFang SC"',
+          '"Hiragino Sans GB"', '"Microsoft YaHei"', '"Segoe UI"',
+          'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif',
+        ],
       },
       spacing: {
         '18': '4.5rem',

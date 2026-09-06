@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { dedupeFetch } from "@/lib/requestDedupe";
 
 export interface Workspace {
   id: string;
@@ -32,7 +33,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const authToken = getAuthToken();
-      const res = await fetch("/api/workspace/list", {
+      // 并发去重：与 AppProvider / 页面 Hooks 同刻的 list 请求合并为一次往返
+      const res = await dedupeFetch("/api/workspace/list", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
         cache: "no-store",

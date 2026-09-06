@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { getMembershipTokenLimit } from "@/lib/quota-token";
+import { serverCacheGet, serverCacheSet } from "@/lib/serverCache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +35,15 @@ export async function GET(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    // P3 优化：该接口是进入中枢页的高成本聚合（每个空间全量扫描使用记录、配额、推荐统计等）。
+    // 按用户 4 秒短缓存；装配/解绑/启停/清空/解散等写路径成功后会 clearServerCache 主动失效，
+    // 因此命中缓存不会造成陈旧数据。命中时直接复用上次完整聚合结果。
+    const dashboardCacheKey = `hub:dashboard:${userId}`;
+    const cachedPayload = serverCacheGet(dashboardCacheKey);
+    if (cachedPayload) {
+      return NextResponse.json(cachedPayload);
     }
 
     // 2. 从数据库加载完整用户信息，确保与最新数据一致
@@ -122,13 +132,23 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const approvedAppealsPromise = prisma.accountappeal.findMany({
+      where: {
+        userId,
+        businessType: "空间解封申诉",
+        status: "approved",
+      },
+      select: { appealEvidence: true },
+    });
+
     // 并行运行基础用户数据查询
-    const [workspaceMembers, ownedWorkspaces, monthTasksRows, totalTasksRows, loginHistory] = await Promise.all([
+    const [workspaceMembers, ownedWorkspaces, monthTasksRows, totalTasksRows, loginHistory, approvedAppeals] = await Promise.all([
       workspaceMembersPromise,
       ownedWorkspacesPromise,
       monthTasksPromise,
       totalTasksPromise,
       loginHistoryPromise,
+      approvedAppealsPromise,
     ]);
 
     // Token 消耗真实统计：遍历真实执行的任务 config.tokenCost
@@ -147,36 +167,116 @@ export async function GET(request: NextRequest) {
     const totalTokenUsed = sumTaskCost(totalTasksRows);
 
     // 合并并去重工作空间
+    const approvedWsIdSet = new Set<string>();
+    approvedAppeals.forEach((app) => {
+      try {
+        if (app.appealEvidence) {
+          const parsed = JSON.parse(app.appealEvidence);
+          if (parsed.workspaceId) approvedWsIdSet.add(parsed.workspaceId);
+        }
+      } catch {}
+    });
+
     const workspaceMap = new Map<string, any>();
+
+    const parseWorkspaceControl = (ws: any, role: string) => {
+      let status = ws.status || "ACTIVE";
+      const rawQuotaJson = (ws.quota as any) || {};
+      let disabledUntil = rawQuotaJson.disabledUntil || null;
+      let disabledReason = rawQuotaJson.disabledReason || null;
+      let disabledDuration = rawQuotaJson.disabledDuration || null;
+      let appealStatus = rawQuotaJson.appealStatus || "none";
+      let appealCount = Number(rawQuotaJson.appealCount || 0);
+
+      // 到期自动解封检测
+      if (status === "DISABLED" && disabledUntil) {
+        const expireTime = new Date(disabledUntil).getTime();
+        if (!isNaN(expireTime) && Date.now() > expireTime) {
+          status = "ACTIVE";
+          disabledUntil = null;
+          disabledReason = null;
+          disabledDuration = null;
+          // 异步自愈数据库状态
+          const {
+            disabledUntil: _d1,
+            disabledReason: _d2,
+            disabledDuration: _d3,
+            disabledDurationDays: _d4,
+            disabledAt: _d5,
+            ...restQuota
+          } = rawQuotaJson;
+          prisma.workspace
+            .update({
+              where: { id: ws.id },
+              data: { status: "ACTIVE", quota: restQuota },
+            })
+            .catch((err) => console.warn("中枢接口自愈解封空间异常:", err));
+        }
+      }
+
+      // 申诉获批联动解封检测：只要申诉已核准，用户空间中枢即刻恢复为正常可用状态
+      if ((status === "DISABLED" || appealStatus === "pending") && approvedWsIdSet.has(ws.id)) {
+        status = "ACTIVE";
+        disabledUntil = null;
+        disabledReason = null;
+        disabledDuration = null;
+        appealStatus = "approved";
+        const {
+          disabledUntil: _d1,
+          disabledReason: _d2,
+          disabledDuration: _d3,
+          disabledDurationDays: _d4,
+          disabledAt: _d5,
+          ...restQuota
+        } = rawQuotaJson;
+        prisma.workspace
+          .update({
+            where: { id: ws.id },
+            data: {
+              status: "ACTIVE",
+              quota: {
+                ...restQuota,
+                appealStatus: "approved",
+              },
+            },
+          })
+          .catch((err) => console.warn("中枢接口自愈联动解封空间异常:", err));
+      }
+
+      return {
+        id: ws.id,
+        name: ws.name,
+        type: ws.type,
+        status,
+        ownerId: ws.ownerId,
+        description: ws.description,
+        logo: ws.logo,
+        createdAt: ws.createdAt,
+        updatedAt: ws.updatedAt,
+        role,
+        disabledUntil,
+        disabledReason,
+        disabledDuration,
+        appealStatus,
+        appealCount,
+      };
+    };
+
     workspaceMembers.forEach((member) => {
       if (member.workspace) {
-        workspaceMap.set(member.workspace.id, {
-          id: member.workspace.id,
-          name: member.workspace.name,
-          type: member.workspace.type,
-          ownerId: member.workspace.ownerId,
-          description: member.workspace.description,
-          logo: member.workspace.logo,
-          createdAt: member.workspace.createdAt,
-          updatedAt: member.workspace.updatedAt,
-          role: member.role,
-        });
+        workspaceMap.set(
+          member.workspace.id,
+          parseWorkspaceControl(member.workspace, member.role)
+        );
       }
     });
 
     ownedWorkspaces.forEach((ws) => {
       const existing = workspaceMap.get(ws.id);
-      workspaceMap.set(ws.id, {
-        id: ws.id,
-        name: ws.name,
-        type: ws.type,
-        ownerId: ws.ownerId,
-        description: ws.description,
-        logo: ws.logo,
-        createdAt: ws.createdAt,
-        updatedAt: ws.updatedAt || existing?.updatedAt,
-        role: existing?.role || "OWNER",
-      });
+      workspaceMap.set(
+        ws.id,
+        parseWorkspaceControl(ws, existing?.role || "OWNER")
+      );
     });
 
     // 如果没有个人空间，不再自动创建（符合 GET 无副作用原则），而是向前端返回需要创建的标记
@@ -564,7 +664,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 5. 组装并返回 Bento Dashboard 的完整聚合数据，防前端多次加载引起的网络开销
-    return NextResponse.json({
+    const dashPayload = {
       success: true,
       data: {
         user: {
@@ -586,7 +686,9 @@ export async function GET(request: NextRequest) {
         topComponents,
         loginHistory,
       },
-    });
+    };
+    serverCacheSet(dashboardCacheKey, 4000, dashPayload);
+    return NextResponse.json(dashPayload);
   } catch (error) {
     console.error("Bento dashboard aggregation API error:", error);
     return NextResponse.json(

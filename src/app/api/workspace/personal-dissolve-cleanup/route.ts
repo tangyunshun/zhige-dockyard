@@ -85,6 +85,10 @@ export async function POST(request: NextRequest) {
       where: { tenantId: workspaceId, status: { in: ["IN_PROGRESS", "PENDING"] } },
     });
 
+    // P3：清理改变了组件装配与任务数据，立即失效只读缓存
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
     return NextResponse.json({
       success: true,
       message: "个人沙箱依赖数据清理完成",

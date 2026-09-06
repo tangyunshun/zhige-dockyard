@@ -876,7 +876,7 @@ export default function AdminComponentsPage() {
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[10%]">状态</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[12%]">全网调度次数</th>
                       <th className="py-3.5 px-4 whitespace-nowrap font-extrabold w-[15%]">创建时间</th>
-                      <th className="py-3.5 px-4 text-right whitespace-nowrap font-extrabold w-[160px]">操作</th>
+                      <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 py-3.5 px-4 text-right whitespace-nowrap font-extrabold shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-600 bg-white">
@@ -955,7 +955,7 @@ export default function AdminComponentsPage() {
                             {new Date(component.createdAt).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}
                           </td>
 
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 py-3.5 px-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
                             <div className="flex items-center justify-end gap-1.5">
                               {/* 查看详情 👁️ (与其他页面统一) */}
                               <button

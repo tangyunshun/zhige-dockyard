@@ -22,9 +22,9 @@ export default function WorkspaceKickoutGuard() {
   const match = pathname?.match(/^\/workspace\/([^/]+)/);
   const workspaceId = match ? match[1] : null;
 
-  // F-03：弹窗展示后自动跳转中控台。
-  // 独立 effect 绑定 showModal 状态，避免异步 fetch 竞态（StrictMode 下 effect 双执行）
-  // 导致"弹窗显示但跳转定时器丢失、永不返回"的问题。
+  const [modalType, setModalType] = useState<"kicked" | "disabled">("kicked");
+
+  // F-03：弹窗展示后自动跳转中控台
   useEffect(() => {
     if (!showModal) return;
     const timer = setTimeout(() => {
@@ -45,12 +45,22 @@ export default function WorkspaceKickoutGuard() {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
           credentials: "include",
         });
-        // API 约定：仍为成员返回 200 + isMember:true；
-        // 已被移出空间返回 403 + { isMember:false, code:"W-001" }，必须解析 body 判断，不能只看 res.ok。
-        // 仅 403 且带明确的"已移出"标记才触发 F-03；401（会话失效）/500（服务器错误）等其他状态一律忽略，
-        // 避免把会话问题误判为"被移出空间"。
         if (res.status !== 200 && res.status !== 403) return;
         const data = await res.json();
+
+        // 1. 检测空间是否已被管理员停用管控
+        if (data.workspaceStatus === "DISABLED" && !handledRef.current) {
+          handledRef.current = true;
+          setUserState((prev) =>
+            prev.currentWorkspaceId ? { ...prev, currentWorkspaceId: null } : prev
+          );
+          refreshWorkspaces();
+          setModalType("disabled");
+          setShowModal(true);
+          return;
+        }
+
+        // 2. 检测是否已被移出空间
         const removed =
           res.status === 403 &&
           (data.isMember === false ||
@@ -59,11 +69,11 @@ export default function WorkspaceKickoutGuard() {
 
         if (removed && !handledRef.current) {
           handledRef.current = true;
-          // F-03：清空本地空间缓存，回中控台后重新拉取空间列表
           setUserState((prev) =>
             prev.currentWorkspaceId ? { ...prev, currentWorkspaceId: null } : prev
           );
           refreshWorkspaces();
+          setModalType("kicked");
           setShowModal(true);
         }
       } catch {
@@ -86,22 +96,34 @@ export default function WorkspaceKickoutGuard() {
   if (!showModal) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-2xl">
-        <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
-          <svg className="w-7 h-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A1 1 0 002.74 20h18.52a1 1 0 00.87-1.44L13.71 3.86a1 1 0 00-1.42 0z" />
-          </svg>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in-50 duration-200">
+      <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100">
+        <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${
+          modalType === "disabled" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600"
+        }`}>
+          {modalType === "disabled" ? (
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+          ) : (
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A1 1 0 002.74 20h18.52a1 1 0 00.87-1.44L13.71 3.86a1 1 0 00-1.42 0z" />
+            </svg>
+          )}
         </div>
-        <h3 className="text-lg font-bold text-slate-800 mb-2">您已被移出该空间</h3>
-        <p className="text-sm text-slate-500 mb-6">
-          您的工作空间成员身份已被管理员移除，正在返回中控台…
+        <h3 className="text-lg font-black text-slate-800 mb-2">
+          {modalType === "disabled" ? "空间已被管控停用" : "您已被移出该空间"}
+        </h3>
+        <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+          {modalType === "disabled"
+            ? "该企业工作空间已被平台管理员实施安全管控停用，所有功能与算力服务已冻结。正在返回中控台…"
+            : "您的工作空间成员身份已被管理员移除，正在返回中控台…"}
         </p>
         <button
           onClick={() => router.push("/workspace-hub")}
-          className="px-6 py-2.5 bg-[#3182ce] text-white rounded-xl font-semibold hover:bg-[#2b6cb0] transition-colors"
+          className="w-full px-6 py-2.5 bg-[#3182ce] text-white rounded-xl font-bold text-xs hover:bg-[#2b6cb0] transition-colors cursor-pointer"
         >
-          立即返回
+          立即返回工作台中枢
         </button>
       </div>
     </div>

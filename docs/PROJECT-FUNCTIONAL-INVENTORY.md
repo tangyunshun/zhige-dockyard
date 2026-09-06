@@ -515,3 +515,16 @@ graph TD
     *   **清理调试接口**：物理删除 `src/app/api/debug-query`，防止敏感数据泄露。
 3.  **整合弹窗组件，推行组件化设计**：
     *   将散落在项目各处的 `UpgradeModal` and `DeleteWorkspaceDialog` 统一重构为单例共享组件，收纳于 `src/components/common`，并在主力 `WorkspaceInternalLayoutV3` and 中枢页面中复用，消除 Inline Modal 手写块。
+
+---
+
+## 12. 工作空间分级停用期限管控与风控申诉闭环系统（2026-09-06 增补）
+
+### 12.1 业务背景
+解决平台此前对违规或欠费工作空间“一刀切”永久停用导致的负面体验，实现停用期限阶梯化（1天、3天、7天、1个月、1年、永久）、前台中枢截止节点与剩余天数显性化提示、无人值守到期自动解封自愈、以及严格限制 1 次机会的空间所有者解封申诉风控闭环。
+
+### 12.2 核心机制与无损持久化
+*   **零破坏性 ALTER 数据库架构**：利用 `workspace.quota` JSON 存储 `disabledUntil`、`disabledReason`、`disabledDuration`、`appealStatus`、`appealCount` 等，复用既有 `accountappeal` 表作为统一风控工单底座（`businessType: "空间解封申诉"`）。
+*   **无人值守自愈解封引擎**：在中枢 Dashboard、空间成员身份校验、后台列表接口中嵌入自愈引擎，当 `now > disabledUntil` 时自动在数据库中恢复 `status = 'ACTIVE'` 并清除停用标记。
+*   **严格单次申诉与风控中心联动**：空间所有者仅有 1 次解封申诉机会（通过 `appealCount >= 1` 强校验阻断二次提交），审核通过自动解除管控并向空间全员推送恢复通知；审核驳回向申诉人发送理由通知并锁定申诉按钮，明确告知等待到期自动恢复。
+*   **详情归档**：完整技术方案与用例见 [docs/plans/2026-09-06-workspace-disable-duration-and-appeal-closure.md](file:///d:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/plans/2026-09-06-workspace-disable-duration-and-appeal-closure.md)。

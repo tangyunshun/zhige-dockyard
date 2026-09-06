@@ -273,6 +273,10 @@ export async function POST(request: NextRequest) {
       userEmail: user.email || null,
     }).catch((e) => console.warn("[create-personal] 赠送新用户算力点非致命提示:", e));
 
+    // P3：新建个人空间会立即在中枢展示，失效只读缓存保证即时可见
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
     return NextResponse.json({
       workspace: {
         id: workspaceId,

@@ -100,6 +100,10 @@ export async function POST(request: NextRequest) {
       where: { workspaceId },
     });
 
+    // P3：清理改变了成员/组件装配等只读缓存内容，立即失效
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
     return NextResponse.json({
       success: true,
       message: "数据清理完成",

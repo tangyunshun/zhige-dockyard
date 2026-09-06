@@ -52,17 +52,17 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // 自动清理：处理完成（已批准/已驳回）超过 30 天的申诉记录，系统自动删除
+    // 自动清理：申诉记录严格遵循 3 年合规生命周期留存，超过 3 年的历史申诉记录自动物理清除
     try {
-      const autoDeleteThreshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const threeYearsAgo = new Date();
+      threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
       await prisma.accountappeal.deleteMany({
         where: {
-          status: { not: "pending" },
-          processedAt: { lt: autoDeleteThreshold },
+          createdAt: { lt: threeYearsAgo },
         },
       });
     } catch (e) {
-      console.warn("Auto cleanup expired appeals ignored:", e);
+      console.warn("自动清理超过3年的历史申诉记录失败:", e);
     }
 
     // 查询申诉列表
@@ -93,6 +93,9 @@ export async function GET(request: NextRequest) {
       success: true,
       appeals: appeals.map((a: any) => ({
         ...a,
+        userName: a.userName || a.user?.name || (a.userAccount && !a.userAccount.includes("@") ? a.userAccount : null) || a.userAccount,
+        userPhone: a.userPhone || a.user?.phone || null,
+        userEmail: a.userEmail || a.user?.email || (a.userAccount && a.userAccount.includes("@") ? a.userAccount : null),
         userAvatar: a.user?.avatar || null,
         businessType: a.businessType || "账号解封申诉",
       })),

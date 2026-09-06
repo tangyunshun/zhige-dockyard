@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { dedupeFetch } from "@/lib/requestDedupe";
 import type { ComponentDefinition, ComponentCategory, CategoryDetails } from "@/constants/components";
 import type { PositionDefinition } from "@/constants/positions";
 
@@ -398,10 +399,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     
     try {
       const authToken = getAuthToken();
-      const res = await fetch("/api/auth/me", {
+      // P1 优化：/me 与 /workspace/list 互不依赖，改为并行发起；
+      // 且两者都走并发去重（dedupeFetch），与 WorkspaceProvider / AuthCheck
+      // 等同刻请求共享同一次网络往返，消除启动时的重复慢请求。
+      // 仅当本端有凭证时才并行拉列表，避免未登录页面白白多发一次 401。
+      const meReq = dedupeFetch("/api/auth/me", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
       });
+      const listReq = authToken
+        ? dedupeFetch("/api/workspace/list", {
+            headers: { Authorization: `Bearer ${authToken}` },
+            credentials: "include",
+          })
+        : null;
+      const res = await meReq;
 
       if (res.ok) {
         const contentType = res.headers.get("content-type");
@@ -411,12 +423,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json().catch(() => null);
         if (!data || !data.user) return;
 
-        const workspacesRes = await fetch("/api/workspace/list", {
-          credentials: "include",
-          headers: {
-            Authorization: `Bearer ${getAuthToken()}`
-          }
-        });
+        // 常规场景（localStorage 有 token）已在最上方与 /me 并行发起 list；
+        // 仅 Cookie 持有凭证的冷门场景在此兜底串行补拉一次，保证功能与原逻辑一致。
+        const workspacesRes = listReq
+          ? await listReq
+          : await dedupeFetch("/api/workspace/list", { credentials: "include" });
         let workspaces: Workspace[] = [];
         let currentWorkspaceId: string | null = null;
 

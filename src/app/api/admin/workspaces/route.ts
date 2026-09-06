@@ -97,6 +97,32 @@ export async function GET(request: NextRequest) {
       prisma.workspace.count({ where }),
     ]);
 
+    // 批量查询所有工作空间的所有者（Owner）角色与信息，用于安全保护判断
+    const ownerIds = Array.from(new Set(workspaces.map((w) => w.ownerId).filter(Boolean)));
+    const owners = await prisma.user.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    const ownerMap = new Map(owners.map((o) => [o.id, o]));
+
+    // 预载所有已获批的空间解封申诉，确保空间管理列表与申诉审核 100% 实时联动解封
+    const approvedAppeals = await prisma.accountappeal.findMany({
+      where: {
+        businessType: "空间解封申诉",
+        status: "approved",
+      },
+      select: { appealEvidence: true },
+    });
+    const approvedWsIdSet = new Set<string>();
+    approvedAppeals.forEach((app) => {
+      try {
+        if (app.appealEvidence) {
+          const parsed = JSON.parse(app.appealEvidence);
+          if (parsed.workspaceId) approvedWsIdSet.add(parsed.workspaceId);
+        }
+      } catch {}
+    });
+
     // 统计筛选后的工作空间的组件数量与算力配额
     const workspacesWithComponentCount = await Promise.all(
       workspaces.map(async (workspace) => {
@@ -144,11 +170,102 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // 检查到期自动解封与停用元数据
+        const rawQuotaJson = (workspace.quota as any) || {};
+        let currentStatus = workspace.status;
+        let disabledUntil = rawQuotaJson.disabledUntil || null;
+        let disabledReason = rawQuotaJson.disabledReason || null;
+        let disabledDuration = rawQuotaJson.disabledDuration || null;
+        let appealStatus = rawQuotaJson.appealStatus || "none";
+        let appealCount = Number(rawQuotaJson.appealCount || 0);
+
+        // 到期自动解封检测：若空间被停用，且设置了截止时间，并且当前时间已经超过该截止时间
+        if (currentStatus === "DISABLED" && disabledUntil) {
+          const expireTime = new Date(disabledUntil).getTime();
+          if (!isNaN(expireTime) && Date.now() > expireTime) {
+            // 触发自动到期解封！
+            currentStatus = "ACTIVE";
+            disabledUntil = null;
+            disabledReason = null;
+            disabledDuration = null;
+            const {
+              disabledUntil: d1,
+              disabledReason: d2,
+              disabledDuration: d3,
+              disabledDurationDays: d4,
+              disabledAt: d5,
+              ...restQuota
+            } = rawQuotaJson;
+
+            prisma.workspace.update({
+              where: { id: workspace.id },
+              data: {
+                status: "ACTIVE",
+                quota: {
+                  ...restQuota,
+                  appealStatus: "none",
+                },
+              },
+            }).catch(() => {});
+          }
+        }
+
+        // 申诉获批联动解封检测：若申诉工单已被管理员核准通过，空间必须 100% 连带解除管控恢复运行
+        if ((currentStatus === "DISABLED" || appealStatus === "pending") && approvedWsIdSet.has(workspace.id)) {
+          currentStatus = "ACTIVE";
+          disabledUntil = null;
+          disabledReason = null;
+          disabledDuration = null;
+          appealStatus = "approved";
+          const {
+            disabledUntil: _d1,
+            disabledReason: _d2,
+            disabledDuration: _d3,
+            disabledDurationDays: _d4,
+            disabledAt: _d5,
+            ...restQuota
+          } = rawQuotaJson;
+
+          prisma.workspace.update({
+            where: { id: workspace.id },
+            data: {
+              status: "ACTIVE",
+              quota: {
+                ...restQuota,
+                appealStatus: "approved",
+              },
+            },
+          }).catch(() => {});
+        }
+
+        // 获取该空间拥有者信息及受保护状态（超管/管理员名下的空间受系统安全保护，严禁停用）
+        const owner = ownerMap.get(workspace.ownerId) || null;
+        const isProtected = Boolean(
+          (owner && (owner.role === "SUPER_ADMIN" || owner.role === "ADMIN")) ||
+          workspace.ownerId === userId
+        );
+
         // 剔除原始 workspacemember（含 BigInt 字段），避免 JSON 序列化报错
         const { workspacemember, ...workspaceBase } = workspace;
+        const memberCount = workspace._count?.workspacemember ?? workspacemember.length ?? 0;
         return {
           ...workspaceBase,
+          status: currentStatus,
+          disabledUntil,
+          disabledReason,
+          disabledDuration,
+          appealStatus,
+          appealCount,
           componentCount: componentCountValue,
+          memberCount,
+          owner: owner
+            ? { id: owner.id, name: owner.name, email: owner.email, role: owner.role }
+            : null,
+          isProtected,
+          _count: {
+            workspacemember: memberCount,
+            members: memberCount,
+          },
           quota: {
             tokenBalance: effectiveBalance,
             membershipLevelId: quota?.membershipLevelId || (isEnterprise ? "STANDARD" : "FREE"),

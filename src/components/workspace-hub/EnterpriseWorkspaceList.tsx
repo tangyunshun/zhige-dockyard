@@ -27,6 +27,7 @@ interface EnterpriseWorkspaceListProps {
   onUpgrade?: (highlight: UpgradeHighlight) => void;
   onJoinClick: () => void;
   onLeave?: (id: string) => void;
+  onRefresh?: () => void;
 }
 
 export default function EnterpriseWorkspaceList({
@@ -47,6 +48,7 @@ export default function EnterpriseWorkspaceList({
   onUpgrade,
   onJoinClick,
   onLeave,
+  onRefresh,
 }: EnterpriseWorkspaceListProps) {
   const router = useRouter();
   const toast = useToast();
@@ -203,6 +205,7 @@ export default function EnterpriseWorkspaceList({
                 onDelete={onDelete}
                 onLeave={onLeave}
                 onJoinClick={onJoinClick}
+                onRefresh={onRefresh}
               />
             ))}
           </div>

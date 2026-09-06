@@ -8,6 +8,7 @@ import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, isPriceMatchingRule } from "@/lib/point-rate";
 import { Zap, Plus, Edit2, Trash2, ShieldAlert, Sparkles, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList } from "lucide-react";
+import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 
 interface TokenPack {
   id: string;
@@ -192,48 +193,37 @@ export default function AdminTokenPacksPage() {
   return (
     <div className="space-y-6 pb-8 text-left font-sans">
       
-      {/* 顶部标题导航 */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center border border-amber-200/60 shadow-xs">
-            <Zap className="w-5 h-5 fill-amber-500" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-slate-800">算力加油包运营维护中心</h1>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              动态配置与上架前端工作控制台充值弹窗可选的算力包，修改价格、点数与推荐标记
-            </p>
-          </div>
-        </div>
+      {/* 顶部标题与横向模块导航 */}
+      <MembershipNavHeader
+        title="Token加油包管理"
+        subtitle="动态配置与上架充值弹窗可选的算力点数包，修改价格、点数与推荐标记"
+      >
+        <Link
+          href="/admin/orders"
+          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+          title="直达订单中枢查看用户实际算力充值流水"
+        >
+          <ClipboardList className="w-3.5 h-3.5 text-[#3182ce]" />
+          <span>充值交易账单</span>
+        </Link>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <Link
-            href="/admin/orders"
-            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            title="直达订单中枢查看用户实际算力充值流水"
-          >
-            <ClipboardList className="w-3.5 h-3.5 text-[#3182ce]" />
-            <span>充值交易账单</span>
-          </Link>
+        <button
+          onClick={loadPacks}
+          disabled={loading}
+          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
+          <span>刷新</span>
+        </button>
 
-          <button
-            onClick={loadPacks}
-            disabled={loading}
-            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
-            <span>刷新</span>
-          </button>
-
-          <button
-            onClick={handleOpenCreate}
-            className="px-4 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>新增算力加油包</span>
-          </button>
-        </div>
-      </div>
+        <button
+          onClick={handleOpenCreate}
+          className="px-3.5 py-1.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-bold text-xs rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+        >
+          <Plus className="w-4 h-4" />
+          <span>新增算力加油包</span>
+        </button>
+      </MembershipNavHeader>
 
       {/* 4 大 Bento 统计数据卡片 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

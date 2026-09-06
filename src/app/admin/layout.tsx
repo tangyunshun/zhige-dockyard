@@ -128,9 +128,9 @@ const adminMenuItems: AdminMenuItem[] = [
   },
   {
     icon: Package,
-    label: "内容管理",
+    label: "组件阶段管理",
     href: "/admin/content",
-    description: "配置管理组件开发阶段大纲",
+    description: "维护平台组件的阶段大纲",
     requiredPermission: "content:read",
   },
   {
@@ -152,6 +152,13 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "审计日志",
     href: "/admin/operation-logs",
     description: "系统高危操作审计记录",
+    requiredPermission: "audit:read",
+  },
+  {
+    icon: FileText,
+    label: "系统日志",
+    href: "/admin/logs",
+    description: "操作日志与登录历史审计",
     requiredPermission: "audit:read",
   },
   {

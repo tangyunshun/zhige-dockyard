@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
 import Pagination from "@/components/Pagination";
+import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 import {
   POINT_RATE_HINT,
   POINT_RATE_TEXT,
@@ -581,58 +582,38 @@ export default function AdminMembershipLevelsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f8ff] space-y-6 pb-8 text-left font-sans">
-      {/* 顶部高颜值 Header 导航 */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
-        <div className="flex items-center gap-3.5 relative z-10">
-          <button
-            onClick={() => router.back()}
-            className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
-            title="返回上一页"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center border border-blue-400/40 shadow-xs shrink-0">
-            <Crown className="w-5 h-5 fill-white/20" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
-              <span>会员等级与权益配置中心</span>
-            </h1>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              定制与编排各级会员的资源配额（个人/企业空间、存储上限、月度算力点等）与价格阶梯
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6 pb-12 text-left font-sans">
+      {/* 顶部统一面包屑与横向模块导航 */}
+      <MembershipNavHeader
+        title="会员等级管理"
+        subtitle="定制与编排各级会员的资源配额（个人/企业空间、存储上限、月度算力点等）与价格阶梯"
+      >
+        <Link
+          href="/admin/users"
+          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+          title="前往用户管理查看全平台注册用户与等级分布"
+        >
+          <Users className="w-3.5 h-3.5 text-[#3182ce]" />
+          <span>用户分布中枢</span>
+        </Link>
 
-        <div className="flex items-center gap-3 shrink-0 relative z-10">
-          <Link
-            href="/admin/users"
-            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            title="前往用户管理查看全平台注册用户与等级分布"
-          >
-            <Users className="w-3.5 h-3.5 text-[#3182ce]" />
-            <span>用户分布中枢</span>
-          </Link>
+        <button
+          onClick={() => loadLevels(false)}
+          disabled={loading}
+          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+        >
+          <Search className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
+          <span>刷新列表</span>
+        </button>
 
-          <button
-            onClick={() => loadLevels(false)}
-            disabled={loading}
-            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-          >
-            <Search className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
-            <span>刷新列表</span>
-          </button>
-
-          <button
-            onClick={openCreateModal}
-            className="px-5 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>新增会员等级</span>
-          </button>
-        </div>
-      </div>
+        <button
+          onClick={openCreateModal}
+          className="px-3.5 py-1.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-bold text-xs rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+        >
+          <Plus className="w-4 h-4" />
+          <span>新增会员等级</span>
+        </button>
+      </MembershipNavHeader>
 
       {/* 算力点统一定价规则极简提示条 */}
       <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs shadow-2xs">
@@ -751,14 +732,14 @@ export default function AdminMembershipLevelsPage() {
                   <th className="px-6 py-4 min-w-[360px]">每月配额与参数</th>
                   <th className="px-6 py-4 min-w-[150px] shrink-0">价格阶梯 (CNY)</th>
                   <th className="px-6 py-4 w-28 shrink-0">状态</th>
-                  <th className="px-6 py-4 text-right w-40 shrink-0">操作</th>
+                  <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-6 py-4 text-right w-40 shrink-0 font-black shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
                 {levels.map((level) => (
                   <tr
                     key={level.name}
-                    className={`hover:bg-slate-50/80 transition-colors ${
+                    className={`group hover:bg-slate-50/80 transition-colors ${
                       !level.isActive ? "opacity-60 bg-slate-50/30" : ""
                     }`}
                   >
@@ -859,7 +840,7 @@ export default function AdminMembershipLevelsPage() {
                       </button>
                     </td>
 
-                    <td className="px-6 py-4 text-right whitespace-nowrap w-40 shrink-0">
+                    <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-6 py-4 text-right whitespace-nowrap w-40 shrink-0 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
                       <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                         <button
                           onClick={() => !level.isActive && openEditModal(level)}

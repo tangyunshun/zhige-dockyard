@@ -23,18 +23,71 @@ export async function GET(
     where: { workspaceId, userId: auth.user.id },
   });
 
-  if (member) {
-    return NextResponse.json({ isMember: true, member: { role: member.role } });
-  }
-
-  // 兜底：owner 即使缺失 workspacemember 记录也视为有效成员（与 /api/workspace/list 的
-  // "防止 workspacemember 记录缺失" 逻辑保持一致），避免 owner 被误判为"已移出空间"
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { ownerId: true },
+    select: { ownerId: true, status: true, name: true, quota: true },
   });
-  if (workspace && workspace.ownerId === auth.user.id) {
-    return NextResponse.json({ isMember: true, member: { role: "OWNER" } });
+
+  let workspaceStatus = workspace?.status || "ACTIVE";
+  const rawQuotaJson = (workspace?.quota as any) || {};
+  let disabledUntil = rawQuotaJson.disabledUntil || null;
+  let disabledReason = rawQuotaJson.disabledReason || null;
+  let appealStatus = rawQuotaJson.appealStatus || "none";
+
+  // 自动到期解封自愈
+  if (workspaceStatus === "DISABLED" && disabledUntil) {
+    const expireTime = new Date(disabledUntil).getTime();
+    if (!isNaN(expireTime) && Date.now() > expireTime) {
+      workspaceStatus = "ACTIVE";
+      disabledUntil = null;
+      disabledReason = null;
+      const {
+        disabledUntil: d1,
+        disabledReason: d2,
+        disabledDuration: d3,
+        disabledDurationDays: d4,
+        disabledAt: d5,
+        ...restQuota
+      } = rawQuotaJson;
+
+      prisma.workspace.update({
+        where: { id: workspaceId },
+        data: {
+          status: "ACTIVE",
+          quota: {
+            ...restQuota,
+            appealStatus: "none",
+          },
+        },
+      }).catch(() => {});
+    }
+  }
+
+  const isOwner = workspace?.ownerId === auth.user.id;
+
+  if (member) {
+    return NextResponse.json({
+      isMember: true,
+      workspaceStatus,
+      disabledUntil,
+      disabledReason,
+      appealStatus,
+      isOwner,
+      member: { role: member.role },
+    });
+  }
+
+  // 兜底：owner 即使缺失 workspacemember 记录也视为有效成员
+  if (isOwner) {
+    return NextResponse.json({
+      isMember: true,
+      workspaceStatus,
+      disabledUntil,
+      disabledReason,
+      appealStatus,
+      isOwner: true,
+      member: { role: "OWNER" },
+    });
   }
 
   // F-03：确实已被移出空间，返回 W-001 错误码，前端清空空间缓存跳转中控台
