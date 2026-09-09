@@ -52,11 +52,12 @@ export async function POST(request: NextRequest) {
       ml = await prisma.membershiplevel.findFirst();
     }
     const mlId = ml?.id || "FREE";
-    // tokenLimit 一律从 membershiplevel 表读取真实值；免费赠送 100 算力点仅对有限额度生效
+    // 新空间余额一律 0 起步：不再预置/叠加任何免费额度（免费额度只来自注册福利按月 100 或充值/购买），
+    // 避免通过反复创建空间薅「tokenLimit+100」免费额度；无限额度（-1）为平台特权标记保持原样
     const tierTokenLimit = await getMembershipTokenLimit(membershipLevel);
     const tokenBalance = isUnlimitedTokenLimit(tierTokenLimit)
       ? UNLIMITED_TOKEN
-      : tierTokenLimit + BigInt(100);
+      : BigInt(0);
 
     const workspaceId = `ws-custom-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 

@@ -95,7 +95,11 @@ export enum MembershipLevel {
 }
 
 /**
- * 会员等级配额限制
+ * 会员等级配额限制（仅用于前端展示 / 升级路径判断，如企业空间数量上限）
+ *
+ * 注意：本表不含“算力点余额”字段。算力点为余额制（即充即用），
+ * 不再按会员等级免费发放任何初始额度，创建空间一律 0 起步，
+ * 仅通过注册福利 / 充值 / 购买算力加油包获得。请勿在此补回 tokenBalance。
  */
 export const MEMBERSHIP_QUOTAS: Record<
   MembershipLevel,
@@ -104,7 +108,6 @@ export const MEMBERSHIP_QUOTAS: Record<
     maxTeamSize: number;
     maxStorage: number; // bytes
     maxApiCalls: number;
-    tokenBalance: number;
   }
 > = {
   [MembershipLevel.FREE]: {
@@ -112,21 +115,18 @@ export const MEMBERSHIP_QUOTAS: Record<
     maxTeamSize: 5,
     maxStorage: 1 * 1024 * 1024 * 1024, // 1GB
     maxApiCalls: 1000,
-    tokenBalance: 10000,
   },
   [MembershipLevel.PRO]: {
     enterpriseSlots: 3,
     maxTeamSize: 20,
     maxStorage: 50 * 1024 * 1024 * 1024, // 50GB
     maxApiCalls: 50000,
-    tokenBalance: 100000,
   },
   [MembershipLevel.ENTERPRISE]: {
     enterpriseSlots: 10,
     maxTeamSize: 100,
     maxStorage: 500 * 1024 * 1024 * 1024, // 500GB
     maxApiCalls: 500000,
-    tokenBalance: 1000000,
   },
 };
 

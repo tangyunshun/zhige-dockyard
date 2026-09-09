@@ -21,8 +21,16 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    // 功能自愈：若数据库中无相应条款或政策文档，则自动注入默认的精美文案
+    // 功能自愈：仅当该分类“完全无文档”时注入默认文案；
+    // 若文档存在但已下架(isPublished=false)，则尊重下架状态，不再重建（避免 title+category 唯一约束冲突）
     if (!document) {
+      const existingAny = await prisma.systemdocument.findFirst({ where: { category } });
+      if (existingAny) {
+        return NextResponse.json(
+          { success: false, unpublished: true, error: "文档处于维护中，请等待恢复。" },
+          { status: 404 }
+        );
+      }
       console.log(`[System Document] Category "${category}" not found, initializing default document...`);
       let title = "";
       let content = "";

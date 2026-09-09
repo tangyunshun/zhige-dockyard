@@ -836,7 +836,7 @@ export default function ComponentBrowser({
                 </div>
               </div>
 
-              {/* 第二列：剩余 Token 算力 */}
+              {/* 第二列：剩余算力点 */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider">
                   <span>剩余调用额度</span>

@@ -316,7 +316,7 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
       {
         key: "membership:create",
         label: "创建新会员等级方案",
-        desc: "设计新的会员等级方案、每月免费算力与专属标识",
+        desc: "设计新的会员等级方案、会员额度与专属标识",
         moduleName: "会员套餐管理",
         level: "normal",
       },

@@ -77,7 +77,7 @@ const WORD_DICT: Record<string, string> = {
   logout: "安全登出",
   login: "账号登录",
   auth: "认证授权",
-  token: "算力令牌",
+  token: "令牌",
   recharge: "充值入账",
   plan: "空间套餐",
   upgrade: "升级变更",
@@ -398,7 +398,7 @@ export default function AdminLogsPage() {
   const totalCount = logData?.total || 0;
 
   return (
-    <div className="p-6 space-y-5 text-left bg-[#f8fafc] min-h-full">
+    <div className="space-y-5 text-left bg-[#f8fafc] min-h-full">
       {/* 顶部标题区（契合平台后台标准规范） */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
         <div>

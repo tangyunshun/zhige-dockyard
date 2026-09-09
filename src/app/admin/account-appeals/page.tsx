@@ -392,7 +392,7 @@ export default function AdminAccountAppealsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 font-sans">
+    <div className="space-y-6 font-sans">
       {/* 1. 头部 Banner（符合知阁设计系统规范的亮色科技感控制台） */}
       <div className="bg-white/85 backdrop-blur-md p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="absolute -right-8 -top-8 w-40 h-40 bg-[#3182ce]/5 rounded-full blur-2xl pointer-events-none" />

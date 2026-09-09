@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
 import { ensureDefaultComponents, getBoundComponentCount } from "@/lib/workspaceInit";
-import { getMembershipTokenLimit } from "@/lib/quota-token";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -254,7 +253,8 @@ export async function GET(request: NextRequest) {
           },
         });
 
-        // 匹配会员等级并同步为该个人空间配置 WorkspaceQuota 配额数据，为工坊模拟运行提供算力余额
+        // 匹配会员等级并同步为该个人空间创建 WorkspaceQuota 配额记录
+        // 配额余额一律 0 起步：不预置免费额度（免费额度只来自注册福利按月发放或充值/购买）
         const membershipLevel = user.membershipLevel || "FREE";
         let ml = await prisma.membershiplevel.findUnique({
           where: { id: membershipLevel }
@@ -263,15 +263,13 @@ export async function GET(request: NextRequest) {
           ml = await prisma.membershiplevel.findFirst();
         }
         const mlId = ml?.id || "FREE";
-        // tokenLimit 一律从 membershiplevel 表读取真实值，不再写死档位数值
-        const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
 
         await prisma.workspacequota.create({
           data: {
             id: crypto.randomUUID(),
             workspaceId: workspace.id,
             membershipLevelId: mlId,
-            tokenBalance: BigInt(tokenLimit),
+            tokenBalance: BigInt(0),
             updatedAt: now,
           }
         });
@@ -316,15 +314,14 @@ export async function GET(request: NextRequest) {
 
         let wsQuota = quotaMap.get(workspace.id);
 
-        // 自愈哨兵：若个人空间缺失配额或免费个人空间算力 <= 0，自动创建/补偿为 100 算力点
+        // 自愈哨兵：仅做结构性修复（个人空间缺失配额记录时补建 0 额度配额），
+        // 不再赠送/补偿任何免费算力——免费额度只来自注册福利（3 个月每月 100）或充值/购买
         if (workspace.type === "PERSONAL") {
           const userDb = await prisma.user.findUnique({
             where: { id: userId },
             select: { membershipLevel: true },
           });
           const mLevel = userDb?.membershipLevel || "FREE";
-          const defaultLimit = Number(await getMembershipTokenLimit(mLevel));
-          const targetTokens = defaultLimit > 0 ? defaultLimit : 100;
 
           if (!wsQuota) {
             let ml = await prisma.membershiplevel.findUnique({ where: { id: mLevel } });
@@ -334,26 +331,13 @@ export async function GET(request: NextRequest) {
                   id: crypto.randomUUID(),
                   workspaceId: workspace.id,
                   membershipLevelId: ml?.id || "FREE",
-                  tokenBalance: BigInt(targetTokens),
+                  tokenBalance: BigInt(0),
                   updatedAt: new Date(),
                 },
               });
               quotaMap.set(workspace.id, wsQuota);
             } catch (e) {
-              console.warn("[/api/workspace/list] 补齐个人空间配额非致命提示:", e);
-            }
-          } else if (Number(wsQuota.tokenBalance) <= 0 && mLevel === "FREE") {
-            try {
-              wsQuota = await prisma.workspacequota.update({
-                where: { id: wsQuota.id },
-                data: {
-                  tokenBalance: BigInt(targetTokens),
-                  updatedAt: new Date(),
-                },
-              });
-              quotaMap.set(workspace.id, wsQuota);
-            } catch (e) {
-              console.warn("[/api/workspace/list] 补偿个人空间 0 算力非致命提示:", e);
+              console.warn("[/api/workspace/list] 补齐个人空间配额记录非致命提示:", e);
             }
           }
         }

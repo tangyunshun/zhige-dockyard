@@ -575,7 +575,7 @@ export default function WorkspacePlansAdminPage() {
                         </span>
                         <span className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0">
                           <Coins className="w-3 h-3 text-slate-400" />
-                          <strong className="font-mono text-slate-900">{fmtLimit(plan.tokenLimit)}</strong> 算力
+                          <strong className="font-mono text-slate-900">{fmtLimit(plan.tokenLimit)}</strong> 算力点
                         </span>
                       </div>
                     </td>

@@ -28,6 +28,12 @@ interface EnterpriseWorkspaceListProps {
   onJoinClick: () => void;
   onLeave?: (id: string) => void;
   onRefresh?: () => void;
+  /**
+   * 等高紧凑模式（供空间中枢「企业空间所有者」布局使用）：去掉卡片最小高度，
+   * 让卡片高度随内容收缩，由同列底部卡片吸收剩余空间，避免留白。
+   * 默认 false（普通成员/非所有者）→ 保留 min-h-[300px] 与 justify-between 的传统布局。
+   */
+  compact?: boolean;
 }
 
 export default function EnterpriseWorkspaceList({
@@ -49,6 +55,7 @@ export default function EnterpriseWorkspaceList({
   onJoinClick,
   onLeave,
   onRefresh,
+  compact = false,
 }: EnterpriseWorkspaceListProps) {
   const router = useRouter();
   const toast = useToast();
@@ -69,8 +76,11 @@ export default function EnterpriseWorkspaceList({
   const isOverQuota = quota ? quota.enterpriseCount >= quota.maxEnterprise : false;
 
   return (
-    <div className="bg-white/95 rounded-[20px] p-6 border border-white/90 shadow-sm hover:shadow-md transition-all duration-350 flex flex-col justify-between min-h-[300px] overflow-visible">
-      
+    <div
+      className={`bg-white/95 rounded-[20px] p-6 border border-white/90 shadow-sm hover:shadow-md transition-all duration-350 overflow-visible ${
+        compact ? "" : "flex flex-col justify-between min-h-[300px]"
+      }`}
+    >
       {/* 区块标题 + 新建按钮 */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5 pb-3 border-b border-slate-200/60">
         <div className="flex items-start gap-2.5">
@@ -157,8 +167,8 @@ export default function EnterpriseWorkspaceList({
         </div>
       )}
 
-      {/* 内容区域：网格列表或空状态 */}
-      <div className="flex-1 overflow-visible">
+      {/* 内容区域：网格列表或空状态（compact 时不留白，让 EnterpriseWorkspaceCard 紧贴上方搜索/统计栏） */}
+      <div className={compact ? "overflow-visible" : "flex-1 overflow-visible"}>
         {workspaces.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 px-4 text-center bg-amber-50/10 rounded-lg border border-dashed border-amber-200/50">
             <p className="text-xs text-slate-500 mb-4 font-semibold">暂无已加入的企业协作空间，您可以自主创建或通过邀请码加入</p>
@@ -212,7 +222,7 @@ export default function EnterpriseWorkspaceList({
         )}
       </div>
 
-      {/* 底部汇总统计栏 */}
+      {/* 底部汇总统计栏（紧凑：mt-5 pt-3 自然间距） */}
       {workspaces.length > 0 && (
         <div className="mt-5 pt-3 border-t border-slate-200/50 flex flex-wrap items-center gap-6 text-xs text-slate-500 font-semibold">
           <div className="flex items-center gap-1">

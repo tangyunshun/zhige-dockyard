@@ -33,7 +33,7 @@ export default function UserDashboardPage() {
     {
       icon: Zap,
       label: "可用算力点",
-      value: `${(dashboardData?.stats as any)?.tokenBalance ?? 100} 点`,
+      value: `${(dashboardData?.stats as any)?.tokenBalance ?? 100} 算力点`,
       change: "充足",
       trend: "up" as const,
       color: "text-[#3182ce]",

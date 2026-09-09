@@ -37,6 +37,9 @@ import {
   User,
   Tag,
   ArrowUpDown,
+  History,
+  Building2,
+  Database,
 } from "lucide-react";
 
 interface Document {
@@ -45,6 +48,10 @@ interface Document {
   content: string;
   category: string;
   tags: string;
+  summary?: string;
+  codeSample?: string;
+  relatedLink?: string;
+  helpfulCount?: number;
   isPublished: boolean;
   sortOrder: number;
   viewCount: number;
@@ -70,20 +77,48 @@ interface DocumentFormData {
   content: string;
   category: string;
   tags: string;
+  summary: string;
+  codeSample: string;
+  relatedLinkLabel: string;
+  relatedLinkPath: string;
   isPublished: boolean;
   sortOrder: number;
+}
+
+interface SystemDocumentHistoryItem {
+  id: string;
+  documentId: string;
+  title: string;
+  content: string | null;
+  category: string;
+  tags: string | null;
+  isPublished: boolean;
+  sortOrder: number;
+  editorId: string | null;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
   "user-guide": "用户指南",
   "user_guide": "用户指南",
   guide: "用户指南",
+  start: "开始使用",
   "api-doc": "API 文档",
   "api_doc": "API 文档",
   api: "API 文档",
+  developer: "开发者集成",
+  workspace: "空间治理",
+  workspaces: "空间治理",
   "system-doc": "系统文档",
   "system_doc": "系统文档",
   system: "系统文档",
+  enterprise: "企业私有部署",
+  knowledge: "知识库文档",
   faq: "常见问题",
   help: "帮助与支持",
   announcement: "官方公告",
@@ -108,6 +143,9 @@ export function getCategoryLabel(category: string | null | undefined): string {
   if (normalized.includes("api")) return "API 文档";
   if (normalized.includes("faq")) return "常见问题";
   if (normalized.includes("system")) return "系统文档";
+  if (normalized.includes("workspace")) return "空间治理";
+  if (normalized.includes("knowledge")) return "知识库文档";
+  if (normalized.includes("enterprise")) return "企业私有部署";
   return raw;
 }
 
@@ -115,6 +153,9 @@ const CATEGORY_ICONS: Record<string, any> = {
   "user-guide": Book,
   "api-doc": FileCode,
   "system-doc": Settings,
+  workspace: Building2,
+  knowledge: Database,
+  enterprise: Building2,
   faq: HelpCircle,
   announcement: Bell,
   "privacy-policy": BookOpen,
@@ -133,16 +174,21 @@ export function getCategoryIcon(category: string | null | undefined): any {
   if (normalized.includes("api")) return FileCode;
   if (normalized.includes("faq")) return HelpCircle;
   if (normalized.includes("system")) return Settings;
+  if (normalized.includes("workspace")) return Building2;
+  if (normalized.includes("knowledge")) return Database;
+  if (normalized.includes("enterprise")) return Building2;
   return FileText;
 }
 
 const STANDARD_CATEGORIES: { key: string; label: string; icon: any }[] = [
   { key: "user-guide", label: "用户指南", icon: Book },
   { key: "api-doc", label: "API 文档", icon: FileCode },
-  { key: "system-doc", label: "系统文档", icon: Settings },
+  { key: "workspace", label: "空间治理", icon: Building2 },
+  { key: "knowledge", label: "知识库文档", icon: Database },
+  { key: "system-doc", label: "系统/企业部署", icon: Settings },
   { key: "faq", label: "常见问题", icon: HelpCircle },
   { key: "announcement", label: "官方公告", icon: Bell },
-  { key: "privacy-policy", label: "平台隐私协议", icon: BookOpen },
+  { key: "privacy-policy", label: "隐私协议", icon: BookOpen },
   { key: "terms-of-service", label: "服务条款", icon: FileText },
 ];
 
@@ -161,6 +207,9 @@ export default function AdminDocumentsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingDoc, setEditingDoc] = useState<Document | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [historyDoc, setHistoryDoc] = useState<Document | null>(null);
+  const [historyList, setHistoryList] = useState<SystemDocumentHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [editorTab, setEditorTab] = useState<"edit" | "preview">("edit");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -181,6 +230,10 @@ export default function AdminDocumentsPage() {
     content: "",
     category: "",
     tags: "",
+    summary: "",
+    codeSample: "",
+    relatedLinkLabel: "",
+    relatedLinkPath: "",
     isPublished: false,
     sortOrder: 0,
     errors: {},
@@ -270,6 +323,36 @@ export default function AdminDocumentsPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const loadHistory = async (doc: Document) => {
+    setHistoryDoc(doc);
+    setHistoryLoading(true);
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch(
+        `/api/admin/documents?mode=history&documentId=${doc.id}`,
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryList(data.data || []);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          toast.error(data.error || "登录已过期，请重新登录");
+        } else {
+          toast.error(data.error || "加载历史版本失败");
+        }
+      }
+    } catch (error) {
+      console.error("Load history error:", error);
+      toast.error("加载历史版本失败");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const handleTogglePublished = async (id: string, isPublished: boolean) => {
     const action = isPublished ? "下架" : "上架";
     setConfirmModal({
@@ -356,12 +439,32 @@ export default function AdminDocumentsPage() {
     });
   };
 
+  // 解析数据库中关联链接字段 (JSON: {label, path})
+  const parseRelatedLink = (
+    raw: string | null | undefined
+  ): { label: string; path: string } => {
+    if (!raw) return { label: "", path: "" };
+    try {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return {
+        label: parsed?.label || "",
+        path: parsed?.path || "",
+      };
+    } catch {
+      return { label: "", path: "" };
+    }
+  };
+
   const openCreateModal = () => {
     setFormData({
       title: "",
       content: "",
       category: "user-guide",
       tags: "",
+      summary: "",
+      codeSample: "",
+      relatedLinkLabel: "",
+      relatedLinkPath: "",
       isPublished: true,
       sortOrder:
         documents.length > 0
@@ -375,11 +478,16 @@ export default function AdminDocumentsPage() {
   };
 
   const openEditModal = (doc: Document) => {
+    const related = parseRelatedLink(doc.relatedLink);
     setFormData({
       title: doc.title,
       content: doc.content || "",
       category: doc.category || "user-guide",
       tags: doc.tags || "",
+      summary: doc.summary || "",
+      codeSample: doc.codeSample || "",
+      relatedLinkLabel: related.label,
+      relatedLinkPath: related.path,
       isPublished: doc.isPublished,
       sortOrder: doc.sortOrder ?? 0,
       errors: {},
@@ -467,6 +575,16 @@ export default function AdminDocumentsPage() {
           content: formData.content.trim(),
           category: formData.category,
           tags: (formData.tags || "").trim(),
+          summary: (formData.summary || "").trim() || undefined,
+          codeSample: (formData.codeSample || "").trim() || undefined,
+          relatedLink:
+            (formData.relatedLinkLabel || "").trim() &&
+            (formData.relatedLinkPath || "").trim()
+              ? JSON.stringify({
+                  label: formData.relatedLinkLabel.trim(),
+                  path: formData.relatedLinkPath.trim(),
+                })
+              : undefined,
           isPublished: finalPublished,
           sortOrder: Number(formData.sortOrder) || 0,
         }),
@@ -600,7 +718,7 @@ export default function AdminDocumentsPage() {
   return (
     <div className="min-h-screen bg-[#f0f8ff] text-slate-800 pb-12 font-sans text-left">
       {/* 主页面容器 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <div className="pt-6">
         {/* 顶部标头 Card */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
@@ -1020,6 +1138,25 @@ export default function AdminDocumentsPage() {
                                   </span>
                                 )}
                               </div>
+                              {(doc.summary || doc.codeSample || doc.relatedLink) && (
+                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                  {doc.summary && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                      <FileText className="w-2.5 h-2.5" /> 已配摘要
+                                    </span>
+                                  )}
+                                  {doc.codeSample && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                      <FileCode className="w-2.5 h-2.5" /> 代码示例
+                                    </span>
+                                  )}
+                                  {doc.relatedLink && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                      <ExternalLink className="w-2.5 h-2.5" /> 关联跳转
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -1084,6 +1221,16 @@ export default function AdminDocumentsPage() {
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-500" />
                               <span>预览</span>
+                            </button>
+
+                            {/* 历史版本：查看该文档历次编辑快照 */}
+                            <button
+                              onClick={() => loadHistory(doc)}
+                              className="px-2.5 h-7 bg-indigo-50 hover:bg-indigo-500 text-indigo-700 hover:text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                              title="查看该文档的编辑历史版本"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>历史版本</span>
                             </button>
 
                             {/* 状态控制：上线文档可下架为草稿；草稿文档可发布上线 */}
@@ -1269,9 +1416,11 @@ export default function AdminDocumentsPage() {
                       }
                       className="w-full px-3 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
-                      <option value="user-guide">📘 用户指南 (User Guide)</option>
+                      <option value="user-guide">📘 用户指南·快速入门 (User Guide)</option>
                       <option value="api-doc">💻 API 开发者文档 (API Docs)</option>
-                      <option value="system-doc">⚙️ 系统架构文档 (System Docs)</option>
+                      <option value="workspace">🏢 空间治理与权限文档 (Workspace)</option>
+                      <option value="system-doc">⚙️ 企业部署与系统文档 (System/Enterprise)</option>
+                      <option value="knowledge">📚 知识库与组件文档 (Knowledge)</option>
                       <option value="faq">❓ 常见问题汇总 (FAQ)</option>
                       <option value="announcement">📢 官方更新公告 (Announcement)</option>
                       <option value="privacy-policy">🛡️ 平台隐私协议 (Privacy Policy)</option>
@@ -1354,7 +1503,126 @@ export default function AdminDocumentsPage() {
                 </div>
               </div>
 
-              {/* 卡片 2：正文内容编辑器与实时预览 */}
+              {/* 卡片 2：前台文档中心展示增强字段（可选） */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <div className="w-2 h-3.5 rounded-full bg-amber-500" />
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                    前台文档中心展示增强（可选，公开 /docs 页面生效）
+                  </h4>
+                </div>
+
+                {/* 文档摘要 / 简介 */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <FileText className="w-3.5 h-3.5 text-slate-400" />
+                      <span>文档摘要 / 简介</span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        (留空则前台自动截取正文前 120 字)
+                      </span>
+                    </label>
+                    <span
+                      className={`text-[11px] font-mono px-2 py-0.5 rounded-md ${
+                        (formData.summary || "").length > 300
+                          ? "bg-red-50 text-red-600 font-bold border border-red-200"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {(formData.summary || "").length} / 300 字
+                    </span>
+                  </div>
+                  <textarea
+                    value={formData.summary}
+                    maxLength={300}
+                    rows={3}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        summary: e.target.value,
+                      })
+                    }
+                    placeholder="用 1-2 句话概括本文档核心要点，将展示在 /docs 文档卡片上…"
+                    className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs text-slate-800 font-medium transition-all focus:bg-white resize-y leading-relaxed"
+                  />
+                </div>
+
+                {/* 代码示例 / cURL 命令 */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <FileCode className="w-3.5 h-3.5 text-slate-400" />
+                      <span>代码示例内容</span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        (展示在文档详情弹层的代码块，支持 curl / JSON / 签名载荷)
+                      </span>
+                    </label>
+                    <span
+                      className={`text-[11px] font-mono px-2 py-0.5 rounded-md ${
+                        (formData.codeSample || "").length > 5000
+                          ? "bg-red-50 text-red-600 font-bold border border-red-200"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {(formData.codeSample || "").length} / 5000 字
+                    </span>
+                  </div>
+                  <textarea
+                    value={formData.codeSample}
+                    maxLength={5000}
+                    rows={6}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        codeSample: e.target.value,
+                      })
+                    }
+                    placeholder={'示例：\ncurl -X GET "https://api.zhige-dockyard.com/v1/workspaces" \\\n  -H "Authorization: Bearer zg_live_****" \\\n  -H "Content-Type: application/json"'}
+                    className="w-full p-3 bg-slate-900 text-indigo-100 border border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 text-xs font-mono transition-all resize-y leading-relaxed"
+                  />
+                </div>
+
+                {/* 关联跳转链接 */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                    <span>关联跳转链接（按钮文字 + 站内路径，均填才会展示）</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={formData.relatedLinkLabel}
+                      maxLength={40}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          relatedLinkLabel: e.target.value,
+                        })
+                      }
+                      placeholder="如：管理 API Keys"
+                      className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white"
+                    />
+                    <input
+                      type="text"
+                      value={formData.relatedLinkPath}
+                      maxLength={200}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          relatedLinkPath: e.target.value,
+                        })
+                      }
+                      placeholder="站内路径，如：/user/api-keys"
+                      className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white font-mono"
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    保存后作为 JSON 写入数据库，需登录后前台点击方可跳转，如留空则不展示。
+                  </p>
+                </div>
+              </div>
+
+              {/* 卡片 3：正文内容编辑器与实时预览 */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
@@ -1509,7 +1777,7 @@ export default function AdminDocumentsPage() {
                 )}
               </div>
 
-              {/* 卡片 3：发布与访问状态 */}
+              {/* 卡片 4：发布与访问状态 */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
                 <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                   <div className="w-2 h-3.5 rounded-full bg-purple-500" />
@@ -1741,6 +2009,105 @@ export default function AdminDocumentsPage() {
                   关闭
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 历史版本查看模态框 */}
+      {historyDoc && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
+            <div className="bg-gradient-to-r from-indigo-600 to-[#3182ce] text-white p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center font-bold text-white shrink-0 backdrop-blur-xs">
+                  <History className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black truncate max-w-[420px] text-white">
+                    《{historyDoc.title}》编辑历史
+                  </h3>
+                  <p className="text-[11px] text-blue-100/90 mt-1 font-medium">
+                    每次编辑/上下架前自动保存快照，共 {historyList.length} 个历史版本
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setHistoryDoc(null)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 bg-white">
+              {historyLoading ? (
+                <div className="py-10 text-center text-xs text-slate-500 font-medium">
+                  正在加载历史版本...
+                </div>
+              ) : historyList.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-500 font-medium">
+                  暂无编辑历史记录
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {historyList.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className="border border-slate-200 rounded-xl overflow-hidden"
+                    >
+                      <div className="bg-slate-50 px-4 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] font-black text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                            版本 {historyList.length - index}
+                          </span>
+                          <span className="text-xs font-bold text-slate-700">
+                            {new Date(item.createdAt).toLocaleString("zh-CN", {
+                              hour12: false,
+                            })}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            编辑者：{item.user?.name || item.user?.email || "系统官方"}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                            item.isPublished
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-slate-100 text-slate-500 border-slate-200"
+                          }`}
+                        >
+                          {item.isPublished ? "已发布上线" : "未发布草稿"}
+                        </span>
+                      </div>
+                      <div className="px-4 py-3 bg-white">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          快照标题
+                        </div>
+                        <div className="text-xs font-bold text-slate-800 mb-3">
+                          {item.title}
+                        </div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          快照内容
+                        </div>
+                        <div className="text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100 max-h-60 overflow-y-auto">
+                          {renderMarkdownContent(item.content || "")}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setHistoryDoc(null)}
+                className="px-4 h-8 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                关闭
+              </button>
             </div>
           </div>
         </div>

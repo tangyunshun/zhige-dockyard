@@ -52,13 +52,13 @@ export async function GET(request: NextRequest) {
     if (!quota) {
       try {
         const isEnterprise = ws?.type === "ENTERPRISE";
-        const defaultBalance = isEnterprise ? 0 : 100;
         quota = await prisma.workspacequota.create({
           data: {
             id: crypto.randomUUID(),
             workspaceId,
             membershipLevelId: isEnterprise ? "STANDARD" : "FREE",
-            tokenBalance: BigInt(defaultBalance),
+            // 结构性自愈：新配额余额一律 0 起步，不赠送任何免费算力
+            tokenBalance: BigInt(0),
             storageLimit: BigInt(isEnterprise ? 10 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024),
             apiCallsLimit: BigInt(isEnterprise ? 50000 : 1000),
             storageUsed: BigInt(0),
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const tokenBalanceNum = quota ? Number(quota.tokenBalance) : (ws?.type === "ENTERPRISE" ? 0 : 100);
+    const tokenBalanceNum = quota ? Number(quota.tokenBalance) : 0;
     const levelTokenLimitNum = quota?.membershiplevel ? Number(quota.membershiplevel.tokenLimit || 1000) : 1000;
     const allocatedNum = Number(totalAllocated);
     // 无限额度（tokenBalance = -1）：未锁定池同样标记为无限（-1），避免被 Math.max(0, ...) 折叠成「0」

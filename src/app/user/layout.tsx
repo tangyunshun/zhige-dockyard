@@ -1,6 +1,7 @@
 ﻿﻿"use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import {
   User,
@@ -19,6 +20,8 @@ import {
   Shield,
   Users,
   Briefcase,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 
@@ -43,6 +46,13 @@ export default function UserDashboardLayout({
   const [loading, setLoading] = useState(true);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [menuItems, setMenuItems] = useState<any[]>([]);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hovered, setHovered] = useState<{
+    label: string;
+    description?: string;
+    top: number;
+    left: number;
+  } | null>(null);
 
   useEffect(() => {
     checkLoginStatus();
@@ -157,31 +167,99 @@ export default function UserDashboardLayout({
   return (
     <div className="h-screen w-screen overflow-hidden flex">
       {/* 侧边栏 - 桌面端 */}
-      <aside className="hidden lg:flex w-64 shrink-0 bg-white border-r border-slate-200 flex-col">
-        {/* 返回首页按钮 */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
+      <aside
+        className={`hidden lg:flex ${
+          isCollapsed ? "w-20" : "w-64"
+        } shrink-0 bg-white border-r border-slate-200 flex-col transition-all duration-300 ease-in-out`}
+      >
+        {/* 返回首页 + 折叠按钮 */}
+        <div className="h-16 flex items-center px-4 border-b border-slate-200 shrink-0 gap-2">
+          {isCollapsed ? (
+            <button
+              onClick={() => router.push("/")}
+              className="flex-1 flex items-center justify-center p-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all"
+              title="返回首页"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push("/")}
+              className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="font-bold text-sm">返回首页</span>
+            </button>
+          )}
           <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all w-full"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
+            title={isCollapsed ? "展开菜单" : "收起菜单"}
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="font-bold text-sm">返回首页</span>
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
           </button>
         </div>
 
         {/* 用户中心标识 */}
-        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
-          <div className="flex items-center gap-2 text-[#3182ce]">
-            <User className="w-5 h-5" />
-            <span className="font-bold text-sm">个人工作台</span>
+        <div className="px-4 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
+          <div className="flex items-center justify-center gap-2 text-[#3182ce] relative group">
+            <User
+              className={`w-5 h-5 ${isCollapsed ? "mx-auto" : ""}`}
+            />
+            {!isCollapsed && (
+              <span className="font-bold text-sm">个人工作台</span>
+            )}
+            {isCollapsed && (
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                个人工作台
+              </div>
+            )}
           </div>
         </div>
 
         {/* 导航菜单 */}
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
+        <nav
+          className={`flex-1 ${
+            isCollapsed ? "px-2" : "px-4"
+          } py-6 space-y-1 overflow-y-auto min-h-0`}
+        >
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
+
+            if (isCollapsed) {
+              return (
+                <button
+                  key={item.href}
+                  onClick={() => {
+                    setHovered(null);
+                    setIsCollapsed(false);
+                    router.push(item.href);
+                  }}
+                  onMouseEnter={(e) => {
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setHovered({
+                      label: item.label,
+                      description: item.description,
+                      top: r.top + r.height / 2,
+                      left: r.right,
+                    });
+                  }}
+                  onMouseLeave={() => setHovered(null)}
+                  className={`w-full flex items-center justify-center p-3 rounded-lg transition-all mb-1 ${
+                    isActive
+                      ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                </button>
+              );
+            }
 
             return (
               <button
@@ -197,7 +275,9 @@ export default function UserDashboardLayout({
                 <div className="text-left min-w-0">
                   <div className="text-sm font-bold truncate">{item.label}</div>
                   <div
-                    className={`text-xs truncate ${isActive ? "text-white/80" : "text-slate-400"}`}
+                    className={`text-xs truncate ${
+                      isActive ? "text-white/80" : "text-slate-400"
+                    }`}
                   >
                     {item.description}
                   </div>
@@ -208,48 +288,99 @@ export default function UserDashboardLayout({
         </nav>
 
         {/* 用户信息 */}
-        <div className="p-4 border-t border-slate-200 shrink-0">
-          <div className="flex items-center gap-3 mb-3">
-            {user?.avatar ? (
-              <img
-                src={user.avatar}
-                alt={user.name || "用户头像"}
-                className="w-10 h-10 shrink-0 rounded-lg object-cover border-2 border-white shadow-md"
-              />
-            ) : (
-              <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
-                {user?.name?.charAt(0).toUpperCase() || "U"}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-slate-800 truncate">
-                {user?.name || "用户"}
-              </div>
-              <div className="text-xs text-slate-500 truncate">
-                {user?.email || "未设置邮箱"}
-              </div>
-              {user?.membershipLevel && user.membershipLevel !== "FREE" && (
-                <div className="mt-1">
-                  <span className="px-1.5 py-0.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 text-[#d97706] text-[10px] font-bold rounded border border-[#f59e0b]/20">
-                    {user.membershipLevel === "BRONZE" && "青铜"}
-                    {user.membershipLevel === "SILVER" && "白银"}
-                    {user.membershipLevel === "GOLD" && "黄金"}
-                    {user.membershipLevel === "DIAMOND" && "钻石"}
-                    {user.membershipLevel === "CROWN" && "皇冠"}
-                  </span>
+        <div
+          className={`p-4 border-t border-slate-200 shrink-0 ${
+            isCollapsed ? "flex flex-col items-center gap-3" : ""
+          }`}
+        >
+          {isCollapsed ? (
+            <>
+              <div className="relative group">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || "用户头像"}
+                    className="w-10 h-10 shrink-0 rounded-lg object-cover border-2 border-white shadow-md"
+                  />
+                ) : (
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
+                    {user?.name?.charAt(0).toUpperCase() || "U"}
+                  </div>
+                )}
+                <div className="absolute left-full bottom-0 mb-2 ml-2 px-2 py-1.5 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                  <div className="font-bold">{user?.name || "用户"}</div>
+                  <div className="text-slate-300">
+                    {user?.email || "未设置邮箱"}
+                  </div>
+                  {user?.membershipLevel && user.membershipLevel !== "FREE" && (
+                    <div className="text-slate-400 text-[10px] mt-0.5">
+                      {user.membershipLevel === "BRONZE" && "青铜会员"}
+                      {user.membershipLevel === "SILVER" && "白银会员"}
+                      {user.membershipLevel === "GOLD" && "黄金会员"}
+                      {user.membershipLevel === "DIAMOND" && "钻石会员"}
+                      {user.membershipLevel === "CROWN" && "皇冠会员"}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+              <div className="relative group">
+                <button
+                  onClick={handleLogout}
+                  className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                  title="退出登录"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                  退出登录
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 mb-3">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || "用户头像"}
+                    className="w-10 h-10 shrink-0 rounded-lg object-cover border-2 border-white shadow-md"
+                  />
+                ) : (
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
+                    {user?.name?.charAt(0).toUpperCase() || "U"}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-slate-800 truncate">
+                    {user?.name || "用户"}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {user?.email || "未设置邮箱"}
+                  </div>
+                  {user?.membershipLevel && user.membershipLevel !== "FREE" && (
+                    <div className="mt-1">
+                      <span className="px-1.5 py-0.5 bg-gradient-to-r from-[#f59e0b]/10 to-[#d97706]/10 text-[#d97706] text-[10px] font-bold rounded border border-[#f59e0b]/20">
+                        {user.membershipLevel === "BRONZE" && "青铜"}
+                        {user.membershipLevel === "SILVER" && "白银"}
+                        {user.membershipLevel === "GOLD" && "黄金"}
+                        {user.membershipLevel === "DIAMOND" && "钻石"}
+                        {user.membershipLevel === "CROWN" && "皇冠"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-          {/* 退出登录按钮 */}
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-bold"
-          >
-            <LogOut className="w-4 h-4" />
-            退出登录
-          </button>
+              {/* 退出登录按钮 */}
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-bold"
+              >
+                <LogOut className="w-4 h-4" />
+                退出登录
+              </button>
+            </>
+          )}
         </div>
       </aside>
 
@@ -386,6 +517,27 @@ export default function UserDashboardLayout({
 
       {/* 退出登录二次确认弹窗 */}
       {confirmDialog}
+
+      {/* 收起态菜单名称悬停提示：portal 渲染到 body，避免被侧边栏 overflow 裁剪 */}
+      {hovered &&
+        createPortal(
+          <div
+            className="fixed z-[9999] pointer-events-none"
+            style={{
+              top: hovered.top,
+              left: hovered.left + 8,
+              transform: "translateY(-50%)",
+            }}
+          >
+            <div className="bg-slate-800 text-white text-xs rounded-lg shadow-lg px-2.5 py-1.5 whitespace-nowrap">
+              <div className="font-bold">{hovered.label}</div>
+              {hovered.description && (
+                <div className="text-slate-300 mt-0.5">{hovered.description}</div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

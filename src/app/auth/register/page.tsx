@@ -112,6 +112,8 @@ function RegisterContent() {
       const data = await res.json();
       if (res.ok) {
         setDocumentContent(data.data?.content || "暂无内容");
+      } else if (data?.unpublished) {
+        setDocumentContent(data.error || "文档处于维护中，请等待恢复。");
       } else {
         setDocumentContent(`加载文档失败: ${data.details || data.error || "未知原因"}`);
       }

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
 import { formatYuanFromPoints } from "@/lib/point-rate";
+import EnterprisePoolManager from "@/components/EnterprisePoolManager";
 
 interface PointsData {
   walletBalance: number;
@@ -236,6 +237,10 @@ export default function MyPointsPage() {
           </div>
         )}
       </div>
+
+      {/* 企业池管理：所有者在此直接回收共享池算力点 / 设置低余额预警阈值
+          （与企业空间内部「充值 → 回收至个人钱包」页签互通） */}
+      <EnterprisePoolManager onChanged={load} />
 
       {/* 跨空间流水 */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">

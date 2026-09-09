@@ -49,14 +49,14 @@ export const GET = withAuth(async (req, user) => {
       deletionCooldownDays = await getDeletionCooldownDays();
     }
 
-    // 附带查询用户当前个人空间的可用算力点（保底自愈 100 点）
-    let tokenBalance = 100;
+    // 附带查询用户当前个人空间的可用算力点（只读实际余额，不赠送/兜底）
+    let tokenBalance = 0;
     try {
       const personalWs = await prisma.workspace.findFirst({
         where: { ownerId: user.id, type: "PERSONAL" },
         include: { workspacequota: true },
       });
-      if (personalWs?.workspacequota && Number(personalWs.workspacequota.tokenBalance) > 0) {
+      if (personalWs?.workspacequota) {
         tokenBalance = Number(personalWs.workspacequota.tokenBalance);
       }
     } catch (e) {

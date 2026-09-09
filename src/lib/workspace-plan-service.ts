@@ -5,6 +5,7 @@ import {
   WORKSPACE_PLANS,
   PURCHASABLE_PLANS,
   DEFAULT_WORKSPACE_PLAN,
+  DEFAULT_POOL_LOW_THRESHOLD,
 } from "@/constants/workspace-plans";
 
 /**
@@ -56,6 +57,8 @@ function dbToConfig(row: any): WorkspacePlanConfig {
     maxStorage,
     maxApiCalls,
     tokenLimit: Number(row.tokenLimit ?? 0),
+    poolLowThreshold:
+      row.poolLowThreshold == null ? DEFAULT_POOL_LOW_THRESHOLD : Number(row.poolLowThreshold),
     features: buildDynamicPlanFeatures({
       maxMembers,
       maxComponents,

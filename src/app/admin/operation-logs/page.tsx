@@ -256,7 +256,7 @@ function parseDetails(details: any): { label: string; value: string }[] {
         label = "名称"; value = String(val);
         break;
       case "tokens":
-        label = "消耗额度"; value = `${val} 点`;
+        label = "消耗额度"; value = `${val} 算力点`;
         break;
       case "componentId":
         label = "组件 ID"; value = String(val);

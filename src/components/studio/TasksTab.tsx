@@ -567,7 +567,7 @@ export default function TasksTab({
 
                       {/* 算力消耗 */}
                       <td className="py-3.5 px-3 font-mono font-black text-slate-700">
-                        {task.tokenUsed || 100} 点
+                        {task.tokenUsed || 100} 算力点
                       </td>
 
                       {/* 执行状态 */}

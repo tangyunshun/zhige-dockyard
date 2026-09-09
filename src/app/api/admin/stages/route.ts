@@ -3,194 +3,146 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 
 /**
+ * 统一管理员鉴权：返回 null 表示通过，否则返回错误响应
+ */
+async function requireAdmin(request: NextRequest) {
+  const auth = await validateUser(request.headers.get("Authorization"), request);
+  if (!auth.valid || !auth.user) {
+    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const user = await prisma.user.findUnique({ where: { id: auth.user.id } });
+  if (!user || !isAdminRole(user.role)) {
+    return NextResponse.json({ error: "无权访问" }, { status: 403 });
+  }
+  return null;
+}
+
+/**
  * GET /api/admin/stages
- * 获取所有阶段信息
+ * 获取所有阶段分类（真实数据源：component_category 表），并统计每个分类下的组件数。
  */
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
+    const denied = await requireAdmin(request);
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const search = searchParams.get("search") || "";
-    const status = searchParams.get("status") || ""; // "active" | "inactive"
-    const componentCount = searchParams.get("componentCount") || ""; // "0" | "gt0"
-    const createDateStart = searchParams.get("createDateStart") || "";
-    const createDateEnd = searchParams.get("createDateEnd") || "";
 
     const skip = (page - 1) * limit;
-    
-    // 获取所有阶段配置
-    const allRecords = await prisma.componenttask.findMany({
+
+    // 真实数据源：组件分类表（阶段分类）
+    const categories = await prisma.componentcategory.findMany({
       orderBy: { sortOrder: "asc" },
     });
 
-    // 过滤出阶段记录
-    let stageRecords = allRecords.filter(
-      (record) => (record.config as any)?.isStageConfig === true,
-    );
+    // 统计每个分类下的组件数量（component_catalog.category = component_category.key）
+    const grouped = await prisma.componentcatalog.groupBy({
+      by: ["category"],
+      _count: { _all: true },
+    });
+    const countMap = new Map<string, number>();
+    grouped.forEach((g) => countMap.set(g.category, g._count._all));
 
-    // 搜索过滤
+    const totalComponents = await prisma.componentcatalog.count();
+
+    // 搜索过滤（按名称）
+    let filtered = categories;
     if (search) {
-      stageRecords = stageRecords.filter((record) =>
-        record.name.toLowerCase().includes(search.toLowerCase())
-      );
+      const kw = search.toLowerCase();
+      filtered = filtered.filter((c) => c.name.toLowerCase().includes(kw));
     }
 
-    // 状态过滤
-    if (status) {
-      const isActive = status === "active";
-      stageRecords = stageRecords.filter((record) => record.isPublished === isActive);
-    }
-
-    // 创建日期过滤
-    if (createDateStart || createDateEnd) {
-      stageRecords = stageRecords.filter((record) => {
-        const recordDate = new Date(record.createdAt);
-        if (createDateStart && recordDate < new Date(createDateStart)) {
-          return false;
-        }
-        if (createDateEnd) {
-          const endDate = new Date(createDateEnd);
-          endDate.setHours(23, 59, 59, 999);
-          if (recordDate > endDate) {
-            return false;
-          }
-        }
-        return true;
-      });
-    }
-
-    // 统计每个阶段的组件数量
-    const nonStageRecords = allRecords.filter(
-      (record) => (record.config as any)?.isStageConfig !== true,
-    );
-    
-    const typeCountMap = new Map<string, number>();
-    nonStageRecords.forEach((record) => {
-      const currentCount = typeCountMap.get(record.type) || 0;
-      typeCountMap.set(record.type, currentCount + 1);
+    const buildStage = (cat: {
+      key: string; name: string; color: string; range: string;
+      sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
+    }) => ({
+      id: cat.key,
+      key: cat.key,
+      name: cat.name,
+      color: cat.color,
+      range: cat.range,
+      description: "",
+      sortOrder: cat.sortOrder,
+      isActive: cat.isActive,
+      componentCount: countMap.get(cat.key) || 0,
+      createdAt: cat.createdAt.toISOString(),
+      updatedAt: cat.updatedAt.toISOString(),
     });
 
-    // 构建阶段列表
-    let filteredStages = stageRecords.map((record) => ({
-      id: record.id,
-      name: record.name,
-      description: record.description || "",
-      sortOrder: record.sortOrder,
-      isActive: record.isPublished,
-      componentCount: typeCountMap.get(record.type) || 0,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    }));
+    const stages = filtered.map(buildStage);
+    const total = stages.length;
+    const paged = stages.slice(skip, skip + limit);
 
-    // 组件数量过滤
-    if (componentCount) {
-      if (componentCount === "0") {
-        filteredStages = filteredStages.filter((s) => s.componentCount === 0);
-      } else if (componentCount === "gt0") {
-        filteredStages = filteredStages.filter((s) => s.componentCount > 0);
-      }
-    }
-
-    // 统计全局真实指标（不受当前条件和分页截断影响）
-    const allStageRecords = allRecords.filter(
-      (record) => (record.config as any)?.isStageConfig === true,
-    );
+    const activeCount = categories.filter((c) => c.isActive).length;
     const summary = {
-      totalStages: allStageRecords.length,
-      activeStages: allStageRecords.filter((r) => r.isPublished).length,
-      inactiveStages: allStageRecords.filter((r) => !r.isPublished).length,
-      totalComponents: nonStageRecords.length,
+      totalStages: categories.length,
+      activeStages: activeCount,
+      inactiveStages: categories.length - activeCount,
+      totalComponents,
     };
 
-    // 趋势与分布分析聚合 (供 Tab 2 阶段多维趋势与分布分析)
-    const timeRange = searchParams.get("timeRange") || "halfYear"; // "week" | "month" | "halfYear" | "year" | "custom"
-    const analyticsStart = searchParams.get("analyticsStart");
-    const analyticsEnd = searchParams.get("analyticsEnd");
+    // 分布分析：每个阶段的组件数 / 占比 / 活跃等级
+    const distribution = stages
+      .map((s) => {
+        const percentage = totalComponents > 0 ? Math.round((s.componentCount / totalComponents) * 100) : 0;
+        return {
+          stageId: s.id,
+          stageName: s.name,
+          description: s.description,
+          sortOrder: s.sortOrder,
+          color: s.color,
+          range: s.range,
+          componentCount: s.componentCount,
+          percentage,
+          isActive: s.isActive,
+          activityLevel: s.componentCount > 5 ? "HIGH" : s.componentCount > 0 ? "NORMAL" : "IDLE",
+        };
+      })
+      .sort((a, b) => b.componentCount - a.componentCount);
 
-    // 计算各阶段组件分布
-    const stageDistribution = allStageRecords.map((st) => {
-      const count = typeCountMap.get(st.type) || 0;
-      const percentage = nonStageRecords.length > 0
-        ? Math.round((count / nonStageRecords.length) * 100)
-        : 0;
-      return {
-        stageId: st.id,
-        stageName: st.name,
-        description: st.description || "",
-        sortOrder: st.sortOrder,
-        componentCount: count,
-        percentage,
-        isActive: st.isPublished,
-        // 健康度/活跃等级判定
-        activityLevel: count > 5 ? "HIGH" : count > 0 ? "NORMAL" : "IDLE",
-      };
-    }).sort((a, b) => b.componentCount - a.componentCount);
-
-    // 多维关键分析指标
-    const emptyStages = stageDistribution.filter((s) => s.componentCount === 0);
-    const topStage = stageDistribution.length > 0 ? stageDistribution[0] : null;
-    const activeRate = allStageRecords.length > 0
-      ? Math.round((allStageRecords.filter((r) => r.isPublished).length / allStageRecords.length) * 100)
-      : 0;
-
+    const emptyStages = distribution.filter((s) => s.componentCount === 0);
+    const topStage = distribution.length > 0 ? distribution[0] : null;
     const metrics = {
-      activeRate, // 阶段启用率 %
+      activeRate: categories.length > 0 ? Math.round((activeCount / categories.length) * 100) : 0,
       topStageName: topStage ? topStage.stageName : "暂无",
       topStageCount: topStage ? topStage.componentCount : 0,
       topStagePercentage: topStage ? topStage.percentage : 0,
-      emptyStageCount: emptyStages.length, // 尚无组件挂载的阶段数
-      avgComponentsPerStage: allStageRecords.length > 0
-        ? Number((nonStageRecords.length / allStageRecords.length).toFixed(1))
-        : 0,
+      emptyStageCount: emptyStages.length,
+      avgComponentsPerStage: categories.length > 0 ? Number((totalComponents / categories.length).toFixed(1)) : 0,
     };
 
-    // 计算时间趋势点
+    // 时间趋势：基于 component_catalog 的 createdAt 按分类分桶
+    const timeRange = searchParams.get("timeRange") || "halfYear";
+    const analyticsStart = searchParams.get("analyticsStart");
+    const analyticsEnd = searchParams.get("analyticsEnd");
+
     const now = new Date();
     const trendBuckets: { label: string; start: Date; end: Date }[] = [];
 
     if (timeRange === "week") {
-      // 本周：按 7 天切分
       for (let i = 6; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
         const label = `${d.getMonth() + 1}/${d.getDate()}`;
-        const start = new Date(d);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(d);
-        end.setHours(23, 59, 59, 999);
+        const start = new Date(d); start.setHours(0, 0, 0, 0);
+        const end = new Date(d); end.setHours(23, 59, 59, 999);
         trendBuckets.push({ label, start, end });
       }
     } else if (timeRange === "month") {
-      // 本月：按近 30 天切分 6 个时间区间（每 5 天一组）
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getTime() - i * 5 * 24 * 60 * 60 * 1000);
         const label = `${d.getMonth() + 1}/${d.getDate()}`;
-        const start = new Date(d);
-        start.setHours(0, 0, 0, 0);
+        const start = new Date(d); start.setHours(0, 0, 0, 0);
         const end = new Date(start.getTime() + 5 * 24 * 60 * 60 * 1000);
         trendBuckets.push({ label, start, end });
       }
     } else if (timeRange === "year") {
-      // 本年度：12 个月切分
       for (let i = 11; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const nextM = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-        const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        trendBuckets.push({ label, start: d, end: nextM });
+        trendBuckets.push({ label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, start: d, end: nextM });
       }
     } else if (timeRange === "custom" && analyticsStart && analyticsEnd) {
       const sDate = new Date(analyticsStart);
@@ -207,41 +159,44 @@ export async function GET(request: NextRequest) {
         });
       }
     } else {
-      // 默认近半年：最近 6 个月切分
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const nextM = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-        const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        trendBuckets.push({ label, start: d, end: nextM });
+        trendBuckets.push({ label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, start: d, end: nextM });
       }
     }
 
+    const allComps = await prisma.componentcatalog.findMany({
+      select: { category: true, createdAt: true },
+    });
+
     const trendPoints = trendBuckets.map((bucket) => {
-      const bucketComponents = nonStageRecords.filter((rec) => {
-        const recDate = new Date(rec.createdAt);
+      const bucketComps = allComps.filter((c) => {
+        const recDate = new Date(c.createdAt);
         return recDate >= bucket.start && recDate < bucket.end;
       });
-
+      // 有组件时，标签显示该桶内最新组件的实际日期，避免桶起始日期与真实数据日期偏差
+      let label = bucket.label;
+      if (bucketComps.length > 0) {
+        const latestTs = Math.max(...bucketComps.map((c) => new Date(c.createdAt).getTime()));
+        const latest = new Date(latestTs);
+        label = `${latest.getMonth() + 1}/${latest.getDate()}`;
+      }
       const stageBreakdown: Record<string, number> = {};
-      allStageRecords.slice(0, 6).forEach((st) => {
-        stageBreakdown[st.name] = bucketComponents.filter((r) => r.type === st.type).length;
+      stages.slice(0, 6).forEach((s) => {
+        stageBreakdown[s.name] = bucketComps.filter((c) => c.category === s.key).length;
       });
-
       return {
-        label: bucket.label,
-        total: bucketComponents.length,
+        label,
+        total: bucketComps.length,
         ...stageBreakdown,
       };
     });
 
-    // 分页
-    const total = filteredStages.length;
-    const stages = filteredStages.slice(skip, skip + limit);
-
     return NextResponse.json({
       success: true,
       data: {
-        stages,
+        stages: paged,
         total,
         page,
         limit,
@@ -249,7 +204,7 @@ export async function GET(request: NextRequest) {
         summary,
         analytics: {
           metrics,
-          distribution: stageDistribution,
+          distribution,
           trend: trendPoints,
         },
       },
@@ -263,55 +218,50 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - 创建阶段
+// POST - 创建阶段分类
 export async function POST(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
+    const denied = await requireAdmin(request);
+    if (denied) return denied;
 
     const body = await request.json();
-    const { name, description, sortOrder, isPublished } = body;
+    const { name, color, range, sortOrder, key, isActive } = body;
 
-    if (!name) {
-      return NextResponse.json({ error: "缺少阶段名称" }, { status: 400 });
+    if (!name || !name.trim()) {
+      return NextResponse.json({ error: "缺少阶段分类名称" }, { status: 400 });
     }
 
-    // 创建阶段配置
-    const stage = await prisma.componenttask.create({
+    // key 作为主键，未提供时自动生成
+    let categoryKey = (key && key.trim()) || "";
+    if (!categoryKey) {
+      categoryKey = `CAT_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    }
+
+    const existing = await prisma.componentcategory.findUnique({ where: { key: categoryKey } });
+    if (existing) {
+      return NextResponse.json({ error: "阶段分类标识已存在，请更换" }, { status: 409 });
+    }
+
+    const created = await prisma.componentcategory.create({
       data: {
-        id: crypto.randomUUID(),
-        name,
-        description,
-        type: name, // 阶段类型与名称相同
-        config: {
-          isStageConfig: true,
-        },
+        key: categoryKey,
+        name: name.trim(),
+        color: color || "#3182ce",
+        range: range || "",
         sortOrder: sortOrder || 0,
-        isPublished: isPublished ?? true,
-        userId,
+        isActive: isActive !== undefined ? Boolean(isActive) : true,
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: stage,
-      message: "创建阶段成功",
+      data: created,
+      message: "创建阶段分类成功",
     });
   } catch (error) {
     console.error("Create stage error:", error);
     return NextResponse.json(
-      { error: "创建阶段失败", details: error instanceof Error ? error.message : error },
+      { error: "创建阶段分类失败", details: error instanceof Error ? error.message : error },
       { status: 500 }
     );
   }
@@ -320,19 +270,8 @@ export async function POST(request: NextRequest) {
 // 统一更新阶段逻辑（支持 PUT 和 PATCH）
 async function handleUpdateStage(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
+    const denied = await requireAdmin(request);
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     let stageId = searchParams.get("id");
@@ -343,85 +282,78 @@ async function handleUpdateStage(request: NextRequest) {
     }
 
     if (!stageId) {
-      return NextResponse.json({ error: "缺少阶段 ID" }, { status: 400 });
+      return NextResponse.json({ error: "缺少阶段分类 ID" }, { status: 400 });
     }
 
-    const { name, description, sortOrder, isPublished, isActive } = body;
+    const { name, color, range, sortOrder, isActive } = body;
+    const data: Record<string, unknown> = {};
+    if (name !== undefined) data.name = name;
+    if (color !== undefined) data.color = color;
+    if (range !== undefined) data.range = range;
+    if (sortOrder !== undefined) data.sortOrder = Number(sortOrder);
+    // 启用/停用切换：启用(isActive=true)或禁用(isActive=false)
+    if (isActive !== undefined) data.isActive = Boolean(isActive);
 
-    // 兼容 isActive 和 isPublished
-    const targetPublished = isActive !== undefined ? isActive : isPublished;
-
-    const stage = await prisma.componenttask.update({
-      where: { id: stageId },
-      data: {
-        name: name || undefined,
-        description: description !== undefined ? description : undefined,
-        type: name || undefined, // 如果名称改变，类型也改变
-        sortOrder: sortOrder !== undefined ? Number(sortOrder) : undefined,
-        isPublished: targetPublished !== undefined ? Boolean(targetPublished) : undefined,
-      },
+    const updated = await prisma.componentcategory.update({
+      where: { key: stageId },
+      data,
     });
 
     return NextResponse.json({
       success: true,
-      data: stage,
-      message: "更新阶段成功",
+      data: updated,
+      message: "更新阶段分类成功",
     });
   } catch (error) {
     console.error("Update stage error:", error);
     return NextResponse.json(
-      { error: "更新阶段失败", details: error instanceof Error ? error.message : error },
+      { error: "更新阶段分类失败", details: error instanceof Error ? error.message : error },
       { status: 500 }
     );
   }
 }
 
-// PUT - 更新阶段
+// PUT - 更新阶段分类
 export async function PUT(request: NextRequest) {
   return handleUpdateStage(request);
 }
 
-// PATCH - 更新阶段（支持部分字段及状态开关）
+// PATCH - 更新阶段分类
 export async function PATCH(request: NextRequest) {
   return handleUpdateStage(request);
 }
 
-// DELETE - 删除阶段
+// DELETE - 删除阶段分类（名下仍有组件时禁止删除）
 export async function DELETE(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
+    const denied = await requireAdmin(request);
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     const stageId = searchParams.get("id");
 
     if (!stageId) {
-      return NextResponse.json({ error: "缺少阶段 ID" }, { status: 400 });
+      return NextResponse.json({ error: "缺少阶段分类 ID" }, { status: 400 });
     }
 
-    await prisma.componenttask.delete({
-      where: { id: stageId },
-    });
+    const count = await prisma.componentcatalog.count({ where: { category: stageId } });
+    if (count > 0) {
+      return NextResponse.json(
+        { error: `该分类下仍有 ${count} 个组件，请先清空关联组件后再删除` },
+        { status: 400 }
+      );
+    }
+
+    await prisma.componentcategory.delete({ where: { key: stageId } });
 
     return NextResponse.json({
       success: true,
-      message: "删除阶段成功",
+      message: "删除阶段分类成功",
     });
   } catch (error) {
     console.error("Delete stage error:", error);
     return NextResponse.json(
-      { error: "删除阶段失败", details: error instanceof Error ? error.message : error },
+      { error: "删除阶段分类失败", details: error instanceof Error ? error.message : error },
       { status: 500 }
     );
   }

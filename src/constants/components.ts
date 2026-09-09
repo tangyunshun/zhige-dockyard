@@ -30,7 +30,7 @@ export interface ComponentDefinition {
   icon: string;
   tags: string[];
   isPremium: boolean;
-  estimatedTokens: number;
+  estimatedModelTokens: number;
   previewData: ComponentPreviewData;
   businessTags?: string[];
   // 深度详情：来自数据库 component_catalog.detail 字段

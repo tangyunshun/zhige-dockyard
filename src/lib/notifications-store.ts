@@ -46,14 +46,21 @@ export async function seedDefaultWelcomeNotifications(userId: string): Promise<v
   });
   if (prefs?.defaultsSeeded) return;
 
-  // 平滑兼容历史旧文案：若库中存在“100 点免费体验额度”，自动修正为标准文案
+  // 注册福利文案（同步口径：注册当月起连续 3 个自然月，每月 100 点，当月有效月底清零，用尽自费充值）
+  const welcomeContent =
+    "欢迎加入知阁舟坊！注册福利已发放：注册当月起连续 3 个月每月 100 算力点（当月有效、月底清零，仅限个人空间使用）。第 3 个月结束后如需更多算力，请前往充值中心自助充值。";
+
+  // 平滑兼容历史旧文案：若库中存在“100 点免费体验额度/系统已赠送您 100 算力点”，自动修正为新口径
   await prisma.notification.updateMany({
     where: {
       userId,
-      content: { contains: "100 点免费体验额度" },
+      OR: [
+        { content: { contains: "100 点免费体验额度" } },
+        { content: { contains: "系统已赠送您 100 算力点" } },
+      ],
     },
     data: {
-      content: "系统已赠送您 100 算力点免费组件体验额度，您可以前往组件大厅挑选工具开始使用。",
+      content: welcomeContent,
     },
   }).catch(() => {});
 
@@ -63,7 +70,7 @@ export async function seedDefaultWelcomeNotifications(userId: string): Promise<v
       id: crypto.randomUUID(),
       userId,
       title: "🎉 欢迎使用知阁舟坊工作台！",
-      content: "系统已赠送您 100 算力点免费组件体验额度，您可以前往组件大厅挑选工具开始使用。",
+      content: welcomeContent,
       type: "system",
       isRead: false,
       createdAt: new Date(now - 1000 * 60 * 2), // 2分钟前

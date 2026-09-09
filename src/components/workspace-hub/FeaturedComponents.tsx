@@ -78,8 +78,8 @@ export default function FeaturedComponents({
   const list = getDisplayComponents();
 
   return (
-    <div className="bg-white/80 rounded-[20px] p-6 border border-white/90 shadow-sm hover:shadow-md transition-all duration-300">
-      
+    <div className="bg-white/80 rounded-[20px] p-6 border border-white/90 shadow-sm hover:shadow-md transition-all duration-300 flex-1 flex flex-col min-h-0">
+
       {/* 头部 (Tooltip 说明智能推荐规则) */}
       <div className="flex items-start justify-between mb-5 pb-3 border-b border-slate-200/60">
         <div className="flex items-start gap-2.5">
@@ -112,7 +112,7 @@ export default function FeaturedComponents({
           暂无 30 天组件调用数据，快去空间里使用组件吧
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0">
         {list.map((item) => {
           const realComp = componentCatalog.find((c) => c.id === item.id);
           if (!realComp) return null;
@@ -122,7 +122,7 @@ export default function FeaturedComponents({
             <div 
               key={item.id}
               onClick={() => onComponentClick(item.id)}
-              className={`p-4.5 bg-white hover:bg-slate-50/50 border border-slate-200/50 rounded-lg transition-all duration-300 cursor-pointer flex flex-col justify-between gap-4 group relative min-h-[140px] text-left shadow-sm ${item.borderHover}`}
+              className={`p-4.5 bg-white hover:bg-slate-50/50 border border-slate-200/50 rounded-lg transition-all duration-300 cursor-pointer flex flex-col justify-between gap-4 group relative min-h-[140px] h-full text-left shadow-sm ${item.borderHover}`}
             >
                 <div className="space-y-2">
                   {/* 图标与推荐因由标签 */}
@@ -150,13 +150,6 @@ export default function FeaturedComponents({
                   </div>
                   
                   <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
-                    {/* 全网徽标（真实统计：全平台有多少个不同空间使用过该组件） */}
-                    <span 
-                      className="px-1.5 py-0.5 bg-slate-100 text-slate-500 border border-slate-200/50 rounded text-[9px] font-black shrink-0 select-none"
-                    >
-                      🌍 全网 {item.globalWorkspaceCount} 空间装载
-                    </span>
-                    
                     {/* 我的徽标 */}
                     {names.length > 0 && (
                       <span 

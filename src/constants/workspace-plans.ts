@@ -4,10 +4,10 @@
  * 产品定位：一次性「团队资源扩容包」（不再按月/年订阅）。
  * - priceMonthly：一次性扩容价格（单位：分），购买后长期生效
  * - priceYearly：订阅制年付字段，已随「一次性扩容」模式停用，恒为 0
- * - tokenLimit：扩容包不再附赠月度算力（恒为 0）；算力统一由「会员等级(月度额度) + 算力加油包(即时充值)」提供
+ * - tokenLimit：扩容包不再附赠算力（恒为 0）；算力统一由「充值 + 算力加油包」提供（随用随扣，无月度自动重置）
  *
  * 与「账号级会员等级 membershiplevel」是两个独立维度：
- * - 账号级会员等级：决定每月算力额度、企业空间数量、团队规模等账号权益，按月/年订阅
+ * - 账号级会员等级：决定企业空间数量、团队规模、组件/调用额度及加油包折扣等账号权益，按月/年订阅
  * - 空间级扩容包：决定单个空间内的成员席位、组件装配、存储、调用额度，一次购买长期生效
  *
  * 套餐升级/空间创建统一从数据库 workspaceplan 读取；
@@ -33,6 +33,8 @@ export interface WorkspacePlanConfig {
   maxApiCalls: number;
   /** 扩容包附赠算力已取消，恒为 0（算力统一由会员等级 + 算力加油包承担） */
   tokenLimit: number;
+  /** 企业池余额低于该阈值时触发「补充提醒」（按空间套餐差异化） */
+  poolLowThreshold: number;
   features: string[];
   /** 排序，决定升级阶梯顺序 */
   sortOrder: number;
@@ -54,6 +56,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: 1024, // 1 GB
     maxApiCalls: 1000,
     tokenLimit: 0,
+    poolLowThreshold: 1000,
     features: [
       "10 个团队协同席位",
       "100 个组件装配额度",
@@ -75,6 +78,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: 10240, // 10 GB
     maxApiCalls: 10000,
     tokenLimit: 0,
+    poolLowThreshold: 3000,
     features: [
       "50 个团队协同席位",
       "500 个组件装配额度",
@@ -96,6 +100,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: 102400, // 100 GB
     maxApiCalls: 100000,
     tokenLimit: 0,
+    poolLowThreshold: 10000,
     features: [
       "团队席位无限制",
       "组件装配额度无限制",
@@ -117,6 +122,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: -1,
     maxApiCalls: -1,
     tokenLimit: 0,
+    poolLowThreshold: 10000,
     features: ["全部能力按合同约定开放"],
     sortOrder: 4,
     purchasable: false,
@@ -144,6 +150,31 @@ export function normalizePlan(plan?: string | null): WorkspacePlanKey {
 /** 获取套餐配置（非法值回落为默认套餐） */
 export function getPlanConfig(plan?: string | null): WorkspacePlanConfig {
   return WORKSPACE_PLANS[normalizePlan(plan)];
+}
+
+/** 企业池低余额预警阈值的全局默认值（非法套餐回落到此值） */
+export const DEFAULT_POOL_LOW_THRESHOLD = 1000;
+
+/** 获取企业池低余额预警阈值（按空间套餐差异化，非法值回落默认套餐阈值） */
+export function getPoolLowThreshold(plan?: string | null): number {
+  return getPlanConfig(plan).poolLowThreshold ?? DEFAULT_POOL_LOW_THRESHOLD;
+}
+
+/**
+ * 解析最终生效的企业池低余额预警阈值。
+ * 优先级：空间级覆盖（workspacequota.poolLowThreshold）> 空间套餐默认阈值 > 全局兜底。
+ * @param plan 空间套餐（workspace.plan）
+ * @param quotaThreshold 空间级覆盖值（BigInt/number/null），null 或 undefined 表示继承套餐默认
+ */
+export function resolvePoolLowThreshold(
+  plan?: string | null,
+  quotaThreshold?: bigint | number | null
+): number {
+  if (quotaThreshold !== null && quotaThreshold !== undefined) {
+    const n = Number(quotaThreshold);
+    if (Number.isFinite(n) && n >= 0) return Math.floor(n);
+  }
+  return getPoolLowThreshold(plan);
 }
 
 /**

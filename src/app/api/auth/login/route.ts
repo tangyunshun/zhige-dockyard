@@ -17,8 +17,12 @@ import {
   maybeFinalizeDeletionIfDue,
   getDeletionCooldownDays,
 } from "@/lib/account-deletion";
-import { getMembershipTokenLimit } from "@/lib/quota-token";
-import { grantNewUserGift } from "@/lib/credit-service";
+import {
+  grantNewUserGift,
+  NEW_USER_GIFT_POINTS,
+  REGISTER_GIFT_MONTHS,
+} from "@/lib/credit-service";
+import { addNotification } from "@/lib/notifications-store";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production",
@@ -461,6 +465,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 检查用户是否有个人空间，如果没有则创建
+    let personalWorkspaceId: string | null = null;
     let workspaceMembers = await prisma.workspacemember.findMany({
       where: { userId: user.id },
       include: {
@@ -511,7 +516,8 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // 获取用户会员等级并同步为该个人空间创建 WorkspaceQuota 配额记录（新用户赠送 100 算力点）
+        // 获取用户会员等级并同步为该个人空间创建 WorkspaceQuota 配额记录
+        // 配额余额一律 0 起步：不预置免费额度（注册福利按月 100 由 grantNewUserGift 发放）
         const membershipLevel = user.membershipLevel || "FREE";
         let ml = await prisma.membershiplevel.findUnique({
           where: { id: membershipLevel },
@@ -520,25 +526,19 @@ export async function POST(request: NextRequest) {
           ml = await prisma.membershiplevel.findFirst();
         }
         const mlId = ml?.id || "FREE";
-        const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
 
         await prisma.workspacequota.create({
           data: {
             id: crypto.randomUUID(),
             workspaceId,
             membershipLevelId: mlId,
-            tokenBalance: BigInt(tokenLimit > 0 ? tokenLimit : 100),
+            tokenBalance: BigInt(0),
             updatedAt: nowTime,
           },
         });
 
-        // 新用户首登赠送 100 算力点：写入个人空间专属分桶（3 个月有效）+ 入账流水（幂等）
-        await grantNewUserGift({
-          userId: user.id,
-          workspaceId,
-          workspaceName: user.name || "个人空间",
-          userEmail: user.email || null,
-        }).catch((e) => console.warn("[登录赠送算力] 赠送新用户算力点非致命提示:", e));
+        // 注册福利发放已统一收敛到登录末尾（按月幂等 + 到账通知），此处仅记录个人空间 id
+        personalWorkspaceId = workspaceId;
 
         // 重新获取该用户的 workspaces，以便放入响应返回
         workspaceMembers = await prisma.workspacemember.findMany({
@@ -557,20 +557,21 @@ export async function POST(request: NextRequest) {
           },
         });
         
-        console.log(`[登录成功] 已成功为用户 ${user.id} 自动开通默认个人工作空间并赠送 100 算力点: ${workspaceId}`);
+        console.log(`[登录成功] 已成功为用户 ${user.id} 自动开通默认个人工作空间: ${workspaceId}`);
       } catch (error) {
         console.error('登录中开通默认工作空间异常:', error);
       }
     } else {
-      // 存量老用户检测与自愈哨兵：若个人空间已存在，检查配额记录是否存在或算力是否为 0
+      // 存量老用户：记录个人空间 id，注册福利发放与提示统一收敛到登录末尾
+      personalWorkspaceId = personalWorkspace.workspace.id;
+      // 存量老用户检测与自愈哨兵：若个人空间已存在，仅做「结构性自愈」（缺配额则补建 0 额度配额），
+      // 不再赠送/补偿任何免费算力——免费额度只来自注册福利（3 个月每月 100），用尽请自行充值
       try {
         const existingWsId = personalWorkspace.workspace.id;
         const existingQuota = await prisma.workspacequota.findUnique({
           where: { workspaceId: existingWsId },
         });
         const membershipLevel = user.membershipLevel || "FREE";
-        const defaultLimit = Number(await getMembershipTokenLimit(membershipLevel));
-        const targetTokens = defaultLimit > 0 ? defaultLimit : 100;
 
         if (!existingQuota) {
           let ml = await prisma.membershiplevel.findUnique({ where: { id: membershipLevel } });
@@ -579,24 +580,42 @@ export async function POST(request: NextRequest) {
               id: crypto.randomUUID(),
               workspaceId: existingWsId,
               membershipLevelId: ml?.id || "FREE",
-              tokenBalance: BigInt(targetTokens),
+              tokenBalance: BigInt(0),
               updatedAt: new Date(),
             },
           });
-          console.log(`[登录自愈] 成功为用户 ${user.id} 的存量个人空间补齐配额与 ${targetTokens} 算力点`);
-        } else if (Number(existingQuota.tokenBalance) <= 0 && membershipLevel === "FREE") {
-          // 若为免费版且算力为 0，自动补全首登赠送的 100 算力点体验额度
-          await prisma.workspacequota.update({
-            where: { id: existingQuota.id },
-            data: {
-              tokenBalance: BigInt(targetTokens),
-              updatedAt: new Date(),
-            },
-          });
-          console.log(`[登录自愈] 成功为用户 ${user.id} 存量 0 算力个人空间补偿赠送 ${targetTokens} 算力点`);
+          console.log(`[登录自愈] 成功为用户 ${user.id} 的存量个人空间补齐配额记录（余额 0 起步）`);
         }
       } catch (healError) {
         console.warn("[登录自愈] 检查补齐存量个人空间配额非致命提示:", healError);
+      }
+    }
+
+    // 注册福利按月发放 + 到账提示（统一入口，按月幂等：本月首次发放才推送通知）
+    // 同时覆盖「新建个人空间」与「存量老用户」，确保每月第一次登录即可见福利到账提醒
+    if (personalWorkspaceId) {
+      try {
+        const gift = await grantNewUserGift({
+          userId: user.id,
+          workspaceId: personalWorkspaceId,
+          workspaceName: user.name || "个人空间",
+          userEmail: user.email || null,
+        });
+        if (!gift.skipped) {
+          // 计算当前处于注册福利的第几个月（0=注册当月），仅在窗口内（已发放）才有意义
+          const regMonth = user.createdAt.getFullYear() * 12 + user.createdAt.getMonth();
+          const curMonth = now.getFullYear() * 12 + now.getMonth();
+          const monthIndex = curMonth - regMonth;
+          const monthLabel = `${Math.max(monthIndex + 1, 1)}/${REGISTER_GIFT_MONTHS}`;
+          await addNotification(
+            user.id,
+            "🎁 本月注册福利已到账",
+            `您的注册福利 ${NEW_USER_GIFT_POINTS} 算力点已发放（第 ${monthLabel} 个月，当月有效、月底未用完自动清零，仅限个人空间使用）。第 ${REGISTER_GIFT_MONTHS} 个月结束后如需更多算力，请前往充值中心自助充值。`,
+            "points",
+          );
+        }
+      } catch (giftErr) {
+        console.warn("[登录注册福利] 发放或提示失败（非致命）:", giftErr);
       }
     }
 

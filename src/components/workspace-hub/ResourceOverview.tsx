@@ -23,14 +23,18 @@ export default function ResourceOverview({
 
   const level = user?.membershipLevel || "FREE";
 
-  // === 算力点统计与 SVG 圆环计算 ===
+  // === 算力点统计与 SVG 圆环计算（余额制：不再有“会员每月配额上限”，展示可用余额剩余率） ===
   const tokenQuota = dashboardData?.userQuota?.quotas?.tokenBalance;
-  const tokenUsed = tokenQuota?.used || 0;
+  const tokenHistoryUsed = tokenQuota?.historyTotalUsed ?? tokenQuota?.used ?? 0;
   // 无限额度（total = -1）：不进入比率计算，单独标记
   const tokenUnlimited = (tokenQuota?.total ?? 0) === -1;
-  const tokenAvailable = tokenUnlimited ? -1 : (tokenQuota?.available ?? 100);
-  const tokenTotal = tokenUnlimited ? -1 : Math.max(tokenQuota?.total ?? 100, tokenAvailable + tokenUsed);
-  const tokenRatio = tokenUnlimited ? 0 : (tokenTotal > 0 ? Math.min(100, Math.round((tokenUsed / tokenTotal) * 100)) : 0);
+  const tokenAvailable = tokenUnlimited ? -1 : Math.max(tokenQuota?.available ?? 0, 0);
+  // 剩余率 = 可用余额 /（可用余额 + 历史累计消耗），余额耗尽时归零便于提示充值
+  const tokenDenominator = tokenAvailable + tokenHistoryUsed;
+  const tokenRatio =
+    tokenUnlimited || tokenDenominator <= 0
+      ? 100
+      : Math.min(100, Math.round((tokenAvailable / tokenDenominator) * 100));
 
   // 根据会员级别设置圆环颜色 (唯一真理系统 V6.0 配色体系)
   const getGradientId = () => {
@@ -56,14 +60,14 @@ export default function ResourceOverview({
   /**
    * 智能锚定：优先高亮最紧迫的瓶颈维度。
    * - 企业空间数量已满 ➔ 锚定空间数量
-   * - 算力使用率 >= 80% ➔ 锚定算力 Token
+   * - 可用余额剩余率 <= 20% ➔ 锚定算力点（引导充值 / 会员加油包折扣）
    * - 其余情况展示权益全景
    */
   const resolveHighlight = (): UpgradeHighlight => {
     const workspaceFull =
       quota && quota.maxEnterprise !== -1 && quota.enterpriseCount >= quota.maxEnterprise;
     if (workspaceFull) return "workspace";
-    if (tokenRatio >= 80) return "token";
+    if (!tokenUnlimited && tokenRatio <= 20) return "token";
     return null;
   };
 
@@ -145,8 +149,8 @@ export default function ResourceOverview({
           </svg>
           {/* 中间文字 */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-sm font-extrabold text-slate-800">{tokenRatio}%</span>
-            <span className="text-[10px] text-slate-400 font-bold leading-none mt-0.5">已使用</span>
+            <span className="text-sm font-extrabold text-slate-800">{tokenUnlimited ? "∞" : `${tokenRatio}%`}</span>
+            <span className="text-[10px] text-slate-400 font-bold leading-none mt-0.5">可用</span>
           </div>
         </div>
 
@@ -155,19 +159,20 @@ export default function ResourceOverview({
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-slate-500 font-bold">算力点可用余额</span>
             <span className="text-xs font-mono font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-              {tokenUnlimited ? "无限" : `${tokenAvailable.toLocaleString("zh-CN")} 点`}
+              {tokenUnlimited ? "无限" : `${tokenAvailable.toLocaleString("zh-CN")} 算力点`}
             </span>
           </div>
           <div className="text-xs font-bold text-slate-600 truncate leading-none">
-            已用 <span className="font-mono text-slate-800">{tokenUsed.toLocaleString("zh-CN")}</span> <span className="text-slate-400 font-normal">/ 总额 {tokenUnlimited ? "无限" : `${tokenTotal.toLocaleString("zh-CN")} 点`}</span>
+            累计消耗 <span className="font-mono text-slate-800">{tokenHistoryUsed.toLocaleString("zh-CN")}</span>{" "}
+            <span className="text-slate-400 font-normal">算力点</span>
           </div>
           <span className="text-[11px] text-slate-400 font-semibold block mt-1.5 leading-normal">
             {tokenQuota?.ownedEnterpriseTokens > 0
-              ? `已统筹企业共享池 (${tokenQuota.ownedEnterpriseTokens.toLocaleString("zh-CN")} 点)，双端通用`
+              ? `已统筹企业共享池 (${tokenQuota.ownedEnterpriseTokens.toLocaleString("zh-CN")} 算力点)，双端通用`
               : tokenQuota?.personalTokens > 100
                 ? "个人空间算力充沛"
                 : level === "FREE"
-                  ? "新用户首登已赠送 100 算力点"
+                  ? "注册福利：前 3 个月每月 100 点（当月有效），用尽请充值"
                   : tokenUnlimited
                     ? "当前会员享有无限算力"
                     : "当前算力充沛"}

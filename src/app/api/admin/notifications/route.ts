@@ -171,6 +171,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "通知正文内容不能为空" }, { status: 400 });
     }
 
+    // 长度上限：与前端弹窗 maxLength 对齐，前后端双重校验，
+    // 防止恶意请求 / 旧客户端 / 粘贴绕过导致超长内容入库
+    const NOTIFY_TITLE_MAX = 30;
+    const NOTIFY_CONTENT_MAX = 500;
+    if (title.trim().length > NOTIFY_TITLE_MAX) {
+      return NextResponse.json(
+        { error: `通知标题不能超过 ${NOTIFY_TITLE_MAX} 个字符` },
+        { status: 400 },
+      );
+    }
+    if (content.trim().length > NOTIFY_CONTENT_MAX) {
+      return NextResponse.json(
+        { error: `通知正文不能超过 ${NOTIFY_CONTENT_MAX} 个字符` },
+        { status: 400 },
+      );
+    }
+
     let dispatchedCount = 0;
 
     if (targetType === "all") {

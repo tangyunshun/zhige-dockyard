@@ -87,43 +87,36 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 批量查出每个用户的个人空间配额（算力点），并对新用户/免费用户 <= 0 执行 100 算力点自愈
+    // 批量查出每个用户的个人空间配额（算力点），只读展示实际余额，不做任何赠送/保底
+    // 用两次简单查询（workspace + workspacequota）+ JS 组装，避开 Prisma 关联 include
+    // ——和 /api/admin/user 详情接口保持完全一致的做法（dev 服务器旧 Client 兼容）
     const userIds = users.map((u) => u.id);
-    const personalWorkspaces = userIds.length > 0
-      ? await prisma.workspace.findMany({
-          where: {
-            ownerId: { in: userIds },
-            type: "PERSONAL",
-          },
-          include: {
-            workspacequota: true,
-          },
-        })
-      : [];
-
     const userQuotaMap: Record<string, number> = {};
-    for (const ws of personalWorkspaces) {
-      let balance = ws.workspacequota ? Number(ws.workspacequota.tokenBalance) : 0;
-      if (balance <= 0) {
-        balance = 100;
-        if (ws.workspacequota) {
-          prisma.workspacequota.update({
-            where: { id: ws.workspacequota.id },
-            data: { tokenBalance: BigInt(100), updatedAt: new Date() },
-          }).catch(() => {});
-        } else {
-          prisma.workspacequota.create({
-            data: {
-              id: crypto.randomUUID(),
-              workspaceId: ws.id,
-              membershipLevelId: "FREE",
-              tokenBalance: BigInt(100),
-              updatedAt: new Date(),
-            },
-          }).catch(() => {});
-        }
+    try {
+      const personalWorkspaces = userIds.length > 0
+        ? await prisma.workspace.findMany({
+            where: { ownerId: { in: userIds }, type: "PERSONAL" },
+          })
+        : [];
+      const wsIds = personalWorkspaces.map((w) => w.id);
+      const quotas = wsIds.length
+        ? await prisma.workspacequota.findMany({ where: { workspaceId: { in: wsIds } } })
+        : [];
+      const quotaMap = new Map(quotas.map((q) => [q.workspaceId, q]));
+
+      for (const ws of personalWorkspaces) {
+        const quota = quotaMap.get(ws.id);
+        // 免费额度只来自注册福利按月发放或充值，此处不赠送/补偿任何算力
+        userQuotaMap[ws.ownerId] = quota ? Number(quota.tokenBalance) : 0;
       }
-      userQuotaMap[ws.ownerId] = balance;
+      console.log(
+        `[list users] tokenBalance map built for ${userIds.length} users: ${Object.keys(userQuotaMap).length} entries`,
+      );
+    } catch (qErr) {
+      console.error(
+        "[list users] tokenBalance query failed (non-fatal):",
+        qErr instanceof Error ? qErr.message : qErr,
+      );
     }
 
     const now = Date.now();
@@ -132,7 +125,7 @@ export async function GET(request: NextRequest) {
 
     // 格式化输出列表
     const formattedUsers = users.map((user) => {
-      const userPoints = userQuotaMap[user.id] ?? 100;
+      const userPoints = userQuotaMap[user.id] ?? 0;
       let isOnline = false;
       if (user.status === "active") {
         if (user.sessionToken && user.sessionExpiresAt) {

@@ -101,6 +101,7 @@ model user {
   operationlog                                             operationlog[]
   postmember                                               postmember[]
   systemdocument                                           systemdocument[]
+  systemdocumenthistory                                    systemdocumenthistory[]
   upgradeapplication                                       upgradeapplication[]
   userdevice                                               userdevice[]
   workspacekickhistory                                     workspacekickhistory[]
@@ -340,7 +341,9 @@ model membershiplevel {
   maxTeamSize             BigInt                @default(5)
   maxStorage              BigInt                @default(1073741824)
   maxApiCalls             BigInt                @default(1000)
-  tokenLimit              BigInt                @default(10000)
+  /// 会员每月算力点额度上限（与"算力点/points"体系同币种；旧称 tokenLimit，待合并为用户级 pointwallet 唯一账本）
+  /// 默认值对齐 seed 免费版(100)，消除历史"10000"误导（历史口径残留）。算力点为余额制，创建空间不再按此字段白送额度。
+  tokenLimit              BigInt                @default(100)
   features                Json?
   priceMonthly            Int                   @default(0)
   priceYearly             Int                   @default(0)
@@ -432,25 +435,55 @@ model smscode {
 }
 
 model systemdocument {
-  id          String   @id
-  title       String
-  content     String?   @db.Text
-  category    String
-  tags        String?
-  visibility  String   @default("PUBLIC")
-  isPublished Boolean  @default(false)
-  sortOrder   Int      @default(0)
-  viewCount   Int      @default(0)
-  authorId    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
+  id           String   @id
+  title        String
+  content      String?   @db.Text
+  category     String
+  tags         String?
+  // 前台文档中心展示增强字段：摘要卡片/代码示例/关联跳转链接/有用点赞数
+  summary      String?   @db.Text
+  codeSample   String?   @db.Text
+  relatedLink  String?
+  helpfulCount Int      @default(0)
+  visibility   String   @default("PUBLIC")
+  isPublished  Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  viewCount    Int      @default(0)
+  authorId     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
   user        user?    @relation(fields: [authorId], references: [id], map: "SystemDocument_authorId_fkey")
+  history     systemdocumenthistory[]
 
+  @@unique([title, category], map: "SystemDocument_title_category_key")
   @@index([authorId], map: "SystemDocument_authorId_fkey")
   @@index([category], map: "SystemDocument_category_idx")
   @@index([createdAt], map: "SystemDocument_createdAt_idx")
   @@index([isPublished], map: "SystemDocument_isPublished_idx")
   @@index([sortOrder], map: "SystemDocument_sortOrder_idx")
+}
+
+model systemdocumenthistory {
+  id           String   @id @default(cuid())
+  documentId   String   @map("document_id")
+  title        String
+  content      String?  @db.Text
+  category     String
+  tags         String?
+  summary      String?  @db.Text
+  codeSample   String?  @db.Text
+  relatedLink  String?
+  helpfulCount Int      @default(0)
+  isPublished  Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  editorId     String?  @map("editor_id")
+  createdAt   DateTime @default(now())
+  document    systemdocument @relation(fields: [documentId], references: [id], onDelete: Cascade, map: "SystemDocumentHistory_documentId_fkey")
+  user        user?    @relation(fields: [editorId], references: [id], onDelete: SetNull, map: "SystemDocumentHistory_editorId_fkey")
+
+  @@index([documentId], map: "SystemDocumentHistory_documentId_idx")
+  @@index([createdAt], map: "SystemDocumentHistory_createdAt_idx")
+  @@map("system_document_history")
 }
 
 model upgradeapplication {
@@ -512,7 +545,8 @@ model userpreference {
   systemPrompt     String?
   defaultModel     String   @default("zhige-v3")
   temperature      Float    @default(0.7)
-  maxTokens        Int      @default(2000)
+  /// 模型 Token 上限（AI 实际输入/输出 token 数，属用量度量，非计费货币；仅用于统计与换算成算力点成本）
+  modelTokenLimit  Int      @default(2000) @map("maxTokens")
   topP             Float    @default(0.9)
   frequencyPenalty Float    @default(0)
   presencePenalty  Float    @default(0)
@@ -600,7 +634,9 @@ model workspacemember {
   userId            String
   workspaceId       String
   role              workspacemember_role
+  /// 空间每月算力点额度上限（与 points 同币种；旧称 monthlyTokenLimit）
   monthlyTokenLimit BigInt?
+  /// 空间当月已消耗算力点（旧称 monthlyTokenUsed）
   monthlyTokenUsed  BigInt               @default(0)
   quotaResetAt      DateTime?
   joinedAt          DateTime             @default(now())
@@ -618,7 +654,10 @@ model workspacequota {
   membershipLevelId String
   enterpriseSlots   BigInt          @default(1)
   usedSlots         BigInt          @default(0)
+  /// 空间算力点余额（与用户级 pointwallet 同币种；旧称 tokenBalance，待合并为唯一账本）
   tokenBalance      BigInt          @default(0)
+  /// 企业池低余额预警阈值（空间级覆盖，NULL 表示继承套餐默认阈值）
+  poolLowThreshold  BigInt?
   storageUsed       BigInt          @default(0)
   storageLimit      BigInt          @default(1073741824)
   apiCallsUsed      BigInt          @default(0)
@@ -914,7 +953,7 @@ model stepuptoken {
 // G-02 系统维护模式持久化（替代进程内存变量，确保多实例一致）
 model systemconfig {
   key       String   @id
-  value     String?
+  value     String?  @db.MediumText
   updatedAt DateTime @updatedAt
   @@map("system_config")
 }
@@ -931,7 +970,8 @@ model componentcatalog {
   icon            String
   tags            Json // string[]
   isPremium       Boolean   @default(false)
-  estimatedTokens Int       @default(0)
+  /// 预估模型 Token 消耗（AI 实际 token 数，属用量度量，非计费货币；换算成算力点成本请走 point-rate）
+  estimatedModelTokens Int       @default(0) @map("estimatedTokens")
   previewData     Json // { inputMock, outputMock, roiText }
   businessTags    Json? // string[]
   inputMode       String    @default("text") // text | file | both
@@ -960,7 +1000,11 @@ model componentcategory {
   color     String
   range     String // 如 "C01-C06"
   sortOrder Int      @default(0)
+  isActive  Boolean  @default(true) // 启用/停用状态：启用的阶段不可编辑/删除，仅可禁用
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
+  @@index([isActive], map: "ComponentCategory_isActive_idx")
   @@map("component_category")
 }
 

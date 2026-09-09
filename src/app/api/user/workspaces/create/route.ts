@@ -121,8 +121,9 @@ export async function POST(request: NextRequest) {
             id: generateId("wsq"),
             workspaceId: workspaceId,
             membershipLevelId: mlId,
-            // 新空间初始算力 = 当前会员等级当月的月度算力额度（扩容包不再附赠算力）
-            tokenBalance: BigInt(ml ? Number(ml.tokenLimit) : 0),
+            // 余额制：新空间初始算力 0 起步，不预置任何会员免费额度
+            // （算力仅来自注册福利 / 充值 / 购买算力加油包，杜绝“按会员等级白送”）
+            tokenBalance: BigInt(0),
             // 存储/调用上限 = max(空间扩容包额度, 账号会员等级基础保底)
             storageLimit: BigInt(
               mergeLimits(storageMbToBytes(planConfig.maxStorage), ml?.maxStorage)

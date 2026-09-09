@@ -16,6 +16,25 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+
+    // 历史版本查询分支：/api/admin/documents?mode=history&documentId=xxx
+    if (searchParams.get("mode") === "history") {
+      const documentId = searchParams.get("documentId");
+      if (!documentId) {
+        return NextResponse.json({ error: "缺少文档 ID" }, { status: 400 });
+      }
+      const history = await prisma.systemdocumenthistory.findMany({
+        where: { documentId },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      return NextResponse.json({ success: true, data: history });
+    }
+
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
     const search = searchParams.get("search");
@@ -30,6 +49,8 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { title: { contains: search } },
         { content: { contains: search } },
+        { summary: { contains: search } },
+        { codeSample: { contains: search } },
       ];
     }
     
@@ -121,19 +142,49 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, content, category, tags, isPublished, sortOrder } = body;
+    const {
+      title,
+      content,
+      category,
+      tags,
+      isPublished,
+      sortOrder,
+      summary,
+      codeSample,
+      relatedLink,
+      helpfulCount,
+    } = body;
 
     if (!title || !category) {
       return NextResponse.json({ error: "缺少必要参数" }, { status: 400 });
     }
 
+    const trimmedTitle = title.trim();
+    const duplicate = await prisma.systemdocument.findFirst({
+      where: {
+        title: trimmedTitle,
+        category,
+      },
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        { error: "该分类下已存在同名文档，请直接编辑现有文档" },
+        { status: 409 }
+      );
+    }
+
     const document = await prisma.systemdocument.create({
       data: {
         id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        title,
+        title: trimmedTitle,
         content,
         category,
-        tags,
+        tags: tags ? tags.trim() : tags,
+        summary: summary !== undefined ? String(summary).trim() : null,
+        codeSample: codeSample !== undefined ? String(codeSample).trim() : null,
+        relatedLink: relatedLink !== undefined ? String(relatedLink).trim() : null,
+        helpfulCount:
+          helpfulCount !== undefined ? Number(helpfulCount) || 0 : 0,
         isPublished: isPublished || false,
         sortOrder: sortOrder || 0,
         authorId: userId,
@@ -179,15 +230,73 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, content, category, tags, isPublished, sortOrder } = body;
+    const {
+      title,
+      content,
+      category,
+      tags,
+      isPublished,
+      sortOrder,
+      summary,
+      codeSample,
+      relatedLink,
+      helpfulCount,
+    } = body;
+
+    const current = await prisma.systemdocument.findUnique({
+      where: { id: documentId },
+    });
+    if (!current) {
+      return NextResponse.json({ error: "文档不存在或已被删除" }, { status: 404 });
+    }
+
+    const newTitle = title !== undefined ? title.trim() : current.title;
+    const newCategory = category !== undefined ? category : current.category;
+    if (newTitle !== current.title || newCategory !== current.category) {
+      const duplicate = await prisma.systemdocument.findFirst({
+        where: {
+          title: newTitle,
+          category: newCategory,
+          NOT: { id: documentId },
+        },
+      });
+      if (duplicate) {
+        return NextResponse.json(
+          { error: "该分类下已存在同名文档，无法重复保存" },
+          { status: 409 }
+        );
+      }
+    }
+
+    // 保存编辑前快照到历史版本表
+    await prisma.systemdocumenthistory.create({
+      data: {
+        documentId: current.id,
+        title: current.title,
+        content: current.content,
+        category: current.category,
+        tags: current.tags,
+        summary: current.summary,
+        codeSample: current.codeSample,
+        relatedLink: current.relatedLink,
+        helpfulCount: current.helpfulCount,
+        isPublished: current.isPublished,
+        sortOrder: current.sortOrder,
+        editorId: userId,
+      },
+    });
 
     const document = await prisma.systemdocument.update({
       where: { id: documentId },
       data: {
-        ...(title !== undefined && { title }),
+        ...(title !== undefined && { title: newTitle }),
         ...(content !== undefined && { content }),
         ...(category !== undefined && { category }),
-        ...(tags !== undefined && { tags }),
+        ...(tags !== undefined && { tags: tags ? tags.trim() : tags }),
+        ...(summary !== undefined && { summary: String(summary).trim() || null }),
+        ...(codeSample !== undefined && { codeSample: String(codeSample).trim() || null }),
+        ...(relatedLink !== undefined && { relatedLink: String(relatedLink).trim() || null }),
+        ...(helpfulCount !== undefined && { helpfulCount: Number(helpfulCount) || 0 }),
         ...(isPublished !== undefined && { isPublished }),
         ...(sortOrder !== undefined && { sortOrder }),
         updatedAt: new Date(),

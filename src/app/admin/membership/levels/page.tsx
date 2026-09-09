@@ -586,7 +586,7 @@ export default function AdminMembershipLevelsPage() {
       {/* 顶部统一面包屑与横向模块导航 */}
       <MembershipNavHeader
         title="会员等级管理"
-        subtitle="定制与编排各级会员的资源配额（个人/企业空间、存储上限、月度算力点等）与价格阶梯"
+        subtitle="定制与编排各级会员的资源配额（个人/企业空间、存储上限、算力点参考额度等）与价格阶梯"
       >
         <Link
           href="/admin/users"
@@ -624,7 +624,7 @@ export default function AdminMembershipLevelsPage() {
           <span className="text-amber-700 text-[11px] font-normal">(等值点仅作参考价；订阅月付独立设置，年付 = 月付 × 10)</span>
         </div>
         <div className="text-[11px] text-amber-700 font-medium shrink-0 hidden md:block">
-          💡 价格、月算力点、加油包折扣均为独立配置，修改算力点数不会自动改写价格。启用中的等级不可编辑/删除，请先禁用。
+          💡 价格、算力点参考额度、加油包折扣均为独立配置，修改参考额度不会自动改写价格。启用中的等级不可编辑/删除，请先禁用。
         </div>
       </div>
 
@@ -729,7 +729,7 @@ export default function AdminMembershipLevelsPage() {
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">
                   <th className="px-6 py-4 min-w-[200px] shrink-0">等级与标识</th>
-                  <th className="px-6 py-4 min-w-[360px]">每月配额与参数</th>
+                  <th className="px-6 py-4 min-w-[360px]">配额与参数</th>
                   <th className="px-6 py-4 min-w-[150px] shrink-0">价格阶梯 (CNY)</th>
                   <th className="px-6 py-4 w-28 shrink-0">状态</th>
                   <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-6 py-4 text-right w-40 shrink-0 font-black shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">操作</th>
@@ -783,11 +783,11 @@ export default function AdminMembershipLevelsPage() {
                     <td className="px-6 py-4 min-w-[360px]">
                       <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
                         <div className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap">
-                          <span className="text-slate-500 font-bold whitespace-nowrap">⚡ 月算力:</span>
-                          <strong className="font-mono text-slate-900 font-bold whitespace-nowrap">{Number(level.tokenLimit || 1000).toLocaleString()} 点</strong>
+                          <span className="text-slate-500 font-bold whitespace-nowrap">⚡ 算力额度:</span>
+                          <strong className="font-mono text-slate-900 font-bold whitespace-nowrap">{Number(level.tokenLimit || 1000).toLocaleString()} 算力点</strong>
                           {Number(level.tokenLimit) !== -1 && (
                             <span className="font-mono text-[#3182ce] font-bold whitespace-nowrap">
-                              （¥{(monthlyCentsFromPoints(level.tokenLimit) / 100).toFixed(2)}）
+                              （参考价值 ¥{(monthlyCentsFromPoints(level.tokenLimit) / 100).toFixed(2)}）
                             </span>
                           )}
                         </div>
@@ -1049,21 +1049,21 @@ export default function AdminMembershipLevelsPage() {
                   <span>底层资源与权限配额</span>
                 </h4>
 
-                {/* 算力点单独高亮卡片 */}
+                {/* 算力点参考额度卡片（已取消按月自动发放，仅作订阅优惠力度的等值参考） */}
                 <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-200/80 space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-black text-blue-900 flex items-center gap-1.5">
-                      <span>⚡ 每月基础算力点配额 (tokenLimit)</span>
+                      <span>⚡ 算力点参考额度 (tokenLimit)</span>
                     </label>
-                    <span className="text-[10px] text-blue-600 font-bold bg-blue-100/80 px-2 py-0.5 rounded-md">自然月首日重置</span>
+                    <span className="text-[10px] text-blue-600 font-bold bg-blue-100/80 px-2 py-0.5 rounded-md">订阅价值参考 · 不自动发放</span>
                   </div>
                   <input
                     type="number"
                     value={formData.tokenLimit || 0}
                     onChange={(e) => {
                       const pts = parseInt(e.target.value) || 0;
-                      // 注：订阅月费与月算力点相互独立设置（月包价低于等值点折算、体现订阅优惠），
-                      // 修改算力点数不再自动改写月付/年付，避免破坏数据库中的新阶梯订阅价。
+                      // 注：订阅月费与算力点参考额度相互独立设置（算力点已改为充值/加油包制、不再按月自动发放），
+                      // 修改参考额度不再自动改写月付/年付，避免破坏数据库中的新阶梯订阅价。
                       setFormData({
                         ...formData,
                         tokenLimit: pts,
@@ -1073,7 +1073,7 @@ export default function AdminMembershipLevelsPage() {
                     className="w-full px-3.5 py-2 bg-white border border-blue-300/80 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                   />
 
-                  {/* 等值点参考折算（仅供定价参考，实际订阅价为独立设置值） */}
+                  {/* 等值参考（仅供评估订阅优惠力度；算力价值以充值/加油包价格体系为准） */}
                   <div className="bg-white/80 border border-blue-200/70 rounded-lg px-2.5 py-2 text-[11px] font-bold text-blue-900 leading-relaxed">
                     {(() => {
                       const pts = Number(formData.tokenLimit) || 0;
@@ -1086,11 +1086,12 @@ export default function AdminMembershipLevelsPage() {
                       }
                       return (
                         <span>
-                          等值点参考价：{pts.toLocaleString()} 点 ÷ 100 ={" "}
+                          等值参考：{pts.toLocaleString()} 算力点 ≈{" "}
                           <strong className="text-[#3182ce]">
                             ¥{(monthlyCentsFromPoints(pts) / 100).toFixed(2)}
-                          </strong>{" "}
-                          /月。订阅月付建议在参考价以内设置（体现订阅优惠）；年付 = 月付 × 10。
+                          </strong>
+                          。算力点已改为充值/加油包制、不再按月自动发放，等值仅用于体现订阅折扣
+                          力度；月付建议在等值价以内设置（体现订阅优惠），年付 = 月付 × 10。
                         </span>
                       );
                     })()}

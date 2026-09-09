@@ -10,7 +10,6 @@ import {
   Zap,
   CreditCard,
   CheckCircle2,
-  DollarSign,
   Users,
   Building2,
   Eye,
@@ -347,8 +346,8 @@ export default function OrdersPage() {
               ¥ {(totalRevenue / 100).toFixed(2)}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
-            <DollarSign className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold text-lg">
+            ¥
           </div>
         </div>
 

@@ -17,6 +17,7 @@ import PersonalWorkspaceCard from "@/components/workspace-hub/PersonalWorkspaceC
 import EnterpriseWorkspaceList from "@/components/workspace-hub/EnterpriseWorkspaceList";
 import ResourceOverview from "@/components/workspace-hub/ResourceOverview";
 import QuickActions from "@/components/workspace-hub/QuickActions";
+import EnterprisePoolManager from "@/components/EnterprisePoolManager";
 import FeaturedComponents from "@/components/workspace-hub/FeaturedComponents";
 import PendingSection from "@/components/workspace-hub/PendingSection";
 import PageSkeleton from "@/components/workspace-hub/PageSkeleton";
@@ -588,6 +589,15 @@ export default function WorkspaceHub() {
   const defaultWorkspace = personalWorkspace || (enterpriseData?.workspaces && enterpriseData.workspaces[0]);
   const hasWorkspace = !!defaultWorkspace;
 
+  // 当前用户拥有的企业空间（role 由服务端按 ownerId 聚合下发，isOwner 字段兼容旧接口）
+  const ownedEnterprises = (enterpriseData?.workspaces || []).filter(
+    (ws: any) => ws.role === "OWNER" || ws.isOwner
+  );
+  // 是否为企业空间所有者 → 决定空间中枢主区采用哪种布局：
+  //   所有者  → 优化后的等高不留白 Bento（推荐组件填满左侧 + 企业池管理吸底）
+  //   非所有者（纯个人用户 / 仅以成员加入企业空间）→ 优化前的传统布局（推荐组件放在底部全宽通栏）
+  const isEnterpriseOwner = ownedEnterprises.length > 0;
+
   if (isLoading) {
     return <PageSkeleton />;
   }
@@ -603,6 +613,78 @@ export default function WorkspaceHub() {
       name: item?.name || "",
     };
   })();
+
+  // ================= 空间中枢主区共享内容卡片 =================
+  // Owner 布局与普通成员的传统布局复用同一组卡片元素，仅结构性容器随
+  // isEnterpriseOwner 切换，避免两套布局重复书写大量 props。
+  const personalWorkspaceCardEl = (
+    <PersonalWorkspaceCard
+      state={personalState}
+      workspace={personalWorkspace}
+      onEnter={handleEnterWorkspace}
+      onCreate={handleCreatePersonal}
+      onRecreate={handleRecreatePersonal}
+      onRename={(id) => router.push(`/workspace/${id}?tab=settings`)}
+      onReset={handleOpenResetPersonal}
+      onDelete={handlePersonalDeleteClick}
+      onUpgrade={() => setShowUpgradeModal(true)}
+      onViewEnterprise={() => {
+        if (enterpriseWorkspace) {
+          handleEnterWorkspace(enterpriseWorkspace);
+        } else {
+          router.push("/workspace-hub");
+        }
+      }}
+      showUpgradeLink={quota ? ownedEnterprises.length < quota.maxEnterprise : false}
+      onRefresh={refresh}
+    />
+  );
+
+  const enterpriseWorkspaceListEl = (
+    <EnterpriseWorkspaceList
+      workspaces={enterpriseData?.workspaces || []}
+      quota={quota ? { ...quota, enterpriseCount: ownedEnterprises.length } : null}
+      statistics={enterpriseData?.statistics}
+      compact={isEnterpriseOwner}
+      searchQuery={enterpriseSearchQuery}
+      onSearchChange={setEnterpriseSearchQuery}
+      onCreateClick={() => setShowCreateEnterpriseModal(true)}
+      onEnter={handleEnterWorkspace}
+      onManage={(id) => router.push(`/workspace/${id}?tab=members`)}
+      onInvite={handleOpenShare}
+      onManageComponents={(id) => router.push(`/studio?workspaceId=${id}`)}
+      onEnterpriseSettings={(id) => router.push(`/workspace/${id}?tab=settings`)}
+      onUpgradePackage={(id) => router.push(`/user/billing-center?workspaceId=${id}`)}
+      onViewStats={(id) => router.push(`/workspace/${id}/stats`)}
+      onDelete={handleWorkspaceDeleteClick}
+      onLeave={handleLeaveWorkspaceClick}
+      onUpgrade={openUpgradeHub}
+      onJoinClick={() => setShowJoinModal(true)}
+      onRefresh={refresh}
+    />
+  );
+
+  const quickActionsEl = (
+    <QuickActions onJoinClick={() => setShowJoinModal(true)} />
+  );
+
+  const resourceOverviewEl = (
+    <ResourceOverview
+      user={user}
+      dashboardData={dashboardData}
+      quota={quota}
+      onUpgrade={openUpgradeHub}
+    />
+  );
+
+  const featuredComponentsEl = (
+    <FeaturedComponents
+      topComponents={dashboardData?.topComponents}
+      onComponentClick={handleComponentClick}
+      boundNames={componentWorkspaceBoundNames}
+      onViewDetail={(comp) => setHubDetailComp(comp)}
+    />
+  );
 
   if (redirecting) {
     return (
@@ -693,77 +775,65 @@ export default function WorkspaceHub() {
           }}
         />
 
-        {/* 2. 中间黄金 Bento 双栏 (左 70% 占 7 列，右 30% 占 3 列) */}
-        <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 items-start">
-          {/* 左侧栏 (lg:col-span-7) */}
-          <div className="lg:col-span-7 space-y-6">
-            <PersonalWorkspaceCard
-              state={personalState}
-              workspace={personalWorkspace}
-              onEnter={handleEnterWorkspace}
-              onCreate={handleCreatePersonal}
-              onRecreate={handleRecreatePersonal}
-              onRename={(id) => router.push(`/workspace/${id}?tab=settings`)}
-              onReset={handleOpenResetPersonal}
-              onDelete={handlePersonalDeleteClick}
-              onUpgrade={() => setShowUpgradeModal(true)}
-              onViewEnterprise={() => {
-                if (enterpriseWorkspace) {
-                  handleEnterWorkspace(enterpriseWorkspace);
-                } else {
-                  router.push("/workspace-hub");
-                }
-              }}
-              showUpgradeLink={quota ? (enterpriseData?.workspaces || []).filter((ws: any) => ws.role === "OWNER" || ws.isOwner).length < quota.maxEnterprise : false}
-              onRefresh={refresh}
-            />
+        {/* 2. 中间黄金 Bento 双栏 (左 70% 占 7 列，右 30% 占 3 列)
+            布局按访问者身份切换：
+            ① 企业空间所有者 → 等高不留白 Bento：两栏内容拉伸填满，
+               左侧「推荐组件」flex-1 吃掉剩余高度，右侧「企业池管理」mt-auto 吸底；
+            ② 非所有者（纯个人用户 / 仅以成员加入）→ 优化前传统布局：
+               卡片顶部对齐(items-start)，推荐组件放回 main 底部全宽通栏。 */}
+        {isEnterpriseOwner ? (
+          <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 bg-white rounded-[20px] p-1 border border-white">
+            {/* 左侧栏 (lg:col-span-7) */}
+            <div className="lg:col-span-7 space-y-6 flex flex-col">
+              {personalWorkspaceCardEl}
 
-            <EnterpriseWorkspaceList
-              workspaces={enterpriseData?.workspaces || []}
-              quota={quota ? { ...quota, enterpriseCount: (enterpriseData?.workspaces || []).filter((ws: any) => ws.role === "OWNER" || ws.isOwner).length } : null}
-              statistics={enterpriseData?.statistics}
-              searchQuery={enterpriseSearchQuery}
-              onSearchChange={setEnterpriseSearchQuery}
-              onCreateClick={() => setShowCreateEnterpriseModal(true)}
-              onEnter={handleEnterWorkspace}
-              onManage={(id) => router.push(`/workspace/${id}?tab=members`)}
-              onInvite={handleOpenShare}
-              onManageComponents={(id) => router.push(`/studio?workspaceId=${id}`)}
-              onEnterpriseSettings={(id) => router.push(`/workspace/${id}?tab=settings`)}
-              onUpgradePackage={(id) => router.push(`/user/billing-center?workspaceId=${id}`)}
-              onViewStats={(id) => router.push(`/workspace/${id}/stats`)}
-              onDelete={handleWorkspaceDeleteClick}
-              onLeave={handleLeaveWorkspaceClick}
-              onUpgrade={openUpgradeHub}
-              onJoinClick={() => setShowJoinModal(true)}
-              onRefresh={refresh}
-            />
+              {enterpriseWorkspaceListEl}
+
+              {/* 推荐组件：flex-1 吃掉左侧剩余高度，与右侧企业池管理(mt-auto)对齐，减少底部留白 */}
+              <div className="flex-1 flex flex-col min-h-0">
+                {featuredComponentsEl}
+              </div>
+            </div>
+
+            {/* 右侧边栏 (lg:col-span-3 - 快捷工具与资源额度垂直排列，高度咬合左侧) */}
+            <div className="lg:col-span-3 space-y-6 flex flex-col">
+              {quickActionsEl}
+
+              {resourceOverviewEl}
+
+              {/* 企业池管理：所有者在此直接回收共享池算力点 / 设置低余额预警阈值
+                  （与企业空间内部「充值 → 回收至个人钱包」页签互通）
+                  mt-auto 让卡片随右侧栏被拉伸时吸底，与上方资源额度分隔开 */}
+              <div className="mt-auto">
+                <EnterprisePoolManager onChanged={refresh} />
+              </div>
+            </div>
           </div>
+        ) : (
+          <>
+            {/* 优化前布局：双栏顶部对齐（items-start），内容按自身高度自然排布 */}
+            <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 items-start">
+              {/* 左侧栏 (lg:col-span-7) */}
+              <div className="lg:col-span-7 space-y-6">
+                {personalWorkspaceCardEl}
 
-          {/* 右侧边栏 (lg:col-span-3 - 快捷工具与资源额度垂直排列，高度完美咬合左侧) */}
-          <div className="lg:col-span-3 space-y-6">
-            <QuickActions
-              onJoinClick={() => setShowJoinModal(true)}
-            />
-            
-            <ResourceOverview
-              user={user}
-              dashboardData={dashboardData}
-              quota={quota}
-              onUpgrade={openUpgradeHub}
-            />
-          </div>
-        </div>
+                {enterpriseWorkspaceListEl}
+              </div>
 
-        {/* 3. 推荐组件 (100% 宽度大底通栏，完美横向平铺渲染，杜绝任何空白) */}
-        <div className="w-full pt-4 border-t border-slate-200/50">
-          <FeaturedComponents 
-            topComponents={dashboardData?.topComponents}
-            onComponentClick={handleComponentClick}
-            boundNames={componentWorkspaceBoundNames}
-            onViewDetail={(comp) => setHubDetailComp(comp)}
-          />
-        </div>
+              {/* 右侧边栏 (lg:col-span-3) */}
+              <div className="lg:col-span-3 space-y-6">
+                {quickActionsEl}
+
+                {resourceOverviewEl}
+              </div>
+            </div>
+
+            {/* 推荐组件 (100% 宽度大底通栏，横向平铺渲染) */}
+            <div className="w-full pt-4 border-t border-slate-200/50">
+              {featuredComponentsEl}
+            </div>
+          </>
+        )}
       </main>
 
       <Footer />

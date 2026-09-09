@@ -111,9 +111,9 @@ export async function POST(request: NextRequest) {
       features: planConfig.features,
     };
 
-    // 新空间初始算力：发放当前「会员等级」当月的月度算力额度（扩容包不再附赠算力，
-    // 算力统一由 会员等级(月度保底) + 算力加油包(即时充值) 提供；ml/mlId 已在上方统一查询）
-    const initialTokenBalance = ml ? Number(ml.tokenLimit) : 0;
+    // 余额制：新空间初始算力 0 起步，不预置任何会员免费额度
+    // （算力仅来自注册福利 / 充值 / 购买算力加油包，杜绝“按会员等级白送”）
+    const initialTokenBalance = 0;
 
     const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     const workspaceId = generateId("ws");

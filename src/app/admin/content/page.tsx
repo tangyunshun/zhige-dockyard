@@ -12,8 +12,6 @@ import {
   Layers,
   Edit,
   Trash2,
-  ToggleLeft,
-  ToggleRight,
   CheckCircle2,
   XCircle,
   Package,
@@ -23,19 +21,22 @@ import {
   ExternalLink,
   TrendingUp,
   BarChart3,
-  Lock,
   ArrowRight,
   CalendarDays,
   AlertTriangle,
-  ShieldAlert,
   Info,
-  Sparkles,
+  ToggleLeft,
+  ToggleRight,
+  ShieldAlert,
 } from "lucide-react";
 
 interface Stage {
   id: string;
+  key?: string;
   name: string;
   description: string;
+  color?: string;
+  range?: string;
   sortOrder: number;
   isActive: boolean;
   componentCount: number;
@@ -55,6 +56,8 @@ interface StageDistributionItem {
   stageName: string;
   description?: string;
   sortOrder?: number;
+  color?: string;
+  range?: string;
   componentCount: number;
   percentage: number;
   isActive: boolean;
@@ -78,9 +81,10 @@ interface AnalyticsMetrics {
 
 interface StageFormData {
   name: string;
-  description: string;
+  color: string;
   sortOrder: number;
   isActive: boolean;
+  errors?: Record<string, string>;
 }
 
 export default function AdminStagesPage() {
@@ -129,11 +133,9 @@ export default function AdminStagesPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
-  const [formData, setFormData] = useState<
-    StageFormData & { errors?: Record<string, string> }
-  >({
+  const [formData, setFormData] = useState<StageFormData>({
     name: "",
-    description: "",
+    color: "#3182ce",
     sortOrder: 0,
     isActive: true,
     errors: {},
@@ -217,72 +219,8 @@ export default function AdminStagesPage() {
     loadStages();
   }, [currentPage, filters, timeRange, analyticsCustomStart, analyticsCustomEnd]);
 
-  // 启停切换（含严密前置业务判断：有在用组件禁止直接禁用）
-  const handleToggleActive = (stage: Stage) => {
-    // 若当前是已启用，准备禁用
-    if (stage.isActive) {
-      // 核心业务规则：如果该阶段名下有正在使用的组件，全面阻断拦截
-      if (stage.componentCount > 0) {
-        setActionModal({
-          isOpen: true,
-          type: "blocked",
-          stage,
-        });
-        return;
-      }
-
-      // 名下无组件，打开禁用确认弹窗
-      setActionModal({
-        isOpen: true,
-        type: "disable",
-        stage,
-      });
-    } else {
-      // 当前是已停用，打开启用确认弹窗
-      setActionModal({
-        isOpen: true,
-        type: "enable",
-        stage,
-      });
-    }
-  };
-
-  const doToggleActive = async (id: string, currentActive: boolean) => {
-    try {
-      const authToken = getAuthToken();
-
-      const res = await fetch(`/api/admin/stages?id=${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          id,
-          isActive: !currentActive,
-        }),
-      });
-
-      if (res.ok) {
-        toast.success(`阶段分类已成功${currentActive ? "禁用" : "启用"}`);
-        loadStages();
-      } else {
-        const error = await res.json();
-        toast.error(error.message || "更新状态失败");
-      }
-    } catch (error) {
-      console.error("Toggle active error:", error);
-      toast.error("请求失败，请稍后重试");
-    }
-  };
-
-  // 删除阶段（核心业务规则：只有禁用的阶段才能删除，且有组件禁止删除）
+  // 删除阶段（核心业务规则：名下仍有组件时禁止删除）
   const handleDelete = (stage: Stage) => {
-    if (stage.isActive) {
-      toast.error("已启用的阶段不可直接删除，请先停用该阶段");
-      return;
-    }
-
     if (stage.componentCount > 0) {
       toast.error(`该阶段尚有 ${stage.componentCount} 个组件在使用，必须先清空关联组件后再删除`);
       return;
@@ -295,20 +233,34 @@ export default function AdminStagesPage() {
     });
   };
 
-  // 确认执行高级弹窗操作（禁用 / 启用 / 删除）
+  // 停用 / 启用阶段切换（核心业务规则：停用时若名下仍纳管组件，则触发安全阻断）
+  const handleToggleActive = (stage: Stage) => {
+    if (stage.isActive && stage.componentCount > 0) {
+      setActionModal({
+        isOpen: true,
+        type: "blocked",
+        stage,
+      });
+      return;
+    }
+
+    setActionModal({
+      isOpen: true,
+      type: stage.isActive ? "disable" : "enable",
+      stage,
+    });
+  };
+
+  // 确认执行高级弹窗操作（删除 / 停用 / 启用）
   const handleExecuteAction = async () => {
     if (!actionModal.stage) return;
     setActionSubmitting(true);
     try {
-      if (actionModal.type === "disable") {
-        await doToggleActive(actionModal.stage.id, true);
-        setActionModal((prev) => ({ ...prev, isOpen: false }));
-      } else if (actionModal.type === "enable") {
-        await doToggleActive(actionModal.stage.id, false);
-        setActionModal((prev) => ({ ...prev, isOpen: false }));
-      } else if (actionModal.type === "delete") {
-        const authToken = getAuthToken();
-        const res = await fetch(`/api/admin/stages?id=${actionModal.stage.id}`, {
+      const authToken = getAuthToken();
+      const stageId = actionModal.stage.id;
+
+      if (actionModal.type === "delete") {
+        const res = await fetch(`/api/admin/stages?id=${stageId}`, {
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${authToken}`,
@@ -325,7 +277,27 @@ export default function AdminStagesPage() {
           }
         } else {
           const error = await res.json();
-          toast.error(error.message || "删除阶段失败");
+          toast.error(error.message || error.error || "删除阶段失败");
+        }
+      } else if (actionModal.type === "disable" || actionModal.type === "enable") {
+        // 停用：isActive=false；启用：isActive=true
+        const nextActive = actionModal.type === "enable";
+        const res = await fetch(`/api/admin/stages?id=${stageId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({ isActive: nextActive }),
+        });
+
+        if (res.ok) {
+          toast.success(nextActive ? "阶段分类已重新启用" : "阶段分类已停用");
+          setActionModal((prev) => ({ ...prev, isOpen: false }));
+          loadStages();
+        } else {
+          const error = await res.json();
+          toast.error(error.message || error.error || "状态切换失败");
         }
       }
     } catch (err) {
@@ -345,7 +317,7 @@ export default function AdminStagesPage() {
 
     setFormData({
       name: "",
-      description: "",
+      color: "#3182ce",
       sortOrder: nextOrder,
       isActive: true,
       errors: {},
@@ -354,16 +326,11 @@ export default function AdminStagesPage() {
     setShowCreateModal(true);
   };
 
-  // 打开编辑模态框（核心业务规则：启用的阶段不能编辑！只有禁用的阶段才能编辑）
+  // 打开编辑模态框
   const openEditModal = (stage: Stage) => {
-    if (stage.isActive) {
-      toast.error("已启用的阶段不可直接编辑！请先将该阶段禁用后再编辑");
-      return;
-    }
-
     setFormData({
       name: stage.name,
-      description: stage.description || "",
+      color: stage.color || "#3182ce",
       sortOrder: stage.sortOrder,
       isActive: stage.isActive,
       errors: {},
@@ -372,10 +339,9 @@ export default function AdminStagesPage() {
     setShowCreateModal(true);
   };
 
-  // 验证表单合法性（名称 1-10 字必填，职责说明最多 50 字）
+  // 验证表单合法性（名称 1-10 字必填）
   const isNameValid = Boolean(formData.name && formData.name.trim().length > 0 && formData.name.trim().length <= 10);
-  const isDescValid = (formData.description || "").trim().length <= 50;
-  const isFormValid = isNameValid && isDescValid;
+  const isFormValid = isNameValid;
 
   // 提交保存
   const handleSubmit = async () => {
@@ -385,10 +351,6 @@ export default function AdminStagesPage() {
       newErrors.name = "请输入阶段分类名称";
     } else if (formData.name.trim().length > 10) {
       newErrors.name = "阶段分类名称不能超过 10 个字";
-    }
-
-    if (formData.description && formData.description.trim().length > 50) {
-      newErrors.description = "分类职责说明不能超过 50 个字";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -405,12 +367,17 @@ export default function AdminStagesPage() {
 
       const method = editingStage ? "PATCH" : "POST";
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: formData.name.trim(),
-        description: formData.description?.trim() || "",
+        color: formData.color || "#3182ce",
         sortOrder: Number(formData.sortOrder) || 0,
         isActive: formData.isActive,
       };
+
+      // 新建时数据库仍要求 range 字段，传空字符串；编辑时不提交，避免误清空历史数据
+      if (!editingStage) {
+        payload.range = "";
+      }
 
       const res = await fetch(url, {
         method,
@@ -451,10 +418,47 @@ export default function AdminStagesPage() {
   // 计算趋势图表的最大高度基准
   const maxTrendTotal = Math.max(1, ...trendData.map((t) => t.total || 0));
 
+  // 高级业务操作弹窗的类型配置（停用 / 启用 / 删除 / 安全阻断）
+  // 统一使用主色知性蓝渐变，保持与新增/编辑弹窗一致的视觉家族
+  const actionModalConfig = {
+    disable: {
+      title: "停用阶段分类",
+      subtitle: "停用后该阶段将不再向新增组件开放",
+      icon: ToggleRight,
+      gradient: "bg-gradient-to-r from-[#2b6cb0] to-[#3182ce]",
+      confirmText: "确认停用",
+    },
+    enable: {
+      title: "启用阶段分类",
+      subtitle: "启用后该阶段将恢复纳入组件归属",
+      icon: ToggleLeft,
+      gradient: "bg-gradient-to-r from-[#2b6cb0] to-[#3182ce]",
+      confirmText: "确认启用",
+    },
+    delete: {
+      title: "永久删除阶段分类",
+      subtitle: "此操作将彻底物理移除，不可撤回",
+      icon: Trash2,
+      gradient: "bg-gradient-to-r from-red-500 to-red-600",
+      confirmText: "确认永久删除",
+    },
+    blocked: {
+      title: "停用操作被安全拦截",
+      subtitle: "该阶段当前处于系统级安全保护状态",
+      icon: ShieldAlert,
+      gradient: "bg-gradient-to-r from-[#2b6cb0] to-[#3182ce]",
+      confirmText: "我知道了",
+    },
+  };
+
+  // 当前打开的弹窗类型对应配置（模态框关闭时默认取 disable，不渲染）
+  const activeModalConfig = actionModalConfig[actionModal.type];
+  const ModalTypeIcon = activeModalConfig.icon;
+
   return (
     <div className="min-h-screen bg-[#f0f8ff] text-slate-800 pb-12 font-sans text-left">
       {/* 顶部标题区 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <div className="pt-6">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <div className="flex items-center gap-2.5">
@@ -700,32 +704,27 @@ export default function AdminStagesPage() {
                           {/* 列 1：阶段分类名称与说明（彻底消除折行/竖排） */}
                           <td className="py-3.5 px-5 whitespace-nowrap">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#3182ce] border border-blue-100 flex items-center justify-center shrink-0">
-                                <Layers className="w-4 h-4" />
+                              <div
+                                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border"
+                                style={{ backgroundColor: (stage.color || "#3182ce") + "1A", borderColor: stage.color || "#3182ce" }}
+                              >
+                                <Layers className="w-4 h-4" style={{ color: stage.color || "#3182ce" }} />
                               </div>
-                              <div className="flex flex-col min-w-0">
+                              <div className="flex flex-col min-w-0 justify-center">
                                 <div className="flex items-center gap-2 whitespace-nowrap">
                                   <span className="font-bold text-slate-900 text-sm group-hover:text-[#3182ce] transition-colors whitespace-nowrap">
                                     {stage.name}
                                   </span>
-                                  {stage.isActive && (
+                                  {stage.isActive ? (
                                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80 whitespace-nowrap shrink-0 inline-flex items-center">
                                       可添加组件
                                     </span>
+                                  ) : (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 whitespace-nowrap shrink-0 inline-flex items-center">
+                                      已停用
+                                    </span>
                                   )}
                                 </div>
-                                {stage.description ? (
-                                  <span
-                                    className="text-[11px] text-slate-500 font-medium mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-xs block"
-                                    title={stage.description}
-                                  >
-                                    {stage.description}
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] text-slate-400 italic mt-0.5 whitespace-nowrap block">
-                                    暂无说明
-                                  </span>
-                                )}
                               </div>
                             </div>
                           </td>
@@ -733,7 +732,7 @@ export default function AdminStagesPage() {
                           {/* 列 2：关联组件数 */}
                           <td className="py-3.5 px-5 whitespace-nowrap">
                             <Link
-                              href={`/admin/components?stage=${encodeURIComponent(stage.name)}`}
+                              href={`/admin/components?stage=${encodeURIComponent(stage.key || stage.name)}`}
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#3182ce] border border-slate-200/80 hover:border-[#3182ce]/30 font-bold transition-all text-xs"
                               title="点击查看归属此阶段的所有组件"
                             >
@@ -767,48 +766,55 @@ export default function AdminStagesPage() {
 
                           {/* 列 5：创建时间 */}
                           <td className="py-3.5 px-5 whitespace-nowrap text-slate-500 font-medium text-xs font-mono">
-                            {new Date(stage.createdAt).toLocaleDateString("zh-CN", {
-                              year: "numeric",
-                              month: "2-digit",
-                              day: "2-digit",
-                            })}
+                            {stage.createdAt ? (
+                              new Date(stage.createdAt).toLocaleDateString("zh-CN", {
+                                year: "numeric",
+                                month: "2-digit",
+                                day: "2-digit",
+                              })
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
                           </td>
 
-                          {/* 列 6：操作列（按用户指令：启用状态下直接隐藏编辑和删除，只保留禁用；停用状态下展示编辑、启用、删除） */}
+                          {/* 列 6：操作列（启用阶段仅可停用；停用阶段支持启用/编辑/删除） */}
                           <td className="py-3.5 px-5 whitespace-nowrap text-right sticky right-0 bg-white/95 group-hover:bg-blue-50/95 backdrop-blur-xs border-l border-slate-200/80 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)] transition-colors">
                             <div className="flex items-center justify-end gap-2">
                               {stage.isActive ? (
-                                /* 启用状态下：直接隐藏编辑与删除，只显示【禁用】按钮 */
+                                /* 启用的阶段：不提供编辑与删除，仅可停用 */
                                 <button
                                   type="button"
                                   onClick={() => handleToggleActive(stage)}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white transition-all duration-200 cursor-pointer shadow-2xs border border-amber-200/60 hover:border-amber-500"
-                                  title="禁用此阶段分类（名下有在用组件时会前置拦截保护）"
+                                  title={
+                                    stage.componentCount > 0
+                                      ? `该分类下仍有 ${stage.componentCount} 个组件，需先转移组件后方可停用`
+                                      : "停用该阶段分类"
+                                  }
                                 >
                                   <ToggleRight className="w-3.5 h-3.5" />
-                                  <span>禁用</span>
+                                  <span>停用</span>
                                 </button>
                               ) : (
-                                /* 停用状态下：展示编辑、启用、删除 */
                                 <>
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditModal(stage)}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white transition-all duration-200 cursor-pointer shadow-2xs border border-blue-200/60 hover:border-[#3182ce]"
-                                    title="编辑阶段信息与职责说明"
-                                  >
-                                    <Edit className="w-3.5 h-3.5" />
-                                    <span>编辑</span>
-                                  </button>
-
                                   <button
                                     type="button"
                                     onClick={() => handleToggleActive(stage)}
                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all duration-200 cursor-pointer shadow-2xs border border-emerald-200/60 hover:border-emerald-600"
-                                    title="恢复启用此阶段分类"
+                                    title="重新启用该阶段分类"
                                   >
                                     <ToggleLeft className="w-3.5 h-3.5" />
                                     <span>启用</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(stage)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white transition-all duration-200 cursor-pointer shadow-2xs border border-blue-200/60 hover:border-[#3182ce]"
+                                    title="编辑阶段分类信息"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                    <span>编辑</span>
                                   </button>
 
                                   <button
@@ -1009,9 +1015,9 @@ export default function AdminStagesPage() {
             </div>
 
             {/* 趋势图与分布图双排布局 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* 左侧 2 栏：阶段组件新增与使用趋势折线图/面积图 */}
-              <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* 左侧：阶段组件新增与使用趋势 */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between min-w-0 overflow-hidden">
                 <div>
                   <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2">
@@ -1026,13 +1032,14 @@ export default function AdminStagesPage() {
                   </div>
 
                   {/* 柱状/趋势曲线模拟展示区 */}
-                  <div className="h-64 flex items-end justify-between gap-3 pt-8 px-4 pb-2 border-b border-slate-100 relative">
-                    {/* 背景网格线 */}
-                    <div className="absolute inset-x-4 top-8 border-b border-dashed border-slate-100 pointer-events-none" />
-                    <div className="absolute inset-x-4 top-24 border-b border-dashed border-slate-100 pointer-events-none" />
-                    <div className="absolute inset-x-4 top-40 border-b border-dashed border-slate-100 pointer-events-none" />
+                  <div className="overflow-x-auto -mx-4 px-4">
+                    <div className="h-64 min-w-max flex items-end justify-between gap-3 pt-12 px-4 pb-2 border-b border-slate-100 relative">
+                      {/* 背景网格线 */}
+                      <div className="absolute inset-x-4 top-8 border-b border-dashed border-slate-100 pointer-events-none" />
+                      <div className="absolute inset-x-4 top-24 border-b border-dashed border-slate-100 pointer-events-none" />
+                      <div className="absolute inset-x-4 top-40 border-b border-dashed border-slate-100 pointer-events-none" />
 
-                    {trendData.map((pt, idx) => {
+                      {trendData.map((pt, idx) => {
                       const heightPercent = Math.max(8, Math.round(((pt.total || 0) / maxTrendTotal) * 85));
                       return (
                         <div
@@ -1040,7 +1047,7 @@ export default function AdminStagesPage() {
                           className="flex-1 flex flex-col items-center gap-2 h-full justify-end group relative"
                         >
                           {/* 悬浮提示框 */}
-                          <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-slate-900 text-white text-[11px] py-1 px-2.5 rounded-lg shadow-lg whitespace-nowrap z-20">
+                          <div className="absolute top-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-slate-900 text-white text-[11px] py-1 px-2.5 rounded-lg shadow-lg whitespace-nowrap z-20">
                             {pt.label} : <strong>{pt.total || 0}</strong> 个组件
                           </div>
 
@@ -1058,6 +1065,7 @@ export default function AdminStagesPage() {
                         </div>
                       );
                     })}
+                    </div>
                   </div>
                 </div>
 
@@ -1071,11 +1079,11 @@ export default function AdminStagesPage() {
                 </div>
               </div>
 
-              {/* 右侧 1 栏：各阶段组件数量占比与分布进度 */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col">
+              {/* 右侧：各阶段组件数量占比与分布进度 */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col min-w-0 overflow-hidden">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-4 rounded-full bg-purple-500" />
+                    <div className="w-2 h-4 rounded-full bg-[#3182ce]" />
                     <h3 className="text-sm font-black text-slate-800 whitespace-nowrap">
                       各阶段组件数量与占比分布
                     </h3>
@@ -1090,25 +1098,25 @@ export default function AdminStagesPage() {
                     暂无阶段分布数据
                   </div>
                 ) : (
-                  <div className="space-y-4 flex-1 overflow-y-auto max-h-[380px] pr-1">
+                  <div className="space-y-3 flex-1 overflow-y-auto max-h-[360px] pr-1">
                     {distributionData.map((item) => (
-                      <div key={item.stageId} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs whitespace-nowrap">
-                          <span className="font-bold text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
-                            <span className="truncate max-w-[130px]" title={item.stageName}>{item.stageName}</span>
+                      <div key={item.stageId} className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-3 text-xs min-w-0">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5 min-w-0 flex-1">
+                            <span className="truncate" title={item.stageName}>{item.stageName}</span>
                             {!item.isActive && (
                               <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 whitespace-nowrap shrink-0">
                                 已停用
                               </span>
                             )}
                           </span>
-                          <span className="font-mono text-slate-500 whitespace-nowrap">
+                          <span className="font-mono text-slate-500 whitespace-nowrap shrink-0">
                             <strong>{item.componentCount}</strong> 个 ({item.percentage}%)
                           </span>
                         </div>
                         <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            style={{ width: `${Math.min(100, Math.max(item.percentage, item.componentCount > 0 ? 5 : 0))}%` }}
+                            style={{ width: `${Math.min(100, Math.max(item.percentage, item.componentCount > 0 ? 4 : 0))}%` }}
                             className={`h-full rounded-full transition-all duration-500 ${
                               item.isActive ? "bg-[#3182ce]" : "bg-slate-400"
                             }`}
@@ -1121,11 +1129,11 @@ export default function AdminStagesPage() {
               </div>
             </div>
 
-            {/* 底部全景矩阵：各阶段全生命周期健康度与纳管明细表格 */}
+            {/* 底部全景矩阵：各阶段生命周期健康度与组件纳管明细卡片 */}
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-4 rounded-full bg-emerald-500" />
+                  <div className="w-2 h-4 rounded-full bg-[#3182ce]" />
                   <h3 className="text-sm font-black text-slate-800 whitespace-nowrap">
                     各阶段生命周期健康度与组件纳管明细矩阵
                   </h3>
@@ -1135,98 +1143,94 @@ export default function AdminStagesPage() {
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[760px]">
-                  <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-                      <th className="py-3 px-5 whitespace-nowrap">阶段分类名称</th>
-                      <th className="py-3 px-5 whitespace-nowrap">当前状态</th>
-                      <th className="py-3 px-5 whitespace-nowrap">纳管组件数</th>
-                      <th className="py-3 px-5 whitespace-nowrap">全平台占比</th>
-                      <th className="py-3 px-5 whitespace-nowrap">活跃负载等级</th>
-                      <th className="py-3 px-5 whitespace-nowrap text-right">快捷直达</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
+              <div className="p-5">
+                {distributionData.length === 0 ? (
+                  <div className="py-16 text-center text-xs text-slate-400">
+                    暂无阶段分布数据
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {distributionData.map((item) => (
-                      <tr key={item.stageId} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="py-3 px-5 whitespace-nowrap">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold shrink-0">
-                              <Layers className="w-3.5 h-3.5" />
+                      <div
+                        key={item.stageId}
+                        className="bg-slate-50/60 rounded-xl border border-slate-200/80 p-4 hover:border-[#3182ce]/30 hover:bg-blue-50/30 transition-all group"
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border"
+                              style={{
+                                backgroundColor: (item.color || "#3182ce") + "1A",
+                                borderColor: item.color || "#3182ce",
+                              }}
+                            >
+                              <Layers className="w-4 h-4" style={{ color: item.color || "#3182ce" }} />
                             </div>
-                            <div>
-                              <span className="font-bold text-slate-900 whitespace-nowrap">{item.stageName}</span>
-                              {item.description && (
-                                <p className="text-[11px] text-slate-400 truncate max-w-xs whitespace-nowrap" title={item.description}>
-                                  {item.description}
-                                </p>
-                              )}
+                            <div className="min-w-0">
+                              <p className="text-xs font-black text-slate-900 truncate" title={item.stageName}>
+                                {item.stageName}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                {item.isActive ? "正常启用" : "已停用"}
+                              </p>
                             </div>
                           </div>
-                        </td>
-
-                        <td className="py-3 px-5 whitespace-nowrap">
                           {item.isActive ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/70">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/70 shrink-0">
                               <CheckCircle2 className="w-3 h-3" />
-                              <span>正常启用</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200/80">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200/80 shrink-0">
                               <XCircle className="w-3 h-3" />
-                              <span>已停用</span>
                             </span>
                           )}
-                        </td>
+                        </div>
 
-                        <td className="py-3 px-5 whitespace-nowrap font-mono font-bold text-slate-700">
-                          {item.componentCount} 个组件
-                        </td>
-
-                        <td className="py-3 px-5 whitespace-nowrap">
-                          <div className="flex items-center gap-2 max-w-[140px]">
-                            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div
-                                style={{ width: `${Math.min(100, item.percentage)}%` }}
-                                className={`h-full rounded-full ${item.isActive ? "bg-[#3182ce]" : "bg-slate-400"}`}
-                              />
+                        <div className="flex items-end justify-between mb-2">
+                          <div>
+                            <div className="text-2xl font-black font-mono text-slate-800 leading-none">
+                              {item.componentCount}
+                              <span className="text-[10px] font-bold text-slate-400 ml-1">个</span>
                             </div>
-                            <span className="font-mono text-slate-500 text-[11px] font-bold w-10 text-right">
-                              {item.percentage}%
-                            </span>
+                            <div className="text-[11px] text-slate-500 font-medium mt-1">
+                              占比 <strong className="font-mono">{item.percentage}%</strong>
+                            </div>
                           </div>
-                        </td>
-
-                        <td className="py-3 px-5 whitespace-nowrap">
                           {item.componentCount > 5 ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 text-[#3182ce] border border-blue-200/60">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-[#3182ce] border border-blue-200/60">
                               高密度核心
                             </span>
                           ) : item.componentCount > 0 ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
                               均衡运行
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-400 border border-slate-200/60">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-400 border border-slate-200/60">
                               待挂载
                             </span>
                           )}
-                        </td>
+                        </div>
 
-                        <td className="py-3 px-5 whitespace-nowrap text-right">
-                          <Link
-                            href={`/admin/components?stage=${encodeURIComponent(item.stageName)}`}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#3182ce] text-xs font-bold transition-colors"
-                          >
-                            <span>查看组件</span>
-                            <ArrowRight className="w-3 h-3" />
-                          </Link>
-                        </td>
-                      </tr>
+                        <div className="w-full h-2 bg-slate-200/60 rounded-full overflow-hidden mb-3">
+                          <div
+                            style={{ width: `${Math.min(100, item.percentage)}%` }}
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              item.isActive ? "bg-[#3182ce]" : "bg-slate-400"
+                            }`}
+                          />
+                        </div>
+
+                        <Link
+                          href={`/admin/components?stage=${encodeURIComponent(item.stageId)}`}
+                          className="inline-flex items-center justify-center gap-1 w-full px-2.5 py-1.5 rounded-lg bg-white hover:bg-blue-50 text-slate-700 hover:text-[#3182ce] text-xs font-bold transition-colors border border-slate-200/80 hover:border-[#3182ce]/30"
+                        >
+                          <span>查看组件</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1322,35 +1326,41 @@ export default function AdminStagesPage() {
                   )}
                 </div>
 
-                {/* 分类职责说明 */}
+                {/* 主题色 */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold text-slate-700">
-                      分类职责说明
+                      主题色
                     </label>
-                    <span
-                      className={`text-[11px] font-mono px-2 py-0.5 rounded-md ${
-                        (formData.description || "").trim().length > 50
-                          ? "bg-red-50 text-red-600 font-bold border border-red-200"
-                          : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      {(formData.description || "").trim().length} / 50 字
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      用于列表与图表标识
                     </span>
                   </div>
-                  <textarea
-                    value={formData.description}
-                    maxLength={50}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        description: e.target.value,
-                      })
-                    }
-                    rows={3}
-                    placeholder="简述该阶段所涵盖的工作范围，帮助创作者在发布组件时准确归类（最多50字）..."
-                    className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-medium text-slate-700 transition-all resize-none focus:bg-white leading-relaxed"
-                  />
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={formData.color}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          color: e.target.value,
+                        })
+                      }
+                      className="w-12 h-10 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer p-1"
+                    />
+                    <input
+                      type="text"
+                      value={formData.color}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          color: e.target.value,
+                        })
+                      }
+                      placeholder="#3182ce"
+                      className="flex-1 px-3.5 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-mono font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1386,37 +1396,54 @@ export default function AdminStagesPage() {
                   />
                 </div>
 
-                {/* 启用状态切换卡片 */}
-                <div className="pt-1">
-                  <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors select-none">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
-                        formData.isActive ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-slate-100 text-slate-400"
-                      }`}>
-                        {formData.isActive ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-slate-800 block">
-                          设为正常启用状态
-                        </span>
-                        <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                          启用后创作者在发布新组件时即可选择归属于该分类
-                        </p>
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={formData.isActive}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          isActive: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
-                    />
-                  </label>
+                {/* 启用 / 停用状态 */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700">
+                      阶段状态
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      新建后可在列表中随时切换
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, isActive: !formData.isActive })
+                    }
+                    className={`w-full flex items-center justify-between px-3.5 h-11 rounded-xl border transition-all text-xs font-bold ${
+                      formData.isActive
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                        : "bg-slate-100 border-slate-200 text-slate-500"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {formData.isActive ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>启用状态（可挂载组件）</span>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-4 h-4" />
+                          <span>停用状态（不可挂载组件）</span>
+                        </>
+                      )}
+                    </span>
+                    <span
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        formData.isActive ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          formData.isActive ? "translate-x-5" : "translate-x-1"
+                        }`}
+                      />
+                    </span>
+                  </button>
                 </div>
+
               </div>
 
               {/* 业务规范提示卡片 */}
@@ -1436,11 +1463,6 @@ export default function AdminStagesPage() {
                   <span className="text-amber-600 flex items-center gap-1 text-[11px]">
                     <AlertTriangle className="w-3.5 h-3.5" />
                     <span>请输入 1-10 字的阶段分类名称</span>
-                  </span>
-                ) : !isDescValid ? (
-                  <span className="text-amber-600 flex items-center gap-1 text-[11px]">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>分类职责说明不能超过 50 字</span>
                   </span>
                 ) : (
                   <span className="text-emerald-600 flex items-center gap-1 text-[11px]">
@@ -1493,84 +1515,25 @@ export default function AdminStagesPage() {
       {actionModal.isOpen && actionModal.stage && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden text-left font-sans animate-in zoom-in-95 duration-200">
-            {/* 头部：根据场景区分色系与视觉 */}
-            {actionModal.type === "blocked" ? (
-              <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-5 text-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-                    <ShieldAlert className="w-5 h-5 text-amber-300" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-sm text-white">安全保护拦截</h3>
-                    <p className="text-[11px] text-blue-200 font-medium mt-0.5">该阶段仍有正在使用的线上组件</p>
-                  </div>
+            {/* 头部：按操作类型动态展示（停用/启用/删除/安全阻断） */}
+            <div className={`${activeModalConfig.gradient} p-5 text-white flex items-center justify-between`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
+                  <ModalTypeIcon className="w-5 h-5 text-white" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                  className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : actionModal.type === "disable" ? (
-              <div className="bg-gradient-to-r from-amber-500 to-amber-600 p-5 text-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-                    <ToggleRight className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-sm text-white">禁用阶段分类确认</h3>
-                    <p className="text-[11px] text-amber-100 font-medium mt-0.5">下线后前台创作者将无法归类新组件</p>
-                  </div>
+                <div>
+                  <h3 className="font-black text-sm text-white">{activeModalConfig.title}</h3>
+                  <p className="text-[11px] text-white/80 font-medium mt-0.5">{activeModalConfig.subtitle}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                  className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
               </div>
-            ) : actionModal.type === "enable" ? (
-              <div className="bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] p-5 text-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-                    <CheckCircle2 className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-sm text-white">恢复启用阶段分类</h3>
-                    <p className="text-[11px] text-blue-100 font-medium mt-0.5">激活后前台创作者可重新选择归属于该阶段</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                  className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="bg-gradient-to-r from-red-500 to-red-600 p-5 text-white flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-                    <Trash2 className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-sm text-white">永久删除阶段分类</h3>
-                    <p className="text-[11px] text-red-100 font-medium mt-0.5">此操作将彻底物理移除，不可撤回</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                  className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setActionModal({ ...actionModal, isOpen: false })}
+                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             {/* 内容区 */}
             <div className="p-6 space-y-4 text-xs bg-slate-50/40">
@@ -1591,110 +1554,69 @@ export default function AdminStagesPage() {
                 )}
               </div>
 
-              {/* 针对 4 种业务场景的详细提示说明 */}
-              {actionModal.type === "blocked" ? (
-                <div className="space-y-3">
-                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 space-y-1.5">
-                    <div className="font-bold flex items-center gap-1.5 text-xs text-amber-900">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>当前仍纳管 {actionModal.stage.componentCount} 个组件</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-amber-700">
-                      为了保障系统运行与业务闭环稳定，平台严禁直接禁用仍有组件依赖的阶段分类。
-                    </p>
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    💡 建议方案：请先前往<strong>组件矩阵</strong>，将名下正在使用的组件批量转移或归档至其他有效阶段，清空依赖后再执行禁用。
-                  </p>
-                </div>
-              ) : actionModal.type === "disable" ? (
-                <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl text-amber-800 space-y-1 text-xs">
-                  <p className="font-bold text-amber-900">确定要禁用此分类吗？</p>
-                  <p className="text-[11px] text-amber-700 leading-relaxed">
-                    禁用后，创作者发布新组件时将无法选择此分类。名下历史数据不受破坏，您后续可在停用状态下对该分类进行<strong>编辑</strong>或<strong>删除</strong>。
-                  </p>
-                </div>
-              ) : actionModal.type === "enable" ? (
-                <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-xl text-blue-800 space-y-1 text-xs">
-                  <p className="font-bold text-blue-900">确定要重新启用此阶段吗？</p>
-                  <p className="text-[11px] text-blue-700 leading-relaxed">
-                    重新启用后，该阶段将立即公开展示，创作者即可在组件库与任务编排中正常归类并发布组件。
-                  </p>
-                </div>
-              ) : (
+              {/* 各类型说明文案 */}
+              {actionModal.type === "delete" && (
                 <div className="p-3.5 bg-red-50/80 border border-red-200 rounded-xl text-red-800 space-y-1 text-xs">
                   <p className="font-bold text-red-900">高危操作提示：</p>
                   <p className="text-[11px] text-red-700 leading-relaxed">
-                    该阶段当前名下无挂载组件，可执行物理删除。删除后该分类将从数据库中彻底抹除，不可撤销与恢复。请谨慎确认！
+                    该操作将把「{actionModal.stage.name}」阶段分类从数据库中彻底抹除，不可撤销与恢复。请谨慎确认！
+                  </p>
+                </div>
+              )}
+
+              {actionModal.type === "disable" && (
+                <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl text-amber-800 space-y-1 text-xs">
+                  <p className="font-bold text-amber-900">停用影响说明：</p>
+                  <p className="text-[11px] text-amber-700 leading-relaxed">
+                    停用后「{actionModal.stage.name}」将不再向新增组件开放，列表中将标记为已停用；后续可通过「启用」随时恢复。
+                  </p>
+                </div>
+              )}
+
+              {actionModal.type === "enable" && (
+                <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-emerald-800 space-y-1 text-xs">
+                  <p className="font-bold text-emerald-900">启用说明：</p>
+                  <p className="text-[11px] text-emerald-700 leading-relaxed">
+                    启用后「{actionModal.stage.name}」将恢复为正常启用阶段，组件可继续挂载至该分类下，并同步纳入全生命周期任务矩阵。
+                  </p>
+                </div>
+              )}
+
+              {actionModal.type === "blocked" && (
+                <div className="p-3.5 bg-red-50/80 border border-red-200 rounded-xl text-red-800 space-y-2 text-xs">
+                  <p className="font-bold text-red-900 flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4" />
+                    操作被安全拦截
+                  </p>
+                  <p className="text-[11px] text-red-700 leading-relaxed">
+                    该阶段分类名下仍纳管{" "}
+                    <strong className="font-mono">{actionModal.stage.componentCount}</strong> 个组件，出于数据安全与生命周期完整性考虑，系统已自动拦截本次「停用」操作。
+                  </p>
+                  <p className="text-[11px] text-red-700 leading-relaxed">
+                    建议先前往「组件矩阵」将其中组件重新归类到其它阶段，再回来停用该分类，确保生命周期链条不出现断层。
                   </p>
                 </div>
               )}
             </div>
 
             {/* 底部操作区 */}
-            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-end gap-2.5">
+            <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between gap-2.5">
               {actionModal.type === "blocked" ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                    className="px-4 h-9 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                  >
-                    我知道了
-                  </button>
-                  <Link
-                    href={`/admin/components?stage=${encodeURIComponent(actionModal.stage.name)}`}
-                    onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                    className="px-4 h-9 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition-colors"
-                  >
-                    <span>前往组件矩阵转移</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </Link>
-                </>
-              ) : actionModal.type === "disable" ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                    className="px-4 h-9 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleExecuteAction}
-                    disabled={actionSubmitting}
-                    className="px-4 h-9 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {actionSubmitting && (
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    )}
-                    <span>确认禁用</span>
-                  </button>
-                </>
-              ) : actionModal.type === "enable" ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActionModal({ ...actionModal, isOpen: false })}
-                    className="px-4 h-9 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleExecuteAction}
-                    disabled={actionSubmitting}
-                    className="px-4 h-9 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {actionSubmitting && (
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    )}
-                    <span>确认启用</span>
-                  </button>
-                </>
+                <Link
+                  href="/admin/components"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[#3182ce] hover:underline cursor-pointer"
+                >
+                  前往组件矩阵转移组件
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </Link>
               ) : (
-                <>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  {actionModal.type === "delete" ? "该操作不可撤销" : "该操作可随时再次切换恢复"}
+                </span>
+              )}
+
+              <div className="flex items-center gap-2.5">
+                {actionModal.type !== "blocked" && (
                   <button
                     type="button"
                     onClick={() => setActionModal({ ...actionModal, isOpen: false })}
@@ -1702,19 +1624,29 @@ export default function AdminStagesPage() {
                   >
                     取消
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleExecuteAction}
-                    disabled={actionSubmitting}
-                    className="px-4 h-9 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {actionSubmitting && (
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    )}
-                    <span>确认永久删除</span>
-                  </button>
-                </>
-              )}
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (actionModal.type === "blocked") {
+                      setActionModal({ ...actionModal, isOpen: false });
+                    } else {
+                      handleExecuteAction();
+                    }
+                  }}
+                  disabled={actionSubmitting}
+                  className={`px-4 h-9 rounded-xl text-xs font-bold text-white shadow-xs inline-flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 ${
+                    actionModal.type === "delete"
+                      ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700"
+                      : "bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] hover:from-[#3182ce] hover:to-[#4299e1]"
+                  }`}
+                >
+                  {actionSubmitting && (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
+                  <span>{activeModalConfig.confirmText}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

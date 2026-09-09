@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import {
@@ -25,12 +26,51 @@ import {
   RotateCcw,
   Zap,
   Search,
+  Bell,
+  History,
+  KeyRound,
+  Monitor,
+  Smartphone,
+  Globe,
+  MapPin,
+  Clock,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
 
 /** 用户列表每页固定展示 10 条 */
 const PAGE_SIZE = 10;
+
+/** 登录历史弹窗每页条数 */
+const LOGIN_HISTORY_PAGE_SIZE = 10;
+
+/** 相对时间（刚刚 / N 分钟前 / N 小时前 / N 天前 / N 个月前） */
+function formatRelativeTime(input: string | Date): string {
+  const time = input instanceof Date ? input.getTime() : new Date(input).getTime();
+  if (Number.isNaN(time)) return "—";
+  const diff = Date.now() - time;
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+  if (diff < 0) return "刚刚";
+  if (diff < MIN) return "刚刚";
+  if (diff < HOUR) return `${Math.floor(diff / MIN)} 分钟前`;
+  if (diff < DAY) return `${Math.floor(diff / HOUR)} 小时前`;
+  if (diff < 30 * DAY) return `${Math.floor(diff / DAY)} 天前`;
+  return `${Math.floor(diff / (30 * DAY))} 个月前`;
+}
+
+/** 将“系统 · 浏览器”格式的设备串拆分为系统与浏览器两段，用于分组展示 */
+function splitDevice(device?: string | null): { os: string; browser: string } {
+  const raw = (device || "").trim();
+  if (!raw || raw === "未知" || raw === "unknown") return { os: "未知设备", browser: "" };
+  const parts = raw
+    .split(/[·•|,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) return { os: parts[0], browser: parts.slice(1).join(" · ") };
+  return { os: parts[0] || raw, browser: "" };
+}
 
 // 定义完整的筛选项值（不依赖动态数据）
 const ROLE_OPTIONS = [
@@ -99,6 +139,22 @@ export default function AdminUsersPage() {
     useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
+  const [actionMenuPos, setActionMenuPos] = useState<{ top: number; left: number } | null>(null);
+
+  // 菜单打开时，滚动或缩放窗口则自动关闭（fixed 定位需跟随关闭，避免脱锚）
+  useEffect(() => {
+    if (!showActionMenu) return;
+    const close = () => {
+      setShowActionMenu(null);
+      setActionMenuPos(null);
+    };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [showActionMenu]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({ role: "", status: "" });
@@ -127,6 +183,24 @@ export default function AdminUsersPage() {
   const [banningUser, setBanningUser] = useState<User | null>(null);
   const [banDuration, setBanDuration] = useState<string>("permanent");
   const [banReason, setBanReason] = useState<string>("发布违规违法内容");
+
+  // 新增的单用户全局操作弹窗状态
+  const [resetPwdUser, setResetPwdUser] = useState<User | null>(null);
+  const [generatedPwd, setGeneratedPwd] = useState<string | null>(null);
+  const [notifyUser, setNotifyUser] = useState<User | null>(null);
+  const [notifyForm, setNotifyForm] = useState({ title: "", content: "", type: "system" });
+  const [adjustPointsUser, setAdjustPointsUser] = useState<User | null>(null);
+  const [adjustPointsForm, setAdjustPointsForm] = useState({ points: "", reason: "" });
+  const [loginHistoryUser, setLoginHistoryUser] = useState<User | null>(null);
+  const [loginHistories, setLoginHistories] = useState<any[]>([]);
+  const [loginHistoryLoading, setLoginHistoryLoading] = useState(false);
+  const [loginHistoryTotal, setLoginHistoryTotal] = useState(0);
+  const [loginHistoryPage, setLoginHistoryPage] = useState(1);
+
+  /** 弹窗表单字段级必填校验错误提示 */
+  const [notifyErrors, setNotifyErrors] = useState<{ title?: string; content?: string }>({});
+  const [adjustPointsErrors, setAdjustPointsErrors] = useState<{ points?: string }>({});
+
   const isProcessingRef = React.useRef(false);
   const forceLogoutUserIdRef = React.useRef<string | null>(null);
 
@@ -374,22 +448,33 @@ export default function AdminUsersPage() {
   };
 
   const handleViewDetails = async (user: User) => {
+    // 先用列表已有的数据兜底渲染，即使详情接口不可用也不会白屏
     setViewingUser(user);
     setShowViewModal(true);
-    try {
-      const res = await fetch(`/api/admin/user?userId=${user.id}`, {
-        headers: {
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
-      });
-      if (res.ok) {
-        const result = await res.json();
-        if (result.data) {
-          setViewingUser(result.data);
+
+    // dev 环境下路由首次编译或 HMR 重启会造成瞬时连接中断，
+    // 这里静默重试一次；仍失败则保持列表数据展示，不向控制台抛 TypeError 堆栈
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(`/api/admin/user?userId=${encodeURIComponent(user.id)}`, {
+          headers: {
+            Authorization: `Bearer ${getAuthToken()}`,
+          },
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.data) {
+            setViewingUser(result.data);
+          }
+        }
+        return;
+      } catch {
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        } else {
+          console.warn("[用户详情] 详情接口暂不可用，已展示列表基础信息");
         }
       }
-    } catch (e) {
-      console.error("Fetch full user details error:", e);
     }
   };
 
@@ -625,6 +710,177 @@ export default function AdminUsersPage() {
       } catch (error) {
         showToast("激活失败", "error");
       }
+    }
+  };
+
+  // ===== 新增：单用户全局操作处理函数（与系统其他模块形成闭环）=====
+
+  // 重置密码：打开弹窗，由后端生成临时密码
+  const handleResetPassword = (user: User) => {
+    setResetPwdUser(user);
+    setGeneratedPwd(null);
+  };
+
+  const submitResetPassword = async () => {
+    if (!resetPwdUser) return;
+    try {
+      const res = await fetch("/api/admin/user/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+        body: JSON.stringify({ userId: resetPwdUser.id }),
+      });
+      if (await handleUnauthorized(res)) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "重置密码失败");
+      setGeneratedPwd(data.tempPassword);
+      showToast("密码已重置", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "重置密码失败", "error");
+    }
+  };
+
+  // 发送站内通知：打开弹窗填写
+  const handleSendNotify = (user: User) => {
+    setNotifyUser(user);
+    setNotifyForm({ title: "", content: "", type: "system" });
+    setNotifyErrors({});
+  };
+
+  const submitNotify = async () => {
+    if (!notifyUser) return;
+    const title = notifyForm.title.trim();
+    const content = notifyForm.content.trim();
+    const errors: { title?: string; content?: string } = {};
+    if (!title) errors.title = "请填写通知标题";
+    if (!content) errors.content = "请填写通知正文";
+    setNotifyErrors(errors);
+    if (errors.title || errors.content) return;
+    try {
+      const res = await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+        body: JSON.stringify({
+          targetType: "user",
+          userId: notifyUser.id,
+          title,
+          content,
+          type: notifyForm.type,
+        }),
+      });
+      if (await handleUnauthorized(res)) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "发送失败");
+      showToast(data.message || "通知已发送", "success");
+      setNotifyUser(null);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "发送失败", "error");
+    }
+  };
+
+  // 调整算力点：打开弹窗填写数量与原因
+  const handleAdjustPoints = (user: User) => {
+    setAdjustPointsUser(user);
+    setAdjustPointsForm({ points: "", reason: "" });
+    setAdjustPointsErrors({});
+  };
+
+  const submitAdjustPoints = async () => {
+    if (!adjustPointsUser) return;
+    const raw = adjustPointsForm.points.trim();
+    const points = Number(raw);
+    if (!raw) {
+      setAdjustPointsErrors({ points: "请填写调整数量" });
+      return;
+    }
+    if (!Number.isFinite(points) || points === 0) {
+      setAdjustPointsErrors({ points: "调整数量必须为非零数字" });
+      return;
+    }
+    if (!Number.isInteger(points)) {
+      setAdjustPointsErrors({ points: "调整数量必须为整数" });
+      return;
+    }
+    setAdjustPointsErrors({});
+    try {
+      const res = await fetch("/api/admin/user/adjust-points", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+        body: JSON.stringify({
+          userId: adjustPointsUser.id,
+          points,
+          reason: adjustPointsForm.reason.trim() || undefined,
+        }),
+      });
+      if (await handleUnauthorized(res)) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "调整失败");
+      showToast(data.message || "算力点已更新", "success");
+      setAdjustPointsUser(null);
+      loadUsers(currentPage);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "调整失败", "error");
+    }
+  };
+
+  // 查看登录历史：打开弹窗拉取登录记录
+  const handleViewLoginHistory = async (user: User, page: number = 1) => {
+    if (page === 1) {
+      setLoginHistoryUser(user);
+      setLoginHistories([]);
+      setLoginHistoryTotal(0);
+    }
+    setLoginHistoryLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/login-histories?userId=${user.id}&page=${page}&limit=${LOGIN_HISTORY_PAGE_SIZE}`,
+        { headers: { Authorization: `Bearer ${getAuthToken()}` } },
+      );
+      if (await handleUnauthorized(res)) {
+        setLoginHistoryLoading(false);
+        return;
+      }
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const list = data.data.histories || [];
+        setLoginHistories((prev) => (page === 1 ? list : [...prev, ...list]));
+        setLoginHistoryTotal(data.data.total || 0);
+        setLoginHistoryPage(page);
+      } else {
+        showToast(data.error || "获取登录历史失败", "error");
+      }
+    } catch (error) {
+      showToast("获取登录历史失败", "error");
+    } finally {
+      setLoginHistoryLoading(false);
+    }
+  };
+
+  // 登录历史分组：相邻同源（IP + 设备 + 归属地）记录合并为一组，避免重复堆叠
+  const loginHistoryGroups = React.useMemo(() => {
+    const groups: { key: string; items: any[] }[] = [];
+    loginHistories.forEach((h) => {
+      const key = `${h.ipAddress}#${h.device}#${h.location}`;
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.items.push(h);
+      else groups.push({ key, items: [h] });
+    });
+    return groups;
+  }, [loginHistories]);
+
+  // 重置会话：调用已有 reset-session API（需要 user:reset_session 权限）
+  const handleResetSession = async (user: User) => {
+    try {
+      const res = await fetch("/api/admin/user/reset-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      if (await handleUnauthorized(res)) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "重置会话失败");
+      showToast(data.message || "会话已重置", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "重置会话失败", "error");
     }
   };
 
@@ -1195,7 +1451,7 @@ export default function AdminUsersPage() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200/70 text-[#3182ce] text-xs font-black font-mono shadow-2xs">
                               <Zap className="w-3.5 h-3.5 fill-[#3182ce]" />
-                              <span>{user.tokenBalance ?? user.points ?? 100} 点</span>
+                              <span>{user.tokenBalance ?? user.points ?? 100} 算力点</span>
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -1250,122 +1506,47 @@ export default function AdminUsersPage() {
                                 <span>详情</span>
                               </button>
 
+                              {/* 特权角色（超级管理员 / 管理员）不展示高危操作菜单：业务上不允许对这两类账号执行强制下线 / 禁用登录 / 封禁 / 删除，菜单永远会是空的，直接不渲染按钮避免干扰 */}
+                              {user.role !== "super_admin" && user.role !== "admin" && (
                               <div className="relative inline-block">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setShowActionMenu(
-                                      showActionMenu === user.id ? null : user.id,
-                                    );
+                                    if (showActionMenu === user.id) {
+                                      setShowActionMenu(null);
+                                      setActionMenuPos(null);
+                                      return;
+                                    }
+                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                    const menuWidth = 256; // w-64
+                                    const gap = 8; // mt-2
+                                    const approxMenuHeight = 160; // 收紧估算，避免 1-2 项时过度上翻
+                                    const margin = 16;
+                                    let top = rect.bottom + gap;
+                                    let left = rect.right - menuWidth;
+                                    // 下方空间不足且上方空间充足时才翻到按钮上方
+                                    if (
+                                      top + approxMenuHeight > window.innerHeight - margin &&
+                                      rect.top - approxMenuHeight - gap > margin
+                                    ) {
+                                      top = rect.top - approxMenuHeight - gap;
+                                    }
+                                    // 防止菜单超出视口左/右/上边界
+                                    if (left < margin) left = margin;
+                                    if (left + menuWidth > window.innerWidth - margin) {
+                                      left = window.innerWidth - menuWidth - margin;
+                                    }
+                                    if (top < margin) top = margin;
+                                    setActionMenuPos({ top, left });
+                                    setShowActionMenu(user.id);
                                   }}
                                   className="p-1.5 hover:bg-slate-100 rounded-xl transition-colors inline-flex items-center justify-center border border-slate-200 text-slate-600 font-bold text-xs gap-1"
                                   title="展开更多高危风控与下线管控操作"
                                 >
                                   <MoreVertical className="w-4 h-4 text-slate-600" />
                                 </button>
-
-                              {showActionMenu === user.id && (
-                                <>
-                                  <div
-                                    className="absolute right-0 mt-2 w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {/* 强制下线 - 只对在线的活跃用户显示，超级管理员专属操作，不能操作超级管理员和自己 */}
-                                    {currentUserRole === "super_admin" &&
-                                      user.status === "active" &&
-                                      user.isOnline &&
-                                      user.role !== "super_admin" &&
-                                      user.id !== currentUserId && (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleForceLogout(user.id);
-                                            setShowActionMenu(null);
-                                          }}
-                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
-                                        >
-                                          <LogOut className="w-4 h-4 text-blue-600" />
-                                          强制下线
-                                        </button>
-                                      )}
-
-                                    {/* 禁用登录 - 对离线的活跃用户显示（包括从未登录和已登录但当前离线的），超级管理员专属操作，不能操作超级管理员和自己 */}
-                                    {currentUserRole === "super_admin" &&
-                                      user.status === "active" &&
-                                      !user.isOnline &&
-                                      user.role !== "super_admin" &&
-                                      user.id !== currentUserId && (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleToggleStatus(user);
-                                            setShowActionMenu(null);
-                                          }}
-                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-amber-50 transition-colors border-b border-slate-50"
-                                        >
-                                          <UserX className="w-4 h-4 text-amber-600" />
-                                          禁用登录
-                                        </button>
-                                      )}
-
-                                    {/* 封禁/解封用户 - 不能操作超级管理员和自己 */}
-                                    {user.role !== "super_admin" &&
-                                      user.id !== currentUserId && (
-                                        <button
-                                          onClick={() => {
-                                            if (user.status === "banned") {
-                                              // 解封
-                                              handleChangeStatus(user.id, "active");
-                                              setShowActionMenu(null);
-                                            } else {
-                                              // 封禁，需要选择封禁时长
-                                              setBanningUser(user);
-                                              setBanDuration("permanent"); // 默认永久
-                                              setShowActionMenu(null);
-                                            }
-                                          }}
-                                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors border-b border-slate-50"
-                                          style={{
-                                            color: user.status === "banned" ? "#10b981" : "#ef4444",
-                                            backgroundColor: user.status === "banned" ? "#10b981/5" : "#ef4444/5",
-                                          }}
-                                        >
-                                          {user.status === "banned" ? (
-                                            <>
-                                              <UserCheck className="w-4 h-4" />
-                                              解封用户
-                                            </>
-                                          ) : (
-                                            <>
-                                              <UserX className="w-4 h-4" />
-                                              封禁用户
-                                            </>
-                                          )}
-                                        </button>
-                                      )}
-
-                                    {/* 删除用户 - 只对已停用用户显示，不能删除超级管理员和自己 */}
-                                    {user.status === "banned" &&
-                                      user.role !== "super_admin" &&
-                                      user.id !== currentUserId && (
-                                        <>
-                                          <div className="my-2 border-t border-slate-100" />
-                                          <button
-                                            onClick={() => {
-                                              handleDelete(user.id);
-                                              setShowActionMenu(null);
-                                            }}
-                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                          >
-                                            <Trash2 className="w-4 h-4" />
-                                            删除用户
-                                          </button>
-                                        </>
-                                      )}
-                                  </div>
-                                </>
+                              </div>
                               )}
-                            </div>
                           </div>
                         </td>
                         </tr>
@@ -1630,7 +1811,7 @@ export default function AdminUsersPage() {
               {/* 核心资产与统计指标 Banner (5-Grid) */}
               <div className="grid grid-cols-5 gap-3">
                 <div className="p-3 bg-blue-50/60 rounded-2xl border border-blue-100 text-center">
-                  <div className="text-[10px] text-[#3182ce] font-bold mb-0.5">可用算力点</div>
+                  <div className="text-[10px] text-[#3182ce] font-bold mb-0.5">个人空间算力点</div>
                   <div className="text-base font-black text-[#2b6cb0]">
                     {viewingUser.tokenBalance ?? viewingUser.points ?? 100} <span className="text-[10px] font-normal text-slate-400">点</span>
                   </div>
@@ -1726,9 +1907,102 @@ export default function AdminUsersPage() {
                     <div className="text-[11px] text-slate-400 font-bold">会员套餐等级</div>
                     <div className="text-xs font-black text-slate-800">{getMembershipLevelBadge(viewingUser.membershipLevel)}</div>
                   </div>
-                  <div className="space-y-0.5">
-                    <div className="text-[11px] text-slate-400 font-bold">所属企业/团队 ID</div>
-                    <div className="text-xs font-mono font-bold text-slate-700 truncate">{viewingUser.tenantId || "无"}</div>
+                  <div className="space-y-1.5 col-span-2">
+                    <div className="text-[11px] text-slate-400 font-bold flex items-center gap-1.5">
+                      所属企业 / 团队（工作空间）
+                      <span className="font-mono font-normal text-slate-300 text-[10px]">workspace</span>
+                    </div>
+                    {(viewingUser as any).workspaceMemberships?.length > 0 ? (
+                      <>
+                        <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {(viewingUser as any).workspaceMemberships.map((m: any) => (
+                          <li
+                            key={m.workspaceId}
+                            className="flex items-center gap-2 text-xs"
+                            title={`workspaceId: ${m.workspaceId} · status: ${m.status}`}
+                          >
+                            <span
+                              className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black border ${
+                                m.type === "ENTERPRISE"
+                                  ? "bg-blue-50 text-blue-700 border-blue-100"
+                                  : "bg-slate-50 text-slate-600 border-slate-100"
+                              }`}
+                            >
+                              {m.type === "ENTERPRISE" ? "企业" : "个人"}
+                            </span>
+                            <span className="font-black text-slate-800 truncate flex-1">
+                              {m.name}
+                            </span>
+                            {/* 该工作空间自身的算力点余额 */}
+                            <span className="shrink-0 text-[11px] font-black text-slate-500 tabular-nums">
+                              {(m.tokenBalance ?? 0).toLocaleString()} 点
+                            </span>
+                            <span
+                              className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black border ${
+                                m.role === "OWNER"
+                                  ? "bg-amber-50 text-amber-700 border-amber-100"
+                                  : "bg-slate-50 text-slate-500 border-slate-100"
+                              }`}
+                            >
+                              {m.role === "OWNER" ? "所有者" : "成员"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {/* 如果实际归属数 > 实际显示数，底部干净提示（避免之前的「...及其他 N 个」吞信息） */}
+                      {((viewingUser as any).stats?.workspaceCount || 0) > ((viewingUser as any).workspaceMemberships?.length || 0) && (
+                        <div className="text-[11px] text-slate-400 font-bold mt-1.5 pt-1.5 border-t border-slate-100">
+                          共 {((viewingUser as any).stats.workspaceCount)} 个工作空间，仅显示最近 {((viewingUser as any).workspaceMemberships.length)} 个
+                        </div>
+                      )}
+
+                      {/* 算力点归属明细：区分「个人空间 / 企业空间 / 协同分配 / 全局钱包」四类，与工作空间首页 ResourceOverview 口径一致 */}
+                      {(viewingUser as any).pointsBreakdown && (
+                        <div className="mt-2 pt-2 border-t border-slate-100">
+                          <div className="text-[10px] text-slate-400 font-bold mb-1.5">算力点归属明细</div>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            <div className="text-center p-1.5 bg-slate-50 rounded-lg border border-slate-100">
+                              <div className="text-[9px] text-slate-500 font-bold">个人空间</div>
+                              <div className="text-[11px] font-black text-slate-700 tabular-nums">
+                                {((viewingUser as any).pointsBreakdown.personal ?? 0).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="text-center p-1.5 bg-blue-50 rounded-lg border border-blue-100">
+                              <div className="text-[9px] text-blue-500 font-bold">企业空间</div>
+                              <div className="text-[11px] font-black text-blue-700 tabular-nums">
+                                {((viewingUser as any).pointsBreakdown.enterprise ?? 0).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="text-center p-1.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                              <div className="text-[9px] text-emerald-500 font-bold">协同分配</div>
+                              <div className="text-[11px] font-black text-emerald-700 tabular-nums">
+                                {((viewingUser as any).pointsBreakdown.memberAllocated ?? 0).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="text-center p-1.5 bg-purple-50 rounded-lg border border-purple-100">
+                              <div className="text-[9px] text-purple-500 font-bold">全局钱包</div>
+                              <div className="text-[11px] font-black text-purple-700 tabular-nums">
+                                {((viewingUser as any).pointsBreakdown.wallet ?? 0).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-100">
+                            <span className="text-[10px] text-slate-400 font-bold">本人可调度合计</span>
+                            <span className="text-[11px] font-black text-slate-800 tabular-nums">
+                              {(
+                                ((viewingUser as any).pointsBreakdown.personal ?? 0) +
+                                ((viewingUser as any).pointsBreakdown.enterprise ?? 0) +
+                                ((viewingUser as any).pointsBreakdown.memberAllocated ?? 0) +
+                                ((viewingUser as any).pointsBreakdown.wallet ?? 0)
+                              ).toLocaleString()} 点
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                        </>
+                    ) : (
+                      <div className="text-xs text-slate-400 font-bold">未关联任何企业或工作空间</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1871,7 +2145,7 @@ export default function AdminUsersPage() {
             className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
             onClick={() => setBanningUser(null)}
           />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-red-100 animate-in zoom-in-95 duration-200 font-sans z-10">
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-red-100 animate-in zoom-in-95 duration-200 font-sans z-10 flex flex-col max-h-[calc(100vh-2rem)]">
             {/* Header 危险告警标头 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-red-100 bg-red-50/60">
               <div className="flex items-center gap-3">
@@ -1892,7 +2166,7 @@ export default function AdminUsersPage() {
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-6 space-y-5 overflow-y-auto flex-1 min-h-0">
               {/* 被封禁用户名片 */}
               <div className="flex items-center gap-3.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
                 {banningUser.avatar ? (
@@ -2023,6 +2297,629 @@ export default function AdminUsersPage() {
           </div>
         </div>
       )}
+
+      {/* 重置密码弹窗 */}
+      {resetPwdUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => {
+              setResetPwdUser(null);
+              setGeneratedPwd(null);
+            }}
+          />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
+              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                <div className="w-1.5 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+                重置登录密码
+              </h3>
+              <button
+                onClick={() => {
+                  setResetPwdUser(null);
+                  setGeneratedPwd(null);
+                }}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600">
+                将为用户{" "}
+                <span className="font-bold text-slate-800">
+                  {resetPwdUser.name || resetPwdUser.email}
+                </span>{" "}
+                生成一个新的临时登录密码，请通过安全渠道告知用户并提醒其尽快修改。
+              </p>
+              {generatedPwd ? (
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                  <div className="text-xs text-slate-500 mb-1">
+                    临时密码（请妥善保管）
+                  </div>
+                  <div className="font-mono text-lg font-black text-[#3182ce] break-all">
+                    {generatedPwd}
+                  </div>
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(generatedPwd)}
+                    className="mt-2 text-xs text-[#3182ce] hover:underline"
+                  >
+                    复制临时密码
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={submitResetPassword}
+                  className="w-full py-2.5 bg-tech-blue hover:bg-tech-blueDark text-white rounded-xl text-sm font-bold transition-colors"
+                >
+                  生成临时密码
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 发送站内通知弹窗 */}
+      {notifyUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setNotifyUser(null)}
+          />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden border border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
+              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                <div className="w-1.5 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+                发送站内通知
+              </h3>
+              <button
+                onClick={() => setNotifyUser(null)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="text-sm text-slate-600">
+                接收用户：
+                <span className="font-bold text-slate-800">
+                  {notifyUser.name || notifyUser.email}
+                </span>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">
+                    通知标题 <span className="text-red-500">*</span>
+                  </label>
+                  <span
+                    className={`text-[10px] font-bold tabular-nums ${
+                      notifyForm.title.length >= 30 ? "text-red-500" : "text-slate-400"
+                    }`}
+                  >
+                    {notifyForm.title.length} / 30
+                  </span>
+                </div>
+                <input
+                  value={notifyForm.title}
+                  maxLength={30}
+                  onChange={(e) => {
+                    setNotifyForm({ ...notifyForm, title: e.target.value });
+                    if (notifyErrors.title) setNotifyErrors({ ...notifyErrors, title: undefined });
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition-colors ${
+                    notifyErrors.title
+                      ? "border-red-300 bg-red-50/40 focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                      : "border-slate-200 focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20"
+                  }`}
+                  placeholder="请输入通知标题"
+                />
+                {notifyErrors.title && (
+                  <p className="mt-1 text-[11px] text-red-500 font-bold">{notifyErrors.title}</p>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">
+                    通知正文 <span className="text-red-500">*</span>
+                  </label>
+                  <span
+                    className={`text-[10px] font-bold tabular-nums ${
+                      notifyForm.content.length >= 500 ? "text-red-500" : "text-slate-400"
+                    }`}
+                  >
+                    {notifyForm.content.length} / 500
+                  </span>
+                </div>
+                <textarea
+                  value={notifyForm.content}
+                  maxLength={500}
+                  onChange={(e) => {
+                    setNotifyForm({ ...notifyForm, content: e.target.value });
+                    if (notifyErrors.content) setNotifyErrors({ ...notifyErrors, content: undefined });
+                  }}
+                  rows={4}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm outline-none resize-none transition-colors ${
+                    notifyErrors.content
+                      ? "border-red-300 bg-red-50/40 focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                      : "border-slate-200 focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20"
+                  }`}
+                  placeholder="请输入通知正文内容"
+                />
+                {notifyErrors.content && (
+                  <p className="mt-1 text-[11px] text-red-500 font-bold">{notifyErrors.content}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  通知类型
+                </label>
+                <select
+                  value={notifyForm.type}
+                  onChange={(e) => setNotifyForm({ ...notifyForm, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20 transition-colors cursor-pointer"
+                >
+                  <option value="system">🔔 系统通知</option>
+                  <option value="update">🚀 功能更新</option>
+                  <option value="alert">⚠️ 安全告警</option>
+                  <option value="activity">🎁 平台活动</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setNotifyUser(null)}
+                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-100 rounded-xl text-sm font-bold transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={submitNotify}
+                  className="px-5 py-2 bg-tech-blue hover:bg-tech-blueDark text-white rounded-xl text-sm font-bold transition-colors"
+                >
+                  发送
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 调整算力点弹窗 */}
+      {adjustPointsUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setAdjustPointsUser(null)}
+          />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-slate-100">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
+              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                <div className="w-1.5 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+                调整算力点
+              </h3>
+              <button
+                onClick={() => setAdjustPointsUser(null)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
+                <div className="text-sm text-slate-600 min-w-0">
+                  目标用户：
+                  <span className="font-bold text-slate-800">
+                    {adjustPointsUser.name || adjustPointsUser.email}
+                  </span>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] text-slate-400 font-bold">当前算力点</div>
+                  <div className="text-sm font-black text-[#3182ce]">
+                    {adjustPointsUser.points ?? 0}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  调整数量（正数赠送，负数扣除） <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={adjustPointsForm.points}
+                  onChange={(e) => {
+                    setAdjustPointsForm({ ...adjustPointsForm, points: e.target.value });
+                    if (adjustPointsErrors.points) setAdjustPointsErrors({});
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition-colors ${
+                    adjustPointsErrors.points
+                      ? "border-red-300 bg-red-50/40 focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                      : "border-slate-200 focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20"
+                  }`}
+                  placeholder="如 100 或 -50"
+                />
+                {adjustPointsErrors.points ? (
+                  <p className="mt-1 text-[11px] text-red-500 font-bold">
+                    {adjustPointsErrors.points}
+                  </p>
+                ) : (() => {
+                  const delta = Number(adjustPointsForm.points);
+                  const raw = adjustPointsForm.points.trim();
+                  if (!raw || !Number.isFinite(delta) || delta === 0) return null;
+                  const after = (adjustPointsUser.points ?? 0) + delta;
+                  return (
+                    <p className="mt-1.5 text-[11px] font-bold text-slate-500">
+                      调整后余额：
+                      <span className={after < 0 ? "text-red-500" : "text-[#3182ce]"}>
+                        {after}
+                      </span>
+                      点
+                    </p>
+                  );
+                })()}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  调整原因（可选）
+                </label>
+                <input
+                  value={adjustPointsForm.reason}
+                  onChange={(e) =>
+                    setAdjustPointsForm({ ...adjustPointsForm, reason: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20"
+                  placeholder="如 活动奖励 / 违规扣减"
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setAdjustPointsUser(null)}
+                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-100 rounded-xl text-sm font-bold transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={submitAdjustPoints}
+                  className="px-5 py-2 bg-tech-blue hover:bg-tech-blueDark text-white rounded-xl text-sm font-bold transition-colors"
+                >
+                  确认调整
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 查看登录历史弹窗 */}
+      {loginHistoryUser && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setLoginHistoryUser(null)}
+          />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
+              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                <div className="w-1.5 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+                登录历史
+              </h3>
+              <button
+                onClick={() => setLoginHistoryUser(null)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 min-h-0">
+              {loginHistoryLoading && loginHistories.length === 0 ? (
+                <div className="text-center text-slate-400 text-sm py-8">加载中…</div>
+              ) : loginHistories.length === 0 ? (
+                <div className="text-center text-slate-400 text-sm py-8">暂无登录记录</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="bg-slate-50 rounded-xl py-2.5 text-center border border-slate-100">
+                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">登录记录总数</div>
+                      <div className="text-base font-black text-[#3182ce]">
+                        {loginHistoryTotal || loginHistories.length}
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl py-2.5 text-center border border-slate-100">
+                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">最近登录</div>
+                      <div className="text-sm font-black text-slate-700">
+                        {formatRelativeTime(loginHistories[0]?.loginAt)}
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl py-2.5 px-1 text-center border border-slate-100">
+                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">最近归属地</div>
+                      <div className="text-xs font-black text-slate-700 truncate">
+                        {loginHistories[0]?.location || "—"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    {loginHistoryGroups.map((group, gi) => {
+                      const latest = group.items[0];
+                      const { os, browser } = splitDevice(latest.device);
+                      const isMobile = /iphone|ipad|android/i.test(os);
+                      const absolute = new Date(latest.loginAt).toLocaleString("zh-CN");
+                      const earliest = new Date(
+                        group.items[group.items.length - 1].loginAt,
+                      ).toLocaleString("zh-CN");
+                      return (
+                        <div key={`${group.key}-${gi}`} className="relative pl-7 pb-4 last:pb-0">
+                          {gi !== loginHistoryGroups.length - 1 && (
+                            <div className="absolute left-[9px] top-5 bottom-0 w-px bg-slate-200"></div>
+                          )}
+                          <div className="absolute left-0 top-1 w-[18px] h-[18px] rounded-full bg-blue-50 border-2 border-[#3182ce] flex items-center justify-center">
+                            {isMobile ? (
+                              <Smartphone className="w-2.5 h-2.5 text-[#3182ce]" />
+                            ) : (
+                              <Monitor className="w-2.5 h-2.5 text-[#3182ce]" />
+                            )}
+                          </div>
+                          <div className="border border-slate-100 hover:border-slate-200 rounded-xl p-3 transition-colors">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-sm font-black text-slate-800 break-all">
+                                    {os}
+                                  </span>
+                                  {browser && (
+                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
+                                      {browser}
+                                    </span>
+                                  )}
+                                  {group.items.length > 1 && (
+                                    <span className="text-[10px] font-black text-[#3182ce] bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+                                      连续 {group.items.length} 次
+                                    </span>
+                                  )}
+                                </div>
+                                <div
+                                  className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 flex-wrap"
+                                  title={latest.userAgent || "未提供 User-Agent"}
+                                >
+                                  <Globe className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="font-mono">{latest.ipAddress}</span>
+                                  <span className="text-slate-300">·</span>
+                                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span>{latest.location}</span>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-xs font-black text-slate-700">
+                                  {formatRelativeTime(latest.loginAt)}
+                                </div>
+                                <div
+                                  className="text-[10px] text-slate-400 mt-0.5"
+                                  title={
+                                    group.items.length > 1
+                                      ? `${group.items.length} 次同源登录，最早 ${earliest}`
+                                      : absolute
+                                  }
+                                >
+                                  {absolute}
+                                </div>
+                              </div>
+                            </div>
+                            {group.items.length > 1 && (
+                              <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400 flex items-center gap-1">
+                                <Clock className="w-3 h-3 shrink-0" />
+                                区间：{earliest} ~ {absolute}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {loginHistories.length < loginHistoryTotal && (
+                    <button
+                      onClick={() =>
+                        loginHistoryUser &&
+                        handleViewLoginHistory(loginHistoryUser, loginHistoryPage + 1)
+                      }
+                      disabled={loginHistoryLoading}
+                      className="w-full mt-2 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      {loginHistoryLoading
+                        ? "加载中…"
+                        : `加载更多（剩余 ${loginHistoryTotal - loginHistories.length} 条）`}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 操作下拉菜单：通过 React Portal 渲染到 document.body，规避外层 overflow-hidden 卡片与 sticky 单元格的裁切与层级问题 */}
+      {showActionMenu && (() => {
+        const currentMenuUser = userData?.users?.find((u) => u.id === showActionMenu) || null;
+        if (!currentMenuUser || !actionMenuPos) return null;
+        return createPortal(
+          <div
+            className="fixed w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
+            style={{ top: actionMenuPos.top, left: actionMenuPos.left }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 强制下线 - 只对在线的活跃用户显示，超级管理员专属操作，不能操作超级管理员和自己 */}
+            {currentUserRole === "super_admin" &&
+              currentMenuUser.status === "active" &&
+              currentMenuUser.isOnline &&
+              currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleForceLogout(currentMenuUser.id);
+                    setShowActionMenu(null);
+                    setActionMenuPos(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                >
+                  <LogOut className="w-4 h-4 text-blue-600" />
+                  强制下线
+                </button>
+              )}
+
+            {/* 禁用登录 - 对离线的活跃用户显示（包括从未登录和已登录但当前离线的），超级管理员专属操作，不能操作超级管理员和自己 */}
+            {currentUserRole === "super_admin" &&
+              currentMenuUser.status === "active" &&
+              !currentMenuUser.isOnline &&
+              currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleStatus(currentMenuUser);
+                    setShowActionMenu(null);
+                    setActionMenuPos(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-amber-50 transition-colors border-b border-slate-50"
+                >
+                  <UserX className="w-4 h-4 text-amber-600" />
+                  禁用登录
+                </button>
+              )}
+
+            {/* 封禁/解封用户 - 不能操作超级管理员和自己 */}
+            {currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId && (
+                <button
+                  onClick={() => {
+                    if (currentMenuUser.status === "banned") {
+                      // 解封
+                      handleChangeStatus(currentMenuUser.id, "active");
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    } else {
+                      // 封禁，需要选择封禁时长
+                      setBanningUser(currentMenuUser);
+                      setBanDuration("permanent"); // 默认永久
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    }
+                  }}
+                  className={`group w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition-colors border-b border-slate-50 ${
+                    currentMenuUser.status === "banned"
+                      ? "hover:bg-emerald-50"
+                      : "hover:bg-red-50"
+                  }`}
+                >
+                  {currentMenuUser.status === "banned" ? (
+                    <>
+                      <UserCheck className="w-4 h-4 text-[#3182ce] group-hover:text-emerald-600" />
+                      <span className="group-hover:text-emerald-600">解封用户</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserX className="w-4 h-4 text-[#3182ce] group-hover:text-red-600" />
+                      <span className="group-hover:text-red-600">封禁用户</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+            {/* 新增：单用户全局运营操作（与通知/算力点/会员/安全模块闭环），不能操作超级管理员和自己 */}
+            {currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId && (
+                <>
+                  <div className="my-2 border-t border-slate-100" />
+
+                  {/* 重置会话（超级管理员专属，与强制下线/禁用登录同级） */}
+                  {currentUserRole === "super_admin" && (
+                  <button
+                    onClick={() => {
+                      handleResetSession(currentMenuUser);
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                  >
+                    <RotateCcw className="w-4 h-4 text-[#3182ce]" />
+                    重置会话
+                  </button>
+                  )}
+
+                  {/* 重置密码 */}
+                  <button
+                    onClick={() => {
+                      handleResetPassword(currentMenuUser);
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                  >
+                    <KeyRound className="w-4 h-4 text-[#3182ce]" />
+                    重置密码
+                  </button>
+
+                  {/* 发送通知 */}
+                  <button
+                    onClick={() => {
+                      handleSendNotify(currentMenuUser);
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                  >
+                    <Bell className="w-4 h-4 text-[#3182ce]" />
+                    发送通知
+                  </button>
+
+                  {/* 调整算力点 */}
+                  <button
+                    onClick={() => {
+                      handleAdjustPoints(currentMenuUser);
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                  >
+                    <Zap className="w-4 h-4 text-[#3182ce]" />
+                    调整算力点
+                  </button>
+
+                  {/* 查看登录历史 */}
+                  <button
+                    onClick={() => {
+                      handleViewLoginHistory(currentMenuUser);
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors"
+                  >
+                    <History className="w-4 h-4 text-[#3182ce]" />
+                    查看登录历史
+                  </button>
+                </>
+              )}
+
+            {/* 删除用户 - 只对已停用用户显示，不能删除超级管理员和自己 */}
+            {currentMenuUser.status === "banned" &&
+              currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId && (
+                <>
+                  <div className="my-2 border-t border-slate-100" />
+                  <button
+                    onClick={() => {
+                      handleDelete(currentMenuUser.id);
+                      setShowActionMenu(null);
+                      setActionMenuPos(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    删除用户
+                  </button>
+                </>
+              )}
+          </div>,
+          document.body,
+        );
+      })()}
     </div>
   );
 }

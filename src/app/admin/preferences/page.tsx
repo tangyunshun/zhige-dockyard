@@ -11,7 +11,7 @@ interface UserPreference {
   systemPrompt?: string | null;
   defaultModel: string;
   temperature: number;
-  maxTokens: number;
+  modelTokenLimit: number;
   topP: number;
   frequencyPenalty: number;
   presencePenalty: number;
@@ -268,7 +268,7 @@ export default function AdminPreferencesPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-700 font-bold">
-                      {preference.maxTokens}
+                      {preference.modelTokenLimit}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600 font-medium">
                       {formatTimeAgo(preference.updatedAt)}

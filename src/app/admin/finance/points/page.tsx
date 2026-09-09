@@ -116,7 +116,7 @@ export default function AdminPointsLedgerPage() {
   }, [typeFilter]);
 
   const runExpire = async () => {
-    if (!(await confirm({ title: "确认清算", message: "确认立即触发全局算力分桶到期清算？将把已过期的赠送算力点清零并写流水。", type: "warning" }))) return;
+    if (!(await confirm({ title: "确认清算", message: "确认立即触发全局算力发放批次到期清算？将把已过期的赠送算力点清零并写流水。", type: "warning" }))) return;
     setExpireLoading(true);
     setExpireMsg(null);
     try {
@@ -140,7 +140,7 @@ export default function AdminPointsLedgerPage() {
 
   const cards = summary
     ? [
-        { label: "累计发放（含充值与赠送）", value: summary.totalIssued, icon: Coins, tone: "text-purple-600" },
+        { label: "累计发放（含充值与赠送）", value: summary.totalIssued, icon: Coins, tone: "text-[#3182ce]" },
         { label: "累计消耗", value: summary.totalConsumed, icon: ArrowDownRight, tone: "text-amber-600" },
         { label: "充值 GMV", value: `¥${(Number(summary.rechargeGmvCents) / 100).toLocaleString()}`, icon: Wallet, tone: "text-[#3182ce]", raw: true },
         {
@@ -153,7 +153,7 @@ export default function AdminPointsLedgerPage() {
     : [];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 font-sans">
+    <div className="space-y-6 font-sans">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ReceiptText className="w-5 h-5 text-[#3182ce]" />

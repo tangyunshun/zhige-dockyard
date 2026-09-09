@@ -206,7 +206,7 @@ export default function OverviewTab({
   const metrics: Array<{ label: string; count: number | string; subtext?: string; desc?: string; color: string; icon: ReactNode; iconBg: string; onClick?: () => void }> = [
     { 
       label: "空间总算力点", 
-      count: typeof workspaceToken === "number" ? `${workspaceToken.toLocaleString()} 点` : workspaceToken, 
+      count: typeof workspaceToken === "number" ? `${workspaceToken.toLocaleString()} 算力点` : workspaceToken, 
       subtext: typeof workspaceToken === "number" ? `折合 ¥${(workspaceToken / 100).toFixed(2)}` : undefined,
       color: "text-[#3182ce]", 
       icon: <Zap className="w-4 h-4 fill-[#3182ce]" />, 

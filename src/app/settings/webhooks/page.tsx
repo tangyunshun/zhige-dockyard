@@ -53,7 +53,7 @@ export default function WebhooksPage() {
   const eventTypes = [
     { id: "component.bind", label: "组件授权绑定 (component.bind)", desc: "当空间被分配/采购新组件时触发" },
     { id: "member.join", label: "成员加入审批 (member.join)", desc: "当有新协同成员接受邀请码加入时触发" },
-    { id: "token.limit", label: "算力额度警戒 (token.limit)", desc: "当算力 Token 消耗比例突破 80% 或 95% 时触发" },
+    { id: "token.limit", label: "算力额度警戒 (token.limit)", desc: "当算力点消耗比例突破 80% 或 95% 时触发" },
     { id: "sandbox.reset", label: "开发环境清空 (sandbox.reset)", desc: "当空间数据发生一键清空重置操作时触发" },
   ];
 

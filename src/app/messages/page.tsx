@@ -222,6 +222,7 @@ export default function MessagesPage() {
   // 根据消息内容推断对应的功能入口链接；没有对应功能时返回 null，不显示"进入功能"按钮
   const getActionLink = (item: NotificationItem): string | null => {
     if (item.link) return item.link;
+    if (item.type === "points") return "/workspace-hub";
     const text = `${item.title || ""} ${item.content || ""}`.toLowerCase();
     if (item.type === "task" || text.includes("任务")) return "/tasks";
     if (item.type === "security" || text.includes("安全") || text.includes("隔离")) return "/security";

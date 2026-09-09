@@ -214,7 +214,7 @@ export default function ImportAssetModal({ open, onClose, onImport, mode = "asse
       return [
         `一、 统计粒度、维度划分与核算标准`,
         `  1.1 数据核算维度：围绕“${cleanName}”的时间周期 (日/周/月/年)、组织架构及项目维度统计；`,
-        `  1.2 关键度量指标定义：算力点数消耗 (Points)、Token 使用量、并发 API 调度次数核算标准；`,
+        `  1.2 关键度量指标定义：算力点数消耗 (Points)、模型 Token 使用量、并发 API 调度次数核算标准；`,
         ``,
         `二、 核心算力消耗与成本核算明细`,
         `  2.1 资源使用明细表：各业务组件/团队模块使用额度明细、高峰期消耗分布；`,

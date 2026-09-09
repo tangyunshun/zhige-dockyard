@@ -66,39 +66,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 获取用户个人空间算力点余额（支持免费/新用户自愈补齐 100 点）
-    let tokenBalance = 100;
+    // 获取用户个人空间算力点余额（免费算力只来自注册福利按月发放，此处不做任何赠送/补偿）
+    let tokenBalance = 0;
     try {
       const personalWs = await prisma.workspace.findFirst({
         where: { ownerId: userId, type: "PERSONAL" },
         include: { workspacequota: true },
       });
       if (personalWs) {
-        if (personalWs.workspacequota && Number(personalWs.workspacequota.tokenBalance) > 0) {
+        if (personalWs.workspacequota) {
           tokenBalance = Number(personalWs.workspacequota.tokenBalance);
         } else {
-          // 自愈补齐 100 算力点
-          tokenBalance = 100;
-          if (personalWs.workspacequota) {
-            prisma.workspacequota.update({
-              where: { id: personalWs.workspacequota.id },
-              data: { tokenBalance: BigInt(100), updatedAt: new Date() },
-            }).catch(() => {});
-          } else {
-            prisma.workspacequota.create({
-              data: {
-                id: crypto.randomUUID(),
-                workspaceId: personalWs.id,
-                membershipLevelId: "FREE",
-                tokenBalance: BigInt(100),
-                updatedAt: new Date(),
-              },
-            }).catch(() => {});
-          }
+          // 结构性自愈：仅补建 0 额度配额记录，不赠送算力
+          await prisma.workspacequota.create({
+            data: {
+              id: crypto.randomUUID(),
+              workspaceId: personalWs.id,
+              membershipLevelId: "FREE",
+              tokenBalance: BigInt(0),
+              updatedAt: new Date(),
+            },
+          }).catch(() => {});
         }
       }
     } catch (quotaErr) {
-      console.warn("[dashboard/stats] 查询/自愈算力配额非致命提示:", quotaErr);
+      console.warn("[dashboard/stats] 查询个人空间算力配额非致命提示:", quotaErr);
     }
 
     // 获取已使用的 API 调用次数和存储空间

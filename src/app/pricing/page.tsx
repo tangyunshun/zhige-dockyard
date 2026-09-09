@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Check, X, ArrowRight, Building2, Server, Zap, Users, Boxes, Percent, Clock, CheckCircle2, Settings, Gem } from "lucide-react";
+import { Check, X, ArrowRight, Building2, Server, Zap, Users, Boxes, Percent, CheckCircle2, Settings, Gem } from "lucide-react";
 import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
@@ -92,12 +92,8 @@ export default function PricingPage() {
   // 由升级中枢跳转携带的目标档位（?target=GOLD），用于自动聚焦与高亮
   // 注意：不可命名为 targetLevel，该名已被下方「推荐等级」变量占用
   const [focusLevel, setFocusLevel] = useState<string | null>(null);
-  // 登录态账户状态条数据：算力余额 / 月度重置日（来自 /api/workspace/quota，加载失败静默降级）
-  const [accountQuota, setAccountQuota] = useState<{
-    tokenBalance: number;
-    tokenLimit: number;
-    renewDate: string;
-  } | null>(null);
+  // 登录态账户状态条数据：算力余额（来自 /api/workspace/quota，加载失败静默降级）
+  const [accountQuota, setAccountQuota] = useState<{ tokenBalance: number } | null>(null);
 
   useEffect(() => {
     fetchMembershipLevels();
@@ -138,7 +134,7 @@ export default function PricingPage() {
     }
   };
 
-  /** 登录态拉取算力余额与月度重置日；失败静默降级（状态条只展示会员等级） */
+  /** 登录态拉取算力余额；失败静默降级（状态条只展示会员等级） */
   const fetchAccountQuota = async () => {
     try {
       const authToken = getAuthToken();
@@ -148,11 +144,8 @@ export default function PricingPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          const resetAt = data.resetAt ? data.resetAt.slice(0, 10) : "";
           setAccountQuota({
-            tokenBalance: data.tokenBalance ?? 0,
-            tokenLimit: data.tokenLimit ?? 10000,
-            renewDate: resetAt,
+            tokenBalance: Number(data.tokenBalance) > 0 ? Number(data.tokenBalance) : 0,
           });
         }
       }
@@ -235,14 +228,6 @@ export default function PricingPage() {
       icon: <Zap className="w-3.5 h-3.5" />,
       render: (l: MembershipLevel) =>
         l.maxApiCalls === UNLIMITED ? "无限" : `${formatQuota(l.maxApiCalls)}/月`,
-    },
-    {
-      feature: "每月算力额度",
-      icon: <Zap className="w-3.5 h-3.5" />,
-      render: (l: MembershipLevel) =>
-        l.tokenLimit === UNLIMITED
-          ? "无限"
-          : `${formatQuota(l.tokenLimit)} 点/月（折合 ${formatYuanFromPoints(l.tokenLimit)}）`,
     },
     {
       feature: "加油包会员折扣",
@@ -450,7 +435,7 @@ export default function PricingPage() {
                       </div>
                     </div>
 
-                    {/* 中：算力余额（核心 KPI）+ 月度重置（含倒计时） */}
+                    {/* 中：算力余额（核心 KPI）+ 算力计费口径说明 */}
                     <div className="flex items-stretch gap-5 px-5 py-4 lg:py-3.5 lg:flex-[1.2]">
                       {/* 算力余额 */}
                       <div className="flex-1 min-w-0">
@@ -466,77 +451,17 @@ export default function PricingPage() {
                               ? "∞"
                               : formatTokenBalance(accountQuota?.tokenBalance)}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-bold">Tokens</span>
+                          <span className="text-[10px] text-slate-400 font-bold">算力点</span>
                         </div>
-                        {!isUnlimitedToken(accountQuota?.tokenBalance) &&
-                          typeof accountQuota?.tokenLimit === "number" &&
-                          accountQuota.tokenLimit > 0 && (
-                            <div className="mt-2 flex items-center gap-2">
-                              <div className="flex-1 h-1 rounded-full bg-slate-100/80 overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500"
-                                  style={{
-                                    width: `${Math.min(
-                                      100,
-                                      Math.max(
-                                        6,
-                                        Math.round(
-                                          ((accountQuota?.tokenBalance || 0) /
-                                            (accountQuota?.tokenLimit ?? 1)) *
-                                            100
-                                        )
-                                      )
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-                              <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
-                                {Math.min(
-                                  100,
-                                  Math.round(
-                                    ((accountQuota?.tokenBalance || 0) /
-                                      (accountQuota?.tokenLimit ?? 1)) *
-                                      100
-                                  )
-                                )}
-                                %
-                              </span>
-                            </div>
-                          )}
+                        {!isUnlimitedToken(accountQuota?.tokenBalance) && (
+                          <p className="mt-2 text-[10px] text-slate-400 font-medium leading-relaxed max-w-[200px]">
+                            按量实时扣减 · 无月度自动重置，用尽后需充值或购买算力加油包
+                          </p>
+                        )}
                       </div>
 
                       {/* 垂直分隔 */}
                       <div className="w-px self-stretch bg-slate-200/80" />
-
-                      {/* 月度重置（含倒计时） */}
-                      <div className="flex-shrink-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                            下次重置
-                          </span>
-                        </div>
-                        <div className="text-sm font-black text-slate-800 font-mono tabular-nums whitespace-nowrap">
-                          {accountQuota?.renewDate || "--"}
-                        </div>
-                        {accountQuota?.renewDate && (() => {
-                          const target = new Date(accountQuota.renewDate);
-                          const today = new Date();
-                          const days = Math.max(
-                            0,
-                            Math.ceil((target.getTime() - today.getTime()) / 86400000)
-                          );
-                          return (
-                            <p className="text-[10px] text-slate-400 mt-1 font-medium whitespace-nowrap">
-                              还有{" "}
-                              <span className="font-black text-slate-700 tabular-nums">
-                                {days}
-                              </span>{" "}
-                              天
-                            </p>
-                          );
-                        })()}
-                      </div>
                     </div>
 
                     {/* 右：管理入口与升级操作（按钮组不再被压缩换行） */}
@@ -630,8 +555,9 @@ export default function PricingPage() {
                   description: `组件库已上架 ${stats.totalComponents} 个覆盖研发各环节的实用组件，其中 ${stats.premiumComponents} 个企业级高级组件供中高阶套餐解锁调用。`,
                 },
                 {
-                  title: "阶梯化算力分配",
-                  description: `从免费版每月 ${formatQuota(baseLevel?.tokenLimit ?? 0)} Token 算力，到旗舰版 ${targetLevel?.tokenLimit === UNLIMITED ? "无限" : formatQuota(targetLevel?.tokenLimit ?? 0)} Token，匹配不同业务阶段的算力需求。`,
+                  title: "按量即充即用",
+                  description:
+                    "算力点充值或购买后实时到账、随用随扣，无月度自动发放与重置；会员购买算力加油包享专属折扣。",
                 },
                 {
                   title: "企业级合规保障",

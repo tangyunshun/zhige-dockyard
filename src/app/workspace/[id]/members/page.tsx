@@ -376,7 +376,7 @@ export default function WorkspaceMembersPage() {
                         <div className="flex flex-col text-[10px] border-l border-slate-200 pl-3">
                           <span className="text-slate-400 font-bold">剩余算力</span>
                           <span className={`font-mono font-black ${remainVal === 0 ? "text-red-500" : "text-emerald-600"}`}>
-                            {remainVal} 点
+                            {remainVal} 算力点
                           </span>
                         </div>
                       )}

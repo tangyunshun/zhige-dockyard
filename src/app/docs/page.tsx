@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useLogout } from "@/hooks/useLogout";
 import { useRouter } from "next/navigation";
 import SearchInput from "@/components/common/SearchInput";
@@ -16,7 +16,6 @@ import {
   Copy,
   MessageSquare,
   Play,
-  Sparkles,
   LifeBuoy,
   Search,
   Terminal,
@@ -63,6 +62,167 @@ interface User {
   email: string | null;
   role?: string | null;
 }
+
+// ===== 一级栏目目录骨架（栏目元信息固定，每个栏目下的文档条目 100% 由后台数据库 systemdocument 驱动）=====
+interface DocSectionDef {
+  id: string;
+  title: string;
+  icon: any;
+  description: string;
+  categories: string[];
+}
+
+const DOC_SECTION_DEFS: DocSectionDef[] = [
+  {
+    id: "start",
+    title: "开始使用与快速入门",
+    icon: Rocket,
+    description: "了解知阁·舟坊架构模型、空间注册与第一个自动化任务拉起",
+    categories: ["user-guide", "user_guide", "guide", "start"],
+  },
+  {
+    id: "developer",
+    title: "OpenAPI 与 Webhooks 集成",
+    icon: Code,
+    description: "API 秘钥鉴权、异步任务拉起、HMAC-SHA256 签名验签与沙箱连通性",
+    categories: ["api-doc", "api_doc", "api", "developer"],
+  },
+  {
+    id: "workspace",
+    title: "空间治理与权限 RBAC",
+    icon: Building2,
+    description: "团队成员邀请、白名单权限矩阵、解散自愈校验与自定义域名",
+    categories: ["workspace", "workspaces"],
+  },
+  {
+    id: "enterprise",
+    title: "企业私有部署与合规",
+    icon: Shield,
+    description: "企业数据沙箱隔离、专有云 K8s 部署、离线镜像包与平台法律协议",
+    categories: [
+      "system-doc",
+      "system_doc",
+      "system",
+      "enterprise",
+      "terms-of-service",
+      "privacy-policy",
+      "terms_of_service",
+      "privacy_policy",
+    ],
+  },
+  {
+    id: "knowledge",
+    title: "知识库与自定义组件",
+    icon: Database,
+    description: "Vector 向量化语义索引、自定义 Python 算子发布与流水报表",
+    categories: ["knowledge"],
+  },
+  {
+    id: "faq",
+    title: "常见问题与计费采购",
+    icon: HelpCircle,
+    description: "算力点充值、对公转账发票、数据合规声明与请求频控",
+    categories: ["faq", "help"],
+  },
+];
+
+// 文档卡片徽标回退表：优先取后台「标签」第一个作为微分类，无标签时按一级分类码给出可读名
+const CATEGORY_BADGE_FALLBACK: Record<string, string> = {
+  "user-guide": "快速入门",
+  "user_guide": "快速入门",
+  guide: "快速入门",
+  start: "快速入门",
+  "api-doc": "API 开发",
+  "api_doc": "API 开发",
+  api: "API 开发",
+  developer: "开发者集成",
+  workspace: "空间治理",
+  workspaces: "空间治理",
+  "system-doc": "企业部署",
+  "system_doc": "企业部署",
+  system: "系统架构",
+  enterprise: "私有部署",
+  knowledge: "知识库文档",
+  faq: "常见问题",
+  help: "帮助中心",
+  announcement: "官方公告",
+  notice: "官方通知",
+  "privacy-policy": "平台隐私协议",
+  "privacy_policy": "平台隐私协议",
+  "terms-of-service": "平台服务条款",
+  "terms_of_service": "平台服务条款",
+};
+
+const toCategoryBadgeLabel = (
+  category: string | null | undefined,
+  tags: string | null | undefined
+): string => {
+  const firstTag = (tags || "")
+    .split(/[,，、]/)
+    .map(t => t.trim())
+    .find(Boolean);
+  if (firstTag) return firstTag;
+  if (!category) return "综合文档";
+  const raw = String(category).trim();
+  const normalized = raw.toLowerCase().replace(/_/g, "-");
+  if (CATEGORY_BADGE_FALLBACK[normalized]) return CATEGORY_BADGE_FALLBACK[normalized];
+  if (normalized.includes("privacy")) return "隐私协议";
+  if (normalized.includes("term")) return "服务条款";
+  if (normalized.includes("guide")) return "快速入门";
+  if (normalized.includes("api")) return "API 文档";
+  if (normalized.includes("faq")) return "常见问题";
+  if (normalized.includes("workspace")) return "空间治理";
+  if (normalized.includes("knowledge")) return "知识库文档";
+  if (normalized.includes("system") || normalized.includes("enterprise")) return "企业部署";
+  return raw;
+};
+
+// 关联跳转链接兼容数据库 JSON 字符串与历史遗留的 JSON 对象两种存储
+const parseRelatedLink = (
+  value: string | null | undefined | { label?: string; path?: string }
+): { label: string; path: string } | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "object") {
+    return value.label && value.path
+      ? { label: value.label, path: value.path }
+      : undefined;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed?.label && parsed?.path) {
+      return { label: parsed.label, path: parsed.path };
+    }
+  } catch {
+    // 忽略非法 JSON，视为未配置
+  }
+  return undefined;
+};
+
+// 将数据库 systemdocument 行转换为前台卡片所需的 DocArticle
+const toDocArticle = (doc: any): DocArticle => {
+  const rawContent: string = doc.content || "";
+  const hasSummary = typeof doc.summary === "string" && doc.summary.trim().length > 0;
+  return {
+    id: doc.id,
+    title: doc.title || "未命名文档",
+    summary: hasSummary
+      ? doc.summary.trim()
+      : rawContent.length > 120
+        ? `${rawContent.slice(0, 120)}…`
+        : rawContent || "本文档暂无简介，点击卡片阅读全文",
+    category: toCategoryBadgeLabel(doc.category, doc.tags),
+    contentCode: doc.codeSample || undefined,
+    fullContent: rawContent || undefined,
+    updateTime: doc.updatedAt
+      ? new Date(doc.updatedAt).toLocaleDateString()
+      : undefined,
+    helpfulCount:
+      typeof doc.helpfulCount === "number" && doc.helpfulCount > 0
+        ? doc.helpfulCount
+        : undefined,
+    relatedLink: parseRelatedLink(doc.relatedLink),
+  };
+};
 
 export default function DocsPage() {
   const router = useRouter();
@@ -214,302 +374,78 @@ export default function DocsPage() {
     }
   };
 
-  // 6 大核心完备业务文档目录定义 (18 篇全覆盖)
-  const defaultSections: DocSection[] = [
-    {
-      id: "start",
-      title: "开始使用与快速入门",
-      icon: Rocket,
-      description: "了解知阁·舟坊架构模型、空间注册与第一个自动化任务拉起",
-      articles: [
-        {
-          id: "start-1",
-          title: "产品概览与全栈解耦架构",
-          summary: "知阁·舟坊是一个专为现代软件开发及企业数字化转型设计的全栈自动化任务装配与工作流中枢。结合低代码控制台与高可用 REST API。",
-          category: "新手指南",
-          fullContent: "知阁·舟坊平台架构采用全栈解耦模型，集成组件大厅、算力额度审计、任务流调配与企业级权限隔离机制。无论是个人的轻量化 API 调用，还是企业级别的私有化云编排，均可提供一致的安全保障。",
-          updateTime: "2026-08-25",
-          helpfulCount: 42,
-          relatedLink: { label: "访问空间中枢", path: "/workspace-hub" }
-        },
-        {
-          id: "start-2",
-          title: "空间中枢：个人空间 vs 企业空间",
-          summary: "登录工作台后的集中管控中心。区分个人隔离测试环境与支持团队协作、自定义组件权限的企业空间。",
-          category: "核心概念",
-          fullContent: "在空间中枢中，个人空间提供每月 100 点的免费试用额度；而企业空间则支持绑专属域名、多因素身份校验（MFA）与独立组件授权矩阵。",
-          updateTime: "2026-08-20",
-          helpfulCount: 28,
-          relatedLink: { label: "创建/切换空间", path: "/workspace-hub" }
-        },
-        {
-          id: "start-3",
-          title: "组件大厅挑选与任务装配",
-          summary: "挑选内含 50+ 覆盖文本结构化、代码审查、标书偏离审核以及技术文档自动生成的成熟模块，一键采购加装。",
-          category: "组件使用",
-          fullContent: "组件大厅支持依业务标签（AI文本、代码审查、审计合规）快速检索，加装后可直接在工作空间面板或通过 OpenAPI 随时拉起异步执行任务。",
-          updateTime: "2026-08-22",
-          helpfulCount: 35,
-          relatedLink: { label: "进入组件大厅", path: "/studio" }
-        }
-      ]
-    },
-    {
-      id: "developer",
-      title: "OpenAPI 与 Webhooks 集成",
-      icon: Code,
-      description: "API 秘钥鉴权、异步任务拉起、HMAC-SHA256 签名验签与沙箱连通性",
-      articles: [
-        {
-          id: "dev-1",
-          title: "开发者鉴权 (Bearer Token)",
-          summary: "所有的 RESTful API 调用均需要在 HTTP 请求 Header 中携带包含 Bearer 格式的 API 秘钥来进行身份验证与空间识别。",
-          category: "API 鉴权",
-          contentCode: `curl -X GET "https://api.zhige-dockyard.com/v1/workspaces" \\
-  -H "Authorization: Bearer zg_live_998822113344" \\
-  -H "Content-Type: application/json"`,
-          fullContent: "您可以在【开发者资源 -> API Keys】页面随时生成、轮换或销毁您的 API 密钥。切记不要将秘钥公开提交到代码仓库中。",
-          updateTime: "2026-08-24",
-          helpfulCount: 56,
-          relatedLink: { label: "管理 API Keys", path: "/user/api-keys" }
-        },
-        {
-          id: "dev-2",
-          title: "拉起组件异步计算任务 API",
-          summary: "通过 POST 请求向指定的组件 Endpoint 发送 JSON 报文，拉起后台的异步计算处理任务并获得 taskId。",
-          category: "任务接口",
-          contentCode: `curl -X POST "https://api.zhige-dockyard.com/v1/rfp/parse" \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -d '{
-    "document_url": "https://example.com/rfp-doc.pdf",
-    "workspaceId": "ws_demo_8888",
-    "options": { "extract_strict_terms": true }
-  }'`,
-          fullContent: "该接口为异步非阻塞接口，提交成功后将立即返回 taskId 与预估消耗时间。任务完成后的最终结果将通过 Webhook 自动化推发给您的业务服务器。",
-          updateTime: "2026-08-25",
-          helpfulCount: 68,
-          relatedLink: { label: "查看控制台任务", path: "/tasks" }
-        },
-        {
-          id: "dev-3",
-          title: "Webhook 签名验签 (HMAC-SHA256)",
-          summary: "舟坊系统在任务完成后将发送 POST 请求至您配置的 Endpoint，头部携带 x-zhige-signature 防伪哈希签名。",
-          category: "事件回调",
-          contentCode: `{
-  "event": "component.bind",
-  "timestamp": 1787669467,
-  "webhookId": "wh_67wwd1wn6r",
-  "data": {
-    "workspaceId": "ws_demo_8888",
-    "action": "TRIGGER",
-    "message": "知阁·舟坊系统事件触发"
-  },
-  "signature": "sha256=zg_sec_BJSX72QYI..."
-}`,
-          fullContent: "推荐在接收端使用您的 Webhook Secret 和 HMAC-SHA256 签名算法对 Payload 进行校验，防止被第三方伪造事件发包。",
-          updateTime: "2026-08-25",
-          helpfulCount: 89,
-          relatedLink: { label: "配置 Webhook 通道", path: "/settings/webhooks" }
-        },
-        {
-          id: "dev-4",
-          title: "API 全局错误码与 Error Handling",
-          summary: "了解常见 HTTP 状态码、401 Unauthenticated、403 Forbidden、429 Rate Limit 与 504 Timeout 的自愈恢复规则。",
-          category: "错误处理",
-          contentCode: `{
-  "error": "ACCOUNT_TOKEN_LIMIT_EXCEEDED",
-  "code": 402,
-  "message": "当前空间的算力 Token 点数已用尽，请前往空间中枢充值或升级企业订阅。"
-}`,
-          fullContent: "遇到 429 请求频控时，建议在客户端引入 Exponential Backoff (指数退避算法) 进行重试发包。",
-          updateTime: "2026-08-21",
-          helpfulCount: 31
-        }
-      ]
-    },
-    {
-      id: "workspace",
-      title: "空间治理与权限 RBAC",
-      icon: Building2,
-      description: "团队成员邀请、白名单权限矩阵、解散自愈校验与自定义域名",
-      articles: [
-        {
-          id: "ws-1",
-          title: "企业空间 RBAC 权限矩阵",
-          summary: "定义超级管理员、项目经理、组件开发员与审计观察员四级权限，防止越权拉起高消耗组件。",
-          category: "权限管控",
-          fullContent: "在【空间设置 -> 成员与角色】中，管理员可针对单独组件配置可调用白名单，实现精细化企业治理。",
-          updateTime: "2026-08-19",
-          helpfulCount: 24,
-          relatedLink: { label: "进入空间治理", path: "/workspace-hub" }
-        },
-        {
-          id: "ws-2",
-          title: "空间物理解散 5 重防误删校验",
-          summary: "详细了解解散物理空间时的成员转移、运行中任务强行断流、数据库流水归档与解散确认密码校验。",
-          category: "安全自愈",
-          fullContent: "解散空间为不可逆操作。系统在解散前会自动执行物理关联检查（包含依赖该空间的独立企业域名、未完成工单），确保数据无遗留。",
-          updateTime: "2026-08-23",
-          helpfulCount: 47
-        }
-      ]
-    },
-    {
-      id: "enterprise",
-      title: "企业私有部署与合规",
-      icon: Shield,
-      description: "企业数据沙箱隔离、专有云 K8s 部署、离线镜像包与 MFA",
-      articles: [
-        {
-          id: "ent-1",
-          title: "企业数据独立沙箱隔离",
-          summary: "在企业空间架构下，系统通过物理数据库表分片与独占存储桶保证业务标书、设计图纸的绝对隔离与绝密存储。",
-          category: "数据安全",
-          fullContent: "所有数据上传后传输全程基于 TLS 1.3 算法加密，且绝对不会将企业商业机密数据用于二次模型训练。",
-          updateTime: "2026-08-15",
-          helpfulCount: 62
-        },
-        {
-          id: "ent-2",
-          title: "私有化专有云 K8s 部署",
-          summary: "为军工、金融及政企客户提供基于 Docker/K8s 容器编排的一键私有离线集群部署方案与 Helm Charts。",
-          category: "专有云",
-          fullContent: "私有化包内含一键式的离线镜像、自愈探针及数据备份脚本，支持在完全断开公网连接的内网专网环境中稳定运转。",
-          updateTime: "2026-08-18",
-          helpfulCount: 78
-        }
-      ]
-    },
-    {
-      id: "knowledge",
-      title: "知识库与自定义组件",
-      icon: Database,
-      description: "Vector 向量化语义索引、自定义 Python 算子发布与流水报表",
-      articles: [
-        {
-          id: "kn-1",
-          title: "知识库 Vector 向量语义索引",
-          summary: "支持 PDF、Word、Markdown 格式文档的一键解析分块与向量化嵌入，提供极高精准度的知识库问答检索。",
-          category: "知识引擎",
-          fullContent: "上传知识库文档后，系统自动执行文本清洗、Chunk 切分及 Embedding 算法，供业务组件即时检索参考。",
-          updateTime: "2026-08-22",
-          helpfulCount: 51,
-          relatedLink: { label: "管理知识库", path: "/knowledge" }
-        }
-      ]
-    },
-    {
-      id: "faq",
-      title: "常见问题与计费采购",
-      icon: HelpCircle,
-      description: "算力 Token 充值、对公转账发票、数据合规声明与请求频控",
-      articles: [
-        {
-          id: "faq-1",
-          title: "Token 算力点数如何扣减与充值？",
-          summary: "点数按组件复杂度扣除。轻量文本提取每次 1 点；标书合规审查扣除 5 点。可在空间统计页实时查看明细。",
-          category: "计费答疑",
-          fullContent: "个人空间每月定期自动重置 100 免费点数；企业空间点数由管理员统一采购充值并按需下发。",
-          updateTime: "2026-08-20",
-          helpfulCount: 93,
-          relatedLink: { label: "查看算力充值", path: "/workspace/upgrade" }
-        },
-        {
-          id: "faq-2",
-          title: "商业数据安全与免模型训练承诺",
-          summary: "知阁·舟坊对数据安全执行最高等级保护，您的业务数据和运行结果绝不会被用来作为模型二次训练的材料。",
-          category: "数据安全",
-          fullContent: "数据在任务执行完毕并超过指定的缓存期后，会被底层的自愈引擎物理粉碎清除，无后门残留。",
-          updateTime: "2026-08-21",
-          helpfulCount: 104
-        }
-      ]
-    }
-  ];
 
-  // 融合数据库获取的真实动态文档 (优先以数据库 systemdocument 最新记录为准，支持实时更新)
+
+  // 由后台发布的公开文档实时组装 6 大栏目（完全数据库驱动：后台增删改/上下架即时生效）
   const docSections = useMemo(() => {
-    // 将数据库文档转化为 DocArticle 格式
-    const dbArticleMap = new Map<string, DocArticle>();
+    const sections: DocSection[] = DOC_SECTION_DEFS.map(def => ({
+      id: def.id,
+      title: def.title,
+      icon: def.icon,
+      description: def.description,
+      articles: [],
+    }));
+
     dbDocuments.forEach((doc: any) => {
-      const articleItem: DocArticle = {
-        id: doc.id,
-        title: doc.title,
-        summary: doc.content ? doc.content.slice(0, 120) + (doc.content.length > 120 ? "..." : "") : "最新数据库更新文档",
-        category: doc.category || "系统文档",
-        contentCode: doc.contentCode || undefined,
-        fullContent: doc.content,
-        updateTime: doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString() : (doc.effectiveDate || "最新"),
-        helpfulCount: doc.helpfulCount || 100,
-        relatedLink: doc.relatedLink ? (typeof doc.relatedLink === "string" ? JSON.parse(doc.relatedLink) : doc.relatedLink) : undefined,
-      };
-      dbArticleMap.set(doc.id, articleItem);
-      if (doc.title) {
-        dbArticleMap.set(doc.title, articleItem);
+      const normalized = String(doc?.category || "")
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, "-");
+      const defIndex = DOC_SECTION_DEFS.findIndex(def =>
+        def.categories.some(c => c.toLowerCase() === normalized)
+      );
+      if (defIndex >= 0) {
+        sections[defIndex].articles.push(toDocArticle(doc));
       }
     });
 
-    return defaultSections.map(section => {
-      // 筛选出符合该分类的数据库最新发版文档
-      const matchedDbDocs = dbDocuments.filter(doc => {
-        if (section.id === "start") return doc.category === "user-guide" || doc.category === "start" || doc.type === "start";
-        if (section.id === "developer") return doc.category === "api-doc" || doc.category === "developer" || doc.type === "developer";
-        if (section.id === "workspace") return doc.category === "workspace" || doc.type === "workspace";
-        if (section.id === "enterprise") return doc.category === "system-doc" || doc.category === "terms-of-service" || doc.category === "privacy-policy" || doc.category === "enterprise";
-        if (section.id === "knowledge") return doc.category === "knowledge" || doc.type === "knowledge";
-        if (section.id === "faq") return doc.category === "faq" || doc.type === "faq";
-        return false;
-      }).map(doc => ({
-        id: doc.id,
-        title: doc.title,
-        summary: doc.content ? doc.content.slice(0, 150) + "..." : "最新数据库实时更新文档",
-        category: doc.category || "系统发版",
-        contentCode: doc.contentCode || undefined,
-        fullContent: doc.content,
-        updateTime: doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString() : "最新",
-        helpfulCount: doc.helpfulCount || 88,
-      }));
-
-      // 如果数据库中存在覆盖文章，以数据库记录为准进行替换
-      const updatedArticles = section.articles.map(article => {
-        if (dbArticleMap.has(article.id)) {
-          return dbArticleMap.get(article.id)!;
-        }
-        if (dbArticleMap.has(article.title)) {
-          return dbArticleMap.get(article.title)!;
-        }
-        return article;
-      });
-
-      // 将数据库中独有的全新发版文档去重后追加在前
-      const existingIds = new Set(updatedArticles.map(a => a.id));
-      const extraDbArticles = matchedDbDocs.filter(d => !existingIds.has(d.id));
-
-      return {
-        ...section,
-        articles: [...extraDbArticles, ...updatedArticles]
-      };
-    });
+    return sections;
   }, [dbDocuments]);
 
   // 依据 Tab 筛选与全文检索过滤
   const allArticlesList = useMemo(() => docSections.flatMap(s => s.articles), [docSections]);
 
   const filteredSections = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
     return docSections
       .map(section => ({
         ...section,
         articles: section.articles.filter(
           article =>
-            article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            article.category.toLowerCase().includes(searchQuery.toLowerCase())
+            article.title.toLowerCase().includes(keyword) ||
+            article.summary.toLowerCase().includes(keyword) ||
+            article.category.toLowerCase().includes(keyword) ||
+            (article.fullContent || "").toLowerCase().includes(keyword) ||
+            (article.contentCode || "").toLowerCase().includes(keyword)
         )
       }))
       .filter(section => (activeSection === "all" ? true : section.id === activeSection))
       .filter(section => section.articles.length > 0);
   }, [docSections, searchQuery, activeSection]);
+
+  // 支持 URL 锚点直达文档：访问 /docs#doc-<文档ID> 自动弹出对应阅读弹层（数据库加载完成后执行）
+  useEffect(() => {
+    if (!dbDocuments.length || loadingDocs) return;
+    const hash = window.location.hash;
+    if (!hash.startsWith("#doc-")) return;
+    const docId = hash.replace(/^#doc-/, "");
+    const found = docSections.flatMap(sec => sec.articles).find(a => a.id === docId);
+    if (found) setSelectedArticle(found);
+  }, [dbDocuments, docSections, loadingDocs]);
+
+  // 阅读弹层开关时同步 URL hash，保证 #doc- 链接可分享/回退
+  const lastSelectedRef = useRef<DocArticle | null>(null);
+  useEffect(() => {
+    if (selectedArticle) {
+      const baseUrl = window.location.href.split("#")[0];
+      history.replaceState(null, "", `${baseUrl}#doc-${selectedArticle.id}`);
+      lastSelectedRef.current = selectedArticle;
+    } else if (lastSelectedRef.current) {
+      // 仅当由“打开弹层”切换到“关闭”时清除 hash，避免初次挂载时误删直达锚点
+      history.replaceState(null, "", window.location.href.split("#")[0]);
+      lastSelectedRef.current = null;
+    }
+  }, [selectedArticle]);
 
   return (
     <div className="min-h-screen bg-[#f0f8ff] text-slate-800 flex flex-col selection:bg-indigo-100 selection:text-indigo-600">
@@ -518,8 +454,7 @@ export default function DocsPage() {
       <section className="relative overflow-hidden bg-gradient-to-b from-[#2b6cb0]/10 via-[#3182ce]/5 to-transparent border-b border-slate-200/60 pt-10 pb-12 px-4">
         <div className="max-w-[1400px] mx-auto text-center relative z-10 space-y-6">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-extrabold shadow-2xs">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-            知阁·舟坊 开发者与架构手册 2.0 (18 大业务核心全覆盖)
+            知阁·舟坊 开发者与架构手册 2.0
           </div>
           
           <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 tracking-tight">
@@ -577,24 +512,33 @@ export default function DocsPage() {
           >
             全部文档 ({allArticlesList.length})
           </button>
-          {defaultSections.map(sec => {
-            const Icon = sec.icon;
-            const isActive = activeSection === sec.id;
-            return (
-              <button
-                key={sec.id}
-                onClick={() => setActiveSection(sec.id)}
-                className={`px-4 h-9 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? "bg-[#2b6cb0] text-white shadow-xs"
-                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {sec.title}
-              </button>
-            );
-          })}
+          {docSections
+            .filter(sec => sec.articles.length > 0)
+            .map(sec => {
+              const Icon = sec.icon;
+              const isActive = activeSection === sec.id;
+              return (
+                <button
+                  key={sec.id}
+                  onClick={() => setActiveSection(sec.id)}
+                  className={`px-4 h-9 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? "bg-[#2b6cb0] text-white shadow-xs"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {sec.title}
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-black leading-none ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {sec.articles.length}
+                  </span>
+                </button>
+              );
+            })}
         </div>
 
         {/* 登录用户开发者资源入口 Banner */}
@@ -635,14 +579,20 @@ export default function DocsPage() {
         {loadingDocs ? (
           <div className="py-20 text-center space-y-3">
             <div className="w-10 h-10 border-4 border-[#2b6cb0]/30 border-t-[#2b6cb0] rounded-full animate-spin mx-auto" />
-            <p className="text-xs text-slate-400 font-bold">正从系统数据库拉取全量 18 篇文档...</p>
+            <p className="text-xs text-slate-400 font-bold">正从系统数据库拉取后台已发布的全部文档...</p>
           </div>
         ) : filteredSections.length === 0 ? (
           <div className="py-16 text-center border border-dashed border-slate-300 rounded-2xl bg-white space-y-3 p-8">
             <Search className="w-10 h-10 text-slate-300 mx-auto" />
-            <h3 className="text-sm font-black text-slate-800">未找到与 “{searchQuery}” 相关的文档条目</h3>
+            <h3 className="text-sm font-black text-slate-800">
+              {searchQuery.trim()
+                ? `未找到与 “${searchQuery}” 相关的文档条目`
+                : "暂无可展示的公开文档"}
+            </h3>
             <p className="text-xs text-slate-400 font-semibold max-w-md mx-auto">
-              建议您检查关键词拼写，或切换至【全部文档】分类下重新搜索。
+              {searchQuery.trim()
+                ? "建议您检查关键词拼写，或切换至【全部文档】分类下重新搜索。"
+                : "请进入管理后台「文档管理」创建并发布文档，此处将自动实时呈现。"}
             </p>
             <button
               onClick={() => {

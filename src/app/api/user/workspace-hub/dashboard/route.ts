@@ -387,7 +387,7 @@ export async function GET(request: NextRequest) {
     const storageLimitAgg = storageQuotas.reduce((s, q) => s + Number(q.storageLimit), 0);
 
     // 真实算力点：区分用户在不同空间角色的归属与流通规则
-    // 1. 个人空间算力（新用户赠送 100 点，老用户为其实际配额）
+    // 1. 个人空间算力（只读实际余额，不做赠送兜底；注册福利由 credit-service 按月 100 发放）
     let personalTokens = 0;
     if (personalWorkspace) {
       const pQuota = quotaByWsId.get(personalWorkspace.id);
@@ -395,10 +395,8 @@ export async function GET(request: NextRequest) {
         personalTokens = Number(pQuota.tokenBalance);
       }
     }
-    // 仅在纯免费个人新用户（无任何企业空间且个人算力 <= 0）时兜底 100 初始点
-    if (personalTokens <= 0 && membershipLevel === "FREE" && enterpriseCount === 0) {
-      personalTokens = 100;
-    }
+    // 注意：不再对纯免费个人新用户兜底 100 点——免费额度只有注册福利（注册前 3 个月每月 100），
+    // 用完须自费充值
 
     // 2. 企业空间所有者（Owner）算力池：
     // 用户作为企业空间所有者，企业空间配额池属于其本人资产，个人空间和企业空间均可调度使用，
@@ -428,12 +426,13 @@ export async function GET(request: NextRequest) {
     });
 
     // 全场景综合可用算力余额：
-    // - 新用户（未充值、无企业空间）：personalTokens = 100，owned = 0，member = 0 => 100 点
-    // - 老用户（拥有企业空间 Owner 资产）：个人空间 + 企业空间共享池（如 test-01: 10000 + 11490 = 21490 点）
+    // - 新用户（未充值、无企业空间）：个人空间余额（注册当月福利到账后为 100）+ owned + member
+    // - 拥有企业空间 Owner 资产：个人空间 + 企业空间共享池
     // - 协同成员用户：个人空间 + 被分配的企业额度
     const userAvailableTokens = personalTokens + ownedEnterpriseTokens + memberAllocatedTokens;
 
-    const calculatedTotalTokens = tokenLimit === -1 ? -1 : Math.max(tokenLimit, userAvailableTokens + monthTokenUsed);
+    // 余额制口径：总额 = 当前可用余额 + 历史累计消耗（不再以会员 tokenLimit 作为“每月配额上限”兜底）
+    const calculatedTotalTokens = tokenLimit === -1 ? -1 : userAvailableTokens + totalTokenUsed;
 
     const userQuota = {
       isVip: membershipLevel !== "FREE",
@@ -457,12 +456,15 @@ export async function GET(request: NextRequest) {
         storageUsed,
         storageLimit: storageLimitAgg > 0 ? storageLimitAgg : maxStorage,
         maxApiCalls,
-        // 无限额度（tokenLimit = -1）：available 同样标记为 -1，避免被 Math.max(0, ...) 折叠成「0」
+        // 余额制口径（不设“每月免费额度上限”）：
+        // available = 各空间真实可用余额合计；used = 本月真实任务消耗（新用户为 0）；
+        // historyTotalUsed = 历史累计任务消耗；total = 可用余额 + 历史累计消耗。
+        // 会员无限档（tokenLimit = -1）：available/total 标记 -1，避免被 Math.max(0, …) 折叠成 0。
         tokenBalance: {
           total: calculatedTotalTokens,
-          used: monthTokenUsed, // 本月真实任务消耗（新用户为 0）
+          used: monthTokenUsed,
           available: tokenLimit === -1 ? -1 : userAvailableTokens,
-          historyTotalUsed: totalTokenUsed, // 历史累计任务消耗
+          historyTotalUsed: totalTokenUsed,
           personalTokens,
           ownedEnterpriseTokens,
           memberAllocatedTokens,
@@ -475,10 +477,10 @@ export async function GET(request: NextRequest) {
     let pendingApplicationsCount = 0;
 
     if (isAdmin) {
-      // 并行拉取全系统关键运维指标（Token 消耗按组件目录 estimatedTokens 基准真实统计）
+      // 并行拉取全系统关键运维指标（Token 消耗按组件目录 estimatedModelTokens 基准真实统计）
       const usageTokenMap = new Map(
-        (await prisma.componentcatalog.findMany({ select: { id: true, estimatedTokens: true } }))
-          .map((c) => [c.id, Number(c.estimatedTokens)])
+        (await prisma.componentcatalog.findMany({ select: { id: true, estimatedModelTokens: true } }))
+          .map((c) => [c.id, Number(c.estimatedModelTokens)])
       );
       const calcUsageTokens = (rows: { componentId: string }[]) =>
         rows.reduce((sum, r) => sum + (usageTokenMap.get(r.componentId) ?? 0), 0);

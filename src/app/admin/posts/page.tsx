@@ -520,7 +520,7 @@ function AdminPostsContent() {
   }, [filteredUsages, usageCurrentPage]);
 
   return (
-    <div className="min-h-screen bg-[#f0f8ff] p-6 space-y-6">
+    <div className="min-h-screen bg-[#f0f8ff] space-y-6">
       {/* 顶部标题与 Tab 导航 */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-2xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

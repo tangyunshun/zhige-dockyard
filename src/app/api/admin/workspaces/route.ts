@@ -147,28 +147,8 @@ export async function GET(request: NextRequest) {
           },
         });
 
-        // 算力配额：个人空间新用户初始赠送/保底 100 点；企业空间初始为 0（需充值购买）
-        const isEnterprise = workspace.type === "ENTERPRISE";
-        let effectiveBalance = quota ? Number(quota.tokenBalance) : 0;
-        if (!isEnterprise && effectiveBalance <= 0) {
-          effectiveBalance = 100;
-          if (quota) {
-            prisma.workspacequota.update({
-              where: { id: quota.id },
-              data: { tokenBalance: BigInt(100), updatedAt: new Date() },
-            }).catch(() => {});
-          } else {
-            prisma.workspacequota.create({
-              data: {
-                id: crypto.randomUUID(),
-                workspaceId: workspace.id,
-                membershipLevelId: "FREE",
-                tokenBalance: BigInt(100),
-                updatedAt: new Date(),
-              },
-            }).catch(() => {});
-          }
-        }
+        // 算力配额：只读展示实际余额，不做任何赠送/保底（免费额度只来自注册福利按月发放或充值/购买）
+        const effectiveBalance = quota ? Number(quota.tokenBalance) : 0;
 
         // 检查到期自动解封与停用元数据
         const rawQuotaJson = (workspace.quota as any) || {};
@@ -248,6 +228,7 @@ export async function GET(request: NextRequest) {
         // 剔除原始 workspacemember（含 BigInt 字段），避免 JSON 序列化报错
         const { workspacemember, ...workspaceBase } = workspace;
         const memberCount = workspace._count?.workspacemember ?? workspacemember.length ?? 0;
+        const isEnterprise = workspace.type === "ENTERPRISE";
         return {
           ...workspaceBase,
           status: currentStatus,

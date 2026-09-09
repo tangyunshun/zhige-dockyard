@@ -308,25 +308,18 @@ export async function POST(request: NextRequest) {
         },
       });
     } else {
-      // 历史空间可能缺失配额记录，此处补齐：初始算力按该空间绑定的会员等级当月额度发放
+      // 历史空间可能缺失配额记录，此处仅做结构性补齐：余额一律 0 起步，不赠送任何免费算力
+      //（免费额度只来自注册福利按月 100 或充值/购买；会员升级后也不自动发放等级 tokenLimit）
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { membershipLevel: true },
       });
-      const levelKey = user?.membershipLevel || "FREE";
-      const memberLevel = await prisma.membershiplevel.findFirst({
-        where: {
-          OR: [{ id: levelKey }, { name: levelKey }],
-        },
-        select: { tokenLimit: true },
-      });
-      const baseTokens = Number(memberLevel?.tokenLimit ?? 0);
       await prisma.workspacequota.create({
         data: {
           id: generateId("wsq"),
           workspaceId,
           membershipLevelId: user?.membershipLevel || "FREE",
-          tokenBalance: BigInt(baseTokens > 0 ? baseTokens : 0),
+          tokenBalance: BigInt(0),
           storageLimit: BigInt(finalStorageLimit),
           apiCallsLimit: BigInt(finalApiCallsLimit),
           updatedAt: new Date(),

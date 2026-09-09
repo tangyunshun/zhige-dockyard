@@ -329,7 +329,7 @@ export default function AdminTokenPacksPage() {
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-500 font-bold">算力点配额:</span>
-                    <strong className="font-mono text-slate-900 text-sm font-black">{pack.points.toLocaleString()} 点</strong>
+                    <strong className="font-mono text-slate-900 text-sm font-black">{pack.points.toLocaleString()} 算力点</strong>
                   </div>
 
                   <div className="flex items-center justify-between text-xs border-t border-slate-200/60 pt-2 gap-2">

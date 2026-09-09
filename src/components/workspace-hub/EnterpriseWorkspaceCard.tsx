@@ -150,7 +150,7 @@ export default function EnterpriseWorkspaceCard({
             <span>{workspace.memberCount || 0} 名成员 · {workspace.componentCount || 0} 个已授权组件</span>
             <span className="inline-flex items-center gap-1 font-bold text-[#d97706] bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 text-[11px]">
               <Zap className="w-3 h-3 fill-[#d97706] text-[#d97706]" />
-              <span>共享算力池: {workspace.quota?.tokenBalance !== undefined && workspace.quota?.tokenBalance !== null ? Number(workspace.quota.tokenBalance).toLocaleString() : "0"} 点</span>
+              <span>共享算力池: {workspace.quota?.tokenBalance !== undefined && workspace.quota?.tokenBalance !== null ? Number(workspace.quota.tokenBalance).toLocaleString() : "0"} 算力点</span>
             </span>
             {workspace.createdAt && (
               <span> · 创建于 {new Date(workspace.createdAt).toLocaleDateString("zh-CN")}</span>

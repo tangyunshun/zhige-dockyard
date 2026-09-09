@@ -123,10 +123,11 @@ export async function GET(request: NextRequest) {
       walletBalance,
     };
 
-    const userIds = Array.from(new Set(rows.map((r) => r.userId).filter(Boolean) as string[]));
-    const users = userIds.length
+    // 操作人是 operatorId，不是 userId（userId 是流水归属人/受益人）
+    const operatorIds = Array.from(new Set(rows.map((r) => r.operatorId).filter(Boolean) as string[]));
+    const users = operatorIds.length
       ? await prisma.user.findMany({
-          where: { id: { in: userIds } },
+          where: { id: { in: operatorIds } },
           select: { id: true, name: true, email: true },
         })
       : [];
@@ -142,7 +143,7 @@ export async function GET(request: NextRequest) {
         title: r.title,
         points: r.direction === "IN" ? Number(r.points) : -Number(r.points),
         amountCents: Number(r.amountCents || 0),
-        operator: userNameMap.get(r.userId || "") || "系统",
+        operator: userNameMap.get(r.operatorId || "") || "系统管理员",
         componentName: r.componentName || null,
         workspaceId: r.workspaceId,
         balanceAfter: Number(r.balanceAfter || 0),

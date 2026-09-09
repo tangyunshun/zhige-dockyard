@@ -123,12 +123,13 @@ export async function GET(request: NextRequest) {
     const totalExpired = sumBy("OUT", ["GIFT_EXPIRE"]);
 
     // 操作人姓名与组件名（统一字典，避免前端硬编码）
-    const userIds = Array.from(new Set(rows.map((r: any) => r.userId).filter(Boolean) as string[]));
+    // 注意：操作人是 operatorId，不是 userId（userId 是流水归属人/受益人）
+    const operatorIds = Array.from(new Set(rows.map((r: any) => r.operatorId).filter(Boolean) as string[]));
     const compIds = Array.from(new Set(rows.map((r: any) => r.componentId).filter(Boolean) as string[]));
 
-    const allUsers = userIds.length
+    const allUsers = operatorIds.length
       ? await prisma.user.findMany({
-          where: { id: { in: userIds } },
+          where: { id: { in: operatorIds } },
           select: { id: true, name: true, email: true },
         }).catch(() => [] as any[])
       : ([] as any[]);
@@ -157,8 +158,8 @@ export async function GET(request: NextRequest) {
         points: r.direction === "IN" ? Number(r.points) : -Number(r.points),
         amountCents: Number(r.amountCents || 0),
         status: "SUCCESS",
-        operator: userNameMap.get(r.userId || "") || "系统",
-        operatorId: r.userId,
+        operator: userNameMap.get(r.operatorId || "") || "系统管理员",
+        operatorId: r.operatorId,
         componentId: r.componentId,
         componentName: r.componentName || (r.componentId ? compNameMap.get(r.componentId) || null : null),
         workspaceId: r.workspaceId,

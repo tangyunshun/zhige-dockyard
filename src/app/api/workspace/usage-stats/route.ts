@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -52,11 +52,11 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取组件目录真实 Token 消耗基准（estimatedTokens），用于统计真实算力消耗
+    // 获取组件目录真实 Token 消耗基准（estimatedModelTokens），用于统计真实算力消耗
     const catalogTokens = await prisma.componentcatalog.findMany({
-      select: { id: true, estimatedTokens: true },
+      select: { id: true, estimatedModelTokens: true },
     });
-    const tokenBaseMap = new Map(catalogTokens.map((c) => [c.id, Number(c.estimatedTokens)]));
+    const tokenBaseMap = new Map(catalogTokens.map((c) => [c.id, Number(c.estimatedModelTokens)]));
 
     // 任务状态归一化：兼容 simulate(SUCCESS/FAILED)、use(completed 小写) 等实际写入状态
     const isCompletedStatus = (s: string) => ["COMPLETED", "SUCCESS", "DONE", "completed", "succeeded"].includes(s);
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
     }
     const activeComponents = activeComponentIds.size;
 
-    // Token 消耗真实统计：各组件任务数 × 组件目录 estimatedTokens 基准
+    // Token 消耗真实统计：各组件任务数 × 组件目录 estimatedModelTokens 基准
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);

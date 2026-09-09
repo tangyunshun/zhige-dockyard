@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
 
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
         systemPrompt: "",
         defaultModel: "zhige-v3",
         temperature: 0.7,
-        maxTokens: 2000,
+        modelTokenLimit: 2000,
       },
     });
   } catch (error) {
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       systemPrompt,
       defaultModel,
       temperature,
-      maxTokens,
+      modelTokenLimit,
     } = await req.json();
 
     // 验证引擎
@@ -71,10 +71,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 验证 maxTokens
-    if (maxTokens !== undefined && (maxTokens < 100 || maxTokens > 8000)) {
+    // 验证 modelTokenLimit
+    if (modelTokenLimit !== undefined && (modelTokenLimit < 100 || modelTokenLimit > 8000)) {
       return NextResponse.json(
-        { error: "maxTokens 必须在 100-8000 之间" },
+        { error: "modelTokenLimit 必须在 100-8000 之间" },
         { status: 400 }
       );
     }
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
           systemPrompt: systemPrompt || existingPreference.systemPrompt,
           defaultModel: defaultModel || existingPreference.defaultModel,
           temperature: temperature ?? existingPreference.temperature,
-          maxTokens: maxTokens ?? existingPreference.maxTokens,
+          modelTokenLimit: modelTokenLimit ?? existingPreference.modelTokenLimit,
           updatedAt: new Date(),
         },
       });
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
           systemPrompt: systemPrompt || "",
           defaultModel: defaultModel || "zhige-v3",
           temperature: temperature ?? 0.7,
-          maxTokens: maxTokens ?? 2000,
+          modelTokenLimit: modelTokenLimit ?? 2000,
           updatedAt: new Date(),
         },
       });

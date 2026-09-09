@@ -9,6 +9,12 @@
  *
  * 涉及「算力点数量」与「人民币金额」双向换算的任何地方，都必须调用本模块，
  * 严禁在页面/接口中自行硬编码汇率，避免口径不一致。
+ *
+ * 概念边界（全系统统一口径）：
+ *   - 「算力点」是本平台唯一的【计费货币】，用户级钱包(pointwallet)/空间余额(tokenBalance)/
+ *     会员额度(tokenLimit) 均属同一币种，最终应以 pointledger 流水总账为唯一真源。
+ *   - 「模型 Token」(modelTokenLimit / estimatedModelTokens) 是 AI 实际输入/输出 token 的【用量度量】，
+ *     不是账户货币；它只会“花费”算力点，需经本模块换算，禁止与算力点混用或重命名。
  */
 
 /** 1 元可兑换的算力点数量 */
@@ -73,8 +79,9 @@ export function centsToYuan(cents: number | null | undefined): number {
 }
 
 /**
- * 会员/套餐「每月赠送的算力点」 ➔ 月付价格（单位：分）
- * 例：100,000 点/月 ➔ 100,000 分 = ¥1,000.00 / 月
+ * 按算力点与人民币比率换算「月付参考价」（单位：分）：算力点数量即分数
+ * 例：100,000 点 ➔ 100,000 分 = ¥1,000.00
+ * 说明：算力点已改为充值/加油包制、不再随会员等级按月赠送，该换算仅用于定价参考。
  * 无限制(-1) 返回 0（需人工定价）。
  */
 export function monthlyCentsFromPoints(
@@ -86,7 +93,7 @@ export function monthlyCentsFromPoints(
 }
 
 /**
- * 会员/套餐「每月赠送的算力点」 ➔ 年付价格（单位：分），默认按 12 个自然月折算
+ * 按算力点与人民币比率换算「年付参考价」（单位：分），默认按 12 个月折算
  */
 export function yearlyCentsFromPoints(
   points: number | bigint | null | undefined,

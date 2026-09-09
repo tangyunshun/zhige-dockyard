@@ -85,7 +85,7 @@ export default function AdminMatrixPage() {
       </header>
 
       {/* 主要内容 */}
-      <main className="px-6 py-8">
+      <main className="py-8">
         {/* 页面标题 */}
         <div className="mb-6">
           <h2 className="text-2xl font-black text-slate-800 mb-2">

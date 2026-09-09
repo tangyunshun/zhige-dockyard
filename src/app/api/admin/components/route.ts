@@ -19,7 +19,7 @@ function toCatalogView(c: any, categoryName?: string) {
     tags: normalizeTags(c.tags),
     sortOrder: c.sortOrder,
     isPremium: c.isPremium,
-    estimatedTokens: c.estimatedTokens,
+    estimatedModelTokens: c.estimatedModelTokens,
     previewData: c.previewData,
     inputMode: c.inputMode,
     accept: c.accept,
@@ -138,6 +138,15 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
   }
 
+  const MAX_NAME_LENGTH = 50;
+  const MAX_DESCRIPTION_LENGTH = 190;
+  if (name && name.length > MAX_NAME_LENGTH) {
+    return NextResponse.json({ error: `组件名称最多 ${MAX_NAME_LENGTH} 字` }, { status: 400 });
+  }
+  if (description && description.length > MAX_DESCRIPTION_LENGTH) {
+    return NextResponse.json({ error: `功能职责描述最多 ${MAX_DESCRIPTION_LENGTH} 字` }, { status: 400 });
+  }
+
   const data: any = {
     name,
     description,
@@ -150,7 +159,7 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     contract: body.contract ?? null,
     keywords: Array.isArray(body.keywords) ? body.keywords : undefined,
     isPremium: body.isPremium ?? false,
-    estimatedTokens: body.estimatedTokens ?? 0,
+    estimatedModelTokens: body.estimatedModelTokens ?? 0,
     previewData: body.previewData ?? { inputMock: "", outputMock: "", roiText: "" },
     sortOrder: body.sortOrder ?? 0,
     isPublished: isPublished !== undefined ? isPublished : true,
@@ -198,7 +207,7 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
         icon: icon || "package",
         tags: tagList,
         isPremium: body.isPremium ?? false,
-        estimatedTokens: body.estimatedTokens ?? 0,
+        estimatedModelTokens: body.estimatedModelTokens ?? 0,
         previewData: data.previewData,
         inputMode: body.inputMode || "text",
         accept: body.accept ?? null,

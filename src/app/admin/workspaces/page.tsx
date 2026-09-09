@@ -932,7 +932,7 @@ export default function AdminWorkspacesPage() {
                             <Zap className="w-3 h-3 fill-[#3182ce]" />
                             <span>
                               {workspace.quota?.tokenBalance !== undefined && workspace.quota?.tokenBalance !== null
-                                ? `${Number(workspace.quota.tokenBalance).toLocaleString()} 点`
+                                ? `${Number(workspace.quota.tokenBalance).toLocaleString()} 算力点`
                                 : workspace.type === "ENTERPRISE" ? "0 点" : "100 点"}
                             </span>
                           </span>
@@ -1084,7 +1084,7 @@ export default function AdminWorkspacesPage() {
                   </div>
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
                     <div className="text-[11px] text-slate-400 font-bold mb-1">套餐档位</div>
-                    <div className="text-xs font-bold flex items-center justify-between">
+                    <div className="text-xs font-bold flex items-center">
                       {(() => {
                         const planKey = (viewingWorkspace.plan || "STANDARD").toUpperCase();
                         const meta = WORKSPACE_PLAN_BADGES[planKey] || { label: planKey, badge: "bg-slate-50 text-slate-600 border-slate-200" };
@@ -1094,13 +1094,6 @@ export default function AdminWorkspacesPage() {
                           </span>
                         );
                       })()}
-                      <button
-                        onClick={() => window.open(`/user/billing-center?workspaceId=${viewingWorkspace.id}`, "_blank")}
-                        className="text-[10px] font-bold text-[#3182ce] hover:underline"
-                        title="查看/调整该空间的套餐与配额"
-                      >
-                        配置
-                      </button>
                     </div>
                   </div>
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
@@ -1169,7 +1162,7 @@ export default function AdminWorkspacesPage() {
                       <span className="text-emerald-600 font-bold">生效中</span>
                     </div>
                     <div className="text-xs font-black text-[#2b6cb0] font-mono">
-                      {(Number(viewingWorkspace.quota?.tokenBalance) || 0).toLocaleString()} Tokens
+                      {(Number(viewingWorkspace.quota?.tokenBalance) || 0).toLocaleString()} 算力点
                     </div>
                   </div>
                 </div>

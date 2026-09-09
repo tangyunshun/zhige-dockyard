@@ -13,7 +13,7 @@ function toUserComponentView(c: any) {
     updatedAt: c.updatedAt,
     usageCount: c.usageCount,
     isPremium: c.isPremium,
-    estimatedTokens: c.estimatedTokens,
+    estimatedModelTokens: c.estimatedModelTokens,
   };
 }
 

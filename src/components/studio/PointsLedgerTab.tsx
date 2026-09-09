@@ -45,6 +45,8 @@ interface PointsLedgerTabProps {
   canRecharge?: boolean;
   /** 调起充值弹窗 */
   onOpenRecharge?: () => void;
+  /** 调起「回收至个人钱包」弹窗（企业空间 OWNER / ADMIN 可用） */
+  onOpenRecycle?: () => void;
   /** 充值成功信号：数值变化后自动刷新流水 */
   refreshSignal?: number;
 }
@@ -59,7 +61,7 @@ const TYPE_TABS = [
 
 /** 流水类型中文与样式（与后端 pointledger.type 一一对应） */
 const TYPE_META: Record<string, { label: string; style: string }> = {
-  GIFT_REGISTER: { label: "注册赠送", style: "bg-purple-50 text-purple-600 border-purple-200" },
+  GIFT_REGISTER: { label: "注册赠送", style: "bg-blue-50 text-[#3182ce] border-blue-100" },
   GIFT_EXPIRE: { label: "到期清零", style: "bg-slate-100 text-slate-500 border-slate-200" },
   RECHARGE: { label: "在线充值", style: "bg-emerald-50 text-emerald-600 border-emerald-200" },
   OFFLINE_RECHARGE: { label: "线下入账", style: "bg-teal-50 text-teal-600 border-teal-200" },
@@ -72,9 +74,9 @@ const TYPE_META: Record<string, { label: string; style: string }> = {
 const PAYMENT_META: Record<string, { label: string; style: string }> = {
   WECHAT_PAY: { label: "微信支付", style: "bg-emerald-50 text-emerald-600 border-emerald-200" },
   ALIPAY: { label: "支付宝", style: "bg-blue-50 text-blue-600 border-blue-200" },
-  ONLINE_PAY: { label: "在线支付", style: "bg-indigo-50 text-indigo-600 border-indigo-200" },
+  ONLINE_PAY: { label: "在线支付", style: "bg-blue-50 text-[#3182ce] border-blue-100" },
   OFFLINE_BANK: { label: "对公转账", style: "bg-teal-50 text-teal-600 border-teal-200" },
-  CONTRACT: { label: "合同结算", style: "bg-violet-50 text-violet-600 border-violet-200" },
+  CONTRACT: { label: "合同结算", style: "bg-blue-50 text-[#3182ce] border-blue-100" },
   SYSTEM: { label: "系统发放", style: "bg-slate-100 text-slate-600 border-slate-200" },
   MANUAL: { label: "人工入账", style: "bg-slate-100 text-slate-600 border-slate-200" },
 };
@@ -85,6 +87,7 @@ export default function PointsLedgerTab({
   workspaceId,
   canRecharge = true,
   onOpenRecharge,
+  onOpenRecycle,
   refreshSignal = 0,
 }: PointsLedgerTabProps) {
   const toast = useToast();
@@ -196,8 +199,8 @@ export default function PointsLedgerTab({
       label: "累计赠送",
       value: totalGift,
       icon: <Coins className="w-5 h-5" />,
-      tone: "text-purple-600",
-      bg: "bg-purple-50 text-purple-600",
+      tone: "text-[#3182ce]",
+      bg: "bg-blue-50 text-[#3182ce]",
       hint: null,
     },
     {
@@ -234,6 +237,15 @@ export default function PointsLedgerTab({
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
               <span>算力充值</span>
+            </button>
+          )}
+          {onOpenRecycle && (
+            <button
+              onClick={onOpenRecycle}
+              className="px-4 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#1a4a7a] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>回收至个人钱包</span>
             </button>
           )}
           <button
@@ -302,18 +314,18 @@ export default function PointsLedgerTab({
           <div className="min-w-0">
             <div className="text-xs font-black text-slate-800">个人钱包（跨空间通用）</div>
             <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-              {walletBalance.toLocaleString()} 点 · 充值所得，个人空间与企业空间均可使用，永不过期
+              {walletBalance.toLocaleString()} 算力点 · 充值所得，个人空间与企业空间均可使用，永不过期
             </div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0">
             <Building2 className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <div className="text-xs font-black text-slate-800">本空间算力池</div>
             <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-              {workspaceBalance.toLocaleString()} 点 · 含注册赠送（3 个月有效）与企业充值共享额度
+              {workspaceBalance.toLocaleString()} 算力点 · 含注册福利（前 3 个月每月 100，当月有效）与充值/购买共享额度
             </div>
           </div>
         </div>

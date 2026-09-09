@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { getMembershipTokenLimit } from "@/lib/quota-token";
 
 /**
  * 获取用户配额信息
@@ -57,15 +56,15 @@ export async function GET(request: NextRequest) {
     // 统计企业空间数量
     const enterpriseCount = workspaces.filter(ws => ws.type === "ENTERPRISE").length;
 
-    // Token 消耗真实统计：组件使用次数 × 组件目录 estimatedTokens 基准
+    // Token 消耗真实统计：组件使用次数 × 组件目录 estimatedModelTokens 基准
     const usageRows = await prisma.componentusage.findMany({
       where: { userId },
       select: { componentId: true },
     });
     const tokenBase = await prisma.componentcatalog.findMany({
-      select: { id: true, estimatedTokens: true },
+      select: { id: true, estimatedModelTokens: true },
     });
-    const tokenBaseMap = new Map(tokenBase.map((c) => [c.id, Number(c.estimatedTokens)]));
+    const tokenBaseMap = new Map(tokenBase.map((c) => [c.id, Number(c.estimatedModelTokens)]));
     const usedTokens = usageRows.reduce((sum, r) => sum + (tokenBaseMap.get(r.componentId) ?? 0), 0);
 
     // 配额一律从 membershiplevel 表读取（不再硬编码）
@@ -73,7 +72,12 @@ export async function GET(request: NextRequest) {
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
-    const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
+
+    // 余额制口径：算力即各空间实际余额（充值/购买/注册福利到账），不再以会员 tokenLimit 作为“每月配额”
+    const availableBalance = workspaces.reduce(
+      (sum, ws) => sum + Number(ws.workspacequota?.tokenBalance ?? 0),
+      0
+    );
 
     const availableEnterpriseSlots = maxEnterpriseWorkspaces === -1 
       ? -1 
@@ -93,9 +97,9 @@ export async function GET(request: NextRequest) {
           maxStorage,
           maxApiCalls,
           tokenBalance: {
-            total: tokenLimit,
+            total: availableBalance + usedTokens,
             used: usedTokens,
-            available: Math.max(0, tokenLimit - usedTokens),
+            available: availableBalance,
           },
         },
         workspaces: await Promise.all(workspaces.map(async (ws) => {
@@ -108,31 +112,20 @@ export async function GET(request: NextRequest) {
               ml = await prisma.membershiplevel.findFirst();
             }
             const mlId = ml?.id || "FREE";
-            
+
             try {
+              // 结构性自愈：仅补建 0 额度配额记录，不赠送算力（免费额度只来自注册福利或充值）
               wsQuota = await prisma.workspacequota.create({
                 data: {
                   id: crypto.randomUUID(),
                   workspaceId: ws.id,
                   membershipLevelId: mlId,
-                  tokenBalance: BigInt(tokenLimit > 0 ? tokenLimit : 100),
+                  tokenBalance: BigInt(0),
                   updatedAt: new Date()
                 }
               });
             } catch (e) {
               console.error("兜底创建配额记录失败:", e);
-            }
-          } else if (Number(wsQuota.tokenBalance) <= 0 && membershipLevel === "FREE") {
-            try {
-              wsQuota = await prisma.workspacequota.update({
-                where: { id: wsQuota.id },
-                data: {
-                  tokenBalance: BigInt(tokenLimit > 0 ? tokenLimit : 100),
-                  updatedAt: new Date(),
-                },
-              });
-            } catch (e) {
-              console.warn("自愈补偿算力点失败:", e);
             }
           }
 

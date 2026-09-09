@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -40,7 +40,9 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 interface Component {
   id: string;
@@ -54,7 +56,7 @@ interface Component {
   sortOrder: number;
   isPublished: boolean;
   usageCount: number;
-  estimatedTokens?: number;
+  estimatedModelTokens?: number;
   contract?: string;
   hint?: string;
   createdAt: string;
@@ -70,27 +72,14 @@ interface ComponentFormData {
   tags: string;
   sortOrder: number;
   isPublished: boolean;
-  estimatedTokens: number;
+  estimatedModelTokens: number;
   config?: any;
 }
 
-const categoryCNMap: Record<string, string> = {
-  BID_PREP: "商机售前",
-  REQ_DESIGN: "需求与设计",
-  BACKEND_CORE: "后端核心",
-  DATABASE_ENG: "数据库工程",
-  FRONTEND_DEV: "前端与交互",
-  TEST_QA: "测试与质量",
-  DEVOPS: "DevOps构建",
-  SECURITY: "安全合规",
-  PROJ_MGMT: "效能管理",
-  KNOWLEDGE: "知识沉淀",
-  REQUIREMENTS: "需求分析",
-  DATA_BI: "数据工程",
-  DOCUMENTATION: "研报文档",
-  AI_AGENTS: "AI智能算力",
-  COMMON: "通用研发",
-};
+const MAX_COMPONENT_NAME_LENGTH = 50;
+const MAX_COMPONENT_DESCRIPTION_LENGTH = 190; // 与数据库当前 VARCHAR(191) 保持一致，避免入库截断
+
+
 
 const AVAILABLE_ICONS = [
   { name: "package", label: "组件包", icon: Package },
@@ -109,8 +98,226 @@ const AVAILABLE_ICONS = [
   { name: "workflow", label: "工作流", icon: Workflow },
 ];
 
+interface CategoryItem {
+  key: string;
+  name: string;
+}
+
+function CategorySelect({
+  categories,
+  value,
+  onChange,
+  onCreate,
+  placeholder = "请选择领域分类",
+}: {
+  categories: CategoryItem[];
+  value: string;
+  onChange: (key: string) => void;
+  onCreate: (name: string) => Promise<string>;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    if (open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePos = () => {
+      if (triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setPos({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+      }
+    };
+    const handleDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (dropdownRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handleDocClick);
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      document.removeEventListener("mousedown", handleDocClick);
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [open]);
+
+  const filtered = categories.filter((c) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.key.toLowerCase().includes(q);
+  });
+
+  const selected = categories.find((c) => c.key === value);
+
+  const startAdd = () => {
+    setAdding(true);
+    setNewName(query.trim());
+    setErr("");
+  };
+
+  const confirmAdd = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const key = await onCreate(name);
+      setQuery("");
+      setAdding(false);
+      setNewName("");
+      setOpen(false);
+      onChange(key);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "创建阶段失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dropdown = (
+    <div
+      ref={dropdownRef}
+      style={pos ? { top: pos.top, left: pos.left, width: pos.width } : undefined}
+      className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col max-h-80 overflow-hidden"
+    >
+      <div className="p-2 border-b border-slate-100 sticky top-0 bg-white z-10">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索阶段名称或标识..."
+            className="w-full pl-8 pr-3 py-2 text-xs font-medium border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none transition-all"
+          />
+        </div>
+      </div>
+
+      <div className="overflow-y-auto flex-1 p-1">
+        {filtered.length === 0 ? (
+          <div className="px-3 py-5 text-xs text-slate-400 text-center">无匹配分类</div>
+        ) : (
+          filtered.map((cat) => {
+            const isActive = cat.key === value;
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() => {
+                  onChange(cat.key);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-between ${
+                  isActive
+                    ? "bg-blue-50 text-[#3182ce]"
+                    : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                <span className="truncate">{cat.name}</span>
+                {isActive && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      <div className="border-t border-slate-100 bg-slate-50 p-2">
+        {adding ? (
+          <div className="space-y-2">
+            <input
+              autoFocus
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmAdd();
+                if (e.key === "Escape") {
+                  setAdding(false);
+                  setErr("");
+                }
+              }}
+              placeholder="输入新阶段名称"
+              className="w-full px-3 py-2 text-xs font-medium border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+            />
+            {err && <div className="text-[10px] text-red-500 leading-tight">{err}</div>}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={confirmAdd}
+                disabled={busy || !newName.trim()}
+                className="flex-1 px-3 py-1.5 rounded-lg bg-[#3182ce] text-white text-[11px] font-bold hover:bg-[#2b6cb0] disabled:opacity-50 transition-colors"
+              >
+                {busy ? "创建中..." : "确认新增"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdding(false);
+                  setErr("");
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={startAdd}
+            className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-dashed border-[#3182ce] text-[#3182ce] text-xs font-bold hover:bg-blue-50 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            新增阶段
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`w-full px-3.5 py-2.5 border rounded-xl text-left text-xs font-bold transition-all flex items-center justify-between gap-2 ${
+          open
+            ? "border-[#3182ce] bg-white ring-1 ring-[#3182ce]/20"
+            : "border-slate-200 bg-slate-50/50 hover:bg-slate-100"
+        }`}
+      >
+        <span className="truncate">{selected?.name || placeholder}</span>
+        <ChevronDown
+          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && typeof window !== "undefined" && createPortal(dropdown, document.body)}
+    </div>
+  );
+}
+
 export default function AdminComponentsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [components, setComponents] = useState<Component[]>([]);
@@ -118,9 +325,10 @@ export default function AdminComponentsPage() {
   const [editingComponent, setEditingComponent] = useState<Component | null>(null);
   const [detailComp, setDetailComp] = useState<Component | null>(null);
 
+  const initialStage = searchParams.get("stage") || "";
   const [filters, setFilters] = useState({
     search: "",
-    stage: "",
+    stage: initialStage,
     status: "",
     published: "",
     startDate: "",
@@ -146,7 +354,7 @@ export default function AdminComponentsPage() {
     tags: "",
     sortOrder: 0,
     isPublished: true,
-    estimatedTokens: 5,
+    estimatedModelTokens: 5,
     errors: {},
   });
 
@@ -219,11 +427,10 @@ export default function AdminComponentsPage() {
     return <IconComp className="w-5 h-5 text-white" />;
   };
 
-  // 渲染阶段中文 Label
-  const getStageCNLabel = (key?: string) => {
+  // 从接口返回的真实分类数据中查找阶段中文名
+  const getCategoryName = (key?: string) => {
     if (!key) return "通用组件";
-    const upperKey = key.toUpperCase();
-    return categoryCNMap[upperKey] || (upperKey.includes("_") ? upperKey : key);
+    return categories.find((c) => c.key === key)?.name || key;
   };
 
   // 加载真实组件数据 (从数据库读取，带分页)
@@ -265,6 +472,28 @@ export default function AdminComponentsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 新建阶段分类（用于表单下拉中直接新增）
+  const createCategory = async (name: string) => {
+    const authToken = getAuthToken();
+    const res = await fetch("/api/admin/stages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || "创建阶段分类失败");
+    }
+
+    const data = await res.json();
+    await loadComponents();
+    return data.data.key as string;
   };
 
   // 加载真实全局统计数据
@@ -381,7 +610,7 @@ export default function AdminComponentsPage() {
       tags: "需求, 自动化",
       sortOrder: 0,
       isPublished: true,
-      estimatedTokens: 5,
+      estimatedModelTokens: 5,
       errors: {},
     });
     setShowCreateModal(true);
@@ -403,7 +632,7 @@ export default function AdminComponentsPage() {
       tags: component.tags || "",
       sortOrder: component.sortOrder,
       isPublished: component.isPublished,
-      estimatedTokens: component.estimatedTokens || 5,
+      estimatedModelTokens: component.estimatedModelTokens || 5,
       errors: {},
     });
     setEditingComponent(component);
@@ -416,10 +645,14 @@ export default function AdminComponentsPage() {
 
     if (!formData.name || !formData.name.trim()) {
       newErrors.name = "请输入组件名称";
+    } else if (formData.name.trim().length > MAX_COMPONENT_NAME_LENGTH) {
+      newErrors.name = `组件名称最多 ${MAX_COMPONENT_NAME_LENGTH} 字`;
     }
 
     if (!formData.description || !formData.description.trim()) {
       newErrors.description = "请输入组件功能职责描述";
+    } else if (formData.description.trim().length > MAX_COMPONENT_DESCRIPTION_LENGTH) {
+      newErrors.description = `功能职责描述最多 ${MAX_COMPONENT_DESCRIPTION_LENGTH} 字`;
     }
 
     if (!formData.category || !formData.category.trim()) {
@@ -752,7 +985,7 @@ export default function AdminComponentsPage() {
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
-                      {getStageCNLabel(stage)} ({stageCount})
+                      {getCategoryName(stage)} ({stageCount})
                     </button>
                   );
                 })}
@@ -882,7 +1115,7 @@ export default function AdminComponentsPage() {
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-600 bg-white">
                     {components.map((component) => {
                       const isPub = component.isPublished;
-                      const estimatedTokens = component.estimatedTokens || 5;
+                      const estimatedModelTokens = component.estimatedModelTokens || 5;
 
                       return (
                         <tr
@@ -924,14 +1157,14 @@ export default function AdminComponentsPage() {
 
                           <td className="py-3.5 px-3 whitespace-nowrap font-bold">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-[11px]">
-                              {getStageCNLabel(component.category || component.type)}
+                              {getCategoryName(component.category || component.type)}
                             </span>
                           </td>
 
                           <td className="py-3.5 px-3 font-mono font-black text-slate-800 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 text-[11px]">
                               <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                              {estimatedTokens} 算力点 (¥{(estimatedTokens * 0.01).toFixed(2)})
+                              {estimatedModelTokens} 算力点 (¥{(estimatedModelTokens * 0.01).toFixed(2)})
                             </span>
                           </td>
 
@@ -1129,11 +1362,11 @@ export default function AdminComponentsPage() {
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-blue-500 uppercase">领域分类阶段</div>
-                  <div className="text-xs font-black text-slate-800">{getStageCNLabel(detailComp.category || detailComp.type)}</div>
+                  <div className="text-xs font-black text-slate-800">{getCategoryName(detailComp.category || detailComp.type)}</div>
                 </div>
                 <div className="p-3 bg-amber-50/60 border border-amber-100 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-amber-600 uppercase">分配所需算力点数</div>
-                  <div className="text-xs font-black text-slate-800">{detailComp.estimatedTokens || 5} 算力点 (折合 ¥{((detailComp.estimatedTokens || 5) * 0.01).toFixed(2)} 元)</div>
+                  <div className="text-xs font-black text-slate-800">{detailComp.estimatedModelTokens || 5} 算力点 (折合 ¥{((detailComp.estimatedModelTokens || 5) * 0.01).toFixed(2)} 元)</div>
                 </div>
               </div>
 
@@ -1219,6 +1452,7 @@ export default function AdminComponentsPage() {
                   </label>
                   <input
                     type="text"
+                    maxLength={MAX_COMPONENT_NAME_LENGTH}
                     value={formData.name}
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
@@ -1226,9 +1460,14 @@ export default function AdminComponentsPage() {
                     placeholder="如：后端数据接口自动化开发组件"
                     className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold transition-all bg-slate-50/50 focus:bg-white"
                   />
-                  {formData.errors?.name && (
-                    <p className="mt-1 text-[11px] text-red-500 font-bold">{formData.errors.name}</p>
-                  )}
+                  <div className="mt-1 flex items-center justify-between">
+                    {formData.errors?.name && (
+                      <p className="text-[11px] text-red-500 font-bold">{formData.errors.name}</p>
+                    )}
+                    <span className={`ml-auto text-[10px] font-medium ${formData.name.length >= MAX_COMPONENT_NAME_LENGTH ? "text-red-500" : "text-slate-400"}`}>
+                      {formData.name.length}/{MAX_COMPONENT_NAME_LENGTH}
+                    </span>
+                  </div>
                 </div>
 
                 <div>
@@ -1236,6 +1475,7 @@ export default function AdminComponentsPage() {
                     功能职责描述 <span className="text-red-500">*</span>
                   </label>
                   <textarea
+                    maxLength={MAX_COMPONENT_DESCRIPTION_LENGTH}
                     value={formData.description}
                     onChange={(e) =>
                       setFormData({
@@ -1249,9 +1489,14 @@ export default function AdminComponentsPage() {
                       formData.errors?.description ? "border-red-500 bg-red-50/30" : "border-slate-200 bg-slate-50/50 focus:bg-white"
                     }`}
                   />
-                  {formData.errors?.description && (
-                    <p className="mt-1 text-[11px] text-red-500 font-bold">{formData.errors.description}</p>
-                  )}
+                  <div className="mt-1 flex items-center justify-between">
+                    {formData.errors?.description && (
+                      <p className="text-[11px] text-red-500 font-bold">{formData.errors.description}</p>
+                    )}
+                    <span className={`ml-auto text-[10px] font-medium ${formData.description.length >= MAX_COMPONENT_DESCRIPTION_LENGTH ? "text-red-500" : "text-slate-400"}`}>
+                      {formData.description.length}/{MAX_COMPONENT_DESCRIPTION_LENGTH}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1259,25 +1504,20 @@ export default function AdminComponentsPage() {
                     <label className="block text-xs font-bold text-slate-700 mb-1">
                       所属领域分类（阶段） <span className="text-red-500">*</span>
                     </label>
-                    <select
+                    <CategorySelect
+                      categories={categories}
                       value={formData.category}
-                      onChange={(e) =>
+                      onChange={(key) =>
                         setFormData({
                           ...formData,
-                          category: e.target.value,
-                          type: e.target.value,
+                          category: key,
+                          type: key,
                           errors: { ...(formData.errors || {}), category: "" },
                         })
                       }
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-slate-50/50 focus:bg-white"
-                    >
-                      <option value="">请选择领域分类</option>
-                      {categories.map((cat) => (
-                        <option key={cat.key} value={cat.key}>
-                          {cat.name} ({getStageCNLabel(cat.key)})
-                        </option>
-                      ))}
-                    </select>
+                      onCreate={createCategory}
+                      placeholder="请选择领域分类"
+                    />
                   </div>
 
                   <div>
@@ -1289,11 +1529,11 @@ export default function AdminComponentsPage() {
                       type="number"
                       min={1}
                       max={100}
-                      value={formData.estimatedTokens}
+                      value={formData.estimatedModelTokens}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          estimatedTokens: parseInt(e.target.value) || 1,
+                          estimatedModelTokens: parseInt(e.target.value) || 1,
                         })
                       }
                       className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-mono font-bold transition-all bg-slate-50/50 focus:bg-white"
@@ -1308,7 +1548,7 @@ export default function AdminComponentsPage() {
                     <span>算力点与人民币换算规则：1 算力点 = ¥0.01 元</span>
                   </div>
                   <div className="font-mono text-amber-700 bg-white px-2.5 py-1 rounded-lg border border-amber-200 shadow-2xs">
-                    当前配置：{formData.estimatedTokens || 0} 点 = ¥{((formData.estimatedTokens || 0) * 0.01).toFixed(2)} 元 / 次
+                    当前配置：{formData.estimatedModelTokens || 0} 点 = ¥{((formData.estimatedModelTokens || 0) * 0.01).toFixed(2)} 元 / 次
                   </div>
                 </div>
 

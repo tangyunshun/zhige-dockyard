@@ -24,8 +24,8 @@ import {
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { getAuthToken } from "@/utils/auth";
-import { formatTokenBalance, isUnlimitedToken } from "@/utils/quota";
-import { formatYuanFromPoints, formatDiscountLabel } from "@/lib/point-rate";
+import { formatTokenBalance } from "@/utils/quota";
+import { formatDiscountLabel } from "@/lib/point-rate";
 import { getMembershipLevelIcon } from "@/utils/membership-icon";
 import WorkspacePlanSection from "@/components/pricing/WorkspacePlanSection";
 
@@ -53,16 +53,8 @@ interface MembershipLevelRow {
   maxStorage: number;
   tokenLimit: number;
   tokenPackDiscount: number;
+  features?: string[];
   sortOrder: number;
-}
-
-/** 推算次月 1 日，作为算力重置日期的兜底值 */
-function getNextMonthFirstDay(): string {
-  const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(
-    next.getDate()
-  ).padStart(2, "0")}`;
 }
 
 /** 格式化账单时间：YYYY-MM-DD HH:mm */
@@ -133,10 +125,8 @@ export default function BillingCenterPage() {
   const [workspaceQuota, setWorkspaceQuota] = useState<any>({
     membershipLevel: "FREE",
     membershipLevelName: "免费体验版",
-    tokenBalance: 100,
-    tokenLimit: 100,
+    tokenBalance: 0,
     totalUsedTokens: 0,
-    renewDate: getNextMonthFirstDay(),
   });
   const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
   /** 账单 API 错误信息（用于表格顶部显式提示用户） */
@@ -231,15 +221,12 @@ export default function BillingCenterPage() {
       if (quotaRes.ok) {
         const qData = await quotaRes.json();
         if (qData.success) {
-          const resetAt = qData.resetAt ? qData.resetAt.slice(0, 10) : getNextMonthFirstDay();
           setWorkspaceQuota({
             membershipLevel: qData.membershipLevel || "FREE",
             membershipLevelName:
               qData.membershipLevelName || qData.membershipLevel || "免费体验版",
-            tokenBalance: (typeof qData.tokenBalance === "number" && qData.tokenBalance > 0) ? qData.tokenBalance : ((qData.membershipLevel || "FREE") === "FREE" ? 100 : (qData.tokenBalance ?? 0)),
-            tokenLimit: qData.tokenLimit ?? ((qData.membershipLevel || "FREE") === "FREE" ? 100 : 10000),
+            tokenBalance: Number(qData.tokenBalance) > 0 ? Number(qData.tokenBalance) : 0,
             totalUsedTokens: qData.totalUsedTokens || 0,
-            renewDate: resetAt,
           });
         }
       }
@@ -478,8 +465,10 @@ export default function BillingCenterPage() {
                     </div>
                   </div>
                   <div className="pt-4 mt-4 border-t border-white/20 flex items-center justify-between text-xs">
-                    <span className="text-white/80">算力月度重置日</span>
-                    <span className="font-black">{workspaceQuota.renewDate}</span>
+                    <span className="text-white/80">当前可用算力余额</span>
+                    <span className="font-black">
+                      {formatTokenBalance(workspaceQuota.tokenBalance)} 点
+                    </span>
                   </div>
                 </div>
                 <button
@@ -624,7 +613,7 @@ export default function BillingCenterPage() {
 
             {/* 卡片矩阵：算力余额 / 会员权益 / 发票 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-              {/* 卡 1：可用算力 Token 余额 */}
+              {/* 卡 1：可用算力点余额 */}
               <div className="bg-white/80 backdrop-blur-md rounded-xl border border-slate-200/80 p-5 shadow-xs relative overflow-hidden flex flex-col justify-between">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl -mr-6 -mt-6 pointer-events-none" />
                 <div>
@@ -636,36 +625,16 @@ export default function BillingCenterPage() {
                       实时扣减中
                     </span>
                   </div>
-                  <h3 className="text-2xl font-black text-[#2b6cb0] tracking-tight mb-1 font-mono flex items-baseline gap-1">
+                  <h3 className="text-2xl font-black text-[#2b6cb0] tracking-tight mb-2 font-mono flex items-baseline gap-1">
                     {formatTokenBalance(workspaceQuota.tokenBalance)}
-                    <span className="text-xs font-bold text-slate-400 font-sans">Tokens</span>
+                    <span className="text-xs font-bold text-slate-400 font-sans">算力点</span>
                   </h3>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-3 mb-1">
-                    <div
-                      className="bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${
-                          isUnlimitedToken(workspaceQuota.tokenBalance)
-                            ? 100
-                            : Math.min(
-                                100,
-                                Math.max(
-                                  8,
-                                  (workspaceQuota.tokenBalance /
-                                    (workspaceQuota.tokenLimit || 10000)) *
-                                    100
-                                )
-                              )
-                        }%`,
-                      }}
-                    />
-                  </div>
                   <p className="text-[10px] text-slate-400 font-medium">
                     累计已消耗{" "}
                     <strong className="text-slate-600">
                       {formatTokenBalance(workspaceQuota.totalUsedTokens)}
                     </strong>{" "}
-                    Tokens
+                    算力点
                   </p>
                 </div>
                 <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
@@ -676,9 +645,6 @@ export default function BillingCenterPage() {
                     <Zap className="w-3.5 h-3.5 fill-[#3182ce]" />
                     查看充值方案
                   </button>
-                  <span className="text-[10px] text-slate-400 font-medium">
-                    月重置 {workspaceQuota.renewDate}
-                  </span>
                 </div>
               </div>
 
@@ -688,35 +654,35 @@ export default function BillingCenterPage() {
                 <div>
                   <div className="flex justify-between items-start mb-3">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      会员月度权益
+                      会员权益速览
                     </span>
                     <span className="text-[11px] font-extrabold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
                       {memberConfig?.nameZh || "免费版"}
                     </span>
                   </div>
-                  <h3 className="text-base font-black text-slate-800 mb-1">
-                    每月算力额度{" "}
-                    <span className="font-mono text-[#2b6cb0]">
-                      {memberConfig?.tokenLimit === -1
-                        ? "无限"
-                        : formatTokenBalance(memberConfig?.tokenLimit)}
-                    </span>{" "}
-                    Tokens
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                    {memberConfig && memberConfig.tokenLimit !== -1
-                      ? `折合约 ¥${formatYuanFromPoints(memberConfig.tokenLimit)} 的算力消耗`
-                      : "当前等级算力额度无上限"}
-                    {memberConfig && memberConfig.tokenPackDiscount > 0 && (
-                      <span className="block mt-1.5">
-                        加油包会员折扣：
-                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100 font-black ml-1">
-                          <BadgePercent className="w-3 h-3" />
-                          {formatDiscountLabel(memberConfig.tokenPackDiscount)}
-                        </span>
-                      </span>
+                  <div className="text-xs text-slate-500 font-medium leading-relaxed space-y-1.5">
+                    {memberConfig?.features?.length ? (
+                      memberConfig.features.slice(0, 3).map((f, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
+                          <CheckCircle2 className="w-3 h-3 text-[#3182ce] shrink-0 mt-0.5" />
+                          <span>{f}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400">前往价格页查看完整会员权益</div>
                     )}
-                  </p>
+                    {memberConfig && memberConfig.tokenPackDiscount > 0 && (
+                      <div className="flex items-start gap-1.5">
+                        <BadgePercent className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
+                        <span>
+                          加油包会员折扣：
+                          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100 font-black ml-1">
+                            {formatDiscountLabel(memberConfig.tokenPackDiscount)}
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-[10px] text-slate-400 font-medium">

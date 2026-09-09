@@ -525,7 +525,7 @@ export default function PersonalTasksManagementPage() {
     if (isSubmittingTask) return;
 
     const targetComp = componentCatalog.find((c) => c.id === createTaskComponentId);
-    const estimatedCost = Number(targetComp?.estimatedTokens) || 5;
+    const estimatedCost = Number(targetComp?.estimatedModelTokens) || 5;
 
     // 统一任务输入契约：按组件 inputMode 校验输入来源（文本 / 文件任一满足即可）
     const tInputMode = targetComp?.inputMode || "text";
@@ -571,7 +571,7 @@ export default function PersonalTasksManagementPage() {
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
-        toast.success(`任务已执行完成，当前空间剩余 ${data.tokenBalance} 点`);
+        toast.success(`任务已执行完成，当前空间剩余 ${data.tokenBalance} 算力点`);
         setShowCreateTaskModal(false);
         const taskNameCreated = createTaskName.trim() || `任务 #${String(data.task?.id || "").substring(0, 6)}`;
         setCreateTaskName("");
@@ -1471,12 +1471,12 @@ export default function PersonalTasksManagementPage() {
 
               {(() => {
                 const selectedCatalogComp = componentCatalog.find((c) => c.id === createTaskComponentId);
-                const cost = Number(selectedCatalogComp?.estimatedTokens) || 5;
+                const cost = Number(selectedCatalogComp?.estimatedModelTokens) || 5;
                 return (
                   <div className="flex items-center gap-1.5 bg-blue-50/80 border border-blue-100 rounded-xl px-3 py-2">
                     <ZapIcon className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
                     <p className="text-[10px] font-bold text-[#3182ce]">
-                      本次任务预计消耗 {cost} 点资源（当前空间余额见顶部）。
+                      本次任务预计消耗 {cost} 算力点资源（当前空间余额见顶部）。
                     </p>
                   </div>
                 );

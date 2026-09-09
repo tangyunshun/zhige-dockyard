@@ -6,8 +6,9 @@ import type { Prisma } from "@prisma/client";
  *
  * 账户模型（三级归属，均通过 pointgrant 分桶承载）：
  *   - WALLET        用户钱包：用户在线充值/退款所得，跨空间通用（个人空间、企业空间均可消费）
- *   - PERSONAL_GIFT 个人空间专属：新用户注册赠送，仅可在该用户的个人空间消费
- *   - WORKSPACE     空间共享池：企业线下充值/人工入账所得，仅该企业空间成员可消费
+ *   - PERSONAL_GIFT 个人空间专属：新用户注册福利（注册当月起连续 3 个自然月，每月 100 点，
+ *                    当月有效、月底清零），仅可在该用户的个人空间消费
+ *   - WORKSPACE     空间共享池：线下充值/人工入账所得（购买所得），仅空间成员可消费
  *
  * 消耗规则（分桶 FIFO）：按「到期时间最早优先，无到期日的最后」逐桶扣减，
  * 保证用户快过期的赠送点优先被消耗，避免过期清零造成浪费。
@@ -16,10 +17,10 @@ import type { Prisma } from "@prisma/client";
  * 为其账户级汇总快照；所有变动在同一事务内完成，并写入 pointledger 流水（含余额快照）。
  */
 
-/** 新用户注册赠送算力点 */
+/** 新用户注册福利：每月赠送算力点数 */
 export const NEW_USER_GIFT_POINTS = 100;
-/** 赠送算力点有效期（天）：3 个月 */
-export const GIFT_VALID_DAYS = 90;
+/** 注册福利发放月数：注册当月起连续 3 个自然月（第 4 个月起永久停发，用完自费充值） */
+export const REGISTER_GIFT_MONTHS = 3;
 /** 到期提醒提前天数 */
 export const EXPIRE_REMIND_DAYS = 7;
 /** 无限额度标记值 */
@@ -795,14 +796,46 @@ export async function getBalanceSummary(
   };
 }
 
-/** 新用户赠送：100 点进入个人空间专属桶，3 个月有效（幂等） */
+/**
+ * 注册福利发放：注册当月起连续 REGISTER_GIFT_MONTHS(=3) 个自然月，每月发放
+ * NEW_USER_GIFT_POINTS(=100) 点至个人空间专属桶（PERSONAL_GIFT）。
+ * - 当月有效：每笔到期时间为下月 1 日 0 点，当月未用完自动清零，不跨月累计；
+ * - 按月幂等：idempotencyKey = GIFT_REGISTER:{userId}:{yyyy-MM}，同月重复调用自动跳过；
+ * - 超窗停发：注册当月（含）之后的第 4 个自然月起不再发放，用尽请自行充值。
+ */
 export async function grantNewUserGift(params: {
   userId: string;
   workspaceId: string;
   workspaceName?: string | null;
   userEmail?: string | null;
 }): Promise<GrantResult> {
-  const expiresAt = new Date(Date.now() + GIFT_VALID_DAYS * 24 * 60 * 60 * 1000);
+  const skippedResult: GrantResult = {
+    skipped: true,
+    ledgerId: "",
+    grantId: "",
+    balanceAfter: 0,
+  };
+
+  const user = await prisma.user.findUnique({
+    where: { id: params.userId },
+    select: { createdAt: true },
+  });
+  if (!user) return skippedResult;
+
+  const now = new Date();
+  // 注册月与当前月按「自然月序号」比较
+  const regMonth = user.createdAt.getFullYear() * 12 + user.createdAt.getMonth();
+  const curMonth = now.getFullYear() * 12 + now.getMonth();
+  const monthIndex = curMonth - regMonth; // 0=注册当月, 1=第 2 个月, 2=第 3 个月
+  if (monthIndex < 0 || monthIndex >= REGISTER_GIFT_MONTHS) {
+    // 注册前（数据异常）或注册满 3 个月后：永久停发
+    return skippedResult;
+  }
+
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  // 当月福利月底清零：到期 = 次月 1 日 0 点整
+  const expiresAt = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+
   return grantPoints({
     scope: "PERSONAL_GIFT",
     userId: params.userId,
@@ -810,97 +843,120 @@ export async function grantNewUserGift(params: {
     points: NEW_USER_GIFT_POINTS,
     sourceType: "GIFT_REGISTER",
     type: "GIFT_REGISTER",
-    title: `新用户注册赠送 ${NEW_USER_GIFT_POINTS} 算力点`,
+    title: `注册福利 ${NEW_USER_GIFT_POINTS} 算力点（第 ${monthIndex + 1}/${REGISTER_GIFT_MONTHS} 个月）`,
     expiresAt,
     workspaceType: "PERSONAL",
     workspaceName: params.workspaceName ?? null,
     userEmail: params.userEmail ?? null,
     paymentMethod: "SYSTEM",
-    remark: `赠送算力点有效期 ${GIFT_VALID_DAYS} 天，到期未使用将自动清零；仅限个人空间使用`,
-    idempotencyKey: `GIFT_REGISTER:${params.userId}`,
+    remark: `注册福利：注册当月起连续 ${REGISTER_GIFT_MONTHS} 个月每月赠送 ${NEW_USER_GIFT_POINTS} 点，当月有效、月底未用完自动清零，仅限个人空间使用；第 ${REGISTER_GIFT_MONTHS} 个月结束后不再赠送，用完请自行充值`,
+    idempotencyKey: `GIFT_REGISTER:${params.userId}:${ym}`,
   });
 }
 
 /**
- * 会员月度基础额度补记账（「直接写 workspacequota.tokenBalance」的初始化 / 月度重置场景专用）。
- *
- * 背景：建个人空间 / 月度重置时，历史代码直接把 tokenBalance 写为会员 tokenLimit（未走 grantPoints），
- * 导致 pointledger / pointgrant 为空，管理员「算力总账与对账」出现理论(流水)与实际的差异。
- * 本函数在配额行已由调用方直接设置后，补齐对应 pointgrant 分桶 + pointledger 入账流水
- * （方向 IN、类型 MEMBERSHIP_GRANT），使对账一致。幂等：同一 idempotencyKey 只记一次。
+ * 企业共享池回收至个人钱包（单事务原子记账，供空间内回收与平台后台代回收共用）。
+ * 要求：目标 workspace 必须为 ENTERPRISE；userId 为接收钱包的所有者。
+ * 记账：企业池递减 + 个人钱包递增 + 新建 WALLET 分桶（保证点数可正常花费）+ 双向流水。
  */
-export async function recordMembershipBaseGrant(
-  params: {
-    workspaceId: string;
-    workspaceName?: string | null;
-    workspaceType?: string | null;
-    points: number;
-    idempotencyKey: string;
-    remark?: string | null;
-    createdAt?: Date;
-  },
-  tx?: Prisma.TransactionClient,
-): Promise<void> {
-  const points = Math.floor(Number(params.points) || 0);
-  if (points <= 0) return;
-  const client = tx ?? prisma;
+export async function recycleEnterprisePool(params: {
+  workspaceId: string;
+  userId: string;
+  points: number;
+  operatorId?: string | null;
+}): Promise<{ walletBalance: number; poolBalance: number }> {
+  const amount = Math.floor(Number(params.points));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_AMOUNT");
 
-  const exist = await client.pointledger.findFirst({
-    where: { idempotencyKey: params.idempotencyKey },
-    select: { id: true },
-  });
-  if (exist) return;
+  return prisma.$transaction(async (tx) => {
+    const ws = await tx.workspace.findUnique({
+      where: { id: params.workspaceId },
+      select: { id: true, name: true, type: true },
+    });
+    if (ws?.type !== "ENTERPRISE") throw new Error("NOT_ENTERPRISE");
 
-  const now = new Date();
-  const createdAt = params.createdAt ?? now;
-  const title = `会员月度算力配额 ${points} 点`;
-  const remark = params.remark ?? "会员月度基础算力额度补记账";
+    const quota = await tx.workspacequota.findUnique({
+      where: { workspaceId: params.workspaceId },
+      select: { tokenBalance: true },
+    });
+    const current = Number(quota?.tokenBalance ?? 0);
+    if (current === -1) throw new Error("UNLIMITED");
+    if (current < amount) throw new Error("INSUFFICIENT");
 
-  await client.pointgrant.create({
-    data: {
-      id: crypto.randomUUID(),
-      scope: "WORKSPACE",
-      userId: null,
-      workspaceId: params.workspaceId,
-      points: BigInt(points),
-      remaining: BigInt(points),
-      sourceType: "MEMBERSHIP",
-      sourceId: null,
-      expiresAt: null,
-      status: "ACTIVE",
-      operatorId: null,
-      title,
-      remark,
-      createdAt,
-      updatedAt: now,
-    },
-  });
+    // 1. 企业共享池递减
+    await tx.workspacequota.update({
+      where: { workspaceId: params.workspaceId },
+      data: { tokenBalance: { decrement: BigInt(amount) }, updatedAt: new Date() },
+    });
 
-  await client.pointledger.create({
-    data: {
-      id: crypto.randomUUID(),
-      direction: "IN",
-      type: "MEMBERSHIP_GRANT",
-      scope: "WORKSPACE",
-      userId: null,
-      userEmail: null,
-      workspaceId: params.workspaceId,
-      workspaceName: params.workspaceName ?? null,
-      workspaceType: params.workspaceType ?? null,
-      operatorId: null,
-      points: BigInt(points),
-      balanceAfter: BigInt(points),
-      amountCents: 0,
-      paymentMethod: "SYSTEM",
-      orderNo: null,
-      grantId: null,
-      componentId: null,
-      componentName: null,
-      taskId: null,
-      title,
-      remark,
-      idempotencyKey: params.idempotencyKey,
-      createdAt,
-    },
+    // 2. 个人钱包递增（不存在则创建）
+    const wallet = await tx.userwallet.upsert({
+      where: { userId: params.userId },
+      create: {
+        id: crypto.randomUUID(),
+        userId: params.userId,
+        balance: BigInt(amount),
+        updatedAt: new Date(),
+      },
+      update: { balance: { increment: BigInt(amount) }, updatedAt: new Date() },
+    });
+
+    // 3. 个人钱包侧新建 WALLET 分桶，确保回收点数可正常花费
+    const grant = await tx.pointgrant.create({
+      data: {
+        id: crypto.randomUUID(),
+        scope: "WALLET",
+        userId: params.userId,
+        points: BigInt(amount),
+        remaining: BigInt(amount),
+        sourceType: "MANUAL",
+        sourceId: `RECYCLE:${params.workspaceId}:${Date.now()}`,
+        status: "ACTIVE",
+        operatorId: params.operatorId ?? null,
+        title: `企业池回收 ${amount.toLocaleString()} 算力点至个人钱包`,
+        remark: `从企业空间「${ws.name || params.workspaceId}」回收`,
+        updatedAt: new Date(),
+      },
+    });
+
+    // 4. 双向流水记账（OUT 企业池 / IN 个人钱包）
+    await tx.pointledger.create({
+      data: {
+        id: crypto.randomUUID(),
+        direction: "OUT",
+        type: "MANUAL_ADJUST",
+        scope: "WORKSPACE",
+        userId: params.userId,
+        workspaceId: params.workspaceId,
+        workspaceType: ws.type,
+        workspaceName: ws.name,
+        operatorId: params.operatorId ?? null,
+        points: BigInt(amount),
+        balanceAfter: BigInt(current - amount),
+        grantId: null,
+        title: `企业池回收 ${amount.toLocaleString()} 算力点至个人钱包`,
+        remark: `从企业空间「${ws.name || params.workspaceId}」回收至个人钱包`,
+      },
+    });
+    await tx.pointledger.create({
+      data: {
+        id: crypto.randomUUID(),
+        direction: "IN",
+        type: "MANUAL_ADJUST",
+        scope: "WALLET",
+        userId: params.userId,
+        workspaceId: null,
+        workspaceType: null,
+        workspaceName: null,
+        operatorId: params.operatorId ?? null,
+        points: BigInt(amount),
+        balanceAfter: wallet.balance,
+        grantId: grant.id,
+        title: `企业池回收 ${amount.toLocaleString()} 算力点至个人钱包`,
+        remark: `来自企业空间「${ws.name || params.workspaceId}」`,
+      },
+    });
+
+    return { walletBalance: Number(wallet.balance), poolBalance: current - amount };
   });
 }

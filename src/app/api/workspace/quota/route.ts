@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { getMembershipTokenLimit } from "@/lib/quota-token";
 
 export async function GET(request: NextRequest) {
   try {
@@ -109,49 +108,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const defaultLimit = Number(await getMembershipTokenLimit(user.membershipLevel));
-    const targetLimit = defaultLimit > 0 ? defaultLimit : 100;
-
-    // 无配额记录时回退到会员等级真实 tokenLimit，不再写死 10000
+    // 无配额记录时一律按实际余额 0 展示，不回退显示会员 tokenLimit（免费额度只来自注册福利或充值/购买）
     let currentTokenBalance = workspaceQuotaRecord
       ? Number(workspaceQuotaRecord.tokenBalance)
-      : targetLimit;
+      : 0;
 
-    // 自愈哨兵：若免费用户当前空间算力为 0，自动补全 100 算力点体验额度并持久化
-    if ((user.membershipLevel || "FREE") === "FREE" && currentTokenBalance <= 0) {
-      currentTokenBalance = 100;
-      if (workspaceQuotaRecord) {
-        try {
-          await prisma.workspacequota.update({
-            where: { id: workspaceQuotaRecord.id },
-            data: { tokenBalance: BigInt(100), updatedAt: new Date() },
-          });
-          workspaceQuotaRecord.tokenBalance = BigInt(100);
-        } catch (e) {
-          console.warn("[/api/workspace/quota] 补偿 100 算力点非致命提示:", e);
-        }
-      } else if (workspaceIdParam) {
-        try {
-          workspaceQuotaRecord = await prisma.workspacequota.create({
-            data: {
-              id: crypto.randomUUID(),
-              workspaceId: workspaceIdParam,
-              membershipLevelId: "FREE",
-              tokenBalance: BigInt(100),
-              updatedAt: new Date(),
-            },
-          });
-        } catch (e) {
-          console.warn("[/api/workspace/quota] 补创建配额记录非致命提示:", e);
-        }
+    // 自愈仅做结构性修复：FREE 用户缺配额记录时补建 0 额度配额，不再赠送/补偿任何免费算力
+    if (!workspaceQuotaRecord && (user.membershipLevel || "FREE") === "FREE" && workspaceIdParam) {
+      try {
+        workspaceQuotaRecord = await prisma.workspacequota.create({
+          data: {
+            id: crypto.randomUUID(),
+            workspaceId: workspaceIdParam,
+            membershipLevelId: "FREE",
+            tokenBalance: BigInt(0),
+            updatedAt: new Date(),
+          },
+        });
+      } catch (e) {
+        console.warn("[/api/workspace/quota] 补创建配额记录非致命提示:", e);
       }
     }
 
-    // 累计历史算力消耗（真实统计）：各组件使用次数 × 组件目录 estimatedTokens 基准
+    // 累计历史算力消耗（真实统计）：各组件使用次数 × 组件目录 estimatedModelTokens 基准
     const usageTokenBase = await prisma.componentcatalog.findMany({
-      select: { id: true, estimatedTokens: true },
+      select: { id: true, estimatedModelTokens: true },
     });
-    const usageTokenMap = new Map(usageTokenBase.map((c) => [c.id, Number(c.estimatedTokens)]));
+    const usageTokenMap = new Map(usageTokenBase.map((c) => [c.id, Number(c.estimatedModelTokens)]));
     const usageRows = await prisma.componentusage.findMany({
       where: workspaceIdParam ? { workspaceId: workspaceIdParam } : { userId },
       select: { componentId: true },
@@ -161,7 +144,7 @@ export async function GET(request: NextRequest) {
       0
     );
 
-    // 算力重置日期：优先取空间配额真实的 resetAt，缺省返回 null 交由前端动态推算次月 1 日
+    // 历史遗留字段：resetAt 来自旧「月度自动补额」模型，新代码不再据此向用户展示“重置日”
     const resetAt = workspaceQuotaRecord?.resetAt
       ? workspaceQuotaRecord.resetAt.toISOString()
       : null;

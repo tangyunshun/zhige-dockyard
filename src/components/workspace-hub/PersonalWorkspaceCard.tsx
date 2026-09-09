@@ -223,7 +223,7 @@ export default function PersonalWorkspaceCard({
               <span>个人开发专属环境 · 已绑定 {workspace?.componentCount || 0} 个组件</span>
               <span className="inline-flex items-center gap-1 font-bold text-[#2b6cb0] bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60 text-[11px]">
                 <Zap className="w-3 h-3 fill-[#3182ce] text-[#3182ce]" />
-                <span>可用算力: {workspace?.quota?.tokenBalance ?? (workspace as any)?.workspacequota?.tokensRemaining ?? 100} 点</span>
+                <span>可用算力: {workspace?.quota?.tokenBalance ?? (workspace as any)?.workspacequota?.tokensRemaining ?? 100} 算力点</span>
               </span>
               {(() => {
                 if (!workspace) return null;

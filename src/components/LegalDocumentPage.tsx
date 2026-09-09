@@ -151,7 +151,9 @@ export default function LegalDocumentPage({
         const data = await res.json();
         setDoc(data.data);
       } else if (res.status === 404) {
-        setError(notFoundMessage);
+        // 404 时读取错误响应体，判断是否为「未发布/维护中」
+        const data = await res.json().catch(() => null);
+        setError(data?.unpublished ? data.error || "文档处于维护中，请等待恢复。" : notFoundMessage);
       } else {
         setError(loadFailedMessage);
       }

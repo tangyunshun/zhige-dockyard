@@ -133,7 +133,7 @@ export default function AdminRechargeOrdersPage() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 font-sans">
+    <div className="space-y-6 font-sans">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Banknote className="w-5 h-5 text-[#3182ce]" />
@@ -232,7 +232,7 @@ export default function AdminRechargeOrdersPage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-lg font-black font-mono text-[#3182ce]">{o.points.toLocaleString()} 点</div>
+                    <div className="text-lg font-black font-mono text-[#3182ce]">{o.points.toLocaleString()} 算力点</div>
                     <div className="text-[10px] font-bold text-slate-400">¥{(Number(o.amountCents) / 100).toFixed(2)}</div>
                   </div>
                 </button>
@@ -257,7 +257,7 @@ export default function AdminRechargeOrdersPage() {
               <Row label="空间" value={selected.workspaceName || "-"} />
               <Row label="入账范围" value={selected.scope === "WORKSPACE" ? "企业共享池" : "个人钱包"} />
               <Row label="申请人" value={selected.applicantName || "-"} />
-              <Row label="充值算力点" value={`${selected.points.toLocaleString()} 点`} highlight />
+              <Row label="充值算力点" value={`${selected.points.toLocaleString()} 算力点`} highlight />
               <Row label="应付金额" value={`¥${(Number(selected.amountCents) / 100).toFixed(2)}`} />
               <Row label="付款方式" value={PAYMENT_LABEL[selected.paymentMethod] || selected.paymentMethod} />
               {selected.invoiceTitle && <Row label="发票抬头" value={selected.invoiceTitle} />}

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 // Refresh Turbopack compilation cache
 import { prisma } from "@/lib/prisma";
-import { getMembershipTokenLimit } from "@/lib/quota-token";
-import { grantNewUserGift, recordMembershipBaseGrant } from "@/lib/credit-service";
+import { grantNewUserGift } from "@/lib/credit-service";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
@@ -389,37 +388,26 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
       ml = await prisma.membershiplevel.findFirst();
     }
     const mlId = ml?.id || "FREE";
-    // tokenLimit 一律从 membershiplevel 表读取真实值，不再写死档位数值
-    const tokenLimit = Number(await getMembershipTokenLimit(membershipLevel));
 
+    // 新空间算力 0 起步：不预置任何免费额度（注册福利统一由 grantNewUserGift 按“3 个月每月 100”发放），
+    // 用尽后须自费充值，杜绝“注册即送/月度补足”式白送
     await prisma.workspacequota.create({
       data: {
         id: crypto.randomUUID(),
         workspaceId: workspace.id,
         membershipLevelId: mlId,
-        tokenBalance: BigInt(tokenLimit),
+        tokenBalance: BigInt(0),
         updatedAt: now
       }
     });
 
-    // 会员基础额度补记账：quota 已直接写入 tokenLimit，此处补齐 grant+ledger，避免与流水对账出现差异
-    await recordMembershipBaseGrant({
-      workspaceId: workspace.id,
-      workspaceName: workspace.name,
-      workspaceType: "PERSONAL",
-      points: tokenLimit,
-      idempotencyKey: `MEMBERSHIP_BASE:${workspace.id}`,
-      remark: "注册自动开通个人空间时的会员基础算力额度",
-      createdAt: now,
-    }).catch((e) => console.warn("[注册] 会员基础额度补记账失败:", e));
-
-    // 新用户注册赠送 100 算力点：写入个人空间专属分桶（3 个月有效）+ 入账流水（幂等）
+    // 注册福利：注册当月自动发放首月 100 点（连续 3 个自然月、当月有效月底清零，幂等）
     await grantNewUserGift({
       userId,
       workspaceId: workspace.id,
       workspaceName: workspace.name,
       userEmail: email || null,
-    }).catch((e) => console.warn("[注册] 赠送新用户算力点非致命提示:", e));
+    }).catch((e) => console.warn("[注册] 发放注册福利非致命提示:", e));
 
     // 更新用户的 lastWorkspaceId
     await prisma.user.update({

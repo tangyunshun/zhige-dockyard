@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { recordMembershipBaseGrant } from "@/lib/credit-service";
+import { grantNewUserGift } from "@/lib/credit-service";
 
 /**
  * 计算下一个自然月初 (下个月 1 日 00:00:00)
@@ -10,7 +10,18 @@ export function getNextMonthResetDate(now: Date = new Date()): Date {
 }
 
 /**
- * 校验并自动重置【空间配额】与【成员月度算力额度】（跨自然月自动重置）
+ * 校验并执行【自然月级】的账户/用量维护（不产生任何免费算力额度）：
+ *
+ * 1. 注册福利：当本次请求发生在该用户自己的个人空间时，按「注册当月起连续 3 个自然月、
+ *    每月 100 点、当月有效月底清零」规则发放当月的注册福利（第 4 个月起自动停发）。
+ *    发放与订阅解耦：用户当月首次使用即到账，避免依赖定时任务。
+ *
+ * 2. 成员月度用量统计清零：仅将 workspacemember.monthlyTokenUsed 计数归零（这是用量统计，
+ *    不是赠送额度）；「用完自费充值」的余额不在此处做任何补足。
+ *
+ * 注意：历史上本函数会把空间余额「月度自动补足到会员 tokenLimit」并推后 resetAt，
+ * 等同于无上限白送算力，现已被移除。空间/钱包余额只增不减的来源仅剩：
+ * 在线充值、线下人工入账、购买所得与注册福利（限 3 个月）。
  */
 export async function checkAndResetQuotaCycle(
   prisma: PrismaClient,
@@ -19,46 +30,21 @@ export async function checkAndResetQuotaCycle(
 ) {
   const now = new Date();
 
-  // 1. 检查空间配额
-  const quota = await prisma.workspacequota.findUnique({
-    where: { workspaceId },
-    include: { membershiplevel: true },
+  // 1. 注册福利月度发放：仅当操作发生在该用户「自己的个人空间」内才触发
+  const ws = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { id: true, name: true, type: true, ownerId: true },
   });
-
-  if (quota) {
-    const isExpired = !quota.resetAt || quota.resetAt.getTime() <= now.getTime();
-    if (isExpired && quota.membershiplevel) {
-      const nextReset = getNextMonthResetDate(now);
-      const defaultTokenLimit = BigInt(quota.membershiplevel.tokenLimit || 1000);
-      const currentBalance = quota.tokenBalance;
-      const newTokenBalance = currentBalance < defaultTokenLimit ? defaultTokenLimit : currentBalance;
-
-      await prisma.workspacequota.update({
-        where: { workspaceId },
-        data: {
-          tokenBalance: newTokenBalance,
-          resetAt: nextReset,
-          updatedAt: now,
-        },
-      }).catch((e) => console.warn("[算力重置] 空间算力月度自动重置警告:", e));
-
-      // 月度重置把余额补足到会员默认额度的部分：补齐 grant+ledger，保持「流水理论余额」与「账户实际余额」对账一致
-      const topUpPoints = Number(newTokenBalance - currentBalance);
-      if (topUpPoints > 0) {
-        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-        await recordMembershipBaseGrant({
-          workspaceId,
-          workspaceName: null,
-          workspaceType: null,
-          points: topUpPoints,
-          idempotencyKey: `MEMBERSHIP_RESET:${workspaceId}:${ym}`,
-          remark: "空间算力月度自动重置补足至会员默认额度",
-        }).catch((e) => console.warn("[算力重置] 会员额度补记账警告:", e));
-      }
-    }
+  if (ws && ws.type === "PERSONAL" && ws.ownerId === userId) {
+    await grantNewUserGift({
+      userId,
+      workspaceId,
+      workspaceName: ws.name,
+      userEmail: null,
+    }).catch((e) => console.warn("[注册福利] 当月注册福利发放警告:", e));
   }
 
-  // 2. 检查成员额度
+  // 2. 成员月度用量统计清零（仅统计计数，非赠送）
   const member = await prisma.workspacemember.findUnique({
     where: { userId_workspaceId: { userId, workspaceId } },
   });
@@ -74,7 +60,7 @@ export async function checkAndResetQuotaCycle(
           monthlyTokenUsed: BigInt(0),
           quotaResetAt: nextReset,
         },
-      }).catch((e) => console.warn("[算力重置] 成员算力月度使用量自动重置警告:", e));
+      }).catch((e) => console.warn("[算力重置] 成员算力月度使用量自动清零警告:", e));
     }
   }
 }

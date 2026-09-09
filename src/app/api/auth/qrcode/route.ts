@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getMembershipTokenLimit } from "@/lib/quota-token";
 import { grantNewUserGift } from "@/lib/credit-service";
 import { SignJWT } from "jose";
 
@@ -110,19 +109,18 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // 真实赋予新注册/首次入驻用户 100 算力点免费组件体验额度
-        const freeTokenLimit = await getMembershipTokenLimit("FREE");
+        // 新空间算力 0 起步：不预置免费额度（注册福利由 grantNewUserGift 按月发放）
         await prisma.workspacequota.create({
           data: {
             id: crypto.randomUUID(),
             workspaceId: newWs.id,
             membershipLevelId: "FREE",
-            tokenBalance: freeTokenLimit,
+            tokenBalance: BigInt(0),
             updatedAt: new Date(),
           },
         }).catch((e) => console.warn("[qrcode] 创建默认空间配额警告:", e));
 
-        // 新用户赠送 100 算力点：写入个人空间专属分桶（3 个月有效）+ 入账流水（幂等）
+        // 注册福利：注册窗口内发放当月 100 点（当月有效）
         await grantNewUserGift({
           userId: user.id,
           workspaceId: newWs.id,

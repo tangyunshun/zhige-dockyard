@@ -325,7 +325,7 @@ export default function ComponentDispatcherPanel({
                 </span>
                 <div className="flex items-center gap-1 text-[9px] text-slate-400 font-bold">
                   <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
-                  <span>估算消耗 {comp.estimatedTokens} 额度/次</span>
+                  <span>估算消耗 {comp.estimatedModelTokens} 额度/次</span>
                 </div>
               </div>
               
@@ -586,7 +586,7 @@ export default function ComponentDispatcherPanel({
                               <div className="text-[9px] text-slate-400 font-bold mt-0.5 flex items-center gap-1.5">
                                 <span>算力:</span>
                                 <span className={tokenBalance <= 0 ? "text-red-500 font-black font-mono" : "text-emerald-600 font-black font-mono"}>
-                                  {tokenBalance.toLocaleString()} 点
+                                  {tokenBalance.toLocaleString()} 算力点
                                 </span>
                               </div>
                             </div>

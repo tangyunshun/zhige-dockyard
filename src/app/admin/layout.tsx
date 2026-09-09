@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -31,6 +32,8 @@ import {
   Briefcase,
   Banknote,
   ReceiptText,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
@@ -213,6 +216,13 @@ export default function AdminLayout({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hovered, setHovered] = useState<{
+    label: string;
+    description?: string;
+    top: number;
+    left: number;
+  } | null>(null);
 
   const getCleanRole = (role: string | null | undefined): string => {
     if (!role) return "USER";
@@ -380,40 +390,125 @@ export default function AdminLayout({
   return (
     <div className="h-screen w-screen overflow-hidden flex">
       {/* 侧边栏 - 桌面端 */}
-      <aside className="hidden lg:flex w-64 shrink-0 bg-white border-r border-slate-200 flex-col">
-        {/* 返回首页按钮 */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
+      <aside
+        className={`hidden lg:flex ${
+          isCollapsed ? "w-20" : "w-64"
+        } shrink-0 bg-white border-r border-slate-200 flex-col transition-all duration-300 ease-in-out`}
+      >
+        {/* 返回首页 + 折叠按钮 */}
+        <div className="h-16 flex items-center px-4 border-b border-slate-200 shrink-0 gap-2">
+          {isCollapsed ? (
+            <button
+              onClick={() => router.push("/")}
+              className="flex-1 flex items-center justify-center p-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all"
+              title="返回首页"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push("/")}
+              className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="font-bold text-sm">返回首页</span>
+            </button>
+          )}
           <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all w-full"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
+            title={isCollapsed ? "展开菜单" : "收起菜单"}
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="font-bold text-sm">返回首页</span>
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
           </button>
         </div>
 
         {/* 管理员标识 */}
-        <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="px-4 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
+          <div className="flex items-center justify-center gap-2 relative group">
             {isSuperAdmin ? (
               <>
-                <Crown className="w-5 h-5 text-amber-500 animate-pulse" />
-                <span className="font-extrabold text-sm text-slate-800">超级管理员后台</span>
+                <Crown
+                  className={`w-5 h-5 text-amber-500 animate-pulse ${
+                    isCollapsed ? "mx-auto" : ""
+                  }`}
+                />
+                {!isCollapsed && (
+                  <span className="font-extrabold text-sm text-slate-800">
+                    超级管理员后台
+                  </span>
+                )}
+                {isCollapsed && (
+                  <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                    超级管理员后台
+                  </div>
+                )}
               </>
             ) : (
               <>
-                <Shield className="w-5 h-5 text-[#3182ce]" />
-                <span className="font-extrabold text-sm text-slate-800">平台管理员后台</span>
+                <Shield
+                  className={`w-5 h-5 text-[#3182ce] ${
+                    isCollapsed ? "mx-auto" : ""
+                  }`}
+                />
+                {!isCollapsed && (
+                  <span className="font-extrabold text-sm text-slate-800">
+                    平台管理员后台
+                  </span>
+                )}
+                {isCollapsed && (
+                  <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                    平台管理员后台
+                  </div>
+                )}
               </>
             )}
           </div>
         </div>
 
         {/* 导航菜单 */}
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
+        <nav
+          className={`flex-1 ${
+            isCollapsed ? "px-2" : "px-4"
+          } py-6 space-y-1 overflow-y-auto min-h-0`}
+        >
           {displayedMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
+
+            if (isCollapsed) {
+              return (
+                <button
+                  key={item.href}
+                  onClick={() => {
+                    setHovered(null);
+                    setIsCollapsed(false);
+                    router.push(item.href);
+                  }}
+                  onMouseEnter={(e) => {
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setHovered({
+                      label: item.label,
+                      description: item.description,
+                      top: r.top + r.height / 2,
+                      left: r.right,
+                    });
+                  }}
+                  onMouseLeave={() => setHovered(null)}
+                  className={`w-full flex items-center justify-center p-3 rounded-lg transition-all mb-1 ${
+                    isActive
+                      ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                </button>
+              );
+            }
 
             return (
               <button
@@ -429,7 +524,9 @@ export default function AdminLayout({
                 <div className="text-left min-w-0">
                   <div className="text-sm font-bold truncate">{item.label}</div>
                   <div
-                    className={`text-xs truncate ${isActive ? "text-white/80" : "text-slate-400"}`}
+                    className={`text-xs truncate ${
+                      isActive ? "text-white/80" : "text-slate-400"
+                    }`}
                   >
                     {item.description}
                   </div>
@@ -440,48 +537,100 @@ export default function AdminLayout({
         </nav>
 
         {/* 用户信息 */}
-        <div className="p-4 border-t border-slate-200 shrink-0">
-          <div className="flex items-center gap-3 mb-3">
-            {user?.avatar ? (
-              <img
-                src={user.avatar}
-                alt={user.name || "管理员头像"}
-                className="w-10 h-10 shrink-0 rounded-lg object-cover shadow-md border border-slate-200"
-                onError={(e) => {
-                  // 图片加载失败降级展示渐变字母框
-                  (e.target as HTMLElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
-                {user?.name?.charAt(0).toUpperCase() || "A"}
-              </div>
-            )}
-            <div className="flex-1 min-w-0 text-left">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-sm font-extrabold text-slate-800 truncate">
-                  {user?.name || "系统用户"}
-                </span>
-                {isSuperAdmin ? (
-                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-amber-50 text-amber-600 border border-amber-100 select-none shrink-0">超管</span>
+        <div
+          className={`p-4 border-t border-slate-200 shrink-0 ${
+            isCollapsed ? "flex flex-col items-center gap-3" : ""
+          }`}
+        >
+          {isCollapsed ? (
+            <>
+              <div className="relative group">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || "管理员头像"}
+                    className="w-10 h-10 shrink-0 rounded-lg object-cover shadow-md border border-slate-200"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
                 ) : (
-                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 select-none shrink-0">管理员</span>
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
+                    {user?.name?.charAt(0).toUpperCase() || "A"}
+                  </div>
                 )}
+                <div className="absolute left-full bottom-0 mb-2 ml-2 px-2 py-1.5 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                  <div className="font-bold">{user?.name || "系统用户"}</div>
+                  <div className="text-slate-300">
+                    {user?.email || "未设置邮箱"}
+                  </div>
+                  <div className="text-slate-400 text-[10px] mt-0.5">
+                    {isSuperAdmin ? "超级管理员" : "平台管理员"}
+                  </div>
+                </div>
               </div>
-              <div className="text-xs text-slate-400 font-bold truncate mt-0.5">
-                {user?.email || "未设置邮箱"}
+              <div className="relative group">
+                <button
+                  onClick={handleLogout}
+                  className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                  title="退出登录"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                  退出登录
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 mb-3">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || "管理员头像"}
+                    className="w-10 h-10 shrink-0 rounded-lg object-cover shadow-md border border-slate-200"
+                    onError={(e) => {
+                      // 图片加载失败降级展示渐变字母框
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold shadow-md">
+                    {user?.name?.charAt(0).toUpperCase() || "A"}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm font-extrabold text-slate-800 truncate">
+                      {user?.name || "系统用户"}
+                    </span>
+                    {isSuperAdmin ? (
+                      <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-amber-50 text-amber-600 border border-amber-100 select-none shrink-0">
+                        超管
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 select-none shrink-0">
+                        管理员
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-400 font-bold truncate mt-0.5">
+                    {user?.email || "未设置邮箱"}
+                  </div>
+                </div>
+              </div>
 
-          {/* 退出登录按钮 - 直接显示 */}
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-bold"
-          >
-            <LogOut className="w-4 h-4" />
-            退出登录
-          </button>
+              {/* 退出登录按钮 - 直接显示 */}
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-bold"
+              >
+                <LogOut className="w-4 h-4" />
+                退出登录
+              </button>
+            </>
+          )}
         </div>
       </aside>
 
@@ -638,6 +787,27 @@ export default function AdminLayout({
 
       {/* 退出登录二次确认弹窗 */}
       {confirmDialog}
+
+      {/* 收起态菜单名称悬停提示：portal 渲染到 body，避免被侧边栏 overflow 裁剪 */}
+      {hovered &&
+        createPortal(
+          <div
+            className="fixed z-[9999] pointer-events-none"
+            style={{
+              top: hovered.top,
+              left: hovered.left + 8,
+              transform: "translateY(-50%)",
+            }}
+          >
+            <div className="bg-slate-800 text-white text-xs rounded-lg shadow-lg px-2.5 py-1.5 whitespace-nowrap">
+              <div className="font-bold">{hovered.label}</div>
+              {hovered.description && (
+                <div className="text-slate-300 mt-0.5">{hovered.description}</div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

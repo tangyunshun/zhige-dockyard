@@ -350,7 +350,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   // 充值成功信号：递增后通知「算力点」页签自动刷新流水
   const [rechargeSignal, setRechargeSignal] = useState<number>(0);
   // 充值弹窗：在线充值 / 对公转账工单 双 Tab
-  const [rechargeTab, setRechargeTab] = useState<"online" | "offline">("online");
+  const [rechargeTab, setRechargeTab] = useState<"online" | "offline" | "recycle">("online");
   const [offlineForm, setOfflineForm] = useState({
     points: "",
     invoiceTitle: "",
@@ -995,7 +995,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           setSelectedRechargePack({
             id: data.packs[0].id,
             points: data.packs[0].points,
-            name: `${data.packs[0].name} (${data.packs[0].points.toLocaleString()} 点)`,
+            name: `${data.packs[0].name} (${data.packs[0].points.toLocaleString()} 算力点)`,
             price: data.packs[0].price,
           });
         }
@@ -1040,6 +1040,117 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       fetchRealWorkspaceQuota();
     }
   }, [showRechargeModal]);
+
+  // 企业池低余额预警阈值（空间级可编辑，覆盖套餐默认）
+  const [poolThresholdInput, setPoolThresholdInput] = useState("");
+  const [poolThresholdInfo, setPoolThresholdInfo] = useState<{
+    effective: number;
+    planDefault: number;
+    isCustom: boolean;
+  } | null>(null);
+  const [poolThresholdSaving, setPoolThresholdSaving] = useState(false);
+
+  const loadPoolThreshold = async () => {
+    if (!workspaceId) return;
+    try {
+      const token = getAuthToken();
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(
+        `/api/workspace/quota/pool-threshold?workspaceId=${encodeURIComponent(workspaceId)}`,
+        { headers, cache: "no-store" }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPoolThresholdInfo({
+          effective: data.effectiveThreshold,
+          planDefault: data.planDefault,
+          isCustom: data.poolLowThreshold !== null,
+        });
+        setPoolThresholdInput(
+          data.poolLowThreshold !== null ? String(data.poolLowThreshold) : String(data.effectiveThreshold)
+        );
+      }
+    } catch {
+      /* 静默失败，不影响回收主流程 */
+    }
+  };
+
+  const handleSavePoolThreshold = async () => {
+    if (!workspaceId) return;
+    const raw = poolThresholdInput.trim();
+    const value = raw === "" ? null : Math.floor(Number(raw));
+    if (value !== null && (!Number.isFinite(value) || value < 0)) {
+      toast.error("请输入非负整数阈值，或留空以重置为套餐默认");
+      return;
+    }
+    try {
+      setPoolThresholdSaving(true);
+      const token = getAuthToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch("/api/workspace/quota/pool-threshold", {
+        method: "PATCH",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ workspaceId, threshold: value }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || "阈值已更新");
+        setPoolThresholdInfo((prev) =>
+          prev ? { ...prev, effective: data.effectiveThreshold, isCustom: value !== null } : prev
+        );
+      } else {
+        toast.error(data.error || "更新失败");
+      }
+    } catch {
+      toast.error("请求失败，请稍后重试");
+    } finally {
+      setPoolThresholdSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showRechargeModal && rechargeTab === "recycle" && workspaceType === "ENTERPRISE") {
+      loadPoolThreshold();
+    }
+  }, [showRechargeModal, rechargeTab, workspaceType]);
+
+  const [recyclePoints, setRecyclePoints] = useState("");
+  const [recycling, setRecycling] = useState(false);
+
+  const handleExecuteRecycle = async () => {
+    if (!workspaceId) return;
+    const amount = Math.floor(Number(recyclePoints));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("请输入大于 0 的回收算力点数");
+      return;
+    }
+    try {
+      setRecycling(true);
+      const token = getAuthToken();
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch("/api/workspace/quota/recycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        credentials: "include",
+        body: JSON.stringify({ workspaceId, points: amount }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || `已回收 ${amount} 算力点至个人钱包`);
+        setRecyclePoints("");
+        setRechargeSignal((s) => s + 1);
+        if (typeof data.poolBalance === "number") setWorkspaceToken(data.poolBalance);
+      } else {
+        toast.error(data.error || "回收失败，请检查操作权限或余额");
+      }
+    } catch {
+      toast.error("回收请求失败，请稍后重试");
+    } finally {
+      setRecycling(false);
+    }
+  };
 
   const handleExecuteRecharge = async () => {
     if (!workspaceId) return;
@@ -2342,7 +2453,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       toast.error(inputErr);
       return;
     }
-    const estimatedCost = Number(componentCatalog.find(c => c.id === execCompId)?.estimatedTokens) || 5;
+    const estimatedCost = Number(componentCatalog.find(c => c.id === execCompId)?.estimatedModelTokens) || 5;
     const selectedComp = componentCatalog.find(c => c.id === execCompId);
     const taskName = `${selectedComp?.name || "效能组件"}自动化任务`;
     const finalExecInputMaterial = execInputMaterial.trim();
@@ -2367,7 +2478,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       return;
     }
     if (workspaceType === "ENTERPRISE" && workspaceToken !== -1 && workspaceToken < estimatedCost) {
-      toast.error(`执行拦截：当前空间剩余服务调用额度不足（需要 ${estimatedCost} 点），请联系空间管理员！`);
+      toast.error(`执行拦截：当前空间剩余服务调用额度不足（需要 ${estimatedCost} 算力点），请联系空间管理员！`);
       return;
     }
     setIsExecutingTask(true);
@@ -2985,7 +3096,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-500 font-bold">当前可用点数</span>
                   <span className="text-slate-900 font-mono font-black">
-                    {isUnlimitedToken(workspaceToken) ? "无限" : `${workspaceToken.toLocaleString()} 点`}
+                    {isUnlimitedToken(workspaceToken) ? "无限" : `${workspaceToken.toLocaleString()} 算力点`}
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
@@ -3019,8 +3130,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
       case "quick": {
         const selCatalogCompRight = componentCatalog.find(c => c.id === quickSelectedCompId);
-        const costRight = selCatalogCompRight?.estimatedTokens && Number(selCatalogCompRight.estimatedTokens) > 0
-          ? Number(selCatalogCompRight.estimatedTokens)
+        const costRight = selCatalogCompRight?.estimatedModelTokens && Number(selCatalogCompRight.estimatedModelTokens) > 0
+          ? Number(selCatalogCompRight.estimatedModelTokens)
           : 5;
         return (
           <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs text-left space-y-4 animate-in fade-in duration-200">
@@ -3043,7 +3154,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               <div className="flex justify-between items-center border-t border-slate-100 pt-2.5">
                 <span>预估扣减点数</span>
                 <span className="text-[#3182ce] font-mono text-xs font-black">
-                  {quickSelectedCompId ? `${costRight} 点` : "5 点"}
+                  {quickSelectedCompId ? `${costRight} 算力点` : "5 算力点"}
                 </span>
               </div>
             </div>
@@ -3335,8 +3446,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             case "quick": {
               const activeDisplayTask = selectedTask;
               const selCatalogCompLeft = componentCatalog.find(c => c.id === quickSelectedCompId);
-              const estimatedCost = selCatalogCompLeft?.estimatedTokens && Number(selCatalogCompLeft.estimatedTokens) > 0
-                ? Number(selCatalogCompLeft.estimatedTokens)
+              const estimatedCost = selCatalogCompLeft?.estimatedModelTokens && Number(selCatalogCompLeft.estimatedModelTokens) > 0
+                ? Number(selCatalogCompLeft.estimatedModelTokens)
                 : 5;
 
               return (
@@ -3463,7 +3574,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     }
 
                                     return filteredComps.map(c => {
-                                      const cost = c.estimatedTokens && Number(c.estimatedTokens) > 0 ? Number(c.estimatedTokens) : 5;
+                                      const cost = c.estimatedModelTokens && Number(c.estimatedModelTokens) > 0 ? Number(c.estimatedModelTokens) : 5;
                                       const catName = componentCategories[c.category as ComponentCategory]?.name || c.category || "组件";
                                       const isSelected = c.id === quickSelectedCompId;
                                       const Ico = iconMap[c.icon || ""] || Box;
@@ -4780,7 +4891,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                   ) : m.monthlyTokenLimit === null || m.monthlyTokenLimit === undefined ? (
                                     <span className="text-slate-600">不限额 ({m.monthlyTokenUsed || 0} 已用)</span>
                                   ) : (
-                                    <span>{m.monthlyTokenLimit} 点 (<span className="text-blue-600">{m.monthlyTokenUsed || 0}</span> 已用)</span>
+                                    <span>{m.monthlyTokenLimit} 算力点 (<span className="text-blue-600">{m.monthlyTokenUsed || 0}</span> 已用)</span>
                                   )}
                                 </span>
                               </div>
@@ -5494,6 +5605,15 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             workspaceId={workspaceId || ""}
             canRecharge={true}
             onOpenRecharge={() => setShowRechargeModal(true)}
+            onOpenRecycle={
+              workspaceType === "ENTERPRISE" &&
+              (userRole === "Owner" || userRole === "Admin" || userRole === "OWNER" || userRole === "ADMIN")
+                ? () => {
+                    setRechargeTab("recycle");
+                    setShowRechargeModal(true);
+                  }
+                : undefined
+            }
             refreshSignal={rechargeSignal}
           />
         );
@@ -6307,7 +6427,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   输入方式: {aiMatchDetailModal.inputMode === "file" ? "文件" : aiMatchDetailModal.inputMode === "both" ? "文本/文件" : "文本"}
                 </span>
                 <span className="px-2 py-1 bg-amber-50 text-amber-600 border border-amber-100 rounded-lg text-[10px] font-bold">
-                  预估消耗: {aiMatchDetailModal.estimatedTokens || 5} 点
+                  预估消耗: {aiMatchDetailModal.estimatedModelTokens || 5} 点
                 </span>
               </div>
               {/* 以下内容 100% 来自数据库 component_catalog.detail 字段 */}
@@ -6948,6 +7068,19 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               >
                 对公转账 / 合同
               </button>
+              {workspaceType === "ENTERPRISE" && (userRole === "Owner" || userRole === "Admin" || userRole === "OWNER" || userRole === "ADMIN") && (
+                <button
+                  type="button"
+                  onClick={() => setRechargeTab("recycle")}
+                  className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                    rechargeTab === "recycle"
+                      ? "bg-white shadow-sm text-[#3182ce]"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  回收至个人钱包
+                </button>
+              )}
             </div>
 
             {/* 极致压缩高度的配额提示卡片 */}
@@ -6996,7 +7129,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   return (
                     <div
                       key={pack.id}
-                      onClick={() => setSelectedRechargePack({ id: pack.id, points: pack.points, name: `${pack.name} (${pack.points.toLocaleString()} 点)`, price: pack.price })}
+                      onClick={() => setSelectedRechargePack({ id: pack.id, points: pack.points, name: `${pack.name} (${pack.points.toLocaleString()} 算力点)`, price: pack.price })}
                       className={`p-4 rounded-2xl border text-xs cursor-pointer transition-all relative ${
                         isSelected
                           ? "bg-blue-50/80 border-[#3182ce] ring-2 ring-[#3182ce]/20 text-[#3182ce]"
@@ -7014,7 +7147,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             <div className="flex items-center gap-1.5 flex-wrap font-black text-[13px]">
                               <span>{pack.icon || "⚡"}</span>
                               <span>{pack.name}</span>
-                              <span className="text-slate-500 font-medium">({pack.points.toLocaleString()} 点)</span>
+                              <span className="text-slate-500 font-medium">({pack.points.toLocaleString()} 算力点)</span>
                               {pack.isPopular && (
                                 <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] rounded font-black">热门</span>
                               )}
@@ -7094,7 +7227,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               >
                 {recharging
                   ? "正在划拨算力..."
-                  : `立即确认充值 (${selectedRechargePack.points.toLocaleString()} 点 / ¥${applyMemberDiscount(selectedRechargePack.price ?? pointsToYuan(selectedRechargePack.points), rechargeMemberDiscount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`}
+                  : `立即确认充值 (${selectedRechargePack.points.toLocaleString()} 算力点 / ¥${applyMemberDiscount(selectedRechargePack.price ?? pointsToYuan(selectedRechargePack.points), rechargeMemberDiscount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`}
               </button>
             </div>
           </>
@@ -7187,6 +7320,91 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               )}
             </div>
           )}
+          {rechargeTab === "recycle" && (
+            <div className="shrink-0 space-y-3 border-t border-slate-100 pt-3">
+              <div className="bg-blue-50/80 border border-blue-200 rounded-xl px-3 py-2 text-[11px] font-bold text-blue-800 leading-relaxed">
+                将企业共享池的算力点回收至您的个人钱包。回收后点数进入个人钱包（跨空间通用），企业共享池余额相应减少。
+              </div>
+              <div className="bg-white border border-blue-200 rounded-xl px-3 py-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-[#2b6cb0]">企业池低余额预警阈值</span>
+                  {poolThresholdInfo && (
+                    <span className="text-[10px] font-bold text-[#3182ce]">
+                      {poolThresholdInfo.isCustom ? "空间自定义" : `套餐默认 ${poolThresholdInfo.planDefault}`}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  企业池余额低于该阈值时，自动提醒空间所有者补充算力点。留空则沿用套餐默认阈值。
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number" min="0"
+                    value={poolThresholdInput}
+                    onChange={(e) => setPoolThresholdInput(e.target.value)}
+                    placeholder={`默认 ${poolThresholdInfo?.planDefault ?? ""}`}
+                    className="w-40 h-9 px-3 text-xs border border-blue-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    disabled={poolThresholdSaving}
+                    onClick={handleSavePoolThreshold}
+                    className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-black rounded-lg text-xs shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    {poolThresholdSaving ? "保存中..." : "保存阈值"}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">回收算力点数 *</label>
+                <input
+                  type="number" min="1"
+                  value={recyclePoints}
+                  onChange={(e) => setRecyclePoints(e.target.value)}
+                  placeholder="例如 1000"
+                  className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
+                />
+              </div>
+              {(() => {
+                // 限制提示（按钮后给出红字）：企业池为 0 或 输入金额超过可用余额时拦截
+                const unlimited = workspaceToken === -1;
+                const inputAmount = Math.floor(Number(recyclePoints));
+                const noBalance = !unlimited && workspaceToken === 0;
+                const overBalance = !unlimited && Number.isFinite(inputAmount) && inputAmount > 0 && inputAmount > workspaceToken;
+                if (!noBalance && !overBalance) return null;
+                return (
+                  <div className="text-[11px] text-red-500 font-bold flex items-center justify-end gap-1.5">
+                    ⚠️ {noBalance
+                      ? "当前企业池余额为 0，暂无可回收算力点"
+                      : `回收金额 ${inputAmount.toLocaleString()} 点超过当前企业池可用余额 ${workspaceToken.toLocaleString()} 点`}
+                  </div>
+                );
+              })()}
+              <div className="flex items-center justify-end gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowRechargeModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteRecycle}
+                  disabled={
+                    recycling ||
+                    (workspaceToken !== -1 &&
+                      (workspaceToken === 0 ||
+                        (Math.floor(Number(recyclePoints)) > 0 &&
+                          Math.floor(Number(recyclePoints)) > workspaceToken)))
+                  }
+                  className="px-5 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {recycling ? "回收中..." : "确认回收至个人钱包"}
+                </button>
+              </div>
+            </div>
+          )}
           </div>
         </div>
       )}
@@ -7221,8 +7439,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   <span className="text-[11px] text-slate-500 font-mono">ID: {(editingQuotaMember.userId || "").slice(0, 8)}...</span>
                 </div>
                 <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-600 flex items-center justify-between font-medium">
-                  <span>⚡ 空间可用算力池：<strong className="text-amber-600 font-bold font-mono">{isUnlimitedToken(workspaceQuotaInfo.tokenBalance) ? "无限" : `${workspaceQuotaInfo.tokenBalance} 点`}</strong></span>
-                  <span>📊 未锁定余量：<strong className="text-emerald-600 font-bold font-mono">{formatTokenBalance(workspaceQuotaInfo.unallocatedBalance)} 点</strong></span>
+                  <span>⚡ 空间可用算力池：<strong className="text-amber-600 font-bold font-mono">{isUnlimitedToken(workspaceQuotaInfo.tokenBalance) ? "无限" : `${workspaceQuotaInfo.tokenBalance} 算力点`}</strong></span>
+                  <span>📊 未锁定余量：<strong className="text-emerald-600 font-bold font-mono">{formatTokenBalance(workspaceQuotaInfo.unallocatedBalance)} 算力点</strong></span>
                 </div>
               </div>
 

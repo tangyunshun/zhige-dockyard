@@ -106,7 +106,7 @@ export default function SystemStatusPage() {
 
   return (
     <div className="min-h-screen bg-[#f0f8ff] text-slate-800 pb-12 font-sans text-left">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <div className="pt-6">
         {/* 顶部业务大纲标头 Card */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">

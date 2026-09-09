@@ -200,12 +200,27 @@ const icoBuf = generateICO(pngBuf);
 
 const root = "d:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web";
 
-fs.writeFileSync(path.join(root, "public", "favicon.ico"), icoBuf);
-fs.writeFileSync(path.join(root, "public", "favicon.png"), pngBuf);
-fs.writeFileSync(path.join(root, "public", "favicon.svg"), perfectSvg);
+// 关键：仅在内容真正变化时写入，避免每次 next dev 启动都改变文件 mtime
+// 触发 Turbopack 把 src/app/icon.* 视为依赖变更而整图重新编译（导致首页访问极慢）。
+function writeIfChanged(filePath, content) {
+  try {
+    const existing = fs.readFileSync(filePath);
+    const incoming = Buffer.isBuffer(content) ? content : Buffer.from(content);
+    if (existing.length === incoming.length && existing.equals(incoming)) {
+      return; // 内容一致，跳过写入，保持 mtime 不变
+    }
+  } catch (e) {
+    // 文件不存在则继续写入
+  }
+  fs.writeFileSync(filePath, content);
+}
 
-fs.writeFileSync(path.join(root, "src", "app", "favicon.ico"), icoBuf);
-fs.writeFileSync(path.join(root, "src", "app", "icon.png"), pngBuf);
-fs.writeFileSync(path.join(root, "src", "app", "icon.svg"), perfectSvg);
+writeIfChanged(path.join(root, "public", "favicon.ico"), icoBuf);
+writeIfChanged(path.join(root, "public", "favicon.png"), pngBuf);
+writeIfChanged(path.join(root, "public", "favicon.svg"), perfectSvg);
+
+writeIfChanged(path.join(root, "src", "app", "favicon.ico"), icoBuf);
+writeIfChanged(path.join(root, "src", "app", "icon.png"), pngBuf);
+writeIfChanged(path.join(root, "src", "app", "icon.svg"), perfectSvg);
 
 console.log("标准 1:1 比例完美立体 Icon 生成成功！");

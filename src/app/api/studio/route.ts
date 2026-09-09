@@ -28,6 +28,7 @@ import {
 } from "@/lib/asset-notify";
 import { getAssetPermissions } from "@/lib/asset-permission";
 import { getFileTypeLabel, resolveAssetSize } from "@/lib/file-type";
+import { addNotification } from "@/lib/notifications-store";
 import { generateSmartSummary } from "@/lib/smart-summary";
 import { saveAssetFile, deleteAssetFile } from "@/lib/file-store";
 import { getFileExtension } from "@/lib/file-type";
@@ -981,10 +982,7 @@ async function getOrCreateQuota(workspaceId: string, userId: string) {
       select: { membershipLevel: true }
     });
     const membershipLevel = dbUser?.membershipLevel || "FREE";
-    
-    // tokenLimit 一律从 membershiplevel 表读取真实值，不再写死档位数值
-    const tierTokenLimit = await getMembershipTokenLimit(membershipLevel);
-    
+
     // 查询或匹配会员等级关联 ID
     let ml = await prisma.membershiplevel.findUnique({
       where: { id: membershipLevel }
@@ -993,8 +991,10 @@ async function getOrCreateQuota(workspaceId: string, userId: string) {
       ml = await prisma.membershiplevel.findFirst();
     }
     const mlId = ml?.id || "FREE";
-    // 无限额度（-1）保持 -1，不写死任何固定大数
-    const tokenBalance = isUnlimitedTokenLimit(tierTokenLimit) ? UNLIMITED_TOKEN : tierTokenLimit;
+    // 兜底配额余额一律 0 起步，不预置任何免费算力（免费额度只来自注册福利按月 100 或充值/购买）；
+    // 无限额度（tokenLimit = -1）为平台特权标记，保持原样
+    const tierTokenLimit = await getMembershipTokenLimit(membershipLevel);
+    const tokenBalance = isUnlimitedTokenLimit(tierTokenLimit) ? UNLIMITED_TOKEN : BigInt(0);
     
     quota = await prisma.workspacequota.create({
       data: {
@@ -1354,7 +1354,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 1. 从 componentcatalog 读取组件信息与真实 estimatedTokens 成本（不信任客户端 body.tokens）
+        // 1. 从 componentcatalog 读取组件信息与真实 estimatedModelTokens 成本（不信任客户端 body.tokens）
         const comp = await prisma.componentcatalog.findUnique({
           where: { id: componentId },
           select: {
@@ -1365,7 +1365,7 @@ export async function POST(request: NextRequest) {
             contract: true,
             previewData: true,
             inputMode: true,
-            estimatedTokens: true,
+            estimatedModelTokens: true,
           },
         });
 
@@ -1373,7 +1373,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ success: false, error: "未找到对应组件，无法执行" }, { status: 404 });
         }
 
-        const deductTokens = comp.estimatedTokens && Number(comp.estimatedTokens) > 0 ? Number(comp.estimatedTokens) : 5;
+        const deductTokens = comp.estimatedModelTokens && Number(comp.estimatedModelTokens) > 0 ? Number(comp.estimatedModelTokens) : 5;
 
         // 自然月跨月算力配额自动重置
         await checkAndResetQuotaCycle(prisma, workspaceId, userId);
@@ -1387,11 +1387,33 @@ export async function POST(request: NextRequest) {
         // 2. 校验成员月度算力额度 (若管理员显式为该成员配置了额度)
         const currentMember = await prisma.workspacemember.findUnique({
           where: { userId_workspaceId: { userId, workspaceId } },
+          include: { user: { select: { name: true, email: true } } },
         });
         if (currentMember && currentMember.monthlyTokenLimit !== null && currentMember.monthlyTokenLimit !== undefined) {
           const memberLimit = Number(currentMember.monthlyTokenLimit);
           const memberUsed = Number(currentMember.monthlyTokenUsed || 0);
           if (memberUsed + deductTokens > memberLimit) {
+            // 成员月度额度将用尽：首次跨越阈值时通知空间所有者补充算力点，避免重复骚扰
+            if (memberUsed < memberLimit) {
+              try {
+                const ownerWs = await prisma.workspace.findUnique({
+                  where: { id: workspaceId },
+                  select: { ownerId: true, name: true },
+                });
+                if (ownerWs?.ownerId) {
+                  const memberName = (currentMember as any).user?.name || currentMember.userId;
+                  await addNotification(
+                    ownerWs.ownerId,
+                    "成员算力额度已用尽，请补充企业池",
+                    `成员「${memberName}」在「${ownerWs.name || "企业空间"}」的月度算力额度已用尽（已用 ${memberUsed}/${memberLimit}）。请补充企业池算力点，或提升该成员额度后重试。`,
+                    "asset",
+                    `/workspace/${workspaceId}/members`
+                  );
+                }
+              } catch (notifyErr) {
+                console.warn("[额度提醒] 通知空间所有者失败:", notifyErr);
+              }
+            }
             return NextResponse.json({
               success: false,
               error: `您本月的个人算力点配额已用尽（当前已用 ${memberUsed}/${memberLimit}，本次需要 ${deductTokens}），请联系空间管理员提升配额`,
