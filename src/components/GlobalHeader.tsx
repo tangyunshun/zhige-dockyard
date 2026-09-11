@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { Logo } from "./Logo";
 import AvatarDropdown from "./AvatarDropdown";
 import DynamicCTA from "./DynamicCTA";
+import LoginNotificationPopup from "./LoginNotificationPopup";
 import { useAppContext } from "@/contexts/AppContext";
 
 export default function GlobalHeader() {
@@ -204,6 +205,7 @@ export default function GlobalHeader() {
   };
 
   return (
+    <>
     <header className="h-[60px] fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-white/95 border-b border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-full flex items-center justify-between">
         {/* 左侧区：Logo */}
@@ -485,5 +487,8 @@ export default function GlobalHeader() {
         </div>
       </div>
     </header>
+
+    {mounted && userState.isLoggedIn && <LoginNotificationPopup />}
+    </>
   );
 }

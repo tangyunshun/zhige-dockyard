@@ -1,27 +1,30 @@
-﻿﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Box,
   Search,
-  Filter,
   Plus,
-  MoreVertical,
   Edit,
   Trash2,
-  Eye,
   TrendingUp,
-  Activity,
   Star,
-  Calendar,
   CheckCircle,
-  AlertCircle,
   X,
   Code,
-  Layers,
   Zap,
+  Copy,
+  ExternalLink,
+  Calendar,
+  Activity,
+  Eye,
+  AlertCircle,
+  Filter,
+  MoreVertical,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { useToast } from "@/components/Toast";
 
 interface Component {
   id: string;
@@ -35,6 +38,8 @@ interface Component {
 }
 
 export default function UserComponentsPage() {
+  const toast = useToast();
+  const router = useRouter();
   const [components, setComponents] = useState<Component[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -44,7 +49,8 @@ export default function UserComponentsPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
   const [editFormData, setEditFormData] = useState({ name: "", description: "", status: "" });
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [editNameError, setEditNameError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadComponents();
@@ -52,6 +58,7 @@ export default function UserComponentsPage() {
 
   const loadComponents = async () => {
     try {
+      setLoading(true);
       const authToken = getAuthToken();
 
       const res = await fetch("/api/user/components", {
@@ -64,6 +71,7 @@ export default function UserComponentsPage() {
       }
     } catch (error) {
       console.error("Load components error:", error);
+      toast.error("加载组件资产列表失败");
     } finally {
       setLoading(false);
     }
@@ -106,10 +114,16 @@ export default function UserComponentsPage() {
     setShowDetailModal(true);
   };
 
+  const copyComponentId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    toast.success("组件 ID 已复制到剪贴板");
+  };
+
   const confirmDelete = async () => {
     if (!selectedComponent) return;
 
     try {
+      setSubmitting(true);
       const authToken = getAuthToken();
       const res = await fetch(`/api/user/components?id=${selectedComponent.id}`, {
         method: "DELETE",
@@ -117,26 +131,32 @@ export default function UserComponentsPage() {
       });
 
       if (res.ok) {
-        setMessage({ type: "success", text: "组件已删除" });
+        toast.success(`组件 [${selectedComponent.name}] 已成功删除`);
         loadComponents();
         setShowDeleteConfirm(false);
         setSelectedComponent(null);
-        setTimeout(() => setMessage(null), 3000);
       } else {
         const error = await res.json();
-        setMessage({ type: "error", text: error.message || "删除失败" });
+        toast.error(error.message || "删除组件失败");
       }
     } catch (error) {
       console.error("Delete component error:", error);
-      setMessage({ type: "error", text: "删除失败" });
+      toast.error("删除组件异常，请稍后重试");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleUpdateComponent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedComponent) return;
+    if (!editFormData.name.trim()) {
+      setEditNameError("组件名称不能为空");
+      return;
+    }
 
     try {
+      setSubmitting(true);
       const authToken = getAuthToken();
       const res = await fetch(`/api/user/components?id=${selectedComponent.id}`, {
         method: "PUT",
@@ -148,53 +168,57 @@ export default function UserComponentsPage() {
       });
 
       if (res.ok) {
-        setMessage({ type: "success", text: "组件已更新" });
+        toast.success("组件信息已更新");
         loadComponents();
         setShowEditModal(false);
         setSelectedComponent(null);
-        setTimeout(() => setMessage(null), 3000);
+        setEditNameError(null);
       } else {
         const error = await res.json();
-        setMessage({ type: "error", text: error.message || "更新失败" });
+        const msg = error.message || error.error || "更新组件失败";
+        if (msg.includes("名称") || msg.includes("组件")) {
+          setEditNameError(msg);
+        } else {
+          toast.error(msg);
+        }
       }
     } catch (error) {
-      console.error("Update component error:", error);
-      setMessage({ type: "error", text: "更新失败" });
+      console.warn("Update component error:", error);
+      toast.error("网络异常，更新组件失败");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "PUBLISHED":
-        return "text-[#10b981] bg-[#10b981]/10";
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/65">
+            已发布
+          </span>
+        );
       case "DRAFT":
-        return "text-[#f59e0b] bg-[#f59e0b]/10";
-      case "ARCHIVED":
-        return "text-slate-500 bg-slate-100";
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200/60">
+            开发草稿
+          </span>
+        );
       default:
-        return "text-slate-500 bg-slate-100";
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "PUBLISHED":
-        return "已发布";
-      case "DRAFT":
-        return "草稿";
-      case "ARCHIVED":
-        return "已归档";
-      default:
-        return status;
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200/60">
+            已归档
+          </span>
+        );
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600 font-medium">加载数据中...</p>
+          <div className="w-12 h-12 border-4 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-slate-500 font-medium text-sm">正在加载组件资产...</p>
         </div>
       </div>
     );
@@ -203,277 +227,272 @@ export default function UserComponentsPage() {
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="shrink-0">
-        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight truncate">
-          我的组件
-        </h1>
-        <p className="text-sm text-slate-500 font-medium truncate">
-          查看组件列表和使用统计，前往工作室开发新组件
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight mb-1">
+            我的组件资产
+          </h1>
+          <p className="text-xs text-slate-500 font-medium">
+            查看个人封装的业务模块、低代码组件与使用统计，支持一键在工作室进行研发调试
+          </p>
+        </div>
+        <button
+          onClick={() => router.push("/studio")}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold rounded-lg shadow-xs hover:brightness-105 transition-all cursor-pointer w-fit"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          组件工作室
+        </button>
       </div>
 
-      {/* 消息提示 */}
-      {message && (
-        <div
-          className={`p-4 rounded-xl flex items-center gap-3 shrink-0 ${
-            message.type === "success"
-              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-              : "bg-red-50 text-red-600 border border-red-200"
-          }`}
-        >
-          {message.type === "success" ? (
-            <CheckCircle className="w-5 h-5" />
-          ) : (
-            <AlertCircle className="w-5 h-5" />
-          )}
-          <span className="font-medium">{message.text}</span>
-        </div>
-      )}
-
-      {/* 操作栏 */}
-      <div className="flex flex-col sm:flex-row gap-4 shrink-0">
+      {/* 操作与检索栏 */}
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="搜索组件..."
+            placeholder="搜索组件资产名称..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 transition-all outline-none"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 transition-all outline-none"
           />
         </div>
-        <div className="flex gap-2">
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 transition-all outline-none bg-white"
-          >
-            <option value="ALL">全部状态</option>
-            <option value="PUBLISHED">已发布</option>
-            <option value="DRAFT">草稿</option>
-            <option value="ARCHIVED">已归档</option>
-          </select>
-          <button
-            onClick={() => (window.location.href = "/studio")}
-            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
-          >
-            <Plus className="w-5 h-5" />
-            创建组件
-          </button>
-        </div>
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+          className="px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:border-[#3182ce] outline-none text-slate-700 font-medium"
+        >
+          <option value="ALL">全部发布状态</option>
+          <option value="PUBLISHED">已发布</option>
+          <option value="DRAFT">开发草稿</option>
+          <option value="ARCHIVED">已归档</option>
+        </select>
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 shrink-0">
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#3182ce]/20 opacity-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
-                <Box className="w-7 h-7 text-[#3182ce]" />
-              </div>
-              <TrendingUp className="w-5 h-5 text-emerald-500" />
-            </div>
-            <div className="text-3xl font-black text-slate-800 mb-1">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-white/90 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-400 font-bold mb-1">总组件数量</div>
+            <div className="text-2xl font-black text-slate-800 tracking-tight">
               {components.length}
+              <span className="text-xs font-normal text-slate-400 ml-1">个</span>
             </div>
-            <div className="text-sm text-slate-500 font-semibold">总组件数</div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 text-[#3182ce] flex items-center justify-center">
+            <Box className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#10b981]/20 opacity-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 rounded-xl bg-[#10b981]/10 flex items-center justify-center">
-                <Star className="w-7 h-7 text-[#10b981]" />
-              </div>
-              <Activity className="w-5 h-5 text-blue-500" />
-            </div>
-            <div className="text-3xl font-black text-slate-800 mb-1">
+        <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-white/90 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-400 font-bold mb-1">已发布组件</div>
+            <div className="text-2xl font-black text-[#10b981] tracking-tight">
               {components.filter((c) => c.status === "PUBLISHED").length}
+              <span className="text-xs font-normal text-slate-400 ml-1">个</span>
             </div>
-            <div className="text-sm text-slate-500 font-semibold">已发布</div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-[#10b981]/10 text-[#10b981] flex items-center justify-center">
+            <Star className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-[#f59e0b]/20 opacity-20 blur-2xl"></div>
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-14 h-14 rounded-xl bg-[#f59e0b]/10 flex items-center justify-center">
-                <Activity className="w-7 h-7 text-[#f59e0b]" />
-              </div>
-              <Activity className="w-5 h-5 text-purple-500" />
-            </div>
-            <div className="text-3xl font-black text-slate-800 mb-1">
+        <div className="bg-white/80 backdrop-blur-xl rounded-xl p-5 border border-white/90 shadow-xs flex items-center justify-between">
+          <div>
+            <div className="text-xs text-slate-400 font-bold mb-1">累计引用装配</div>
+            <div className="text-2xl font-black text-[#f59e0b] tracking-tight">
               {components.reduce((sum, c) => sum + (c.usageCount || 0), 0)}
+              <span className="text-xs font-normal text-slate-400 ml-1">次</span>
             </div>
-            <div className="text-sm text-slate-500 font-semibold">总使用次数</div>
+          </div>
+          <div className="w-10 h-10 rounded-lg bg-[#f59e0b]/10 text-[#f59e0b] flex items-center justify-center">
+            <Zap className="w-5 h-5" />
           </div>
         </div>
       </div>
 
       {/* 组件列表 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
+      <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-xs">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+            <div className="w-1 h-4 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+            资产物料矩阵
+          </h2>
+          <span className="text-xs text-slate-400 font-medium">
+            共 {filteredComponents.length} 项资产
+          </span>
+        </div>
 
-        <div className="relative">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
-              组件列表
-            </h2>
-            <span className="text-sm text-slate-500 font-medium">
-              共 {filteredComponents.length} 个组件
-            </span>
-          </div>
-
-          {filteredComponents.length > 0 ? (
-            <div className="space-y-3">
-              {filteredComponents.map((component) => (
-                <div
-                  key={component.id}
-                  className="group flex items-center justify-between p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/30 transition-all duration-300 hover:-translate-x-1"
-                >
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 flex items-center justify-center flex-shrink-0">
-                      <Box className="w-6 h-6 text-[#3182ce]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-base font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
+        {filteredComponents.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredComponents.map((component) => (
+              <div
+                key={component.id}
+                className="group relative p-5 rounded-xl bg-slate-50/70 hover:bg-white border border-slate-200/80 hover:border-[#3182ce]/40 transition-all duration-200 hover:shadow-xs flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 text-[#3182ce] flex items-center justify-center shrink-0">
+                        <Box className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors line-clamp-1">
                           {component.name}
                         </h3>
-                        <span
-                          className={`px-2 py-0.5 text-xs font-bold rounded-full ${getStatusColor(component.status)}`}
-                        >
-                          {getStatusText(component.status)}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {getStatusBadge(component.status)}
+                          {component.category && (
+                            <span className="text-[10px] text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">
+                              {component.category}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-sm text-slate-500 truncate">
-                        {component.description || "暂无描述"}
-                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleViewDetail(component)}
+                        className="p-1.5 text-slate-400 hover:text-[#3182ce] hover:bg-blue-50 rounded-md transition-colors"
+                        title="查看详情"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(component)}
+                        className="p-1.5 text-slate-400 hover:text-[#3182ce] hover:bg-blue-50 rounded-md transition-colors"
+                        title="编辑组件"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(component)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                        title="删除组件"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <div className="text-xs text-slate-500 mb-1">使用次数</div>
-                      <div className="text-sm font-bold text-slate-700">
-                        {component.usageCount || 0}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-slate-500 mb-1">更新时间</div>
-                      <div className="text-xs text-slate-600">
-                        {formatTimeAgo(component.updatedAt)}
-                      </div>
-                    </div>
-                    <div className="relative group/menu">
-                      <button className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
-                        <MoreVertical className="w-5 h-5 text-slate-400" />
-                      </button>
-                      {/* 操作菜单 */}
-                      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-lg border border-slate-200 py-2 hidden group-hover/menu:block z-10">
-                        <button
-                          onClick={() => handleViewDetail(component)}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                          查看
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-2 mb-3 min-h-[32px]">
+                    {component.description || "暂无组件描述信息，可点击编辑进行补充说明。"}
+                  </p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16">
-              <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                <Box className="w-10 h-10 text-slate-400" />
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-400">
+                    装配 {component.usageCount || 0} 次 · 更新于 {formatTimeAgo(component.updatedAt)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/studio")}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#3182ce] hover:text-[#2b6cb0] transition-colors"
+                  >
+                    前往工作室
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
-              <h3 className="text-lg font-bold text-slate-700 mb-2">暂无组件</h3>
-              <p className="text-slate-500 mb-6">创建您的第一个组件开始使用</p>
-              <button
-                onClick={() => (window.location.href = "/studio")}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300"
-              >
-                <Plus className="w-5 h-5" />
-                创建组件
-              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2 text-slate-400">
+              <Box className="w-6 h-6" />
             </div>
-          )}
-        </div>
+            <h3 className="text-xs font-bold text-slate-700 mb-1">未找到匹配的组件资产</h3>
+            <p className="text-[11px] text-slate-400 mb-4">您可以进入可视化工作室研发并发布您的第一个业务组件</p>
+            <button
+              onClick={() => router.push("/studio")}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold rounded-lg shadow-xs hover:brightness-105 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              进入组件工作室
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 编辑模态框 */}
       {showEditModal && selectedComponent && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative">
             <button
               onClick={() => setShowEditModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
             >
-              <X className="w-5 h-5 text-slate-400" />
+              <X className="w-4 h-4" />
             </button>
-            <h3 className="text-xl font-black text-slate-800 mb-6">编辑组件</h3>
+            <h3 className="text-base font-bold text-slate-800 mb-4">编辑组件资产</h3>
             <form onSubmit={handleUpdateComponent}>
-              <div className="space-y-4">
+              <div className="space-y-4 text-xs">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <label className="block text-slate-700 font-bold mb-1">
                     <span className="zg-required">组件名称</span>
                   </label>
                   <input
                     type="text"
                     value={editFormData.name}
-                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all"
+                    onChange={(e) => {
+                      setEditFormData({ ...editFormData, name: e.target.value });
+                      if (editNameError) setEditNameError(null);
+                    }}
+                    className={`w-full px-3 py-2 text-xs rounded-lg border outline-none transition-all ${
+                      editNameError
+                        ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
+                        : "border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15"
+                    }`}
                     placeholder="请输入组件名称"
-                    required
                   />
+                  {editNameError && (
+                    <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>{editNameError}</span>
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    描述
-                  </label>
+                  <label className="block text-slate-700 font-bold mb-1">组件简介</label>
                   <textarea
                     value={editFormData.description}
                     onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all resize-none"
-                    rows={4}
-                    placeholder="请输入组件描述"
+                    className="w-full p-3 text-xs rounded-lg border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none transition-all resize-none"
+                    rows={3}
+                    placeholder="请输入组件用途、入参与调用说明..."
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    状态
-                  </label>
+                  <label className="block text-slate-700 font-bold mb-1">发布状态</label>
                   <select
                     value={editFormData.status}
                     onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all bg-white"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:border-[#3182ce] outline-none"
                   >
-                    <option value="DRAFT">草稿</option>
-                    <option value="PUBLISHED">已发布</option>
-                    <option value="ARCHIVED">已归档</option>
+                    <option value="DRAFT">开发草稿 (仅自己可见)</option>
+                    <option value="PUBLISHED">正式发布 (空间成员可用)</option>
+                    <option value="ARCHIVED">历史归档 (停止新装配)</option>
                   </select>
                 </div>
               </div>
-              <div className="flex gap-3 mt-6">
+              <div className="flex justify-end gap-2 mt-6">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="flex-1 px-6 py-3 border-2 border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-all"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] rounded-lg transition-colors disabled:opacity-50"
                 >
-                  保存修改
+                  {submitting ? "正在保存..." : "保存修改"}
                 </button>
               </div>
             </form>
@@ -483,40 +502,41 @@ export default function UserComponentsPage() {
 
       {/* 删除确认模态框 */}
       {showDeleteConfirm && selectedComponent && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 relative">
             <button
               onClick={() => setShowDeleteConfirm(false)}
-              className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
             >
-              <X className="w-5 h-5 text-slate-400" />
+              <X className="w-4 h-4" />
             </button>
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="w-8 h-8 text-red-500" />
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto mb-2">
+                <Trash2 className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-black text-slate-800 mb-2">确认删除</h3>
-              <p className="text-slate-600">
-                确定要删除组件 <span className="font-bold text-slate-800">"{selectedComponent.name}"</span> 吗？
+              <h3 className="text-base font-bold text-slate-800">确认删除组件资产</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                确定要删除组件 <span className="font-bold text-slate-800">[{selectedComponent.name}]</span> 吗？
               </p>
-              <p className="text-sm text-red-500 mt-2 font-medium">
-                此操作不可逆，删除后数据将无法恢复
+              <p className="text-[11px] text-rose-500 mt-1.5">
+                此操作将永久下架并抹除该组件源码，不可逆转。
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex justify-end gap-2 mt-5">
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-6 py-3 border-2 border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-all"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={confirmDelete}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-red-500/30 transition-all"
+                disabled={submitting}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors disabled:opacity-50"
               >
-                确认删除
+                {submitting ? "正在删除..." : "确认删除"}
               </button>
             </div>
           </div>
@@ -525,83 +545,92 @@ export default function UserComponentsPage() {
 
       {/* 详情查看模态框 */}
       {showDetailModal && selectedComponent && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 relative max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 relative">
             <button
               onClick={() => setShowDetailModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
             >
-              <X className="w-5 h-5 text-slate-400" />
+              <X className="w-4 h-4" />
             </button>
-            <div className="mb-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-[#3182ce]/10 flex items-center justify-center">
-                  <Box className="w-6 h-6 text-[#3182ce]" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-800">{selectedComponent.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${getStatusColor(selectedComponent.status)}`}>
-                      {getStatusText(selectedComponent.status)}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-[#3182ce]/10 text-[#3182ce] flex items-center justify-center shrink-0">
+                <Box className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-800">{selectedComponent.name}</h3>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {getStatusBadge(selectedComponent.status)}
+                  {selectedComponent.category && (
+                    <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                      {selectedComponent.category}
                     </span>
-                    {selectedComponent.category && (
-                      <span className="text-xs text-slate-500">{selectedComponent.category}</span>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-3.5 text-xs">
               <div>
-                <h4 className="text-sm font-bold text-slate-700 mb-2">组件描述</h4>
-                <p className="text-sm text-slate-600 bg-slate-50 rounded-xl p-4">
-                  {selectedComponent.description || "暂无描述"}
-                </p>
+                <div className="text-slate-400 font-bold mb-1">功能描述</div>
+                <div className="p-3 bg-slate-50/70 border border-slate-100 rounded-xl text-slate-600 leading-relaxed">
+                  {selectedComponent.description || "暂无描述信息"}
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-sm font-bold text-slate-700 mb-2">使用次数</h4>
-                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
-                    <Zap className="w-5 h-5 text-[#f59e0b]" />
-                    <span className="text-lg font-black text-slate-800">{selectedComponent.usageCount || 0}</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-50/70 border border-slate-100 rounded-xl">
+                  <div className="text-slate-400 text-[11px] mb-0.5">装配与引用量</div>
+                  <div className="text-base font-black font-mono text-slate-800">
+                    {selectedComponent.usageCount || 0} 次
                   </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-700 mb-2">创建时间</h4>
-                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
-                    <Calendar className="w-5 h-5 text-[#3182ce]" />
-                    <span className="text-sm font-bold text-slate-800">{new Date(selectedComponent.createdAt).toLocaleDateString("zh-CN")}</span>
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-700 mb-2">更新时间</h4>
-                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
-                    <Activity className="w-5 h-5 text-[#10b981]" />
-                    <span className="text-sm font-bold text-slate-800">{formatTimeAgo(selectedComponent.updatedAt)}</span>
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-700 mb-2">组件 ID</h4>
-                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl">
-                    <Code className="w-5 h-5 text-[#8b5cf6]" />
-                    <span className="text-xs font-mono text-slate-600 truncate">{selectedComponent.id}</span>
+                <div className="p-3 bg-slate-50/70 border border-slate-100 rounded-xl">
+                  <div className="text-slate-400 text-[11px] mb-0.5">最后更新时间</div>
+                  <div className="text-xs font-semibold text-slate-700">
+                    {new Date(selectedComponent.updatedAt).toLocaleDateString("zh-CN")}
                   </div>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-200">
-                <button
-                  onClick={() => {
-                    setShowDetailModal(false);
-                    handleEdit(selectedComponent);
-                  }}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all"
-                >
-                  编辑此组件
-                </button>
+              <div>
+                <div className="text-slate-400 font-bold mb-1">唯一组件标识符 (Component ID)</div>
+                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-[11px] text-slate-700">
+                  <span className="truncate mr-2">{selectedComponent.id}</span>
+                  <button
+                    type="button"
+                    onClick={() => copyComponentId(selectedComponent.id)}
+                    className="text-[#3182ce] hover:text-[#2b6cb0] flex items-center gap-1 shrink-0 font-sans font-semibold"
+                  >
+                    <Copy className="w-3 h-3" />
+                    复制
+                  </button>
+                </div>
               </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDetailModal(false);
+                  router.push("/studio");
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                在工作室调试
+                <ExternalLink className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDetailModal(false);
+                  handleEdit(selectedComponent);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] rounded-lg transition-colors"
+              >
+                编辑此组件
+              </button>
             </div>
           </div>
         </div>

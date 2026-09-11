@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
 import { getAuthToken } from "@/utils/auth";
+import { UNIT_EXPLAIN_HINT, formatModelRateHint } from "@/lib/model-rate";
 import {
   Settings,
   ArrowLeft,
@@ -740,6 +741,19 @@ export default function PersonalWorkspaceSettings() {
                             </button>
                           ))}
                         </div>
+
+                        {/* 折算说明：全系统只用「算力点」，1 token = 1 算力点，各引擎按自身官方价折算 */}
+                        <p className="mt-2.5 text-[11px] font-bold text-slate-500 leading-relaxed">
+                          {(() => {
+                            const engine = preferences.aiEngine || "zhige";
+                            if (engine === "custom") {
+                              return `${UNIT_EXPLAIN_HINT}自带 API 密钥时按您配置的厂商价格折算，可在后台「算力计价」中核对。`;
+                            }
+                            return formatModelRateHint(
+                              engine === "deepseek" ? "deepseek" : "zhige"
+                            );
+                          })()}
+                        </p>
                       </div>
 
                       {/* 全局 System Prompt */}

@@ -280,8 +280,25 @@ export default function SystemStatusPage() {
                       </span>
                     </td>
                     <td className="py-3.5 px-5 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      {/* 状态徽标按真实探针状态着色，异常/延迟偏高不再显示为绿色正常 */}
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
+                          srv.status === "healthy"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : srv.status === "warning"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-red-50 text-red-700 border-red-200"
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            srv.status === "healthy"
+                              ? "bg-emerald-500"
+                              : srv.status === "warning"
+                                ? "bg-amber-500"
+                                : "bg-red-500"
+                          }`}
+                        />
                         <span>{srv.statusText}</span>
                       </span>
                     </td>
@@ -291,8 +308,21 @@ export default function SystemStatusPage() {
                     <td className="py-3.5 px-5 whitespace-nowrap text-slate-500 font-medium">
                       {srv.details}
                     </td>
-                    <td className="py-3.5 px-5 whitespace-nowrap text-right font-mono font-bold text-emerald-600">
-                      PASS (A+)
+                    <td
+                      className={`py-3.5 px-5 whitespace-nowrap text-right font-mono font-bold ${
+                        srv.status === "healthy"
+                          ? "text-emerald-600"
+                          : srv.status === "warning"
+                            ? "text-amber-600"
+                            : "text-red-600"
+                      }`}
+                    >
+                      {/* 评级由探针状态与实测延迟推导 */}
+                      {srv.status === "healthy"
+                        ? `PASS (A${parseInt(srv.latency, 10) <= 50 ? "+" : ""})`
+                        : srv.status === "warning"
+                          ? "WARN (B)"
+                          : "FAIL (C)"}
                     </td>
                   </tr>
                 ))}

@@ -13,6 +13,7 @@ import {
   writeAuditLog,
 } from "@/lib/security";
 import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
+import { estimateTypicalCallPoints } from "@/lib/pricing-config";
 import { isProbablyBinaryContent, sanitizeTextContent } from "@/lib/text-utils";
 import { scanSensitiveWords } from "@/lib/sensitive-words";
 import {
@@ -170,6 +171,14 @@ async function touchComponentUsage(userId: string, componentId: string, workspac
       },
     });
   }
+}
+
+/**
+ * 用户「默认引擎」偏好 ➔ 折算引擎中的厂商 id。
+ * zhige（自研）与 custom（自带密钥，按自研等效价）统一走 zhige；deepseek 走 DeepSeek 官方价。
+ */
+function resolveEngineProviderId(engine?: string | null): string {
+  return engine === "deepseek" ? "deepseek" : "zhige";
 }
 
 // GET - 获取组件相关信息
@@ -1373,7 +1382,20 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ success: false, error: "未找到对应组件，无法执行" }, { status: 404 });
         }
 
-        const deductTokens = comp.estimatedModelTokens && Number(comp.estimatedModelTokens) > 0 ? Number(comp.estimatedModelTokens) : 5;
+        // 读取用户默认 AI 引擎（zhige / deepseek / custom），缺省扣点时按对应厂商价折算
+        const userPref = await prisma.userpreference.findFirst({
+          where: { userId },
+          select: { aiEngine: true },
+        });
+        const engine = userPref?.aiEngine || "zhige";
+
+        // 扣点优先级：组件配置的 estimatedModelTokens（每次调用折算的算力点）
+        // → 缺省时按「所选 AI 引擎 × 典型调用(3000 输入 + 1000 输出)」的厂商折算价计算，
+        //   不再写死兜底 5 点，保证不同厂商/模型的成本能被正确覆盖。
+        const deductTokens =
+          comp.estimatedModelTokens && Number(comp.estimatedModelTokens) > 0
+            ? Number(comp.estimatedModelTokens)
+            : await estimateTypicalCallPoints(resolveEngineProviderId(engine));
 
         // 自然月跨月算力配额自动重置
         await checkAndResetQuotaCycle(prisma, workspaceId, userId);

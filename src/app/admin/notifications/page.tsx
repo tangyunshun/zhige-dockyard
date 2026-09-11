@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   Mail,
   Bell,
+  BellRing,
   Settings,
   Search,
   CheckCircle2,
@@ -89,6 +90,7 @@ interface NotificationHistoryItem {
   type: string;
   link: string | null;
   isRead: boolean;
+  popupOnLogin: boolean;
   createdAt: string;
   user: {
     id: string;
@@ -136,6 +138,7 @@ export default function AdminNotificationsPage() {
     title: string;
     content: string;
     type: string;
+    popupOnLogin: boolean;
     errors: Record<string, string>;
   }>({
     targetType: "all",
@@ -145,6 +148,7 @@ export default function AdminNotificationsPage() {
     title: "",
     content: "",
     type: "system",
+    popupOnLogin: false,
     errors: {},
   });
 
@@ -350,6 +354,18 @@ export default function AdminNotificationsPage() {
           icon: "🎁",
           label: "平台活动",
           className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        };
+      case "task":
+        return {
+          icon: "📋",
+          label: "任务处理",
+          className: "bg-indigo-50 text-indigo-700 border-indigo-200",
+        };
+      case "security":
+        return {
+          icon: "🛡️",
+          label: "安全隔离",
+          className: "bg-rose-50 text-rose-700 border-rose-200",
         };
       default:
         return {
@@ -618,6 +634,7 @@ export default function AdminNotificationsPage() {
         title: "",
         content: "",
         type: "system",
+        popupOnLogin: false,
         errors: {},
       });
     } else {
@@ -629,6 +646,7 @@ export default function AdminNotificationsPage() {
         title: "",
         content: "",
         type: "system",
+        popupOnLogin: false,
         errors: {},
       });
     }
@@ -913,6 +931,7 @@ export default function AdminNotificationsPage() {
           title: dispatchForm.title.trim(),
           content: dispatchForm.content.trim(),
           type: dispatchForm.type,
+          popupOnLogin: dispatchForm.popupOnLogin,
         }),
       });
 
@@ -1701,9 +1720,9 @@ export default function AdminNotificationsPage() {
 
             {/* 历史多维搜索与筛选卡片 */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5">
                 {/* 标题或正文关键字搜索 */}
-                <div className="relative min-w-[220px] flex-1 sm:w-64">
+                <div className="relative w-full sm:min-w-[220px] sm:flex-1 sm:w-64">
                   <input
                     type="text"
                     placeholder="搜索通知标题、正文关键词..."
@@ -1718,7 +1737,7 @@ export default function AdminNotificationsPage() {
                 </div>
 
                 {/* 接收人过滤 */}
-                <div className="relative min-w-[180px] sm:w-52">
+                <div className="relative w-full sm:min-w-[180px] sm:w-52">
                   <input
                     type="text"
                     placeholder="接收人姓名/邮箱..."
@@ -1733,7 +1752,7 @@ export default function AdminNotificationsPage() {
                 </div>
 
                 {/* 消息类型 */}
-                <div className="w-38 shrink-0">
+                <div className="w-full sm:w-38 sm:shrink-0">
                   <select
                     value={historyType}
                     onChange={(e) => {
@@ -1747,11 +1766,13 @@ export default function AdminNotificationsPage() {
                     <option value="update">🚀 功能更新</option>
                     <option value="alert">⚠️ 安全告警</option>
                     <option value="activity">🎁 平台活动</option>
+                    <option value="task">📋 任务处理</option>
+                    <option value="security">🛡️ 安全隔离</option>
                   </select>
                 </div>
 
                 {/* 阅读状态筛选 */}
-                <div className="w-36 shrink-0">
+                <div className="w-full sm:w-36 sm:shrink-0">
                   <select
                     value={historyReadFilter}
                     onChange={(e) => {
@@ -1826,10 +1847,18 @@ export default function AdminNotificationsPage() {
                           <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
                             {/* 消息类型 */}
                             <td className="py-3.5 px-5 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border inline-flex items-center gap-1 ${typeBadge.className}`}>
-                                <span>{typeBadge.icon}</span>
-                                <span>{typeBadge.label}</span>
-                              </span>
+                              <div className="flex flex-col items-start gap-1.5">
+                                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border inline-flex items-center gap-1 ${typeBadge.className}`}>
+                                  <span>{typeBadge.icon}</span>
+                                  <span>{typeBadge.label}</span>
+                                </span>
+                                {item.popupOnLogin && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-700 border border-amber-300">
+                                    <BellRing className="w-3 h-3" />
+                                    登录弹窗
+                                  </span>
+                                )}
+                              </div>
                             </td>
 
                             {/* 标题与内容 */}
@@ -2466,11 +2495,30 @@ export default function AdminNotificationsPage() {
                       <option value="update">🚀 功能与版本更新 (Feature Update)</option>
                       <option value="alert">⚠️ 安全与业务告警 (Important Alert)</option>
                       <option value="activity">🎁 平台活动与福利 (Event & Reward)</option>
-                    </select>
-                  </div>
-                </div>
+                      <option value="task">📋 任务处理 (Task)</option>
+                      <option value="security">🛡️ 安全隔离 (Security)</option>
+                      </select>
+                      </div>
 
-                {/* 卡片 2：正文与超链接 */}
+                      <label className="flex items-center gap-2.5 p-3 bg-amber-50/60 border border-amber-100 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={dispatchForm.popupOnLogin}
+                        onChange={(e) =>
+                          setDispatchForm({ ...dispatchForm, popupOnLogin: e.target.checked })
+                        }
+                        className="w-4 h-4 accent-[#3182ce] cursor-pointer"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-extrabold text-slate-800">登录时强提醒弹窗</span>
+                        <span className="text-[10px] text-slate-500 leading-tight">
+                          开启后用户登录成功将优先弹窗展示，确认后才归入消息列表
+                        </span>
+                      </div>
+                      </label>
+                      </div>
+
+                      {/* 卡片 2：正文与超链接 */}
                 <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                     <div className="w-2 h-3.5 rounded-full bg-emerald-500" />
@@ -3010,6 +3058,12 @@ export default function AdminNotificationsPage() {
                       >
                         {getNotificationTypeBadge(viewingHistory.type).label}
                       </span>
+                      {viewingHistory.popupOnLogin && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-amber-300 text-amber-900 border border-amber-200">
+                          <BellRing className="w-3 h-3" />
+                          登录弹窗
+                        </span>
+                      )}
                     </h3>
                     <p className="text-[11px] text-blue-100 font-medium">
                       编号 ID: #{viewingHistory.id.slice(0, 16)}...

@@ -783,7 +783,11 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
                                 message: "确认删除此条操作安全日志？物理删除后不可恢复。"
                               });
                             }}
-                            className="text-red-500 hover:text-red-700 hover:underline font-bold text-xs inline-flex items-center gap-0.5 cursor-pointer active:scale-95"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                              selectedIds.includes(log.id)
+                                ? "bg-red-600 border border-red-600 hover:bg-red-700 text-white"
+                                : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
+                            }`}
                             title="管理员直接物理删除此条记录"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

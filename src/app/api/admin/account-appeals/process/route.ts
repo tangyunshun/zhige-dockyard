@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
+    // 鉴权：解封审批属于高危操作，必须由具备用户管理权限的平台管理员执行
+    //（历史上此接口完全无鉴权，任何人凭 appealId 即可解封账号）
+    const authResult = await requirePlatformPermission(request, "user:update");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
+    }
+    const operator = authResult.user!;
+
     const {
       appealId,
       status,
-      adminId,
-      adminName,
       adminComment,
     } = await request.json();
 
@@ -37,8 +44,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const finalAdminId = adminId || "system-admin";
-    const finalAdminName = adminName || "管理员";
+    // 审批人身份一律取自登录态，绝不信任请求体传入的 adminId / adminName
+    const finalAdminId = operator.id;
+    const finalAdminName = operator.name || operator.email || "管理员";
 
     // 查找申诉记录
     const appeal = await prisma.accountappeal.findUnique({
@@ -200,6 +208,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // 审计留痕：空间解封审批
+      await writeAuditLog(
+        finalAdminId,
+        status === "approved" ? "appeal:workspace_unban_approved" : "appeal:workspace_unban_rejected",
+        { appealId, workspaceId, targetUserId: appeal.userId, comment: finalComment },
+        null,
+        null,
+        request
+      );
+
       return NextResponse.json({
         success: true,
         message: status === "approved"
@@ -263,6 +281,16 @@ export async function POST(request: NextRequest) {
         ).catch((e) => console.warn("发送账号驳回通知失败:", e));
       } catch (e) {}
     }
+
+    // 审计留痕：账号解封 / 驳回（含批量审批的逐条记录）
+    await writeAuditLog(
+      finalAdminId,
+      status === "approved" ? "appeal:account_unban_approved" : "appeal:account_unban_rejected",
+      { appealId, targetUserId: appeal.userId, comment: finalComment },
+      null,
+      null,
+      request
+    );
 
     return NextResponse.json({
       success: true,

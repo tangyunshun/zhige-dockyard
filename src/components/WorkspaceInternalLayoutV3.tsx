@@ -7446,7 +7446,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
               <div className="space-y-1.5">
                 <label className="block text-xs font-black text-slate-700">
-                  本月算力上限 (Token Limit)
+                  本月算力上限 (算力点)
                 </label>
                 <div className="relative">
                   <input
@@ -7635,9 +7635,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 <button
                   type="button"
                   onClick={() => setSelectedRoleCodes([])}
-                  className="text-xs text-slate-500 hover:text-red-600 font-bold transition-colors cursor-pointer"
+                  className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors"
                 >
-                  清空选择
+                  取消选择
                 </button>
               </div>
 

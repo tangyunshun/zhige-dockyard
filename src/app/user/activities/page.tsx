@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -16,7 +16,11 @@ import {
   X,
   Eye,
   Info,
+  RefreshCw,
+  Copy,
+  Check,
 } from "lucide-react";
+import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 
 interface UserActivity {
@@ -30,18 +34,22 @@ interface UserActivity {
 }
 
 export default function UserActivitiesPage() {
+  const toast = useToast();
   const [activities, setActivities] = useState<UserActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<"ALL" | string>("ALL");
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<UserActivity | null>(null);
+  const [copiedMetadata, setCopiedMetadata] = useState(false);
 
   useEffect(() => {
-    loadActivities();
+    loadActivities(false);
   }, []);
 
-  const loadActivities = async () => {
+  const loadActivities = async (isManual = false) => {
+    if (isManual) setRefreshing(true);
     try {
       const authToken = getAuthToken();
 
@@ -52,11 +60,29 @@ export default function UserActivitiesPage() {
       if (res.ok) {
         const data = await res.json();
         setActivities(data.data || []);
+        if (isManual) {
+          toast.success("操作日志已刷新");
+        }
+      } else {
+        if (isManual) toast.error("加载日志失败，请重试");
       }
     } catch (error) {
       console.error("Load activities error:", error);
+      if (isManual) toast.error("网络异常，无法加载日志");
     } finally {
       setLoading(false);
+      if (isManual) setRefreshing(false);
+    }
+  };
+
+  const copyMetadata = (data: any) => {
+    try {
+      navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setCopiedMetadata(true);
+      toast.success("元数据 JSON 已复制到剪贴板");
+      setTimeout(() => setCopiedMetadata(false), 2000);
+    } catch {
+      toast.error("复制失败，请手动选择复制");
     }
   };
 
@@ -130,13 +156,24 @@ export default function UserActivitiesPage() {
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="shrink-0">
-        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight truncate">
-          操作日志
-        </h1>
-        <p className="text-sm text-slate-500 font-medium truncate">
-          查看您的活动记录和操作历史
-        </p>
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight truncate">
+            操作日志
+          </h1>
+          <p className="text-sm text-slate-500 font-medium truncate">
+            查看您的全链路操作审计与活动历史记录
+          </p>
+        </div>
+        <button
+          onClick={() => loadActivities(true)}
+          disabled={refreshing}
+          className="self-start sm:self-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:border-[#3182ce] hover:text-[#3182ce] hover:bg-[#3182ce]/5 transition-all shadow-xs disabled:opacity-50"
+          title="刷新操作日志"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#3182ce]" : ""}`} />
+          <span>{refreshing ? "刷新中..." : "刷新日志"}</span>
+        </button>
       </div>
 
       {/* 操作栏 */}
@@ -151,11 +188,11 @@ export default function UserActivitiesPage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 transition-all outline-none"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as typeof filterType)}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 transition-all outline-none bg-white"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 transition-all outline-none bg-white"
           >
             <option value="ALL">全部类型</option>
             <option value="workspace">工作空间</option>
@@ -358,8 +395,18 @@ export default function UserActivitiesPage() {
 
               {selectedActivity.metadata && (
                 <div>
-                  <h4 className="text-sm font-bold text-slate-700 mb-2">元数据</h4>
-                  <pre className="text-xs text-slate-600 bg-slate-50 rounded-xl p-4 overflow-auto max-h-48">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-bold text-slate-700">元数据 (Metadata)</h4>
+                    <button
+                      type="button"
+                      onClick={() => copyMetadata(selectedActivity.metadata)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-[#3182ce] bg-[#3182ce]/10 hover:bg-[#3182ce]/20 rounded-lg transition-colors"
+                    >
+                      {copiedMetadata ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedMetadata ? "已复制" : "复制 JSON"}</span>
+                    </button>
+                  </div>
+                  <pre className="text-xs font-mono text-slate-700 bg-slate-900/5 border border-slate-200 rounded-xl p-4 overflow-auto max-h-48 leading-relaxed">
                     {JSON.stringify(selectedActivity.metadata, null, 2)}
                   </pre>
                 </div>

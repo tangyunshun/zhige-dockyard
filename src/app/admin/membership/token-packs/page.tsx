@@ -7,8 +7,9 @@ import { useToast } from "@/components/Toast";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, isPriceMatchingRule } from "@/lib/point-rate";
-import { Zap, Plus, Edit2, Trash2, ShieldAlert, Sparkles, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList } from "lucide-react";
+import { Zap, Plus, Edit2, Trash2, ShieldAlert, Sparkles, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList, Eye, EyeOff, Ban, Power } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
+import { StatusBadge, ActionButton } from "@/components/common";
 
 interface TokenPack {
   id: string;
@@ -170,6 +171,16 @@ export default function AdminTokenPacksPage() {
   };
 
   const handleToggleActive = async (pack: TokenPack) => {
+    // 下架影响在售，走二次确认；上架为可逆低风险操作，点击即生效
+    if (pack.isActive) {
+      const ok = await confirm({
+        title: "确认下架该算力包",
+        message: `确定要下架「${pack.name}」吗？下架后用户将无法在充值弹窗中购买该加油包，已购权益不受影响。如需恢复，可点击「上架」立即生效。`,
+        type: "warning",
+      });
+      if (!ok) return;
+    }
+
     try {
       const token = getAuthToken();
       const res = await fetch(`/api/admin/token-packs/${pack.id}`, {
@@ -195,7 +206,7 @@ export default function AdminTokenPacksPage() {
       
       {/* 顶部标题与横向模块导航 */}
       <MembershipNavHeader
-        title="Token加油包管理"
+        title="算力加油包管理"
         subtitle="动态配置与上架充值弹窗可选的算力点数包，修改价格、点数与推荐标记"
       >
         <Link
@@ -298,7 +309,8 @@ export default function AdminTokenPacksPage() {
             <div
               key={pack.id}
               className={`bg-white rounded-2xl border transition-all overflow-hidden flex flex-col justify-between shadow-xs hover:shadow-md relative ${
-                !pack.isActive ? "opacity-60 border-slate-200 bg-slate-50/50" : "border-slate-200"
+                // 已下架仅用浅灰底区分（原先 opacity-60 会把操作按钮一起"雾化"）
+                !pack.isActive ? "border-slate-200 bg-slate-50/50" : "border-slate-200"
               }`}
             >
               {pack.isPopular && (
@@ -354,34 +366,66 @@ export default function AdminTokenPacksPage() {
                 </div>
               </div>
 
-              <div className="px-6 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
-                <button
-                  onClick={() => handleToggleActive(pack)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+              <div className="px-6 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2">
+                {/* 状态徽章：只读，上架/下架一律走右侧动词按钮 */}
+                <StatusBadge
+                  compact
+                  tone={pack.isActive ? "active" : "inactive"}
+                  title={
                     pack.isActive
-                      ? "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"
-                      : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                  }`}
+                      ? "该算力包已上架，用户可在充值弹窗购买"
+                      : "该算力包已下架，用户不可购买"
+                  }
                 >
-                  {pack.isActive ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                  <span>{pack.isActive ? "已上架" : "已下架"}</span>
-                </button>
+                  {pack.isActive ? "已上架" : "已下架"}
+                </StatusBadge>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleOpenEdit(pack)}
-                    className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg cursor-pointer transition-colors"
+                <div className="flex items-center gap-1.5">
+                  {pack.isActive ? (
+                    <ActionButton
+                      compact
+                      variant="warn"
+                      icon={<Ban className="w-3 h-3" />}
+                      title="下架该算力包（下架后解除保护，方可编辑/删除）"
+                      onClick={() => handleToggleActive(pack)}
+                    >
+                      下架
+                    </ActionButton>
+                  ) : (
+                    <ActionButton
+                      compact
+                      variant="success"
+                      icon={<Power className="w-3 h-3" />}
+                      title="上架该算力包"
+                      onClick={() => handleToggleActive(pack)}
+                    >
+                      上架
+                    </ActionButton>
+                  )}
+                  <ActionButton
+                    compact
+                    variant="primary"
+                    icon={<Edit2 className="w-3 h-3" />}
+                    disabledReason={
+                      pack.isActive ? "上架中的算力包不可编辑，请先下架" : undefined
+                    }
                     title="编辑算力包"
+                    onClick={() => handleOpenEdit(pack)}
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
+                    编辑
+                  </ActionButton>
+                  <ActionButton
+                    compact
+                    variant="danger"
+                    icon={<Trash2 className="w-3 h-3" />}
+                    disabledReason={
+                      pack.isActive ? "上架中的算力包不可删除，请先下架" : undefined
+                    }
+                    title="删除该算力包"
                     onClick={() => handleDelete(pack.id, pack.name)}
-                    className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 rounded-lg cursor-pointer transition-colors"
-                    title="删除"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    删除
+                  </ActionButton>
                 </div>
               </div>
             </div>

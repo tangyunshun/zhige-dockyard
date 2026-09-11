@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { targetType = "all", targetRole, groupId, userIds, userId, title, content, type = "system" } = body;
+    const { targetType = "all", targetRole, groupId, userIds, userId, title, content, type = "system", popupOnLogin = false } = body;
 
     if (!title || !title.trim()) {
       return NextResponse.json({ error: "通知标题不能为空" }, { status: 400 });
@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
           title: title.trim(),
           content: content.trim(),
           type: type || "system",
+          popupOnLogin: popupOnLogin === true,
           link: null,
           isRead: false,
         }));
@@ -292,6 +293,7 @@ export async function POST(request: NextRequest) {
         title: title.trim(),
         content: content.trim(),
         type: type || "system",
+        popupOnLogin: popupOnLogin === true,
         link: null,
         isRead: false,
       }));
@@ -342,6 +344,7 @@ export async function POST(request: NextRequest) {
         title: title.trim(),
         content: content.trim(),
         type: type || "system",
+        popupOnLogin: popupOnLogin === true,
         link: null,
         isRead: false,
       }));

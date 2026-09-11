@@ -9,6 +9,9 @@ const getCleanRole = (role: string | null | undefined): string => {
   if (r === "SUPER_ADMIN" || r === "SUPERADMIN" || r === "SUPER_ADMIN_ROLE" || r === "SUPER") {
     return "SUPER_ADMIN";
   }
+  if (r === "ADMIN" || r === "ADMINISTRATOR") {
+    return "ADMIN";
+  }
   return "USER";
 };
 
@@ -50,18 +53,19 @@ export async function POST(request: NextRequest) {
     // 去重
     const uniqueIds = [...new Set(userIds)] as string[];
 
-    // 越权保护：过滤出可踢出的用户（排除平台超级管理员）
+    // 越权保护：过滤出可踢出的用户（排除管理员 / 超级管理员）
     const targets = await prisma.user.findMany({
       where: { id: { in: uniqueIds } },
       select: { id: true, role: true, email: true },
     });
 
-    const kickable = targets.filter((u) => getCleanRole(u.role) !== "SUPER_ADMIN");
-    const skippedSuperAdmin = targets.length - kickable.length;
+    const privilegedRoles = new Set(["SUPER_ADMIN", "ADMIN"]);
+    const kickable = targets.filter((u) => !privilegedRoles.has(getCleanRole(u.role)));
+    const skippedPrivileged = targets.length - kickable.length;
 
     if (kickable.length === 0) {
       return NextResponse.json(
-        { error: "所选用户均为平台超级管理员，无法强制下线" },
+        { error: "所选用户均为管理员/超级管理员，无法强制下线" },
         { status: 403 }
       );
     }
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
       {
         targetUserIds: kickable.map((u) => u.id),
         kickedCount: result.count,
-        skippedSuperAdmin,
+        skippedPrivileged,
         reason: reason || null,
       },
       null,
@@ -96,14 +100,14 @@ export async function POST(request: NextRequest) {
     );
 
     console.log(
-      `[批量强踢] 管理员 ${adminId} 强制下线 ${result.count} 个用户（跳过超管 ${skippedSuperAdmin} 个）`
+      `[批量强踢] 管理员 ${adminId} 强制下线 ${result.count} 个用户（跳过管理/超管 ${skippedPrivileged} 个）`
     );
 
     return NextResponse.json({
       success: true,
       message: `已成功强制下线 ${result.count} 个用户`,
       kickedCount: result.count,
-      skippedSuperAdmin,
+      skippedPrivileged,
     });
   } catch (error) {
     console.error("Batch kick API error:", error);

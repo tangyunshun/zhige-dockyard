@@ -605,7 +605,7 @@ export default function AdminStagesPage() {
                     setFilters({ ...filters, status: e.target.value });
                     setCurrentPage(1);
                   }}
-                  className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                  className="w-full sm:w-auto h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer hover:bg-slate-100 transition-colors"
                 >
                   <option value="">全部状态</option>
                   <option value="active">已启用</option>

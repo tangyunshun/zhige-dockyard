@@ -13,6 +13,10 @@ import {
   Eye,
   Calendar,
   Clock,
+  RefreshCw,
+  Terminal,
+  Check,
+  AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
@@ -31,11 +35,14 @@ export default function DeveloperCenterPage() {
   const toast = useToast();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [copiedCurl, setCopiedCurl] = useState(false);
 
   // 创建弹窗
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   // 创建成功后一次性展示完整 key
@@ -52,7 +59,8 @@ export default function DeveloperCenterPage() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  const loadKeys = async () => {
+  const loadKeys = async (isManual = false) => {
+    if (isManual) setRefreshing(true);
     try {
       const res = await fetch("/api/user/api-keys", {
         headers: authHeaders(),
@@ -60,6 +68,7 @@ export default function DeveloperCenterPage() {
       if (res.ok) {
         const data = await res.json();
         setKeys(data.apiKeys || []);
+        if (isManual) toast.success("API Key 列表已刷新");
       } else if (res.status === 401) {
         toast.error("登录状态已失效，请重新登录");
       } else {
@@ -70,19 +79,21 @@ export default function DeveloperCenterPage() {
       toast.error("加载 API Key 失败");
     } finally {
       setLoading(false);
+      if (isManual) setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadKeys();
+    loadKeys(false);
   }, []);
 
   const handleCreate = async () => {
     if (!newName.trim()) {
-      toast.error("请填写 API Key 名称");
+      setNameError("请填写 API Key 名称");
       return;
     }
     setCreating(true);
+    setNameError(null);
     try {
       const res = await fetch("/api/user/api-keys", {
         method: "POST",
@@ -94,15 +105,21 @@ export default function DeveloperCenterPage() {
         setRevealedKey(data.apiKey.key);
         setNewName("");
         setNewDesc("");
+        setNameError(null);
         setShowCreate(false);
         loadKeys();
         toast.success("API Key 创建成功");
       } else {
-        toast.error(data.error || "创建失败");
+        const err = data.error || "创建失败";
+        if (err.includes("名称") || err.includes("重名")) {
+          setNameError(err);
+        } else {
+          toast.error(err);
+        }
       }
     } catch (e) {
       console.error("创建 API Key 错误:", e);
-      toast.error("创建失败");
+      toast.error("网络异常，创建失败");
     } finally {
       setCreating(false);
     }
@@ -151,16 +168,27 @@ export default function DeveloperCenterPage() {
             开发者中心
           </h1>
           <p className="text-sm text-slate-500 font-medium truncate">
-            在此管理你的 API Key，用于调用平台开放接口与自动化集成
+            在此管理你的 API Key，用于调用知阁·舟坊开放接口与自动化集成
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#3182ce]/30 hover:shadow-xl transition-all active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          创建 API Key
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => loadKeys(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:border-[#3182ce] hover:text-[#3182ce] hover:bg-[#3182ce]/5 transition-all shadow-xs disabled:opacity-50"
+            title="刷新 API Key 列表"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#3182ce]" : ""}`} />
+            <span>{refreshing ? "刷新中..." : "刷新"}</span>
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-sm font-bold rounded-xl shadow-lg shadow-[#3182ce]/30 hover:shadow-xl transition-all active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            创建 API Key
+          </button>
+        </div>
       </div>
 
       {/* 安全提示条 */}
@@ -168,7 +196,7 @@ export default function DeveloperCenterPage() {
         <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
         <div className="text-xs font-medium leading-relaxed">
           <span className="font-bold">安全提醒：</span>
-          API Key 等同于你的账号凭证，请勿外泄或在客户端代码中硬编码。创建后仅展示一次完整 Key，请立即妥善保存。
+          API Key 等同于你的账号凭证，请勿外泄或在客户端公开代码中硬编码。创建后仅展示一次完整 Key，请立即妥善保存。
         </div>
       </div>
 
@@ -231,6 +259,36 @@ export default function DeveloperCenterPage() {
         )}
       </div>
 
+      {/* 开发者快速调用指南 */}
+      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-[#3182ce]" />
+            API 快速开始 (Quickstart)
+          </h2>
+          <button
+            onClick={() => {
+              const code = `curl -X GET "https://api.zhige.dev/v1/user/profile" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json"`;
+              copy(code, "调用示例代码已复制");
+              setCopiedCurl(true);
+              setTimeout(() => setCopiedCurl(false), 2000);
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors"
+          >
+            {copiedCurl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copiedCurl ? "已复制" : "复制 cURL"}</span>
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">
+          通过 HTTP Header 携带 Bearer 令牌完成安全鉴权：
+        </p>
+        <pre className="text-xs font-mono text-emerald-400 bg-slate-950 rounded-xl p-4 overflow-x-auto leading-relaxed border border-slate-800">
+          {`curl -X GET "https://api.zhige.dev/v1/user/profile" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json"`}
+        </pre>
+      </div>
+
       {/* 创建弹窗 */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -247,14 +305,27 @@ export default function DeveloperCenterPage() {
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  名称 <span className="text-red-500">*</span>
+                  <span className="zg-required">名称</span>
                 </label>
                 <input
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  onChange={(e) => {
+                    setNewName(e.target.value);
+                    if (nameError) setNameError(null);
+                  }}
                   placeholder="如：我的脚本 / 生产环境服务"
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm"
+                  className={`w-full px-3 py-2.5 rounded-xl border outline-none text-sm transition-all ${
+                    nameError
+                      ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                      : "border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20"
+                  }`}
                 />
+                {nameError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                    <span>{nameError}</span>
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">描述（可选）</label>
@@ -267,13 +338,23 @@ export default function DeveloperCenterPage() {
               </div>
             </div>
 
-            <button
-              onClick={handleCreate}
-              disabled={creating}
-              className="w-full mt-6 px-6 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-60"
-            >
-              {creating ? "创建中..." : "创建"}
-            </button>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition-colors text-sm"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={creating}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 transition-all disabled:opacity-60 text-sm"
+              >
+                {creating ? "创建中..." : "确认创建"}
+              </button>
+            </div>
           </div>
         </div>
       )}

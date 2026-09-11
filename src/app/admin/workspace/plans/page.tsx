@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { StatusBadge, ActionButton, RowActions } from "@/components/common";
 import {
   Plus,
   Search,
@@ -12,7 +13,8 @@ import {
   Edit2,
   Trash2,
   CheckCircle2,
-  XCircle,
+  Ban,
+  Power,
   X,
   Boxes,
   Coins,
@@ -65,10 +67,6 @@ const DEFAULT_PLAN: Partial<WorkspacePlan> = {
 };
 
 const SYSTEM_KEYS = ["STANDARD", "PRO", "ENTERPRISE", "CUSTOM"];
-
-// 红色「禁止」鼠标指针（替换浏览器默认的黑色 not-allowed 圈）
-const RED_NO_CURSOR =
-  "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Ccircle%20cx='12'%20cy='12'%20r='9'%20fill='none'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3Cline%20x1='5'%20y1='5'%20x2='19'%20y2='19'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3C/svg%3E\") 12 12, not-allowed";
 
 /** 判断是否是与数据库 4 大基础配额字段重叠的旧写死文本 */
 function isCoreQuotaFeatureText(text: string): boolean {
@@ -141,6 +139,8 @@ export default function WorkspacePlansAdminPage() {
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkspacePlan | null>(null);
+  // 停用目标：状态列只读，停用/启用统一走操作列动词按钮（停用需二次确认）
+  const [toggleTarget, setToggleTarget] = useState<WorkspacePlan | null>(null);
 
   const token = getAuthToken();
 
@@ -314,6 +314,14 @@ export default function WorkspacePlansAdminPage() {
     }
   };
 
+  // 停用：有业务影响，走二次确认；启用为可逆低风险操作，点击即生效
+  const handleConfirmDisable = async () => {
+    if (!toggleTarget) return;
+    const plan = toggleTarget;
+    setToggleTarget(null);
+    await handleToggleActive(plan);
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
@@ -463,11 +471,11 @@ export default function WorkspacePlansAdminPage() {
             className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
           />
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto shrink-0 justify-end">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto shrink-0 justify-end">
           <select
             value={filterPrice}
             onChange={(e) => setFilterPrice(e.target.value)}
-            className="h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+            className="w-full sm:w-auto h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">所有价格分类</option>
             <option value="free">仅看免费版</option>
@@ -476,7 +484,7 @@ export default function WorkspacePlansAdminPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+            className="w-full sm:w-auto h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">所有启用状态</option>
             <option value="active">已启用</option>
@@ -485,7 +493,7 @@ export default function WorkspacePlansAdminPage() {
           <select
             value={filterPurchasable}
             onChange={(e) => setFilterPurchasable(e.target.value)}
-            className="h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+            className="w-full sm:w-auto h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">全部售卖方式</option>
             <option value="purchasable">可在线购买</option>
@@ -510,15 +518,16 @@ export default function WorkspacePlansAdminPage() {
                   <th className="px-6 py-4 min-w-[420px]">配额与参数</th>
                   <th className="px-6 py-4 min-w-[160px]">价格阶梯 (CNY)</th>
                   <th className="px-6 py-4 w-28">状态</th>
-                  <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4.5 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">操作</th>
+                  <th className="sticky right-0 bg-slate-50 z-20 px-4.5 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
                 {filteredPlans.map((plan) => (
                   <tr
                     key={plan.id}
-                    className={`hover:bg-slate-50/80 transition-colors ${
-                      !plan.isActive ? "opacity-60 bg-slate-50/30" : ""
+                    className={`group hover:bg-slate-50/80 transition-colors ${
+                      // 已停用套餐用浅灰底区分（原先是整行 opacity-60，会把可操作按钮一起"雾化"）
+                      !plan.isActive ? "bg-slate-50/50" : ""
                     }`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -594,64 +603,59 @@ export default function WorkspacePlansAdminPage() {
                       </div>
                     </td>
 
+                    {/* 状态列：只读徽章，不承载任何操作（操作统一在操作列） */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button
-                        onClick={() => handleToggleActive(plan)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center justify-center gap-1 cursor-pointer transition-colors ${
-                          plan.isActive
-                            ? "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"
-                            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                        }`}
+                      <StatusBadge
+                        tone={plan.isActive ? "active" : "inactive"}
+                        title={plan.isActive ? "该套餐当前启用中" : "该套餐当前已停用"}
                       >
-                        {plan.isActive ? (
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        ) : (
-                          <XCircle className="w-3.5 h-3.5" />
-                        )}
-                        {plan.isActive ? "已启用" : "已停用"}
-                      </button>
+                        {plan.isActive ? "启用中" : "已停用"}
+                      </StatusBadge>
                     </td>
 
-                    <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-4.5 py-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => !plan.isActive && openEdit(plan)}
-                          disabled={plan.isActive}
-                          title={plan.isActive ? "启用中的套餐不可编辑，请先停用" : "编辑套餐"}
-                          style={plan.isActive ? { cursor: RED_NO_CURSOR } : undefined}
-                          className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1 ${
-                            plan.isActive
-                              ? "bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed"
-                              : "bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"
-                          }`}
+                    <td className="sticky right-0 bg-white group-hover:bg-slate-50 z-10 px-4.5 py-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
+                      <RowActions>
+                        <ActionButton
+                          variant="primary"
+                          icon={<Edit2 className="w-4 h-4" />}
+                          disabledReason={
+                            plan.isActive ? "启用中的套餐不可编辑，请先停用" : undefined
+                          }
+                          onClick={() => openEdit(plan)}
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
                           编辑
-                        </button>
+                        </ActionButton>
 
-                        {(() => {
-                          const disabled = plan.isActive;
-                          const title = plan.isActive
-                            ? "启用中的套餐不可删除，请先停用"
-                            : "删除套餐";
-                          return (
-                            <button
-                              onClick={() => !disabled && setDeleteTarget(plan)}
-                              disabled={disabled}
-                              title={title}
-                              style={disabled ? { cursor: RED_NO_CURSOR } : undefined}
-                              className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 ${
-                                disabled
-                                  ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed hover:ring-2 hover:ring-red-300/40"
-                                  : "bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 cursor-pointer"
-                              }`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              删除
-                            </button>
-                          );
-                        })()}
-                      </div>
+                        {/* 停用/启用：始终可见的动词按钮，与状态徽章解耦 */}
+                        {plan.isActive ? (
+                          <ActionButton
+                            variant="warn"
+                            icon={<Ban className="w-4 h-4" />}
+                            onClick={() => setToggleTarget(plan)}
+                          >
+                            停用
+                          </ActionButton>
+                        ) : (
+                          <ActionButton
+                            variant="success"
+                            icon={<Power className="w-4 h-4" />}
+                            onClick={() => handleToggleActive(plan)}
+                          >
+                            启用
+                          </ActionButton>
+                        )}
+
+                        <ActionButton
+                          variant="danger"
+                          icon={<Trash2 className="w-4 h-4" />}
+                          disabledReason={
+                            plan.isActive ? "启用中的套餐不可删除，请先停用" : undefined
+                          }
+                          onClick={() => setDeleteTarget(plan)}
+                        >
+                          删除
+                        </ActionButton>
+                      </RowActions>
                     </td>
                   </tr>
                 ))}
@@ -799,7 +803,7 @@ export default function WorkspacePlansAdminPage() {
                     { label: "最大组件数量 (个)", key: "maxComponents", icon: Package },
                     { label: "存储上限 (MB)", key: "maxStorage", icon: Database },
                     { label: "每月 API 调用次数", key: "maxApiCalls", icon: Zap },
-                    { label: "算力额度 (token)", key: "tokenLimit", icon: Coins },
+                    { label: "算力额度 (算力点)", key: "tokenLimit", icon: Coins },
                   ].map((item) => {
                     const Icon = item.icon;
                     const val = (form as any)[item.key];
@@ -1009,6 +1013,21 @@ export default function WorkspacePlansAdminPage() {
         cancelText="取消"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={!!toggleTarget}
+        title={`确认停用套餐「${toggleTarget?.name || ""}」`}
+        message={`停用后该套餐将不再对新购与续费开放，已在使用该套餐的空间不受影响。停用后即可对其进行编辑或删除。`}
+        warnings={[
+          "停用不影响已购用户的既有权益，仅限制新增购买与续费。",
+          "如需恢复，可在操作列点击「启用」立即生效。",
+        ]}
+        type="warning"
+        confirmText="确认停用"
+        cancelText="取消"
+        onConfirm={handleConfirmDisable}
+        onCancel={() => setToggleTarget(null)}
       />
     </div>
   );

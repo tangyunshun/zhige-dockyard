@@ -24,25 +24,29 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit;
 
-    const [preferences, total] = await Promise.all([
-      prisma.userpreference.findMany({
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true,
-              role: true,
+    const [preferences, total, zhigeEngineCount, openaiEngineCount] =
+      await Promise.all([
+        prisma.userpreference.findMany({
+          skip,
+          take: limit,
+          orderBy: { createdAt: "desc" },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                role: true,
+              },
             },
           },
-        },
-      }),
-      prisma.userpreference.count(),
-    ]);
+        }),
+        prisma.userpreference.count(),
+        // 引擎使用分布：全量 count，避免用当前分页数组长度估算
+        prisma.userpreference.count({ where: { aiEngine: "zhige" } }),
+        prisma.userpreference.count({ where: { aiEngine: "openai" } }),
+      ]);
 
     return NextResponse.json({
       success: true,
@@ -51,6 +55,7 @@ export async function GET(request: NextRequest) {
         total,
         page,
         totalPages: Math.ceil(total / limit),
+        stats: { zhigeEngineCount, openaiEngineCount },
       },
     });
   } catch (error) {

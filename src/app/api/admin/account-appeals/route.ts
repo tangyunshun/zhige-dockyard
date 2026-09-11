@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
+    // 鉴权：申诉数据包含用户账号、封禁原因与申诉材料，仅限具备风控审核权限的管理员查看
+    const authResult = await requirePlatformPermission(request, "user:update");
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");

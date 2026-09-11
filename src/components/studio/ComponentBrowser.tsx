@@ -56,6 +56,7 @@ import {
 // 引入统一侧滑分发控制面板
 import ComponentDispatcherPanel from "./ComponentDispatcherPanelNew";
 import { formatYuanFromPoints, POINT_RATE_TEXT } from "@/lib/point-rate";
+import { UNIT_EXPLAIN_HINT } from "@/lib/model-rate";
 
 // 应用阶段分组配置：名称/颜色/顺序一律由数据库 component_category 表（经 AppContext 加载）驱动，
 // 代码中不再硬编码任何阶段分组数据。
@@ -857,7 +858,9 @@ export default function ComponentBrowser({
                     {Math.round(tokenPercentage)}%
                   </span>
                 </div>
-                <p className="text-[9px] font-bold text-slate-400">💡 换算规则：{POINT_RATE_TEXT}</p>
+                <p className="text-[9px] font-bold text-slate-400" title={UNIT_EXPLAIN_HINT}>
+                  💡 1 token = 1 算力点 ｜ {POINT_RATE_TEXT}
+                </p>
               </div>
 
               {/* 第三列：已装配资产摘要及展示控制 */}

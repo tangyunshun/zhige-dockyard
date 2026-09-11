@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
 
@@ -7,7 +7,7 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 
 /**
- * 获取用户设备列表
+ * 获取用户设备列表（支持每页10条分页）
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,14 +19,29 @@ export async function GET(request: NextRequest) {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as string;
 
-    const devices = await prisma.userdevice.findMany({
-      where: { userId },
-      orderBy: { lastActiveAt: "desc" },
-    });
+    const page = Math.max(1, parseInt(request.nextUrl.searchParams.get("page") || "1"));
+    const limit = Math.max(1, parseInt(request.nextUrl.searchParams.get("limit") || "10"));
+
+    const [total, devices] = await Promise.all([
+      prisma.userdevice.count({ where: { userId } }),
+      prisma.userdevice.findMany({
+        where: { userId },
+        orderBy: [
+          { isCurrent: "desc" },
+          { lastActiveAt: "desc" },
+        ],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
       devices,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error) {
     console.error("Get devices error:", error);
@@ -50,7 +65,26 @@ export async function DELETE(request: NextRequest) {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userId = payload.userId as string;
 
-    const { deviceId } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const { deviceId, action, kickAllOthers } = body;
+
+    // 支持一键强制下线所有其他活跃设备（B-05）
+    if (action === "kick_all_others" || kickAllOthers === true) {
+      const deleteResult = await prisma.userdevice.deleteMany({
+        where: {
+          userId,
+          isCurrent: false,
+        },
+      });
+
+      console.log(`[一键下线] 用户 ${userId} 踢出所有其他设备共 ${deleteResult.count} 台`);
+
+      return NextResponse.json({
+        success: true,
+        message: `已成功强制下线 ${deleteResult.count} 台其他活跃设备`,
+        kickedCount: deleteResult.count,
+      });
+    }
 
     if (!deviceId) {
       return NextResponse.json({ error: "缺少设备ID" }, { status: 400 });

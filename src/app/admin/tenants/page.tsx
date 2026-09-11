@@ -34,6 +34,14 @@ interface TenantData {
   total: number;
   page: number;
   totalPages: number;
+  // 全量聚合统计（不受分页与筛选影响），由接口真实 count 得出
+  stats?: {
+    totalCount: number;
+    activeCount: number;
+    inactiveCount: number;
+    userCount: number;
+    taskCount: number;
+  };
 }
 
 export default function AdminTenantsPage() {
@@ -158,7 +166,7 @@ export default function AdminTenantsPage() {
               总企业团队数
             </div>
             <div className="text-3xl font-black text-slate-800 tracking-tight">
-              {tenantData?.total || 0}
+              {tenantData?.stats?.totalCount ?? tenantData?.total ?? 0}
             </div>
           </div>
         </div>
@@ -175,8 +183,9 @@ export default function AdminTenantsPage() {
               活跃团队数
             </div>
             <div className="text-3xl font-black text-slate-800 tracking-tight">
-              {tenantData?.tenants.filter((t) => t.status === "active")
-                .length || 0}
+              {tenantData?.stats?.activeCount ??
+                tenantData?.tenants.filter((t) => t.status === "active").length ??
+                0}
             </div>
           </div>
         </div>
@@ -193,7 +202,8 @@ export default function AdminTenantsPage() {
               总用户数
             </div>
             <div className="text-3xl font-black text-slate-800 tracking-tight">
-              {tenantData?.tenants.reduce((sum, t) => sum + t._count.user, 0) ||
+              {tenantData?.stats?.userCount ??
+                tenantData?.tenants.reduce((sum, t) => sum + t._count.user, 0) ??
                 0}
             </div>
           </div>
@@ -211,10 +221,12 @@ export default function AdminTenantsPage() {
               总任务数
             </div>
             <div className="text-3xl font-black text-slate-800 tracking-tight">
-              {tenantData?.tenants.reduce(
-                (sum, t) => sum + t._count.componenttask,
-                0,
-              ) || 0}
+              {tenantData?.stats?.taskCount ??
+                tenantData?.tenants.reduce(
+                  (sum, t) => sum + t._count.componenttask,
+                  0,
+                ) ??
+                0}
             </div>
           </div>
         </div>
@@ -223,7 +235,7 @@ export default function AdminTenantsPage() {
       {/* 筛选栏 */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm p-6 overflow-hidden">
         <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
-        <div className="relative flex items-center gap-4">
+        <div className="relative flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
@@ -237,7 +249,7 @@ export default function AdminTenantsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+            className="w-full sm:w-auto shrink-0 px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
           >
             <option value="all">全部状态</option>
             <option value="active">活跃</option>

@@ -149,7 +149,7 @@ export default function AdminMembershipIndex() {
     },
     {
       icon: Zap,
-      title: "Token加油包管理",
+      title: "算力加油包管理",
       badge: `${stats?.activeTokenPacks ?? 0} 款在架`,
       description: "管理跨空间通用的算力点数包、定价阶梯与折扣优惠",
       href: "/admin/membership/token-packs",

@@ -1038,7 +1038,11 @@ export default function AssetGovernancePanel({
                             <button
                               type="button"
                               onClick={() => handleDeleteLog(l.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                selectedLogIds.has(l.id)
+                                  ? "bg-red-600 border border-red-600 text-white hover:bg-red-700"
+                                  : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
+                              }`}
                               title="删除此条变更记录"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

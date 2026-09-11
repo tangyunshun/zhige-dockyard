@@ -574,13 +574,13 @@ export default function AssetsTab({
               <span>批量移除 ({selectedAssetIds.length})</span>
             </button>
 
-            {/* 3. 取消全选 */}
+            {/* 3. 取消选择 */}
             <button
               type="button"
               onClick={() => setSelectedAssetIds([])}
-              className="px-2.5 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-white/80 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors"
             >
-              取消选中
+              取消选择
             </button>
           </div>
         </div>
@@ -890,7 +890,11 @@ export default function AssetsTab({
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveClick(item)}
-                                  className="text-red-500 hover:text-red-600 hover:underline cursor-pointer inline-flex items-center gap-0.5 font-bold"
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                                    selectedAssetIds.includes(item.id)
+                                      ? "bg-red-600 border border-red-600 hover:bg-red-700 text-white"
+                                      : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
+                                  }`}
                                   title="撤回/移除未审核资料"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" /> 移除
@@ -958,7 +962,11 @@ export default function AssetsTab({
                               <button
                                 type="button"
                                 onClick={() => handleRemoveClick(item)}
-                                className="text-red-500 hover:text-red-600 hover:underline cursor-pointer inline-flex items-center gap-0.5 font-bold"
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                                  selectedAssetIds.includes(item.id)
+                                    ? "bg-red-600 border border-red-600 hover:bg-red-700 text-white"
+                                    : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
+                                }`}
                                 title={isPrivate ? "移除私密资料（需确认原因）" : "下架/移除公开资料（需确认原因）"}
                               >
                                 <Trash2 className="w-3.5 h-3.5" /> 移除

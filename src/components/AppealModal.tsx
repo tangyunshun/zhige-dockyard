@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, AlertCircle, CheckCircle, FileText, Clock, RotateCcw, Shield, MessageSquare, AlertTriangle, Flame, Lock, XCircle } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -57,6 +57,10 @@ export default function AppealModal({ account, onClose, onStatusChange, initialB
     appealReason: "",
     contactInfo: "",
   });
+
+  // 申诉原因校验错误：内联展示在输入框下方，而不是用顶部 Toast
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
 
   const [defaultContact, setDefaultContact] = useState<string>("");
 
@@ -120,15 +124,18 @@ export default function AppealModal({ account, onClose, onStatusChange, initialB
     }
 
     if (!formData.appealReason.trim()) {
-      toast.error("请填写具体的申诉原因");
+      setReasonError("请填写具体的申诉原因");
+      reasonRef.current?.focus();
       return;
     }
 
     if (formData.appealReason.trim().length < 10) {
-      toast.error("申诉原因至少需要 10 个字符");
+      setReasonError("申诉原因至少需要 10 个字符");
+      reasonRef.current?.focus();
       return;
     }
 
+    setReasonError(null);
     setSubmitting(true);
 
     try {
@@ -569,11 +576,19 @@ export default function AppealModal({ account, onClose, onStatusChange, initialB
               </label>
               <div className="relative">
                 <textarea
+                  ref={reasonRef}
                   value={formData.appealReason}
-                  onChange={(e) => setFormData({ ...formData, appealReason: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, appealReason: e.target.value });
+                    if (reasonError) setReasonError(null);
+                  }}
                   rows={4}
                   maxLength={500}
-                  className="w-full px-3.5 pt-2.5 pb-7 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all resize-none leading-relaxed font-sans"
+                  className={`w-full px-3.5 pt-2.5 pb-7 border rounded-xl text-xs outline-none transition-all resize-none leading-relaxed font-sans ${
+                    reasonError
+                      ? "bg-red-50/60 border-red-400 focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                      : "bg-slate-50 border-slate-200 focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20"
+                  }`}
                   placeholder="请至少输入 10 个字，详细说明导致封禁的操作背景或误封解封理由..."
                 />
                 {/* 放置在输入框内部右下角的精致灰色字数与规范统计提示 */}
@@ -592,6 +607,12 @@ export default function AppealModal({ account, onClose, onStatusChange, initialB
                   </span>
                 </div>
               </div>
+              {reasonError && (
+                <p className="mt-1.5 text-xs text-red-500 font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {reasonError}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">

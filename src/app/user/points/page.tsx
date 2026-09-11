@@ -123,40 +123,48 @@ export default function MyPointsPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 font-sans">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-            <Coins className="w-5 h-5 text-amber-500" /> 我的算力
+            <Coins className="w-5 h-5 text-amber-500" /> 我的算力中心
           </h2>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            钱包算力点跨空间通用；个人空间赠送点 3 个月有效，企业充值点归入空间共享池。
+            个人钱包算力点跨空间通用；企业充值点归入对应空间共享池，保障协同研发效能。
           </p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : ""}`} /> 刷新
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            disabled={loading}
+            className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : ""}`} /> 刷新
+          </button>
+          <button
+            onClick={() => router.push("/user/billing-center")}
+            className="px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-bold text-xs rounded-lg shadow-xs hover:brightness-105 transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Zap className="w-3.5 h-3.5" /> 立即充值算力
+          </button>
+        </div>
       </div>
 
       {data?.expiringPoints ? (
-        <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3 flex items-start gap-2.5">
-          <Clock3 className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-          <p className="text-[11px] font-bold text-orange-800 leading-relaxed">
+        <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl px-4 py-3 flex items-start gap-2.5">
+          <Clock3 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-xs font-bold text-amber-800 leading-relaxed">
             您有 <strong>{data.expiringPoints.toLocaleString()}</strong> 算力点即将过期
             {data.expiringAt ? `（${new Date(data.expiringAt).toLocaleDateString("zh-CN")} 到期）` : ""}
-            ，未使用部分到期将自动清零，请优先使用。
+            ，系统将优先从即将到期的额度中抵扣，请合理安排研发消耗。
           </p>
         </div>
       ) : null}
 
       {/* 统计卡 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-white/90 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">钱包余额（跨空间通用）</div>
+            <div className="text-xs text-slate-400 font-bold mb-1">跨空间通用余额</div>
             <div className="text-2xl font-black font-mono text-[#3182ce]">
               {(data?.walletBalance ?? 0).toLocaleString()}
               <span className="text-xs font-normal text-slate-400 ml-1">点</span>

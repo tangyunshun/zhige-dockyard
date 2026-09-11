@@ -50,13 +50,14 @@ interface DashboardData {
   // 平台健康度
   systemHealth: number;
 
-  // 系统服务状态（与系统健康度关联）
-  systemServices: {
-    database: string;
-    api: string;
-    storage: string;
-    email: string;
-  };
+  // 系统服务状态（后端真实探针结果：状态 + 实测延迟 + 真实指标文案）
+  systemServices: Array<{
+    key: "database" | "api" | "storage" | "notification";
+    name: string;
+    status: "normal" | "warning" | "down";
+    latencyMs: number;
+    message: string;
+  }>;
 
   // 24h 用户活跃行为（登录次数）
   systemLogs: number;
@@ -247,6 +248,42 @@ export default function AdminDashboard() {
     );
   }
 
+  // 系统服务真实状态（来自接口探针结果，不再写死）
+  const systemServices = data.systemServices || [];
+  const serviceTotal = systemServices.length;
+  const normalServiceCount = systemServices.filter((s) => s.status === "normal").length;
+  const allServicesNormal = serviceTotal > 0 && normalServiceCount === serviceTotal;
+  // 顶部状态徽标同样随真实健康度/服务状态变化
+  const systemHealthy = allServicesNormal && data.systemHealth >= 95;
+
+  const serviceStatusMeta: Record<
+    "normal" | "warning" | "down",
+    { label: string; badge: string; dot: string }
+  > = {
+    normal: {
+      label: "正常",
+      badge: "bg-emerald-50 text-emerald-600 border-emerald-200/60",
+      dot: "bg-emerald-500",
+    },
+    warning: {
+      label: "需要关注",
+      badge: "bg-amber-50 text-amber-600 border-amber-200/60",
+      dot: "bg-amber-500",
+    },
+    down: {
+      label: "异常",
+      badge: "bg-red-50 text-red-600 border-red-200/60",
+      dot: "bg-red-500",
+    },
+  };
+
+  const serviceIcons: Record<string, typeof Database> = {
+    database: Database,
+    api: Layers,
+    storage: HardDrive,
+    notification: Mail,
+  };
+
   const statCards = [
     {
       icon: Users,
@@ -332,12 +369,12 @@ export default function AdminDashboard() {
     {
       icon: AlertCircle,
       label: "系统核心服务",
-      value: `${Object.values(data.systemServices).filter((s) => s === "normal").length}/4 在线`,
-      status: Object.values(data.systemServices).every((s) => s === "normal") ? "全部正常" : "部分异常",
+      value: `${normalServiceCount}/${serviceTotal} 在线`,
+      status: normalServiceCount === serviceTotal ? "全部正常" : "部分异常",
       subLabel: "点击查看服务运行详情",
       onClick: () => setServicesModalOpen(true),
-      color: Object.values(data.systemServices).every((s) => s === "normal") ? "text-[#10b981]" : "text-[#f59e0b]",
-      bgColor: Object.values(data.systemServices).every((s) => s === "normal") ? "bg-[#10b981]/10" : "bg-[#f59e0b]/10",
+      color: normalServiceCount === serviceTotal ? "text-[#10b981]" : "text-[#f59e0b]",
+      bgColor: normalServiceCount === serviceTotal ? "bg-[#10b981]/10" : "bg-[#f59e0b]/10",
       borderHover: "hover:border-[#3182ce]/40",
     },
   ];
@@ -384,9 +421,22 @@ export default function AdminDashboard() {
             <h1 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">
               管理仪表盘
             </h1>
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              系统正常运行
+            <span
+              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                systemHealthy
+                  ? "bg-emerald-50 text-emerald-600 border-emerald-200/60"
+                  : "bg-amber-50 text-amber-600 border-amber-200/60"
+              }`}
+              title={`系统健康度 ${data.systemHealth}% · 核心服务 ${normalServiceCount}/${serviceTotal} 在线`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full animate-pulse ${
+                  systemHealthy ? "bg-emerald-500" : "bg-amber-500"
+                }`}
+              ></span>
+              {systemHealthy
+                ? "系统正常运行"
+                : `系统需关注（服务 ${normalServiceCount}/${serviceTotal} · 健康度 ${data.systemHealth}%）`}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
@@ -968,73 +1018,51 @@ export default function AdminDashboard() {
             </div>
 
             <div className="p-5 space-y-3 bg-slate-50/50">
-              {/* PostgreSQL / Prisma */}
-              <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center">
-                    <Database className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-slate-800">数据库服务 (PostgreSQL / Prisma)</div>
-                    <div className="text-xs text-slate-500">连接池活跃 · 事务读写正常 · 表结构校验通过</div>
-                  </div>
+              {serviceTotal === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-400 font-medium">
+                  暂无核心服务探针数据
                 </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  正常
-                </span>
-              </div>
-
-              {/* REST API 网关 */}
-              <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <Layers className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-slate-800">系统应用接口服务</div>
-                    <div className="text-xs text-slate-500">接口通信正常 · 权限校验生效 · 响应速度平稳</div>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  正常
-                </span>
-              </div>
-
-              {/* 对象存储 */}
-              <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                    <HardDrive className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-slate-800">文件与资源存储 (Storage)</div>
-                    <div className="text-xs text-slate-500">组件资源包读写正常 · 头像与附件分发畅通</div>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  正常
-                </span>
-              </div>
-
-              {/* 邮件与消息 */}
-              <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                    <Mail className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-slate-800">消息通知通道 (Notification)</div>
-                    <div className="text-xs text-slate-500">系统通知服务正常 · 待发送队列 0 积压</div>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  正常
-                </span>
-              </div>
+              ) : (
+                systemServices.map((service) => {
+                  const meta =
+                    serviceStatusMeta[service.status] || serviceStatusMeta.warning;
+                  const IconComp = serviceIcons[service.key] || Server;
+                  return (
+                    <div
+                      key={service.key}
+                      className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-xs"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                          <IconComp className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-800 truncate">
+                            {service.name}
+                          </div>
+                          <div
+                            className="text-xs text-slate-500 truncate"
+                            title={service.message}
+                          >
+                            {service.message}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0 ml-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${meta.badge}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`}></span>
+                          {meta.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          探针延迟 {service.latencyMs}ms
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             <div className="p-4 bg-white border-t border-slate-200/80 flex items-center justify-between">

@@ -78,6 +78,8 @@ model user {
   sessionExpiresAt                                         DateTime?             @map("session_expires_at")
   sessionToken                                             String?               @map("session_token")
   deletionRequestedAt                                      DateTime?             @map("deletion_requested_at")
+  /// 僵尸用户标记：每日定时扫描将「超 1 年未登录且从未产生有效数据」的用户置位，供后台筛选与清理
+  isZombie                                                 Boolean              @default(false) @map("is_zombie")
   bannedUntil                                              DateTime?             @map("banned_until")
   banReason                                                String?               @db.Text @map("ban_reason")
   passwordChangedAt                                        DateTime?             @default(now()) @map("password_changed_at")
@@ -122,6 +124,7 @@ model user {
   @@index([role], map: "User_role_idx")
   @@index([lastWorkspaceId], map: "User_lastWorkspaceId_idx")
   @@index([deletionRequestedAt], map: "User_deletionRequestedAt_idx")
+  @@index([isZombie], map: "User_isZombie_idx")
 }
 
 model apikey {
@@ -529,10 +532,11 @@ model notification {
   userId    String
   title     String
   content   String
-  type      String   @default("system")
-  isRead    Boolean  @default(false)
-  link      String?
-  createdAt DateTime @default(now())
+  type          String   @default("system")
+  popupOnLogin  Boolean  @default(false)
+  isRead        Boolean  @default(false)
+  link          String?
+  createdAt     DateTime @default(now())
   user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Notification_userId_fkey")
 
   @@index([userId, createdAt], map: "Notification_userId_createdAt_idx")
@@ -1078,6 +1082,20 @@ model billingrecord {
   @@map("billing_record")
 }
 
+// 系统动态配置（key-value，JSON 文本）：供管理员在后台调整而无需发版
+// 例如 key = "ai_pricing_config" 存放 AI 厂商价格表与加价系数。
+// 注意：未执行本迁移前，相关代码会回退到 src/lib/model-rate.ts 的内置默认值，不影响系统运行。
+model systemsetting {
+  id          String   @id @default(cuid())
+  key         String   @unique(map: "SystemSetting_key_key")
+  value       String   @db.Text
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_setting")
+}
+
 model tokenpack {
   id          String   @id
   name        String
@@ -1150,7 +1168,7 @@ model pointledger {
   ///      OFFLINE_RECHARGE 线下工单入账 | MEMBERSHIP_GRANT 会员额度 | CONSUME 组件消耗
   ///      REFUND 退回 | MANUAL_ADJUST 后台人工调整
   type          String
-  /// 归属范围：WALLET | WORKSPACE | PERSONAL_GIFT
+  /// 归属范围：WALLET | WORKSPACE | PERSONAL_GIFT 个人空间赠送 | PERSONAL_DEDUCTION 个人空间扣减
   scope         String
   userId        String?
   userEmail     String?

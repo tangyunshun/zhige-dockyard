@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { executeAdminUserDeletion } from "@/lib/admin-user-deletion";
 
 const getCleanRole = (role: string | null | undefined): string => {
   if (!role) return "USER";
@@ -378,19 +379,15 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE: 删除用户 (需要 SUPER_ADMIN)
+// DELETE: 删除用户（归属优先的安全删除，默认软删除，绝不简单物理删除）
+// 需要 user:delete 权限。物理删除（被遗忘权）由独立定时任务在 30 天冷静期后执行。
 export async function DELETE(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "user:update");
+    const authResult = await requirePlatformPermission(request, "user:delete");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
     const adminId = authResult.user!.id;
-    const adminRole = authResult.user!.role;
-
-    if (getCleanRole(adminRole) !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "越权警告：只有超级管理员允许物理删除用户账号" }, { status: 403 });
-    }
 
     const { searchParams } = new URL(request.url);
     const targetUserId = searchParams.get("userId");
@@ -403,16 +400,57 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "不能删除自己" }, { status: 403 });
     }
 
-    await prisma.user.delete({
-      where: { id: targetUserId },
-    });
+    // 删除选项：情况 A 的移交 / 归档
+    const body = await request.json().catch(() => ({} as Record<string, unknown>));
+    const transferToUserId =
+      typeof body.transferToUserId === "string" && body.transferToUserId
+        ? body.transferToUserId
+        : undefined;
+    const archivePersonalData = body.archivePersonalData === true;
+    const reason = typeof body.reason === "string" ? body.reason : undefined;
+
+    let result;
+    try {
+      result = await executeAdminUserDeletion(targetUserId, {
+        adminId,
+        transferToUserId,
+        archivePersonalData,
+        reason,
+      });
+    } catch (execError) {
+      const msg = execError instanceof Error ? execError.message : "删除失败";
+      await writeAuditLog(
+        adminId,
+        "user:delete_blocked",
+        { targetUserId, reason: msg },
+        null,
+        null,
+        request
+      );
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
 
     // 记录审计
-    await writeAuditLog(adminId, "user:delete", { targetUserId }, null, null, request);
+    await writeAuditLog(
+      adminId,
+      "user:delete",
+      {
+        targetUserId,
+        case: result.case,
+        softDeleted: result.softDeleted,
+        transferredWorkspaces: result.transferredWorkspaces,
+        archivedWorkspaces: result.archivedWorkspaces,
+        reason: reason || null,
+      },
+      null,
+      null,
+      request
+    );
 
     return NextResponse.json({
       success: true,
-      message: "用户已物理删除成功",
+      message: result.message,
+      data: result,
     });
   } catch (error) {
     console.error("Delete user error:", error);

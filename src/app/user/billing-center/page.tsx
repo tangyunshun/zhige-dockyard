@@ -353,14 +353,26 @@ export default function BillingCenterPage() {
   const [invoiceTitle, setInvoiceTitle] = useState("");
   const [taxId, setTaxId] = useState("");
   const [invoiceEmail, setInvoiceEmail] = useState("");
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [submittingInvoice, setSubmittingInvoice] = useState(false);
 
   const handleSubmitInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTitleError(null);
+    setEmailError(null);
+
+    let hasErr = false;
     if (!invoiceTitle.trim()) {
-      toast.error("请输入发票开具抬头");
-      return;
+      setTitleError("请输入发票开具抬头");
+      hasErr = true;
     }
+    if (!invoiceEmail.trim()) {
+      setEmailError("请输入接收电子发票的邮箱");
+      hasErr = true;
+    }
+    if (hasErr) return;
+
     try {
       setSubmittingInvoice(true);
       const res = await fetch("/api/feedback", {
@@ -880,16 +892,28 @@ export default function BillingCenterPage() {
             <form onSubmit={handleSubmitInvoice} className="space-y-4 text-xs font-medium">
               <div>
                 <label className="block text-slate-700 font-extrabold mb-1">
-                  发票开具抬头 (企业 / 个人名称) <span className="text-red-500">*</span>
+                  <span className="zg-required">发票开具抬头 (企业 / 个人名称)</span>
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="请输入公司全称或个人抬头"
                   value={invoiceTitle}
-                  onChange={(e) => setInvoiceTitle(e.target.value)}
-                  className="w-full h-9 px-3 rounded-md border border-slate-300 focus:border-[#3182ce] focus:outline-none bg-slate-50/50 text-slate-800"
+                  onChange={(e) => {
+                    setInvoiceTitle(e.target.value);
+                    if (titleError) setTitleError(null);
+                  }}
+                  className={`w-full h-9 px-3 rounded-md border text-slate-800 transition-all outline-none ${
+                    titleError
+                      ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
+                      : "border-slate-300 focus:border-[#3182ce] focus:outline-none bg-slate-50/50"
+                  }`}
                 />
+                {titleError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                    <span>{titleError}</span>
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-slate-700 font-extrabold mb-1">
@@ -905,16 +929,28 @@ export default function BillingCenterPage() {
               </div>
               <div>
                 <label className="block text-slate-700 font-extrabold mb-1">
-                  接收电子发票邮箱 <span className="text-red-500">*</span>
+                  <span className="zg-required">接收电子发票邮箱</span>
                 </label>
                 <input
                   type="email"
-                  required
                   placeholder="开具成功后将发送至该邮箱"
                   value={invoiceEmail}
-                  onChange={(e) => setInvoiceEmail(e.target.value)}
-                  className="w-full h-9 px-3 rounded-md border border-slate-300 focus:border-[#3182ce] focus:outline-none bg-slate-50/50 text-slate-800"
+                  onChange={(e) => {
+                    setInvoiceEmail(e.target.value);
+                    if (emailError) setEmailError(null);
+                  }}
+                  className={`w-full h-9 px-3 rounded-md border text-slate-800 transition-all outline-none ${
+                    emailError
+                      ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
+                      : "border-slate-300 focus:border-[#3182ce] focus:outline-none bg-slate-50/50"
+                  }`}
                 />
+                {emailError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                    <span>{emailError}</span>
+                  </p>
+                )}
               </div>
               <div className="pt-2 flex justify-end gap-2">
                 <button

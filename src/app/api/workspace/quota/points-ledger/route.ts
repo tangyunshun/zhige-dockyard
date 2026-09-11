@@ -142,8 +142,17 @@ export async function GET(request: NextRequest) {
           .catch(() => [] as any[])
       : ([] as any[]);
 
+    const normalizeOperatorName = (raw?: string | null) => {
+      if (!raw) return "系统管理员";
+      const lower = raw.trim().toLowerCase();
+      if (lower === "superadmin" || lower === "super_admin") return "系统管理员";
+      return raw;
+    };
+
     const userNameMap = new Map<string, string>();
-    (allUsers as any[]).forEach((u) => userNameMap.set(u.id, u.name || u.email || "未知用户"));
+    (allUsers as any[]).forEach((u) =>
+      userNameMap.set(u.id, normalizeOperatorName(u.name || u.email || "系统管理员"))
+    );
     const compNameMap = new Map<string, string>();
     (allComps as any[]).forEach((c) => compNameMap.set(c.id, c.name));
 

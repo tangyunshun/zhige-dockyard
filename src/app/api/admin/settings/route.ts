@@ -181,8 +181,19 @@ export async function GET(request: NextRequest) {
       prisma.accountappeal.count(),
     ]);
 
+    // 3. 真实数据库引擎版本（MySQL：SELECT VERSION()），失败时降级为 Prisma 标识
+    let dbEngine = "Prisma ORM";
+    try {
+      const versionRows = await prisma.$queryRaw<{ version: string }[]>`SELECT VERSION() AS version`;
+      const version = versionRows?.[0]?.version;
+      if (version) dbEngine = `${version} / Prisma ORM`;
+    } catch (engineErr) {
+      console.warn("读取数据库引擎版本失败（非致命）:", engineErr);
+    }
+
     const databaseStats = {
-      status: "HEALTHY",
+      // 状态由真实探针延迟推导，不再恒为 HEALTHY
+      status: dbPingLatency > 500 ? "DEGRADED" : "HEALTHY",
       latencyMs: dbPingLatency,
       tableCounts: {
         users: userCount,
@@ -192,8 +203,9 @@ export async function GET(request: NextRequest) {
         operationLogs: logCount,
         accountAppeals: appealCount,
       },
-      lastBackupTime: new Date(Date.now() - 3600 * 1000 * 4).toISOString(), // 4小时前例行全量归档
-      dbEngine: "PostgreSQL 15 / Prisma ORM",
+      // 系统未接入备份任务（无归档记录表），如实返回 null，由前端展示"暂无归档记录"，不再伪造"4 小时前备份"
+      lastBackupTime: null as string | null,
+      dbEngine,
     };
 
     return NextResponse.json({

@@ -30,4 +30,23 @@ export async function register() {
     await run();
     setInterval(run, DAY_MS);
   }, 60 * 1000);
+
+  // 僵尸用户每日扫描：刷新 is_zombie 标记并向超级管理员推送清理提醒。
+  // 首跑延后 90s（避开算力清算与启动高峰），之后每 24h 一次；与 scripts/zombie-scan-cron.ts 互为兜底。
+  const scanZombies = async () => {
+    try {
+      const { scanAndNotifyZombies } = await import("@/lib/zombie-user");
+      const res = await scanAndNotifyZombies();
+      console.log(
+        `[zombie-scan] 每日扫描完成，识别 ${res.zombieCount} 个僵尸用户，已通知 ${res.notified} 位超级管理员`
+      );
+    } catch (e) {
+      console.error("[zombie-scan] 每日扫描失败:", e);
+    }
+  };
+
+  setTimeout(async () => {
+    await scanZombies();
+    setInterval(scanZombies, DAY_MS);
+  }, 90 * 1000);
 }

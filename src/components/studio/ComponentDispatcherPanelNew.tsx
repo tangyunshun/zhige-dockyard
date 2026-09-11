@@ -325,7 +325,7 @@ export default function ComponentDispatcherPanel({
                 </span>
                 <div className="flex items-center gap-1 text-[9px] text-slate-400 font-bold">
                   <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
-                  <span>估算消耗 {comp.estimatedModelTokens} 额度/次</span>
+                  <span>估算消耗 {comp.estimatedModelTokens} 算力点/次</span>
                 </div>
               </div>
               

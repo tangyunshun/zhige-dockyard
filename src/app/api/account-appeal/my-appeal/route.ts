@@ -42,16 +42,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ hasAppeal: false, remainingAppeals: 3, rejectedCount: 0, isDepleted: false });
     }
 
-    // 本次封禁的时间戳基准线：以 user.updatedAt 为起算线
-    const currentBanStartTime = user.status === "banned" ? new Date(user.updatedAt) : new Date();
+    // 本轮限制的起始基准线：账号处于任何受限状态（封禁 / 禁用登录 / 注销中 / 锁定）时，
+    // 均以该状态的落库时间（updatedAt）为起算线；否则才退化为"当前时刻"。
+    // 注意：不能只认 banned —— 被"禁用登录"(inactive) 的账号若取当前时刻为基线，
+    // 会导致此前提交的申诉全部被时间窗过滤掉，用户永远看不到自己的申诉进度。
+    const RESTRICTED_STATUSES = ["banned", "inactive", "deleting", "suspended", "locked"];
+    const currentBanStartTime = RESTRICTED_STATUSES.includes(user.status)
+      ? new Date(user.updatedAt)
+      : new Date();
     const banThreshold = new Date(currentBanStartTime.getTime() - 2000);
 
-    // 1. 查询【在本次封禁起始线之后】提交的 pending 待审核申诉单
+    // 1. 查询待审核申诉单：pending 天然代表"本轮尚未处理完"，不加时间窗，
+    //    避免管理员再次修改用户资料导致 updatedAt 前移、在途申诉凭空消失
     const activePendingAppeal = await prisma.accountappeal.findFirst({
       where: {
         userId: user.id,
         status: "pending",
-        createdAt: { gte: banThreshold },
       },
       orderBy: { createdAt: "desc" },
     });

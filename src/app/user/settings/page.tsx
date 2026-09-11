@@ -17,6 +17,7 @@ import {
   FolderGit2,
   AlertTriangle,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
 
@@ -53,12 +54,25 @@ export default function UserSettingsPage() {
     userEmail: "",
   });
   const [savingNotificationPref, setSavingNotificationPref] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadSettings();
     loadSessionSettings();
     loadNotificationPref();
   }, []);
+
+  const reloadAllSettings = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadSettings(), loadSessionSettings(), loadNotificationPref()]);
+      toast.success("偏好配置已重新加载");
+    } catch {
+      toast.error("刷新配置失败");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const loadNotificationPref = async () => {
     try {
@@ -199,13 +213,36 @@ export default function UserSettingsPage() {
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="shrink-0">
-        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight truncate">
-          偏好设置
-        </h1>
-        <p className="text-sm text-slate-500 font-medium truncate">
-          个性化配置您的使用体验
-        </p>
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight truncate">
+            偏好设置
+          </h1>
+          <p className="text-sm text-slate-500 font-medium truncate">
+            个性化配置您的使用体验、通知频次与跨端协同策略
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={reloadAllSettings}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:border-[#3182ce] hover:text-[#3182ce] hover:bg-[#3182ce]/5 transition-all shadow-xs disabled:opacity-50"
+            title="刷新配置信息"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#3182ce]" : ""}`} />
+            <span>{refreshing ? "刷新中..." : "重新加载"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={saveSettings}
+            disabled={loading}
+            className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl text-xs font-bold shadow-md shadow-[#3182ce]/20 hover:shadow-lg transition-all disabled:opacity-50"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>{loading ? "保存中..." : "保存全部配置"}</span>
+          </button>
+        </div>
       </div>
 
       {/* 语言设置 */}
@@ -220,10 +257,14 @@ export default function UserSettingsPage() {
           </h2>
 
           <div className="space-y-3">
-            <label className="flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer">
+            <label className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${
+              settings.language === "zh-CN"
+                ? "border-[#3182ce] bg-[#3182ce]/5 shadow-xs"
+                : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+            }`}>
               <div>
-                <p className="text-sm font-bold text-slate-800">简体中文</p>
-                <p className="text-xs text-slate-500">使用简体中文界面</p>
+                <p className="text-sm font-bold text-slate-800">简体中文 (Simplified Chinese)</p>
+                <p className="text-xs text-slate-500">知阁·舟坊系统原生默认语言环境</p>
               </div>
               <input
                 type="radio"
@@ -237,10 +278,14 @@ export default function UserSettingsPage() {
               />
             </label>
 
-            <label className="flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer">
+            <label className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${
+              settings.language === "en"
+                ? "border-[#3182ce] bg-[#3182ce]/5 shadow-xs"
+                : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+            }`}>
               <div>
-                <p className="text-sm font-bold text-slate-800">English</p>
-                <p className="text-xs text-slate-500">Use English interface</p>
+                <p className="text-sm font-bold text-slate-800">English (International)</p>
+                <p className="text-xs text-slate-500">Use English interface for global developers</p>
               </div>
               <input
                 type="radio"

@@ -54,6 +54,17 @@ export default function MessagesPage() {
 
   useEffect(() => {
     loadNotifications();
+
+    // 弹窗确认或全局操作后自动刷新当前列表
+    const handleUpdate = () => loadNotifications();
+    if (typeof window !== "undefined") {
+      window.addEventListener("zhige_notifications_updated", handleUpdate);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("zhige_notifications_updated", handleUpdate);
+      }
+    };
   }, []);
 
   // 标记单条为已读
@@ -209,12 +220,18 @@ export default function MessagesPage() {
 
   const typeLabels: Record<string, string> = {
     system: "系统通知",
+    update: "功能更新",
+    alert: "安全告警",
+    activity: "平台活动",
     task: "任务处理",
     security: "安全隔离"
   };
 
   const badgeStyles: Record<string, string> = {
     system: "bg-blue-50 text-blue-600 border-blue-100",
+    update: "bg-violet-50 text-violet-600 border-violet-100",
+    alert: "bg-red-50 text-red-600 border-red-100",
+    activity: "bg-orange-50 text-orange-600 border-orange-100",
     task: "bg-emerald-50 text-emerald-600 border-emerald-100",
     security: "bg-amber-50 text-amber-600 border-amber-100"
   };
@@ -341,6 +358,9 @@ export default function MessagesPage() {
                 >
                   <option value="ALL">所有消息类别</option>
                   <option value="system">系统通知</option>
+                  <option value="update">功能更新</option>
+                  <option value="alert">安全告警</option>
+                  <option value="activity">平台活动</option>
                   <option value="task">任务处理</option>
                   <option value="security">安全隔离</option>
                 </select>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { addNotification } from "@/lib/notifications-store";
 
 // POST: 管理员人工调整用户个人空间算力点（赠送/扣除），需要 user:update 权限
 // 与算力财务模块闭环：同步更新 workspacequota，并写入 pointledger 流水（MANUAL_ADJUST）
@@ -69,7 +70,8 @@ export async function POST(request: NextRequest) {
           id: crypto.randomUUID(),
           direction: amount >= 0 ? "IN" : "OUT",
           type: "MANUAL_ADJUST",
-          scope: "WORKSPACE",
+          // 赠送计入「个人空间赠送」，扣减计入「个人空间扣减」，均不归入空间共享池
+          scope: amount >= 0 ? "PERSONAL_GIFT" : "PERSONAL_DEDUCTION",
           userId,
           userEmail: target.email,
           workspaceId: personalWs.id,
@@ -91,6 +93,22 @@ export async function POST(request: NextRequest) {
       null,
       request,
     );
+
+    // 赠送 / 扣减后向用户推送消息提醒（失败不应影响调整结果）
+    try {
+      const abs = Math.abs(amount);
+      const isGift = amount >= 0;
+      const reasonText = reason ? `（原因：${reason}）` : "";
+      await addNotification(
+        userId,
+        isGift ? "🎁 算力点已到账" : "⚠️ 算力点已被扣减",
+        `管理员已${isGift ? "为您赠送" : "扣减您"} ${abs} 算力点${reasonText}。当前个人空间算力点余额：${newBalance}。`,
+        "system",
+        "/user/points",
+      );
+    } catch (notifyErr) {
+      console.error("推送算力点调整通知失败:", notifyErr);
+    }
 
     return NextResponse.json({
       success: true,

@@ -57,11 +57,29 @@ export async function POST(request: NextRequest) {
     }
 
     // 查找用户（支持邮箱、手机号、账号名）
-    // 第一步：使用 raw 查询实现真正的大小写敏感匹配（BINARY name），仅取 id
-    const matched = (await prisma.$queryRaw`
-      SELECT id FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}
-    `) as { id: string }[];
-    const matchedId = matched.length > 0 ? matched[0].id : null;
+    // 第一步：使用 raw 查询实现大小写敏感匹配（BINARY name），仅取 id，兼容表名大小写
+    let matchedId: string | null = null;
+    try {
+      const matched = (await prisma.$queryRaw`
+        SELECT id FROM User WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}
+      `) as { id: string }[];
+      if (matched.length > 0) matchedId = matched[0].id;
+    } catch {
+      try {
+        const matched = (await prisma.$queryRaw`
+          SELECT id FROM user WHERE email = ${account} OR phone = ${account} OR BINARY name = ${account}
+        `) as { id: string }[];
+        if (matched.length > 0) matchedId = matched[0].id;
+      } catch {
+        const fallbackUser = await prisma.user.findFirst({
+          where: {
+            OR: [{ email: account }, { phone: account }, { name: account }],
+          },
+          select: { id: true },
+        });
+        if (fallbackUser) matchedId = fallbackUser.id;
+      }
+    }
 
     if (!matchedId) {
       // 账号不存在：不返回剩余次数（避免账号枚举/误导），也不参与失败计数
@@ -771,7 +789,7 @@ export async function POST(request: NextRequest) {
           deviceType,
           browser,
           os,
-          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
+          ipAddress: clientIP || "127.0.0.1",
           isCurrent: true,
         },
       });

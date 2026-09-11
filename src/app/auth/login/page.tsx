@@ -111,6 +111,8 @@ function LoginForm() {
     exists?: boolean;
     locked?: boolean;
     disabled?: boolean;
+    // 已被封禁（与「禁用登录」同属不可登录态，UI 文案不同，disabled 一并置位以复用拦截逻辑）
+    banned?: boolean;
     minutesRemaining?: number;
     remainingAttempts?: number;
   }>({});
@@ -372,9 +374,21 @@ function LoginForm() {
         body: JSON.stringify({ account }),
       });
 
+      // 检测接口异常（500/网络问题）绝不能当作"账号未注册"，否则会把可用账号误导到注册页
+      if (!res.ok) {
+        setAccountCheckStatus({});
+        return;
+      }
+
       const data = await res.json();
 
-      if (!data.exists) {
+      // 响应中必须明确给出 exists 布尔值，字段缺失视为检测失败，不做任何判定
+      if (typeof data.exists !== "boolean") {
+        setAccountCheckStatus({});
+        return;
+      }
+
+      if (data.exists === false) {
         // 账号不存在：标记状态并启动 3 秒倒计时自动跳转到注册页面
         setAccountCheckStatus({
           exists: false,
@@ -408,6 +422,16 @@ function LoginForm() {
             Array.from(new Set([account.toLowerCase(), ...prev])),
           );
         }
+      } else if (data.status === "banned") {
+        // 实时检测到账号被封禁：与「禁用登录」一致，无需输入密码点登录即提示
+        setAccountCheckStatus({
+          exists: true,
+          disabled: true,
+          banned: true,
+        });
+        setErrors({
+          account: "该账号已被封禁，请联系管理员",
+        });
       } else if (data.status === "disabled") {
         setAccountCheckStatus({
           exists: true,
@@ -677,6 +701,11 @@ function LoginForm() {
           setLoading(false);
           return;
         }
+        if (lockData.exists && lockData.status === "banned") {
+          setErrors({ account: "该账号已被封禁，请联系管理员" });
+          setLoading(false);
+          return;
+        }
         if (lockData.exists && lockData.status === "disabled") {
           setErrors({ account: "账号已被禁用，请联系管理员" });
           setLoading(false);
@@ -701,9 +730,13 @@ function LoginForm() {
       return;
     }
 
-    // 检查账号是否被禁用
+    // 检查账号是否被封禁 / 禁用登录（失焦检测结果兜底）
     if (accountCheckStatus.disabled) {
-      setErrors({ account: "账号已被禁用，请联系管理员" });
+      setErrors({
+        account: accountCheckStatus.banned
+          ? "该账号已被封禁，请联系管理员"
+          : "账号已被禁用，请联系管理员",
+      });
       setLoading(false);
       return;
     }
@@ -732,7 +765,21 @@ function LoginForm() {
 
       console.log("登录响应状态:", res.status);
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          console.error("服务端返回非 JSON 数据:", text);
+          setGlobalError(`服务器异常响应 (${res.status})，请稍后重试`);
+          return;
+        }
+      } catch (readErr) {
+        console.error("读取服务端响应流失败:", readErr);
+        setGlobalError("网络连接中断，请检查网络连接后重试");
+        return;
+      }
       console.log("登录响应数据:", data);
 
       if (res.ok) {
@@ -839,6 +886,33 @@ function LoginForm() {
             });
           } catch (touchError) {
             console.warn("/api/auth/touch 调用失败:", touchError);
+          }
+
+          // 预拉取登录后需要强提醒弹窗的未读通知，跳转后由目标页统一展示
+          try {
+            const authToken = localStorage.getItem("auth_token");
+            const popupRes = await fetch(
+              "/api/user/notifications/list?popup=true&unread=true&includePending=true",
+              {
+                headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+                credentials: "include",
+                signal: AbortSignal.timeout(3000),
+              },
+            );
+            if (popupRes.ok) {
+              const popupJson = await popupRes.json();
+              const popups = popupJson.data?.list || [];
+              if (popups.length > 0) {
+                sessionStorage.setItem(
+                  "pendingLoginNotifications",
+                  JSON.stringify(popups),
+                );
+              } else {
+                sessionStorage.removeItem("pendingLoginNotifications");
+              }
+            }
+          } catch (popupError) {
+            console.warn("登录弹窗通知预拉取失败:", popupError);
           }
 
           // 智能判断跳转目标
@@ -952,9 +1026,14 @@ function LoginForm() {
           }
         }
       }
-    } catch (error) {
-      // 网络错误显示在登录按钮上方
-      setGlobalError("网络错误，请稍后重试");
+    } catch (error: any) {
+      console.error("登录流程捕获异常:", error);
+      const isFetchFail = error instanceof TypeError && String(error?.message || "").toLowerCase().includes("fetch");
+      setGlobalError(
+        isFetchFail
+          ? "网络连接失败，请确认后端服务正在运行"
+          : (error?.message || "登录请求异常，请稍后重试")
+      );
     } finally {
       setLoading(false);
     }
@@ -1238,14 +1317,23 @@ function LoginForm() {
                   {accountCheckStatus.disabled && (
                     <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
                       <p className="text-xs text-red-600">
-                        ⛔ 账号已被禁用，请联系管理员
+                        {accountCheckStatus.banned
+                          ? "⛔ 该账号已被封禁，请联系管理员"
+                          : "⛔ 账号已被禁用，请联系管理员"}
                       </p>
                       <button
                         type="button"
                         onClick={() => setShowAppealModal(true)}
                         className="text-xs text-[#3182ce] hover:underline font-medium whitespace-nowrap ml-2"
+                        title={
+                          appealButtonInfo.hasAppeal
+                            ? "点击查看解封申诉进度或风控销户状态"
+                            : "提交解封申诉申请"
+                        }
                       >
-                        📝 在线申诉 →
+                        {appealButtonInfo.hasAppeal
+                          ? appealButtonInfo.text.trim()
+                          : "📝 在线申诉 →"}
                       </button>
                     </div>
                   )}
@@ -1427,10 +1515,26 @@ function LoginForm() {
                       </div>
                     )}
                     {accountCheckStatus.disabled && (
-                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
                         <p className="text-xs text-red-600">
-                          ⛔ 该手机号对应的账号已被禁用，请联系管理员
+                          {accountCheckStatus.banned
+                            ? "⛔ 该手机号对应的账号已被封禁，请联系管理员"
+                            : "⛔ 该手机号对应的账号已被禁用，请联系管理员"}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowAppealModal(true)}
+                          className="text-xs text-[#3182ce] hover:underline font-medium whitespace-nowrap ml-2"
+                          title={
+                            appealButtonInfo.hasAppeal
+                              ? "点击查看解封申诉进度或风控销户状态"
+                              : "提交解封申诉申请"
+                          }
+                        >
+                          {appealButtonInfo.hasAppeal
+                            ? appealButtonInfo.text.trim()
+                            : "📝 在线申诉 →"}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1688,9 +1792,16 @@ function LoginForm() {
       {/* 账号申诉模态框 */}
       {showAppealModal && (
         <AppealModal
-          account={formData.account}
+          account={formData.account || formData.phone || ""}
           initialBanReason={appealButtonInfo.banReason || undefined}
-          onClose={() => setShowAppealModal(false)}
+          onClose={() => {
+            setShowAppealModal(false);
+            // 关闭后立即回查，提交/撤销申诉后按钮能切换为「查看申诉进度」
+            checkAppealButtonMeta(formData.account || formData.phone || "");
+          }}
+          onStatusChange={() =>
+            checkAppealButtonMeta(formData.account || formData.phone || "")
+          }
         />
       )}
 

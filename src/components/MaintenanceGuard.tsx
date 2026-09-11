@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -28,7 +28,7 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
   const checkMaintenance = useCallback(async () => {
     try {
       const res = await fetch("/api/system/check-maintenance", {
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(10000),
       });
 
       if (res.ok) {
@@ -38,8 +38,13 @@ export default function MaintenanceGuard({ children }: { children: React.ReactNo
           message: data.message,
         });
       }
-    } catch (error) {
-      console.error("[维护模式检测] 检查失败:", error);
+    } catch (error: any) {
+      // 超时或请求中止为健康探测的常见网络抖动，转为 warn 降级处理，避免触发开发服务器 Console TimeoutError 弹窗
+      if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+        console.warn("[维护模式检测] 探测请求超时或中止，已跳过本次轮询");
+      } else {
+        console.warn("[维护模式检测] 探测异常已降级:", error?.message || error);
+      }
     } finally {
       setIsChecking(false);
     }

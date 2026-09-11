@@ -26,7 +26,7 @@ export const EXPIRE_REMIND_DAYS = 7;
 /** 无限额度标记值 */
 export const UNLIMITED_BALANCE = -1;
 
-export type PointScope = "WALLET" | "PERSONAL_GIFT" | "WORKSPACE";
+export type PointScope = "WALLET" | "PERSONAL_GIFT" | "PERSONAL_DEDUCTION" | "WORKSPACE";
 
 export type LedgerType =
   | "GIFT_REGISTER"
@@ -714,10 +714,15 @@ export async function expireExpiredGrants(opts?: {
 }): Promise<number> {
   if (!opts?.userId && !opts?.workspaceId) {
     // 全局清算（定时任务/管理端触发）
-    return prisma.$transaction((tx) => expireGrantsInTx(tx, null, null));
+    return prisma.$transaction((tx) => expireGrantsInTx(tx, null, null), {
+      // 网络盘/慢文件系统下清算可能超过默认 5s，放宽事务超时（P2028）
+      timeout: 60000,
+      maxWait: 10000,
+    });
   }
-  return prisma.$transaction((tx) =>
-    expireGrantsInTx(tx, opts?.userId ?? null, opts?.workspaceId ?? null),
+  return prisma.$transaction(
+    (tx) => expireGrantsInTx(tx, opts?.userId ?? null, opts?.workspaceId ?? null),
+    { timeout: 60000, maxWait: 10000 },
   );
 }
 

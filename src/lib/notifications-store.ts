@@ -12,6 +12,7 @@ export interface NotificationRecord {
   content: string;
   isRead: boolean;
   type: string;
+  popupOnLogin?: boolean;
   createdAt: number; // 毫秒时间戳，兼容前端现有展示
   link?: string | null;
 }
@@ -22,6 +23,7 @@ function toRecord(n: {
   content: string;
   isRead: boolean;
   type: string;
+  popupOnLogin?: boolean | null;
   link: string | null;
   createdAt: Date;
 }): NotificationRecord {
@@ -31,9 +33,16 @@ function toRecord(n: {
     content: n.content,
     isRead: n.isRead,
     type: n.type,
+    popupOnLogin: n.popupOnLogin ?? undefined,
     link: n.link,
     createdAt: new Date(n.createdAt).getTime(),
   };
+}
+
+export interface GetNotificationsOptions {
+  popup?: boolean;             // 仅返回弹窗类通知
+  unread?: boolean;            // 仅返回未读通知
+  excludePendingPopups?: boolean; // 排除尚未确认的登录弹窗（默认 true）
 }
 
 /**
@@ -103,8 +112,14 @@ export async function seedDefaultWelcomeNotifications(userId: string): Promise<v
 
 /**
  * 获取用户的通知列表（按时间倒序）
+ *
+ * 默认行为：未指定 includePendingPopups 时，排除 popupOnLogin=true 且 isRead=false 的通知，
+ * 避免用户尚未确认的登录弹窗直接出现在消息列表中。
  */
-export async function getNotifications(userId: string): Promise<NotificationRecord[]> {
+export async function getNotifications(
+  userId: string,
+  options: GetNotificationsOptions = {}
+): Promise<NotificationRecord[]> {
   // 自动清理历史上因默认注入而遗留的未发生真实业务操作的“招标文件分析”虚假通知
   await prisma.notification.deleteMany({
     where: {
@@ -113,8 +128,20 @@ export async function getNotifications(userId: string): Promise<NotificationReco
     },
   }).catch(() => {});
 
+  const where: any = { userId };
+
+  if (typeof options.popup === "boolean") {
+    where.popupOnLogin = options.popup;
+  }
+  if (options.unread) {
+    where.isRead = false;
+  }
+  if (options.excludePendingPopups !== false) {
+    where.NOT = { popupOnLogin: true, isRead: false };
+  }
+
   const list = await prisma.notification.findMany({
-    where: { userId },
+    where,
     orderBy: { createdAt: "desc" },
   });
   return list.map(toRecord);
@@ -127,6 +154,22 @@ export async function markNotificationAsRead(userId: string, notificationId: str
   await prisma.notification.updateMany({
     where: { id: notificationId, userId },
     data: { isRead: true },
+  });
+  return getNotifications(userId);
+}
+
+/**
+ * 确认登录强提醒弹窗：用户点击"确认"即视为已读，
+ * 将通知从"待弹窗"状态迁移为普通消息（popupOnLogin=false）并标记已读（isRead=true），
+ * 确认后归入消息列表作为已读数据展示，不再显示未读标识与未读数字。
+ */
+export async function acknowledgeLoginPopup(
+  userId: string,
+  notificationId: string
+): Promise<NotificationRecord[]> {
+  await prisma.notification.updateMany({
+    where: { id: notificationId, userId },
+    data: { popupOnLogin: false, isRead: true },
   });
   return getNotifications(userId);
 }
@@ -170,7 +213,8 @@ export async function addNotification(
   title: string,
   content: string,
   type: string = "system",
-  link?: string | null
+  link?: string | null,
+  popupOnLogin: boolean = false
 ): Promise<NotificationRecord> {
   const record = await prisma.notification.create({
     data: {
@@ -179,6 +223,7 @@ export async function addNotification(
       title,
       content,
       type,
+      popupOnLogin,
       link: link || null,
     },
   });

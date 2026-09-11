@@ -404,7 +404,7 @@ function PermissionsContent() {
             管理员模块授权配置中心
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            覆盖后台 18 个核心管理模块、共计 {allAvailableKeys.length} 项标准功能权限，数据 100% 源自数据库动态查询与维护
+            覆盖后台 {permissionCatalog.length} 个核心管理模块、共计 {allAvailableKeys.length} 项标准功能权限，数据 100% 源自数据库动态查询与维护
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -438,7 +438,7 @@ function PermissionsContent() {
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>实时对接数据库 18 个功能模块 (system_config)</span>
+                <span>实时对接数据库 {permissionCatalog.length} 个功能模块 (system_config)</span>
               </span>
             </div>
             <p className="text-[11px] text-slate-400 font-medium mt-0.5">
@@ -661,15 +661,19 @@ function PermissionsContent() {
                   <button
                     type="button"
                     onClick={() => setBatchSelectedKeys([])}
-                    className="px-3 py-1 text-xs font-bold text-slate-600 hover:bg-white rounded-lg transition-colors"
+                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors"
                   >
-                    取消全选
+                    取消选择
                   </button>
                   <button
                     type="button"
                     disabled={batchDeleting || batchSelectedKeys.length === 0}
                     onClick={handleBatchDelete}
-                    className="px-3.5 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    className={`px-3.5 py-1.5 text-xs font-bold rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 ${
+                      batchDeleting || batchSelectedKeys.length === 0
+                        ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed"
+                        : "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                    }`}
                   >
                     {batchDeleting ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />

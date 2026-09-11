@@ -31,6 +31,11 @@ interface PreferenceData {
   total: number;
   page: number;
   totalPages: number;
+  // 全量引擎分布统计（不受分页影响）
+  stats?: {
+    zhigeEngineCount: number;
+    openaiEngineCount: number;
+  };
 }
 
 export default function AdminPreferencesPage() {
@@ -147,8 +152,9 @@ export default function AdminPreferencesPage() {
               </div>
             </div>
             <div className="text-3xl font-bold bg-gradient-to-r from-[#10b981] to-[#059669] bg-clip-text text-transparent">
-              {preferenceData?.preferences.filter((p) => p.aiEngine === "zhige")
-                .length || 0}
+              {preferenceData?.stats?.zhigeEngineCount ??
+                preferenceData?.preferences.filter((p) => p.aiEngine === "zhige").length ??
+                0}
             </div>
           </div>
         </div>
@@ -162,9 +168,10 @@ export default function AdminPreferencesPage() {
               </div>
             </div>
             <div className="text-3xl font-bold bg-gradient-to-r from-[#f59e0b] to-[#d97706] bg-clip-text text-transparent">
-              {preferenceData?.preferences.filter(
-                (p) => p.aiEngine === "openai",
-              ).length || 0}
+              {preferenceData?.stats?.openaiEngineCount ??
+                preferenceData?.preferences.filter((p) => p.aiEngine === "openai")
+                  .length ??
+                0}
             </div>
           </div>
         </div>

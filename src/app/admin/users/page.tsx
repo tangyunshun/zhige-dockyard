@@ -110,9 +110,12 @@ interface User {
   membershipLevel: string;
   tokenBalance?: number;
   points?: number;
+  isZombie?: boolean;
   tenantId?: string | null;
   lastLoginAt?: string | null;
   isOnline: boolean;
+  // 是否存在有效会话（sessionToken 未清空且未过期），强制下线的可用性以此为准
+  hasSession?: boolean;
   createdAt: string;
   banReason?: string | null;
   bannedUntil?: string | null;
@@ -137,14 +140,23 @@ export default function AdminUsersPage() {
   const [filterLoginStatus, setFilterLoginStatus] = useState<string>("all"); // 登录状态
   const [filterMembershipLevel, setFilterMembershipLevel] =
     useState<string>("all");
+  const [filterZombie, setFilterZombie] = useState<string>("all"); // 僵尸用户快捷筛选
+  const [scanning, setScanning] = useState(false); // 手动扫描僵尸用户中
   const [currentPage, setCurrentPage] = useState(1);
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
   const [actionMenuPos, setActionMenuPos] = useState<{ top: number; left: number } | null>(null);
+  // 操作菜单真实 DOM / 触发按钮引用：用于量测真实高度，决定上翻或自动滚动补偿
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const menuAnchorElRef = useRef<HTMLElement | null>(null);
+  const menuPositionAdjustedRef = useRef<string | null>(null);
+  // 程序化滚动（为了撑开菜单）不应触发"滚动即关闭菜单"
+  const ignoreScrollCloseUntilRef = useRef(0);
 
   // 菜单打开时，滚动或缩放窗口则自动关闭（fixed 定位需跟随关闭，避免脱锚）
   useEffect(() => {
     if (!showActionMenu) return;
     const close = () => {
+      if (Date.now() < ignoreScrollCloseUntilRef.current) return;
       setShowActionMenu(null);
       setActionMenuPos(null);
     };
@@ -155,11 +167,73 @@ export default function AdminUsersPage() {
       window.removeEventListener("resize", close);
     };
   }, [showActionMenu]);
+
+  // 打开菜单后量测真实高度：上方放得下就上翻，否则自动滚动页面把菜单完整"推"进视口
+  const useIsomorphicLayoutEffect =
+    typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+  useIsomorphicLayoutEffect(() => {
+    if (!showActionMenu) return;
+    if (menuPositionAdjustedRef.current === showActionMenu) return;
+    const menuEl = actionMenuRef.current;
+    const anchorEl = menuAnchorElRef.current;
+    if (!menuEl || !anchorEl) return;
+    menuPositionAdjustedRef.current = showActionMenu;
+
+    const menuHeight = menuEl.offsetHeight;
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const gap = 8;
+    const margin = 16;
+    const viewportH = window.innerHeight;
+
+    // 1) 上方空间充足 → 贴着按钮上方展开，无需滚动
+    if (anchorRect.top - gap - menuHeight >= margin) {
+      const top = anchorRect.top - gap - menuHeight;
+      setActionMenuPos((p) => (p && Math.abs(p.top - top) > 1 ? { ...p, top } : p));
+      return;
+    }
+
+    // 2) 下方空间不足 → 自动把页面上推（用户无需手动滚动）
+    const overflow = anchorRect.bottom + gap + menuHeight - (viewportH - margin);
+    if (overflow <= 0) return;
+
+    const beforeScroll = window.scrollY;
+    ignoreScrollCloseUntilRef.current = Date.now() + 600;
+    window.scrollBy(0, overflow);
+    const applied = window.scrollY - beforeScroll;
+
+    // 页面滚动后按钮随之上移，菜单落点同步上移；若已到页面底部仍放不下则贴底显示
+    const nextTop = Math.min(
+      Math.max(anchorRect.bottom - applied + gap, margin),
+      Math.max(viewportH - margin - menuHeight, margin),
+    );
+    setActionMenuPos((p) => (p ? { ...p, top: nextTop } : p));
+  }, [showActionMenu]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({ role: "", status: "" });
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [showBatchActions, setShowBatchActions] = useState(false);
+  // 跨页全选：勾选后批量操作将携带当前筛选条件交给后端，而非数百个 ID
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  // 统一批量操作（封禁/解封/强制下线/删除）的流程状态机
+  const [batchFlow, setBatchFlow] = useState<{
+    action: "ban" | "unban" | "kick" | "delete";
+    open: boolean;
+    preview?: {
+      selectedCount: number;
+      skippedCount: number;
+      skipped: { id: string; name: string; reason: string }[];
+    };
+    processing: boolean;
+    result?: {
+      processedCount: number;
+      skippedCount: number;
+      failedCount: number;
+      skipped: { id: string; name: string; reason: string }[];
+    };
+  } | null>(null);
+  // 批量结果弹窗中是否展开“跳过原因”明细
+  const [showSkippedDetails, setShowSkippedDetails] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -188,7 +262,12 @@ export default function AdminUsersPage() {
   const [resetPwdUser, setResetPwdUser] = useState<User | null>(null);
   const [generatedPwd, setGeneratedPwd] = useState<string | null>(null);
   const [notifyUser, setNotifyUser] = useState<User | null>(null);
-  const [notifyForm, setNotifyForm] = useState({ title: "", content: "", type: "system" });
+  const [notifyForm, setNotifyForm] = useState({
+    title: "",
+    content: "",
+    type: "system",
+    popupOnLogin: false,
+  });
   const [adjustPointsUser, setAdjustPointsUser] = useState<User | null>(null);
   const [adjustPointsForm, setAdjustPointsForm] = useState({ points: "", reason: "" });
   const [loginHistoryUser, setLoginHistoryUser] = useState<User | null>(null);
@@ -200,6 +279,21 @@ export default function AdminUsersPage() {
   /** 弹窗表单字段级必填校验错误提示 */
   const [notifyErrors, setNotifyErrors] = useState<{ title?: string; content?: string }>({});
   const [adjustPointsErrors, setAdjustPointsErrors] = useState<{ points?: string }>({});
+
+  // 安全删除用户弹窗（归属优先：先定归属，再定策略）
+  const [deleteTarget, setDeleteTarget] = useState<{
+    userId: string;
+    name: string | null;
+    email: string | null;
+  } | null>(null);
+  const [deletePreview, setDeletePreview] = useState<any>(null);
+  const [transferToUserId, setTransferToUserId] = useState<string>("");
+  const [archivePersonal, setArchivePersonal] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
+  const [transferCandidates, setTransferCandidates] = useState<
+    { id: string; name: string | null; email: string | null }[]
+  >([]);
 
   const isProcessingRef = React.useRef(false);
   const forceLogoutUserIdRef = React.useRef<string | null>(null);
@@ -227,15 +321,29 @@ export default function AdminUsersPage() {
     return false;
   };
 
+  // 身份与角色从数据库获取，不信任 localStorage（防止客户端伪造角色）
   useEffect(() => {
-    // 获取当前登录用户 ID 和角色
-    const userId =
-      typeof window !== "undefined" ? localStorage.getItem("userId") : null;
-    const userRole =
-      typeof window !== "undefined" ? localStorage.getItem("userRole") : null;
-    setCurrentUserId(userId);
-    setCurrentUserRole(userRole);
-    console.log("当前用户 ID:", userId, "角色:", userRole);
+    const initCurrentUser = async () => {
+      try {
+        const authToken = getAuthToken();
+        const res = await fetch("/api/auth/me", {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        });
+        if (await handleUnauthorized(res)) return;
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentUserId(data.user?.id ?? null);
+          // 统一规范为小写，与下方 currentUserRole === "super_admin" 等比较保持一致
+          setCurrentUserRole(data.user?.role ? String(data.user.role).toLowerCase() : null);
+        }
+      } catch (e) {
+        console.error("获取当前用户信息失败:", e);
+      }
+    };
+    initCurrentUser();
+  }, []);
+
+  useEffect(() => {
     loadUsers(currentPage);
   }, [
     currentPage,
@@ -244,6 +352,7 @@ export default function AdminUsersPage() {
     filterAccountStatus,
     filterLoginStatus,
     filterMembershipLevel,
+    filterZombie,
   ]);
 
   const loadUsers = async (page: number, searchValue?: string) => {
@@ -265,6 +374,7 @@ export default function AdminUsersPage() {
         ...(filterMembershipLevel !== "all" && {
           membershipLevel: filterMembershipLevel,
         }),
+        ...(filterZombie === "1" && { zombie: "1" }),
       });
 
       const authToken = getAuthToken();
@@ -325,6 +435,7 @@ export default function AdminUsersPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${getAuthToken()}`,
         },
         body: JSON.stringify({ userId }),
       });
@@ -335,9 +446,8 @@ export default function AdminUsersPage() {
       }
 
       if (!res.ok) {
-        // 不显示错误，ActivityMonitor 会处理超时跳转
-        console.error("Force logout failed:", res.status);
-        return;
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || data?.error || "强制下线失败");
       }
 
       showToast("用户已被强制下线", "success");
@@ -350,101 +460,213 @@ export default function AdminUsersPage() {
     }
   };
 
+  // 仅重置页码，筛选条件的加载统一由上方 useEffect 触发（避免读到旧闭包值）
   const handleSearch = useCallback(() => {
     setCurrentPage(1);
-    loadUsers(1);
   }, []);
+
+  /** 手动触发全量僵尸用户扫描（刷新 is_zombie 标记 + 向超管推送清理提醒） */
+  const handleZombieScan = async () => {
+    if (scanning) return;
+    setScanning(true);
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/users/zombie-scan", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        showToast(
+          data.message || `僵尸用户扫描完成，共识别 ${data.zombieCount ?? 0} 个`,
+          "success"
+        );
+        loadUsers(currentPage);
+      } else {
+        showToast(data?.error || "僵尸用户扫描失败", "error");
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "僵尸用户扫描失败", "error");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const handleResetFilters = () => {
     setFilterRole("all");
     setFilterAccountStatus("all");
     setFilterLoginStatus("all");
     setFilterMembershipLevel("all");
+    setFilterZombie("all");
     setSearchQuery("");
     setCurrentPage(1);
-    loadUsers(1, "");
   };
 
-  const toggleSelectUser = (userId: string) => {
+  const isSelectableUser = (user: User) =>
+    user.role !== "super_admin" &&
+    user.role !== "admin" &&
+    user.id !== currentUserId;
+
+  const toggleSelectUser = (user: User) => {
+    if (!isSelectableUser(user)) return;
     const newSelected = new Set(selectedUsers);
-    if (newSelected.has(userId)) {
-      newSelected.delete(userId);
+    if (newSelected.has(user.id)) {
+      newSelected.delete(user.id);
     } else {
-      newSelected.add(userId);
+      newSelected.add(user.id);
     }
     setSelectedUsers(newSelected);
     setShowBatchActions(newSelected.size > 0);
   };
 
   const toggleSelectAll = () => {
-    if (selectedUsers.size === (userData?.users.length || 0)) {
+    const selectableUsers = userData?.users?.filter(isSelectableUser) || [];
+    const allSelectableSelected = selectableUsers.every((u) =>
+      selectedUsers.has(u.id),
+    );
+    if (allSelectableSelected) {
       setSelectedUsers(new Set());
       setShowBatchActions(false);
     } else {
-      const allIds = new Set(userData?.users.map((u) => u.id) || []);
-      setSelectedUsers(allIds);
+      const selectableIds = new Set(selectableUsers.map((u) => u.id));
+      setSelectedUsers(selectableIds);
       setShowBatchActions(true);
     }
   };
 
-  const handleBatchDelete = async () => {
-    setConfirmDialog({
-      isOpen: true,
-      title: "批量删除用户",
-      message: `确定要删除选中的 ${selectedUsers.size} 个用户吗？此操作不可恢复！`,
-      type: "danger",
-      onConfirm: async () => {
-        try {
-          const res = await fetch("/api/admin/users/batch", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userIds: Array.from(selectedUsers) }),
-          });
+  // 当前已选中的、可被操作的普通用户（管理员/超管/自己已在前端禁用勾选）
+  const selectedUserList =
+    userData?.users?.filter(
+      (u) => selectedUsers.has(u.id) && isSelectableUser(u),
+    ) || [];
 
-          if (await handleUnauthorized(res)) {
-            return;
-          }
+  // 批量动作可用性：根据当前选中集合推断哪些动作“有意义”，无意义的直接隐藏
+  // - 跨页全选时，当前页可操作用户即为当前筛选条件的代表样本（筛选条件决定了集合的同质状态）
+  // - 删除为超级管理员专属动作（与单行操作的权限边界保持一致）
+  const batchActionEligible = (() => {
+    const pool = selectAllMatching
+      ? userData?.users?.filter(isSelectableUser) || []
+      : selectedUserList;
+    return {
+      ban: pool.some((u) => u.status === "active"),
+      unban: pool.some((u) => u.status === "banned"),
+      kick: pool.some((u) => u.status === "active" && !!u.hasSession),
+      delete: currentUserRole === "super_admin",
+    };
+  })();
 
-          if (!res.ok) throw new Error("批量删除失败");
-
-          showToast(`已删除 ${selectedUsers.size} 个用户`, "success");
-          setSelectedUsers(new Set());
-          setShowBatchActions(false);
-          loadUsers(currentPage);
-        } catch (error) {
-          console.error("Batch delete error:", error);
-          showToast("批量删除失败", "error");
-        }
-      },
-    });
+  // ============ 统一批量操作（封禁 / 解封 / 强制下线 / 删除）============
+  type BatchActionType = "ban" | "unban" | "kick" | "delete";
+  interface BatchFilters {
+    search?: string;
+    role?: string;
+    accountStatus?: string;
+    membershipLevel?: string;
+  }
+  const BATCH_ACTION_META: Record<
+    BatchActionType,
+    { label: string; verb: string; danger: boolean; irreversible?: boolean }
+  > = {
+    ban: { label: "批量封禁", verb: "封禁", danger: true },
+    unban: { label: "批量解封", verb: "解封", danger: false },
+    kick: { label: "批量强制下线", verb: "强制下线", danger: false },
+    delete: { label: "批量删除", verb: "删除", danger: true, irreversible: true },
   };
 
-  const handleBatchActivate = async () => {
-    try {
-      const res = await fetch("/api/admin/users/batch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userIds: Array.from(selectedUsers),
-          status: "active",
-        }),
-      });
+  // 跨页全选时，把当前筛选条件交给后端（而非数百个 ID）
+  const currentBatchFilters = (): BatchFilters => ({
+    search: searchQuery.trim() || undefined,
+    role: filterRole !== "all" ? filterRole : undefined,
+    accountStatus: filterAccountStatus !== "all" ? filterAccountStatus : undefined,
+    membershipLevel:
+      filterMembershipLevel !== "all" ? filterMembershipLevel : undefined,
+  });
 
-      // 处理 401 错误（未授权/被强制下线）
-      if (await handleUnauthorized(res)) {
-        return;
-      }
-
-      if (!res.ok) throw new Error("批量激活失败");
-
-      showToast(`已激活 ${selectedUsers.size} 个用户`, "success");
-      setSelectedUsers(new Set());
-      setShowBatchActions(false);
-      loadUsers(currentPage);
-    } catch (error) {
-      console.error("Batch activate error:", error);
-      showToast("批量激活失败", "error");
+  const openBatchFlow = async (action: BatchActionType) => {
+    if (!selectAllMatching && selectedUsers.size === 0) {
+      showToast("请先选择要操作的用户", "warning");
+      return;
     }
+    setShowBatchActions(false);
+    setBatchFlow({ action, open: true, processing: false });
+    try {
+      const payload = selectAllMatching
+        ? { filters: currentBatchFilters() }
+        : { userIds: [...selectedUsers] };
+      const res = await fetch("/api/admin/users/batch-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, action, dryRun: true }),
+      });
+      if (await handleUnauthorized(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "获取操作预览失败");
+      }
+      const data = await res.json();
+      setBatchFlow((f) =>
+        f
+          ? {
+              ...f,
+              preview: {
+                selectedCount: data.selectedCount,
+                skippedCount: data.skippedCount,
+                skipped: data.skipped || [],
+              },
+            }
+          : f
+      );
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "获取操作预览失败", "error");
+      setBatchFlow(null);
+    }
+  };
+
+  const confirmBatchFlow = async () => {
+    if (!batchFlow) return;
+    const { action } = batchFlow;
+    const payload = selectAllMatching
+      ? { filters: currentBatchFilters() }
+      : { userIds: [...selectedUsers] };
+    setBatchFlow((f) => (f ? { ...f, processing: true } : f));
+    try {
+      const res = await fetch("/api/admin/users/batch-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, action }),
+      });
+      if (await handleUnauthorized(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "批量操作失败");
+      }
+      const data = await res.json();
+      setBatchFlow((f) =>
+        f
+          ? {
+              ...f,
+              processing: false,
+              result: {
+                processedCount: data.processedCount,
+                skippedCount: data.skippedCount,
+                failedCount: data.failedCount,
+                skipped: data.skipped || [],
+              },
+            }
+          : f
+      );
+      setSelectedUsers(new Set());
+      setSelectAllMatching(false);
+      loadUsers(currentPage);
+    } catch (e) {
+      setBatchFlow((f) => (f ? { ...f, processing: false } : f));
+      showToast(e instanceof Error ? e.message : "批量操作失败", "error");
+    }
+  };
+
+  const closeBatchFlow = () => {
+    setBatchFlow(null);
+    setShowBatchActions(selectedUsers.size > 0 || selectAllMatching);
   };
 
   const handleViewDetails = async (user: User) => {
@@ -502,43 +724,6 @@ export default function AdminUsersPage() {
       isProcessingRef.current = false;
       console.error("Force logout setup error:", error);
     }
-  };
-
-  const handleBatchKick = () => {
-    if (selectedUsers.size === 0) return;
-
-    // 高风险操作：二次确认
-    setConfirmMessage(
-      `确定要强制选中的 ${selectedUsers.size} 个用户下线吗？他们当前的所有操作将会中断。`,
-    );
-    setConfirmAction(async () => {
-      try {
-        const res = await fetch("/api/admin/users/batch-kick", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userIds: [...selectedUsers] }),
-        });
-
-        if (await handleUnauthorized(res)) {
-          return;
-        }
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.error || "批量强制下线失败");
-        }
-
-        const data = await res.json();
-        showToast(data.message || "批量强制下线成功", "success");
-        setSelectedUsers(new Set());
-        setShowBatchActions(false);
-        loadUsers(currentPage);
-      } catch (error) {
-        console.error("Batch kick error:", error);
-        showToast(error instanceof Error ? error.message : "批量强制下线失败", "error");
-      }
-    });
-    setShowConfirmModal(true);
   };
 
   const handleEdit = (user: User) => {
@@ -625,43 +810,94 @@ export default function AdminUsersPage() {
   };
 
   const handleDelete = async (userId: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: "删除用户",
-      message: "确定要删除该用户吗？此操作不可恢复！",
-      type: "danger",
-      onConfirm: async () => {
-        try {
-          const res = await fetch(`/api/admin/user?userId=${userId}`, {
-            method: "DELETE",
-          });
+    setDeleteError(null);
+    try {
+      // 先拉取归属分析与数据摘要，再弹窗让管理员确认策略
+      const res = await fetch(`/api/admin/user/delete-preview?userId=${userId}`);
+      if (await handleUnauthorized(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "获取删除预览失败");
+      }
+      const d = await res.json();
+      setDeleteTarget({ userId, name: d.data.name, email: d.data.email });
+      setDeletePreview(d.data);
+      setTransferToUserId("");
+      setArchivePersonal(false);
+      // 预拉取可移交所有权的候选用户（排除目标本人与已注销账号）
+      setTransferCandidates([]);
+      fetch(`/api/admin/users?limit=200&role=user`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((list) => {
+          if (!list?.users) return;
+          setTransferCandidates(
+            list.users.filter(
+              (u: any) => u.id !== userId && u.status !== "deleted"
+            )
+          );
+        })
+        .catch(() => {});
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "获取删除预览失败", "error");
+    }
+  };
 
-          if (await handleUnauthorized(res)) {
-            return;
-          }
-
-          if (!res.ok) throw new Error("删除用户失败");
-
-          showToast("用户已删除", "success");
-          setCurrentPage(1);
-          loadUsers(currentPage);
-        } catch (error) {
-          console.error("Delete user error:", error);
-          showToast("删除用户失败", "error");
-        }
-      },
-    });
+  /** 确认执行安全删除（软删除 + 归属策略） */
+  const confirmDeleteUser = async () => {
+    if (!deleteTarget || !deletePreview) return;
+    // 情况 C：企业唯一所有者，红线拦截，确认按钮应被禁用
+    if (deletePreview.case === "ENTERPRISE_SOLE_OWNER") return;
+    // 情况 A：必须移交所有权或归档个人空间数据二选一
+    if (deletePreview.requiresTransferOrArchive && !transferToUserId && !archivePersonal) {
+      setDeleteError("请先将个人空间所有权移交给其他成员，或勾选「一并归档/删除个人空间数据」");
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/admin/user?userId=${deleteTarget.userId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transferToUserId: transferToUserId || undefined,
+          archivePersonalData: archivePersonal,
+          reason: "管理员删除用户",
+        }),
+      });
+      if (await handleUnauthorized(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "删除失败");
+      }
+      showToast("用户已删除（软删除，数据已脱敏/保留）", "success");
+      setDeleteTarget(null);
+      setDeletePreview(null);
+      setCurrentPage(1);
+      loadUsers(currentPage);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "删除失败");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleToggleStatus = async (user: User) => {
     const newStatus = user.status === "active" ? "inactive" : "active";
+
+    // 已封禁账号已是最高限制级，禁止再叠加「禁用登录」，避免状态被重复处理
+    if (user.status === "banned") {
+      showToast("该用户已被封禁，无需再执行禁用登录", "warning");
+      return;
+    }
 
     // 如果是停用操作，需要二次确认
     if (newStatus === "inactive") {
       setConfirmMessage(
         `确定要停用用户 "${user.name || user.email}" 吗？停用后该用户将无法登录系统。`,
       );
-      setConfirmAction(async () => {
+      // 注意：必须再包一层函数。若直接传 async 闭包，React 会把它当作
+      // 函数式更新立即执行（StrictMode 下还会执行两次），导致未确认就停用且弹两次 Toast
+      setConfirmAction(() => async () => {
         try {
           const res = await fetch("/api/admin/user", {
             method: "PATCH",
@@ -742,7 +978,7 @@ export default function AdminUsersPage() {
   // 发送站内通知：打开弹窗填写
   const handleSendNotify = (user: User) => {
     setNotifyUser(user);
-    setNotifyForm({ title: "", content: "", type: "system" });
+    setNotifyForm({ title: "", content: "", type: "system", popupOnLogin: false });
     setNotifyErrors({});
   };
 
@@ -765,6 +1001,7 @@ export default function AdminUsersPage() {
           title,
           content,
           type: notifyForm.type,
+          popupOnLogin: notifyForm.popupOnLogin,
         }),
       });
       if (await handleUnauthorized(res)) return;
@@ -867,24 +1104,7 @@ export default function AdminUsersPage() {
     return groups;
   }, [loginHistories]);
 
-  // 重置会话：调用已有 reset-session API（需要 user:reset_session 权限）
-  const handleResetSession = async (user: User) => {
-    try {
-      const res = await fetch("/api/admin/user/reset-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
-        body: JSON.stringify({ userId: user.id }),
-      });
-      if (await handleUnauthorized(res)) return;
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "重置会话失败");
-      showToast(data.message || "会话已重置", "success");
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "重置会话失败", "error");
-    }
-  };
-
-  const showToast = (message: string, type: "success" | "error") => {
+  const showToast = (message: string, type: "success" | "error" | "warning") => {
     const container = document.getElementById("zg-toast-container");
     if (!container) return;
 
@@ -892,8 +1112,9 @@ export default function AdminUsersPage() {
     toast.className = `zg-toast ${type === "success" ? "show" : ""}`;
 
     // 根据设计系统规范，使用正确的颜色和图标
-    const iconColor = type === "success" ? "#10b981" : "#ef4444";
-    const icon = type === "success" ? "✓" : "✕";
+    const iconColor =
+      type === "success" ? "#10b981" : type === "warning" ? "#f59e0b" : "#ef4444";
+    const icon = type === "success" ? "✓" : type === "warning" ? "!" : "✕";
 
     toast.innerHTML = `
       <span style="color: ${iconColor}; font-weight: 700; font-size: 16px; line-height: 1; display: flex; align-items: center;">
@@ -1128,10 +1349,10 @@ export default function AdminUsersPage() {
       {/* 筛选控制面板 (与申诉/工单大厂双行圆角胶囊布局 100% 一致) */}
       <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
         {/* 第一行：多维业务过滤器 */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
           {/* 角色权限 */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500 font-bold flex items-center gap-1">
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+            <label className="text-xs text-slate-500 font-bold flex items-center gap-1 shrink-0 whitespace-nowrap">
               <Filter className="w-3.5 h-3.5 text-[#3182ce]" />
               角色权限:
             </label>
@@ -1141,7 +1362,7 @@ export default function AdminUsersPage() {
                 setFilterRole(e.target.value);
                 setCurrentPage(1);
               }}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
             >
               <option value="all">全部角色</option>
               {ROLE_OPTIONS.map((opt) => (
@@ -1153,15 +1374,15 @@ export default function AdminUsersPage() {
           </div>
 
           {/* 账号状态 */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500 font-bold">账号状态:</label>
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+            <label className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">账号状态:</label>
             <select
               value={filterAccountStatus}
               onChange={(e) => {
                 setFilterAccountStatus(e.target.value);
                 setCurrentPage(1);
               }}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
             >
               <option value="all">全部账号状态</option>
               {ACCOUNT_STATUS_OPTIONS.map((opt) => (
@@ -1173,15 +1394,15 @@ export default function AdminUsersPage() {
           </div>
 
           {/* 登录状态 */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500 font-bold">登录状态:</label>
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+            <label className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">登录状态:</label>
             <select
               value={filterLoginStatus}
               onChange={(e) => {
                 setFilterLoginStatus(e.target.value);
                 setCurrentPage(1);
               }}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
             >
               <option value="all">全部登录状态</option>
               {LOGIN_STATUS_OPTIONS.map((opt) => (
@@ -1193,15 +1414,15 @@ export default function AdminUsersPage() {
           </div>
 
           {/* 等级 */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500 font-bold">会员等级:</label>
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+            <label className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">会员等级:</label>
             <select
               value={filterMembershipLevel}
               onChange={(e) => {
                 setFilterMembershipLevel(e.target.value);
                 setCurrentPage(1);
               }}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
+              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer transition-all"
             >
               <option value="all">全部等级</option>
               {MEMBERSHIP_LEVEL_OPTIONS.map((opt) => (
@@ -1214,8 +1435,8 @@ export default function AdminUsersPage() {
         </div>
 
         {/* 第二行：关键字搜索与快捷操作 */}
-        <div className="flex flex-wrap items-center gap-2.5 pt-1">
-          <div className="relative w-72 sm:w-80">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5 pt-1">
+          <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
@@ -1235,7 +1456,6 @@ export default function AdminUsersPage() {
                 onClick={() => {
                   setSearchQuery("");
                   setCurrentPage(1);
-                  loadUsers(1, "");
                 }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded-full bg-slate-200/70 hover:bg-slate-300 text-slate-500 transition-colors"
                 title="清空搜索"
@@ -1260,6 +1480,37 @@ export default function AdminUsersPage() {
             <RotateCcw className={`w-3.5 h-3.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
             <span>刷新数据</span>
           </button>
+
+          {/* 僵尸用户快捷筛选：点击后列表仅展示被定时扫描标记为 is_zombie 的用户 */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = filterZombie === "1" ? "all" : "1";
+              setFilterZombie(next);
+              setCurrentPage(1);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border active:scale-95 ${
+              filterZombie === "1"
+                ? "bg-slate-600 text-white border-slate-600 hover:bg-slate-700"
+                : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200/80"
+            }`}
+            title="仅展示超 1 年未登录且无有效数据的僵尸用户"
+          >
+            <UserX className="w-3.5 h-3.5" />
+            <span>僵尸用户</span>
+          </button>
+
+          {/* 手动触发全量僵尸扫描：刷新 is_zombie 标记并向超管推送清理提醒 */}
+          <button
+            type="button"
+            onClick={handleZombieScan}
+            disabled={scanning}
+            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-amber-200/80 active:scale-95 disabled:opacity-50"
+            title="立即扫描僵尸用户（每日定时任务亦可触发）"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`} />
+            <span>扫描僵尸</span>
+          </button>
         </div>
       </div>
 
@@ -1267,46 +1518,87 @@ export default function AdminUsersPage() {
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
 
         {/* 批量操作工具栏 */}
-        {showBatchActions && (
+        {showBatchActions && (selectedUserList.length > 0 || selectAllMatching) && (
           <div className="relative bg-gradient-to-r from-[#3182ce]/10 to-[#8b5cf6]/10 border-b border-white/50 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <span className="text-sm font-bold text-slate-700">
-                已选择{" "}
-                <span className="text-[#3182ce]">{selectedUsers.size}</span>{" "}
-                个用户
+                {selectAllMatching ? (
+                  <>已按当前筛选条件跨页全选匹配用户</>
+                ) : (
+                  <>
+                    已选择{" "}
+                    <span className="text-[#3182ce]">{selectedUserList.length}</span>{" "}
+                    个用户
+                  </>
+                )}
               </span>
+              {userData && userData.totalPages > 1 && !selectAllMatching && (
+                <button
+                  onClick={() => {
+                    setSelectAllMatching(true);
+                    setShowBatchActions(true);
+                  }}
+                  className="text-sm text-[#3182ce] hover:text-[#2b6cb0] font-medium"
+                >
+                  跨页全选（当前筛选条件下共 {userData.total} 个）
+                </button>
+              )}
+              {selectAllMatching && (
+                <button
+                  onClick={() => setSelectAllMatching(false)}
+                  className="text-sm text-slate-600 hover:text-slate-800 font-medium"
+                >
+                  取消跨页全选
+                </button>
+              )}
               <button
                 onClick={() => {
                   setSelectedUsers(new Set());
+                  setSelectAllMatching(false);
                   setShowBatchActions(false);
                 }}
-                className="text-xs text-slate-500 hover:text-slate-700 font-medium"
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors"
               >
                 取消选择
               </button>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handleBatchKick}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
-              >
-                <LogOut className="w-4 h-4" />
-                批量踢出
-              </button>
-              <button
-                onClick={handleBatchActivate}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#10b981] to-[#059669] text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
-              >
-                <CheckCircle className="w-4 h-4" />
-                批量激活
-              </button>
-              <button
-                onClick={handleBatchDelete}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm font-bold rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all"
-              >
-                <Trash2 className="w-4 h-4" />
-                批量删除
-              </button>
+            <div className="flex items-center gap-2">
+              {batchActionEligible.ban && (
+                <button
+                  onClick={() => openBatchFlow("ban")}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 transition-colors flex items-center gap-2"
+                >
+                  <UserX className="w-4 h-4" />
+                  批量封禁
+                </button>
+              )}
+              {batchActionEligible.unban && (
+                <button
+                  onClick={() => openBatchFlow("unban")}
+                  className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  批量解封
+                </button>
+              )}
+              {batchActionEligible.kick && (
+                <button
+                  onClick={() => openBatchFlow("kick")}
+                  className="px-4 py-2 bg-[#3182ce] text-white rounded-lg text-sm font-bold hover:bg-[#2b6cb0] transition-colors flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  批量强制下线
+                </button>
+              )}
+              {batchActionEligible.delete && (
+                <button
+                  onClick={() => openBatchFlow("delete")}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  批量删除
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1325,11 +1617,14 @@ export default function AdminUsersPage() {
                       <th className="px-6 py-4 text-center whitespace-nowrap">
                         <input
                           type="checkbox"
-                          checked={
-                            userData?.users?.length !== undefined &&
-                            (userData?.users?.length || 0) > 0 &&
-                            userData?.users?.every((u) => selectedUsers.has(u.id))
-                          }
+                          checked={(() => {
+                            const selectableUsers =
+                              userData?.users?.filter(isSelectableUser) || [];
+                            return (
+                              selectableUsers.length > 0 &&
+                              selectableUsers.every((u) => selectedUsers.has(u.id))
+                            );
+                          })()}
                           onChange={toggleSelectAll}
                           className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
                         />
@@ -1386,16 +1681,20 @@ export default function AdminUsersPage() {
                         <tr
                           key={user.id}
                           className={`group hover:bg-white/60 transition-all duration-300 ${
-                            selectedUsers.has(user.id) ? "bg-[#3182ce]/5" : ""
+                            selectedUserList.some((u) => u.id === user.id)
+                              ? "bg-[#3182ce]/5"
+                              : ""
                           }`}
                         >
                           <td className="px-6 py-4 text-center">
-                            <input
-                              type="checkbox"
-                              checked={selectedUsers.has(user.id)}
-                              onChange={() => toggleSelectUser(user.id)}
-                              className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
-                            />
+                            {isSelectableUser(user) && (
+                              <input
+                                type="checkbox"
+                                checked={selectedUsers.has(user.id)}
+                                onChange={() => toggleSelectUser(user)}
+                                className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                              />
+                            )}
                           </td>
                           <td className="px-6 py-3.5 whitespace-nowrap">
                             <div className="flex items-center gap-3">
@@ -1428,6 +1727,14 @@ export default function AdminUsersPage() {
                                 >
                                   {user.email || "未设置邮箱"}
                                 </div>
+                                {user.isZombie && (
+                                  <span
+                                    className="inline-flex items-center px-1.5 py-0.5 mt-0.5 rounded bg-slate-200 text-slate-500 text-[10px] font-bold leading-none"
+                                    title="超 1 年未登录且从未产生有效数据"
+                                  >
+                                    僵尸用户
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1517,26 +1824,22 @@ export default function AdminUsersPage() {
                                       setActionMenuPos(null);
                                       return;
                                     }
-                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                    const anchorEl = e.currentTarget as HTMLElement;
+                                    const rect = anchorEl.getBoundingClientRect();
                                     const menuWidth = 256; // w-64
                                     const gap = 8; // mt-2
-                                    const approxMenuHeight = 160; // 收紧估算，避免 1-2 项时过度上翻
                                     const margin = 16;
-                                    let top = rect.bottom + gap;
                                     let left = rect.right - menuWidth;
-                                    // 下方空间不足且上方空间充足时才翻到按钮上方
-                                    if (
-                                      top + approxMenuHeight > window.innerHeight - margin &&
-                                      rect.top - approxMenuHeight - gap > margin
-                                    ) {
-                                      top = rect.top - approxMenuHeight - gap;
-                                    }
-                                    // 防止菜单超出视口左/右/上边界
+                                    // 防止菜单超出视口左/右边界
                                     if (left < margin) left = margin;
                                     if (left + menuWidth > window.innerWidth - margin) {
                                       left = window.innerWidth - menuWidth - margin;
                                     }
-                                    if (top < margin) top = margin;
+                                    // 初值统一放在按钮下方，真实高度由 useLayoutEffect 量测后
+                                    // 决定「上翻」还是「自动滚动页面」补偿
+                                    const top = Math.max(rect.bottom + gap, margin);
+                                    menuAnchorElRef.current = anchorEl;
+                                    menuPositionAdjustedRef.current = null;
                                     setActionMenuPos({ top, left });
                                     setShowActionMenu(user.id);
                                   }}
@@ -2138,6 +2441,162 @@ export default function AdminUsersPage() {
         onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
       />
 
+      {/* 统一批量操作弹窗：预览确认 → 执行进度 → 结果（含跳过原因） */}
+      {batchFlow && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !batchFlow.processing && closeBatchFlow()}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden border border-white/90">
+            {(() => {
+              const meta = BATCH_ACTION_META[batchFlow.action];
+              const danger = meta.danger;
+              const iconBg = danger
+                ? "bg-red-100 text-red-600"
+                : "bg-[#3182ce]/10 text-[#3182ce]";
+              const confirmBtn = danger
+                ? "from-red-500 to-red-600 hover:shadow-red-500/30"
+                : "from-[#3182ce] to-[#2b6cb0] hover:shadow-[#3182ce]/30";
+
+              // 执行中
+              if (batchFlow.processing) {
+                return (
+                  <div className="p-8 flex flex-col items-center justify-center gap-4">
+                    <div className="w-12 h-12 border-4 border-slate-200 border-t-[#3182ce] rounded-full animate-spin" />
+                    <p className="text-slate-600 font-medium">
+                      正在{batchFlow.action === "delete" ? "删除" : meta.verb}用户，请稍候…
+                    </p>
+                  </div>
+                );
+              }
+
+              // 结果展示
+              if (batchFlow.result) {
+                const r = batchFlow.result;
+                return (
+                  <div className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${iconBg}`}>
+                        <CheckCircle className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-800">批量{meta.verb}完成</h3>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-center">
+                        <div className="text-2xl font-black text-emerald-600">{r.processedCount}</div>
+                        <div className="text-xs text-emerald-700 mt-1">成功</div>
+                      </div>
+                      <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-center">
+                        <div className="text-2xl font-black text-amber-600">{r.skippedCount}</div>
+                        <div className="text-xs text-amber-700 mt-1">跳过</div>
+                      </div>
+                      <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                        <div className="text-2xl font-black text-red-600">{r.failedCount}</div>
+                        <div className="text-xs text-red-700 mt-1">失败</div>
+                      </div>
+                    </div>
+                    {r.skipped.length > 0 && (
+                      <div className="mb-4">
+                        <button
+                          onClick={() => setShowSkippedDetails((v) => !v)}
+                          className="text-sm font-semibold text-slate-600 hover:text-slate-800 flex items-center gap-1"
+                        >
+                          {showSkippedDetails ? "收起" : "展开"}跳过原因（{r.skipped.length}）
+                          <span className={`transition-transform ${showSkippedDetails ? "rotate-180" : ""}`}>▾</span>
+                        </button>
+                        {showSkippedDetails && (
+                          <ul className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-100 divide-y divide-slate-50 text-sm">
+                            {r.skipped.map((s) => (
+                              <li key={s.id} className="px-3 py-2 flex items-start gap-2">
+                                <span className="font-medium text-slate-700 truncate max-w-[120px]">{s.name}</span>
+                                <span className="text-slate-400">·</span>
+                                <span className="text-slate-500 flex-1">{s.reason}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={closeBatchFlow}
+                      className="w-full px-4 py-2.5 bg-gradient-to-r from-slate-700 to-slate-800 text-white rounded-xl hover:shadow-md transition-all font-semibold text-sm"
+                    >
+                      完成
+                    </button>
+                  </div>
+                );
+              }
+
+              // 预览确认
+              const p = batchFlow.preview;
+              return (
+                <div className="p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${iconBg}`}>
+                      {danger ? <AlertTriangle className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800">
+                      {meta.label}
+                      {meta.irreversible ? "（高危）" : ""}
+                    </h3>
+                  </div>
+                  <p className="text-slate-600 mb-3">
+                    已选中 <span className="font-bold text-slate-800">{p?.selectedCount ?? 0}</span> 个用户，
+                    其中 <span className="font-bold text-amber-600">{p?.skippedCount ?? 0}</span> 个将被跳过，是否继续？
+                  </p>
+                  {meta.irreversible && (
+                    <p className="text-red-600 text-sm font-medium mb-3 flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      批量删除采用安全软删除：账号不可登录、隐私信息脱敏，企业协作数据保留；企业空间唯一所有者与个人空间所有者将自动跳过（个人空间所有者需在单个删除中移交或归档）。
+                    </p>
+                  )}
+                  {p && p.skipped.length > 0 && (
+                    <div className="mb-4">
+                      <button
+                        onClick={() => setShowSkippedDetails((v) => !v)}
+                        className="text-sm font-semibold text-slate-600 hover:text-slate-800 flex items-center gap-1"
+                      >
+                        {showSkippedDetails ? "收起" : "查看"}将被跳过的用户（{p.skipped.length}）
+                        <span className={`transition-transform ${showSkippedDetails ? "rotate-180" : ""}`}>▾</span>
+                      </button>
+                      {showSkippedDetails && (
+                        <ul className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-100 divide-y divide-slate-50 text-sm">
+                          {p.skipped.map((s) => (
+                            <li key={s.id} className="px-3 py-2 flex items-start gap-2">
+                              <span className="font-medium text-slate-700 truncate max-w-[120px]">{s.name}</span>
+                              <span className="text-slate-400">·</span>
+                              <span className="text-slate-500 flex-1">{s.reason}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={closeBatchFlow}
+                      className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors font-semibold text-sm"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmBatchFlow}
+                      disabled={(p?.selectedCount ?? 0) === 0}
+                      className={`flex-1 px-4 py-2.5 bg-gradient-to-r ${confirmBtn} text-white rounded-xl hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0`}
+                    >
+                      确认{batchFlow.action === "delete" ? "删除" : meta.verb}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* 封禁用户弹窗 (全风控闭环与大厂级告警设计) */}
       {banningUser && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -2465,6 +2924,22 @@ export default function AdminUsersPage() {
                   <option value="activity">🎁 平台活动</option>
                 </select>
               </div>
+              <label className="flex items-center gap-2.5 p-3 bg-amber-50/60 border border-amber-100 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={notifyForm.popupOnLogin}
+                  onChange={(e) =>
+                    setNotifyForm({ ...notifyForm, popupOnLogin: e.target.checked })
+                  }
+                  className="w-4 h-4 accent-[#3182ce] cursor-pointer"
+                />
+                <div className="flex flex-col">
+                  <span className="text-xs font-extrabold text-slate-800">登录时强提醒弹窗</span>
+                  <span className="text-[10px] text-slate-500 leading-tight">
+                    开启后用户登录成功将优先弹窗展示，确认后才归入消息列表
+                  </span>
+                </div>
+              </label>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setNotifyUser(null)}
@@ -2740,14 +3215,14 @@ export default function AdminUsersPage() {
         if (!currentMenuUser || !actionMenuPos) return null;
         return createPortal(
           <div
+            ref={actionMenuRef}
             className="fixed w-64 bg-white/98 backdrop-blur-xl rounded-xl shadow-2xl border border-slate-200 py-2 z-50"
             style={{ top: actionMenuPos.top, left: actionMenuPos.left }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 强制下线 - 只对在线的活跃用户显示，超级管理员专属操作，不能操作超级管理员和自己 */}
-            {currentUserRole === "super_admin" &&
-              currentMenuUser.status === "active" &&
-              currentMenuUser.isOnline &&
+            {/* 强制下线 - 对存在有效会话的活跃用户显示（是否在线不影响，挂机中的会话同样可踢），不能操作超级管理员和自己；角色权限由后端校验 */}
+            {currentMenuUser.status === "active" &&
+              !!currentMenuUser.hasSession &&
               currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
                 <button
@@ -2764,10 +3239,9 @@ export default function AdminUsersPage() {
                 </button>
               )}
 
-            {/* 禁用登录 - 对离线的活跃用户显示（包括从未登录和已登录但当前离线的），超级管理员专属操作，不能操作超级管理员和自己 */}
-            {currentUserRole === "super_admin" &&
-              currentMenuUser.status === "active" &&
-              !currentMenuUser.isOnline &&
+            {/* 禁用登录 - 对离线的活跃用户显示（包括从未登录和已登录但当前离线的），不能操作超级管理员和自己；角色权限由后端校验 */}
+            {currentMenuUser.status === "active" &&
+              !currentMenuUser.hasSession &&
               currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
                 <button
@@ -2781,6 +3255,24 @@ export default function AdminUsersPage() {
                 >
                   <UserX className="w-4 h-4 text-amber-600" />
                   禁用登录
+                </button>
+              )}
+
+            {/* 解禁登录 - 已停用用户恢复登录，不能操作超级管理员和自己；角色权限由后端校验 */}
+            {currentMenuUser.status === "inactive" &&
+              currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleStatus(currentMenuUser);
+                    setShowActionMenu(null);
+                    setActionMenuPos(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 transition-colors border-b border-slate-50"
+                >
+                  <UserCheck className="w-4 h-4 text-emerald-600" />
+                  解禁登录
                 </button>
               )}
 
@@ -2802,21 +3294,21 @@ export default function AdminUsersPage() {
                       setActionMenuPos(null);
                     }
                   }}
-                  className={`group w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition-colors border-b border-slate-50 ${
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors border-b border-slate-50 ${
                     currentMenuUser.status === "banned"
-                      ? "hover:bg-emerald-50"
-                      : "hover:bg-red-50"
+                      ? "text-slate-700 hover:bg-emerald-50"
+                      : "text-red-600 hover:bg-red-50"
                   }`}
                 >
                   {currentMenuUser.status === "banned" ? (
                     <>
-                      <UserCheck className="w-4 h-4 text-[#3182ce] group-hover:text-emerald-600" />
-                      <span className="group-hover:text-emerald-600">解封用户</span>
+                      <UserCheck className="w-4 h-4 text-emerald-600" />
+                      <span>解封用户</span>
                     </>
                   ) : (
                     <>
-                      <UserX className="w-4 h-4 text-[#3182ce] group-hover:text-red-600" />
-                      <span className="group-hover:text-red-600">封禁用户</span>
+                      <UserX className="w-4 h-4 text-red-600" />
+                      <span>封禁用户</span>
                     </>
                   )}
                 </button>
@@ -2827,21 +3319,6 @@ export default function AdminUsersPage() {
               currentMenuUser.id !== currentUserId && (
                 <>
                   <div className="my-2 border-t border-slate-100" />
-
-                  {/* 重置会话（超级管理员专属，与强制下线/禁用登录同级） */}
-                  {currentUserRole === "super_admin" && (
-                  <button
-                    onClick={() => {
-                      handleResetSession(currentMenuUser);
-                      setShowActionMenu(null);
-                      setActionMenuPos(null);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
-                  >
-                    <RotateCcw className="w-4 h-4 text-[#3182ce]" />
-                    重置会话
-                  </button>
-                  )}
 
                   {/* 重置密码 */}
                   <button
@@ -2897,7 +3374,7 @@ export default function AdminUsersPage() {
                 </>
               )}
 
-            {/* 删除用户 - 只对已停用用户显示，不能删除超级管理员和自己 */}
+            {/* 删除用户 - 只对已封禁(banned)用户显示，不能删除超级管理员和自己 */}
             {currentMenuUser.status === "banned" &&
               currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
@@ -2920,6 +3397,187 @@ export default function AdminUsersPage() {
           document.body,
         );
       })()}
+
+      {/* 安全删除用户弹窗（归属优先：先定归属，再定策略） */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          deleteTarget && deletePreview ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
+                {/* 头部 */}
+                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                  <h3 className="text-lg font-bold text-slate-800">删除用户（安全删除）</h3>
+                  <button
+                    onClick={() => {
+                      setDeleteTarget(null);
+                      setDeletePreview(null);
+                    }}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="px-6 py-5 space-y-4">
+                  {/* 目标用户 */}
+                  <div className="text-sm text-slate-600">
+                    目标用户：
+                    <span className="font-semibold text-slate-800">
+                      {deleteTarget.name || deleteTarget.email || deleteTarget.userId}
+                    </span>
+                  </div>
+
+                  {/* 情况 C：企业唯一所有者 —— 红线拦截 */}
+                  {deletePreview.case === "ENTERPRISE_SOLE_OWNER" && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                      <div className="flex items-center gap-2 font-bold mb-1">
+                        <AlertTriangle className="w-4 h-4" />
+                        操作被拦截（企业空间唯一所有者）
+                      </div>
+                      {deletePreview.blockers.map((b: string, i: number) => (
+                        <p key={i} className="leading-relaxed">{b}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 情况 A：个人空间所有者 */}
+                  {deletePreview.case === "PERSONAL_OWNER" && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                      <div className="flex items-center gap-2 font-bold mb-1">
+                        <AlertTriangle className="w-4 h-4" />
+                        该用户是个人工作空间的所有者
+                      </div>
+                      {deletePreview.warnings.map((w: string, i: number) => (
+                        <p key={i} className="leading-relaxed">{w}</p>
+                      ))}
+                      <div className="mt-3 space-y-3">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="personalStrategy"
+                            checked={!!transferToUserId && !archivePersonal}
+                            onChange={() => setArchivePersonal(false)}
+                            className="mt-1"
+                          />
+                          <span>
+                            移交所有权给其他成员：
+                            <select
+                              value={transferToUserId}
+                              onChange={(e) => {
+                                setTransferToUserId(e.target.value);
+                                if (e.target.value) setArchivePersonal(false);
+                              }}
+                              className="ml-2 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                            >
+                              <option value="">选择接收成员…</option>
+                              {transferCandidates.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name || c.email || c.id}
+                                </option>
+                              ))}
+                            </select>
+                          </span>
+                        </label>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="personalStrategy"
+                            checked={archivePersonal}
+                            onChange={() => {
+                              setArchivePersonal(true);
+                              setTransferToUserId("");
+                            }}
+                            className="mt-1"
+                          />
+                          <span>一并归档 / 删除该用户的个人空间数据</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 情况 B：企业空间普通成员 */}
+                  {deletePreview.case === "ENTERPRISE_MEMBER" && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                      <div className="flex items-center gap-2 font-bold mb-1">
+                        <AlertCircle className="w-4 h-4" />
+                        该用户是企业空间的普通成员
+                      </div>
+                      {deletePreview.warnings.map((w: string, i: number) => (
+                        <p key={i} className="leading-relaxed">{w}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 情况 REGULAR */}
+                  {deletePreview.case === "REGULAR" && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                      该用户无个人空间所有权、也非企业空间成员，将执行软删除（账号不可登录，隐私信息脱敏）。
+                    </div>
+                  )}
+
+                  {/* 数据价值摘要 */}
+                  <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm">
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Users className="w-4 h-4 text-[#3182ce]" />
+                      拥有工作空间：<span className="font-semibold text-slate-800">{deletePreview.dataSummary.ownedWorkspaceCount}</span>
+                    </div>
+                    <div className="text-slate-600">
+                      企业成员空间：<span className="font-semibold text-slate-800">{deletePreview.dataSummary.enterpriseMemberWorkspaceCount}</span>
+                    </div>
+                    <div className="text-slate-600">
+                      个人空间文件：<span className="font-semibold text-slate-800">{deletePreview.dataSummary.fileCount}</span>
+                    </div>
+                    <div className="text-slate-600">
+                      知识库条目：<span className="font-semibold text-slate-800">{deletePreview.dataSummary.docCount}</span>
+                    </div>
+                    <div className="text-slate-600">
+                      累计消耗 Token：<span className="font-semibold text-slate-800">{deletePreview.dataSummary.tokenConsumed}</span>
+                    </div>
+                    <div className="text-slate-600">
+                      空间余额 Token：<span className="font-semibold text-slate-800">{deletePreview.dataSummary.tokenBalance}</span>
+                    </div>
+                  </div>
+
+                  {/* 软删除说明 */}
+                  <p className="text-xs text-slate-400">
+                    默认执行逻辑删除（软删除）：保留用户 ID 与操作日志，账号不可登录，邮箱/手机号等隐私信息将被匿名化；企业协作数据保留，作者名显示为「已注销用户」。物理删除（被遗忘权）仅由独立定时任务在冷静期后执行。
+                  </p>
+
+                  {deleteError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                      {deleteError}
+                    </div>
+                  )}
+                </div>
+
+                {/* 底部操作 */}
+                <div className="flex gap-3 border-t border-slate-100 px-6 py-4">
+                  <button
+                    onClick={() => {
+                      setDeleteTarget(null);
+                      setDeletePreview(null);
+                    }}
+                    className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={confirmDeleteUser}
+                    disabled={
+                      deleting ||
+                      deletePreview.case === "ENTERPRISE_SOLE_OWNER" ||
+                      (deletePreview.requiresTransferOrArchive && !transferToUserId && !archivePersonal)
+                    }
+                    className="flex-1 rounded-xl bg-gradient-to-r from-red-600 to-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deleting ? "删除中…" : "确认删除"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null,
+          document.body
+        )}
     </div>
   );
 }

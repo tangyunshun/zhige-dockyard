@@ -22,8 +22,11 @@ import {
   Check,
   X,
   Zap,
+  Ban,
+  Power,
 } from "lucide-react";
 import SearchInput from "@/components/common/SearchInput";
+import { StatusBadge, ActionButton, RowActions } from "@/components/common";
 import Pagination from "@/components/Pagination";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 import {
@@ -84,9 +87,7 @@ interface LevelFormData {
 
 const PAGE_SIZE = 10;
 
-// 红色「禁止」鼠标指针（替换浏览器默认的黑色 not-allowed 圈）
-const RED_NO_CURSOR =
-  "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%3E%3Ccircle%20cx='12'%20cy='12'%20r='9'%20fill='none'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3Cline%20x1='5'%20y1='5'%20x2='19'%20y2='19'%20stroke='%23ef4444'%20stroke-width='2'/%3E%3C/svg%3E\") 12 12, not-allowed";
+// 红色「禁止」鼠标指针已统一收敛到 @/components/common 的 ActionButton 内部实现
 
 export default function AdminMembershipLevelsPage() {
   const router = useRouter();
@@ -214,6 +215,20 @@ export default function AdminMembershipLevelsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 禁用：有业务影响，走二次确认；启用为可逆低风险操作，点击即生效
+  const openDisableConfirm = (level: MembershipLevel) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: `确认禁用会员等级「${level.nameZh || level.name}」`,
+      message:
+        "禁用后新用户将无法购买或升级到该等级，已有订阅用户的权益不受影响。如需恢复，可在操作列点击「启用」。",
+      type: "warning",
+      onConfirm: async () => {
+        await handleToggleActive(level.name, level.isActive);
+      },
+    });
   };
 
   const handleDelete = async (name: string) => {
@@ -740,7 +755,8 @@ export default function AdminMembershipLevelsPage() {
                   <tr
                     key={level.name}
                     className={`group hover:bg-slate-50/80 transition-colors ${
-                      !level.isActive ? "opacity-60 bg-slate-50/30" : ""
+                      // 已禁用等级仅用浅灰底区分（原先整行 opacity-60 会把操作按钮一起"雾化"）
+                      !level.isActive ? "bg-slate-50/50" : ""
                     }`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap min-w-[200px] shrink-0">
@@ -826,52 +842,63 @@ export default function AdminMembershipLevelsPage() {
                       </div>
                     </td>
 
+                    {/* 状态列：只读徽章，只回答"当前是什么"，不承载任何操作 */}
                     <td className="px-6 py-4 whitespace-nowrap w-28 shrink-0">
-                      <button
-                        onClick={() => handleToggleActive(level.name, level.isActive)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black inline-flex items-center justify-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap ${
-                          level.isActive
-                            ? "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"
-                            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                        }`}
+                      <StatusBadge
+                        tone={level.isActive ? "active" : "inactive"}
+                        title={level.isActive ? "该会员等级当前启用中" : "该会员等级已禁用"}
                       >
-                        {level.isActive ? <Check className="w-3.5 h-3.5 shrink-0" /> : <X className="w-3.5 h-3.5 shrink-0" />}
-                        <span className="whitespace-nowrap">{level.isActive ? "已启用" : "已禁用"}</span>
-                      </button>
+                        {level.isActive ? "已启用" : "已禁用"}
+                      </StatusBadge>
                     </td>
 
-                    <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-6 py-4 text-right whitespace-nowrap w-40 shrink-0 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
-                      <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-                        <button
-                          onClick={() => !level.isActive && openEditModal(level)}
-                          disabled={level.isActive}
-                          title={level.isActive ? "启用中的会员等级不可编辑，请先禁用" : "编辑"}
-                          style={level.isActive ? { cursor: RED_NO_CURSOR } : undefined}
-                          className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-colors inline-flex items-center gap-1 shrink-0 whitespace-nowrap ${
-                            level.isActive
-                              ? "bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed"
-                              : "bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer"
-                          }`}
+                    <td className="sticky right-0 bg-white group-hover:bg-slate-50 z-10 px-6 py-4 text-right whitespace-nowrap w-40 shrink-0 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
+                      <RowActions className="whitespace-nowrap">
+                        <ActionButton
+                          variant="primary"
+                          icon={<Edit className="w-3.5 h-3.5 shrink-0" />}
+                          disabledReason={
+                            level.isActive ? "启用中的会员等级不可编辑，请先禁用" : undefined
+                          }
+                          title="编辑该会员等级"
+                          onClick={() => openEditModal(level)}
                         >
-                          <Edit className="w-3.5 h-3.5 shrink-0" />
-                          <span className="whitespace-nowrap">编辑</span>
-                        </button>
+                          编辑
+                        </ActionButton>
 
-                        <button
-                          onClick={() => !level.isActive && handleDelete(level.name)}
-                          disabled={level.isActive}
-                          title={level.isActive ? "启用中的会员等级不可删除，请先禁用" : "删除"}
-                          style={level.isActive ? { cursor: RED_NO_CURSOR } : undefined}
-                          className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 shrink-0 whitespace-nowrap ${
-                            level.isActive
-                              ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed hover:ring-2 hover:ring-red-300/40"
-                              : "bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 cursor-pointer"
-                          }`}
+                        {/* 禁用/启用：始终可见的动词按钮，与状态徽章解耦 */}
+                        {level.isActive ? (
+                          <ActionButton
+                            variant="warn"
+                            icon={<Ban className="w-3.5 h-3.5 shrink-0" />}
+                            title="禁用该会员等级"
+                            onClick={() => openDisableConfirm(level)}
+                          >
+                            禁用
+                          </ActionButton>
+                        ) : (
+                          <ActionButton
+                            variant="success"
+                            icon={<Power className="w-3.5 h-3.5 shrink-0" />}
+                            title="启用该会员等级"
+                            onClick={() => handleToggleActive(level.name, level.isActive)}
+                          >
+                            启用
+                          </ActionButton>
+                        )}
+
+                        <ActionButton
+                          variant="danger"
+                          icon={<Trash2 className="w-3.5 h-3.5 shrink-0" />}
+                          disabledReason={
+                            level.isActive ? "启用中的会员等级不可删除，请先禁用" : undefined
+                          }
+                          title="删除该会员等级"
+                          onClick={() => handleDelete(level.name)}
                         >
-                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                          <span className="whitespace-nowrap">删除</span>
-                        </button>
-                      </div>
+                          删除
+                        </ActionButton>
+                      </RowActions>
                     </td>
                   </tr>
                 ))}
@@ -1053,7 +1080,7 @@ export default function AdminMembershipLevelsPage() {
                 <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-200/80 space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-black text-blue-900 flex items-center gap-1.5">
-                      <span>⚡ 算力点参考额度 (tokenLimit)</span>
+                      <span>⚡ 算力点参考额度 (算力点)</span>
                     </label>
                     <span className="text-[10px] text-blue-600 font-bold bg-blue-100/80 px-2 py-0.5 rounded-md">订阅价值参考 · 不自动发放</span>
                   </div>

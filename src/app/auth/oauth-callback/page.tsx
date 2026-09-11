@@ -52,6 +52,43 @@ function OAuthCallbackContent() {
         sessionStorage.removeItem("redirectAfterLogin");
         const targetPath = savedPath && savedPath !== "/auth/login" ? savedPath : "/workspace-hub";
 
+        // 调用 /api/auth/touch 更新 lastLoginAt，确保会话活跃（与账号密码登录保持一致）
+        try {
+          await fetch("/api/auth/touch", {
+            method: "POST",
+            signal: AbortSignal.timeout(3000),
+          });
+        } catch (touchError) {
+          console.warn("/api/auth/touch 调用失败:", touchError);
+        }
+
+        // 预拉取登录后需要强提醒弹窗的未读通知，跳转后由目标页统一展示
+        try {
+          const authToken = localStorage.getItem("auth_token");
+          const popupRes = await fetch(
+            "/api/user/notifications/list?popup=true&unread=true&includePending=true",
+            {
+              headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+              credentials: "include",
+              signal: AbortSignal.timeout(3000),
+            },
+          );
+          if (popupRes.ok) {
+            const popupJson = await popupRes.json();
+            const popups = popupJson.data?.list || [];
+            if (popups.length > 0) {
+              sessionStorage.setItem(
+                "pendingLoginNotifications",
+                JSON.stringify(popups),
+              );
+            } else {
+              sessionStorage.removeItem("pendingLoginNotifications");
+            }
+          }
+        } catch (popupError) {
+          console.warn("登录弹窗通知预拉取失败:", popupError);
+        }
+
         // 关键防护：使用 window.location.href 进行全新初始化跳转，
         // 彻底消除 SPA router.push 时 AppContext 内存状态落后被 RouterGuards 瞬时弹回登录页的闪屏死循环！
         window.location.href = targetPath;

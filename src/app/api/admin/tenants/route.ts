@@ -48,6 +48,16 @@ export async function GET(request: NextRequest) {
       prisma.tenant.count({ where }),
     ]);
 
+    // 顶部统计卡片口径：全量聚合（不受分页与状态筛选影响），避免用当前页数组长度估算
+    const [totalCount, activeCount, inactiveCount, tenantUserCount, tenantTaskCount] =
+      await Promise.all([
+        prisma.tenant.count(),
+        prisma.tenant.count({ where: { status: "active" } }),
+        prisma.tenant.count({ where: { status: { not: "active" } } }),
+        prisma.user.count({ where: { tenantId: { not: null } } }),
+        prisma.componenttask.count({ where: { tenantId: { not: null } } }),
+      ]);
+
     return NextResponse.json({
       success: true,
       data: {
@@ -55,6 +65,13 @@ export async function GET(request: NextRequest) {
         total,
         page,
         totalPages: Math.ceil(total / limit),
+        stats: {
+          totalCount,
+          activeCount,
+          inactiveCount,
+          userCount: tenantUserCount,
+          taskCount: tenantTaskCount,
+        },
       },
     });
   } catch (error) {

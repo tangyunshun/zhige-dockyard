@@ -21,6 +21,8 @@ import {
   Clock,
 } from "lucide-react";
 import Pagination from "@/components/Pagination";
+import { StatusBadge, ActionButton, RowActions } from "@/components/common";
+import { ComponentIcon } from "@/lib/component-icons";
 
 interface Workspace {
   id: string;
@@ -78,6 +80,9 @@ interface WorkspaceComponent {
   name: string;
   icon: string | null;
   usageCount: number;
+  // 组件目录（componentcatalog）权威信息，由详情接口按 task.type 关联查出
+  catalogId?: string | null;
+  category?: string | null;
 }
 
 interface WorkspaceData {
@@ -107,6 +112,8 @@ export default function AdminWorkspacesPage() {
     useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 批量解散进度（已完成数量），用于按钮上的处理中反馈
+  const [batchDissolveProgress, setBatchDissolveProgress] = useState(0);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [viewingWorkspace, setViewingWorkspace] = useState<Workspace | null>(
     null,
@@ -365,14 +372,38 @@ export default function AdminWorkspacesPage() {
     setConfirmAction(null);
   };
 
+  /**
+   * 是否可参与批量管控：个人空间与企业空间均可，仅「受系统安全保护的管理员空间」不可。
+   * 与后端 batch-toggle 的处理范围严格一致，避免选出后端根本不会处理的空间。
+   */
+  const isBatchOperable = (workspace: Workspace) => !workspace.isProtected;
+
+  const getWorkspaceInoperableReason = () =>
+    "管理员空间受系统安全保护，不可批量管控";
+
+  /** 是否可被解散：仅已停用的企业空间（个人空间不允许删除，启用中的需先停用） */
+  const isDissolvable = (workspace: Workspace) =>
+    workspace.type === "ENTERPRISE" &&
+    workspace.status === "DISABLED" &&
+    !workspace.isProtected;
+
   const toggleSelectWorkspace = (workspaceId: string) => {
     const newSelected = new Set(selectedWorkspaces);
+    const targetWorkspace = workspaceData?.workspaces.find(
+      (ws) => ws.id === workspaceId,
+    );
 
     // 如果已经选中，直接取消选中
     if (newSelected.has(workspaceId)) {
       newSelected.delete(workspaceId);
       setSelectedWorkspaces(newSelected);
       setShowBatchActions(newSelected.size > 0);
+      return;
+    }
+
+    // 受系统安全保护的管理员空间不可参与批量管控
+    if (targetWorkspace && !isBatchOperable(targetWorkspace)) {
+      showToast(getWorkspaceInoperableReason(), "error");
       return;
     }
 
@@ -388,13 +419,10 @@ export default function AdminWorkspacesPage() {
     const selectedItems =
       workspaceData?.workspaces.filter((ws) => newSelected.has(ws.id)) || [];
     const firstStatus = selectedItems[0]?.status;
-    const newWorkspace = workspaceData?.workspaces.find(
-      (ws) => ws.id === workspaceId,
-    );
 
-    if (firstStatus && newWorkspace && newWorkspace.status !== firstStatus) {
+    if (firstStatus && targetWorkspace && targetWorkspace.status !== firstStatus) {
       // 状态不一致，提示用户
-      const statusText = firstStatus === "ACTIVE" ? "已审核" : "待审核";
+      const statusText = firstStatus === "ACTIVE" ? "启用中" : "已停用";
       showToast(
         `只能选择相同状态的工作空间，当前已选择${statusText}的空间`,
         "error",
@@ -408,116 +436,163 @@ export default function AdminWorkspacesPage() {
     setShowBatchActions(true);
   };
 
+  // 当前页可批量管控的空间（个人空间 + 企业空间，排除受保护的管理员空间）
+  const operableWorkspaces =
+    workspaceData?.workspaces.filter(isBatchOperable) || [];
+
   const toggleSelectAll = () => {
-    // 如果当前已经全选，取消全选
-    if (selectedWorkspaces.size === workspaceData?.workspaces.length) {
-      setSelectedWorkspaces(new Set());
-      setShowBatchActions(false);
+    // 无可操作项时给出明确提示
+    if (operableWorkspaces.length === 0) {
+      showToast("当前页没有可批量管控的空间（管理员空间受系统安全保护）", "error");
       return;
     }
 
-    // 获取当前页面的所有工作空间
-    const allWorkspaces = workspaceData?.workspaces || [];
-
-    // 如果当前没有选中的，默认全选所有 ACTIVE 状态的
-    if (selectedWorkspaces.size === 0) {
-      const activeIds = new Set(
-        allWorkspaces.filter((ws) => ws.status === "ACTIVE").map((ws) => ws.id),
-      );
-
-      if (activeIds.size === 0) {
-        // 如果没有 ACTIVE 的，选择所有 DISABLED 的
-        const disabledIds = new Set(
-          allWorkspaces
-            .filter((ws) => ws.status === "DISABLED")
-            .map((ws) => ws.id),
-        );
-        setSelectedWorkspaces(disabledIds);
-        setShowBatchActions(disabledIds.size > 0);
-      } else {
-        setSelectedWorkspaces(activeIds);
-        setShowBatchActions(true);
-      }
-      return;
-    }
-
-    // 如果已经有选中的，获取当前选中项的状态
-    const selectedItems = allWorkspaces.filter((ws) =>
+    // 已选中状态下，目标状态取已选项状态；否则优先启用中的，其次已停用的
+    const selectedItem = operableWorkspaces.find((ws) =>
       selectedWorkspaces.has(ws.id),
     );
-    const currentStatus = selectedItems[0]?.status;
+    const targetStatus =
+      selectedItem?.status ||
+      (operableWorkspaces.some((ws) => ws.status === "ACTIVE")
+        ? "ACTIVE"
+        : "DISABLED");
 
-    // 只选择相同状态的所有工作空间
-    const sameStatusIds = new Set(
-      allWorkspaces
-        .filter((ws) => ws.status === currentStatus)
-        .map((ws) => ws.id),
-    );
+    const targetIds = operableWorkspaces.filter((ws) => ws.status === targetStatus);
+    const allTargetSelected =
+      targetIds.length > 0 && targetIds.every((ws) => selectedWorkspaces.has(ws.id));
 
-    setSelectedWorkspaces(sameStatusIds);
-    setShowBatchActions(sameStatusIds.size > 0);
+    if (allTargetSelected) {
+      setSelectedWorkspaces(new Set());
+      setShowBatchActions(false);
+    } else {
+      setSelectedWorkspaces(new Set(targetIds.map((ws) => ws.id)));
+      setShowBatchActions(targetIds.length > 0);
+    }
   };
 
-  const handleBatchDisable = async () => {
-    if (selectedWorkspaces.size === 0) return;
+  /** 批量切换状态（禁用/启用共用）：以接口返回的真实处理数量提示，不再谎报成功 */
+  const runBatchToggle = async (status: "ACTIVE" | "DISABLED") => {
+    const statusLabel = status === "ACTIVE" ? "启用" : "禁用";
+    const ids = Array.from(selectedWorkspaces);
+    if (ids.length === 0) return;
 
+    try {
+      const res = await fetch("/api/admin/workspaces/batch-toggle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        body: JSON.stringify({ workspaceIds: ids, status }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        showToast(data.error || data.message || "批量操作失败", "error");
+        return;
+      }
+
+      const processedCount = Number(data.processedCount) || 0;
+      const skippedCount = Number(data.skippedCount) || 0;
+
+      if (processedCount > 0) {
+        showToast(`已${statusLabel} ${processedCount} 个工作空间`, "success");
+      }
+      if (skippedCount > 0) {
+        const firstReason = data.skipped?.[0]?.reason;
+        showToast(
+          processedCount > 0
+            ? `另有 ${skippedCount} 个工作空间被跳过${firstReason ? `（${firstReason}）` : ""}`
+            : firstReason || "所选工作空间均不符合批量操作条件",
+          "error",
+        );
+      }
+
+      setSelectedWorkspaces(new Set());
+      setShowBatchActions(false);
+      loadWorkspaces(currentPage);
+    } catch (error) {
+      console.error("批量切换空间状态出错:", error);
+      showToast("批量操作失败", "error");
+    }
+  };
+
+  const handleBatchDisable = () => {
+    if (selectedWorkspaces.size === 0) return;
     showConfirm(
-      `确定要禁用选中的 ${selectedWorkspaces.size} 个工作空间吗？`,
-      async () => {
-        try {
-          const res = await fetch("/api/admin/workspaces/batch-toggle", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${getAuthToken()}`,
-            },
-            body: JSON.stringify({
-              workspaceIds: Array.from(selectedWorkspaces),
-              status: "DISABLED",
-            }),
-          });
-
-          if (!res.ok) throw new Error("批量操作失败");
-
-          showToast(`已禁用 ${selectedWorkspaces.size} 个工作空间`, "success");
-          setSelectedWorkspaces(new Set());
-          setShowBatchActions(false);
-          loadWorkspaces(currentPage);
-        } catch (error) {
-          showToast("批量操作失败", "error");
-        }
-      },
+      `确定要禁用选中的 ${selectedWorkspaces.size} 个工作空间吗？个人空间与管理员空间不会被处理。`,
+      () => runBatchToggle("DISABLED"),
     );
   };
 
-  const handleBatchEnable = async () => {
+  const handleBatchEnable = () => {
     if (selectedWorkspaces.size === 0) return;
-
     showConfirm(
       `确定要启用选中的 ${selectedWorkspaces.size} 个工作空间吗？`,
+      () => runBatchToggle("ACTIVE"),
+    );
+  };
+
+  /** 批量解散：仅处理「已停用的企业空间」，个人空间与启用中的空间自动跳过 */
+  const handleBatchDissolve = () => {
+    const targets = operableWorkspaces.filter(
+      (ws) => selectedWorkspaces.has(ws.id) && isDissolvable(ws),
+    );
+    if (targets.length === 0) {
+      showToast("所选空间中没有可解散的已停用企业空间", "error");
+      return;
+    }
+    const skippedCount = selectedWorkspaces.size - targets.length;
+
+    showConfirm(
+      `确定要解散并彻底删除选中的 ${targets.length} 个企业空间吗？此操作不可恢复！${
+        skippedCount > 0
+          ? `所选中的另外 ${skippedCount} 个空间（个人空间或启用中）将被自动跳过。`
+          : ""
+      }`,
       async () => {
-        try {
-          const res = await fetch("/api/admin/workspaces/batch-toggle", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${getAuthToken()}`,
-            },
-            body: JSON.stringify({
-              workspaceIds: Array.from(selectedWorkspaces),
-              status: "ACTIVE",
-            }),
-          });
-
-          if (!res.ok) throw new Error("批量操作失败");
-
-          showToast(`已启用 ${selectedWorkspaces.size} 个工作空间`, "success");
-          setSelectedWorkspaces(new Set());
-          setShowBatchActions(false);
-          loadWorkspaces(currentPage);
-        } catch (error) {
-          showToast("批量操作失败", "error");
+        const failed: string[] = [];
+        let successCount = 0;
+        let index = 0;
+        for (const workspace of targets) {
+          index += 1;
+          try {
+            setDeletingId(workspace.id);
+            const res = await fetch(
+              `/api/admin/workspaces?workspaceId=${workspace.id}`,
+              {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${getAuthToken()}` },
+              },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) successCount += 1;
+            else failed.push(workspace.name);
+          } catch (error) {
+            console.error("Batch dissolve workspace error:", error);
+            failed.push(workspace.name);
+          } finally {
+            setDeletingId(null);
+          }
+          setBatchDissolveProgress(index);
         }
+
+        if (successCount > 0) {
+          showToast(`已解散 ${successCount} 个工作空间`, "success");
+        }
+        if (failed.length > 0) {
+          showToast(
+            `${failed.length} 个工作空间解散失败：${failed.slice(0, 3).join("、")}${
+              failed.length > 3 ? " 等" : ""
+            }`,
+            "error",
+          );
+        }
+        setBatchDissolveProgress(0);
+        setSelectedWorkspaces(new Set());
+        setShowBatchActions(false);
+        setCurrentPage(1);
+        loadWorkspaces(1);
       },
     );
   };
@@ -525,17 +600,20 @@ export default function AdminWorkspacesPage() {
   // 根据选中项判断需要显示哪些批量操作按钮
   const getBatchActionButtons = () => {
     if (selectedWorkspaces.size === 0)
-      return { showDisable: false, showEnable: false };
+      return { showDisable: false, showEnable: false, showDissolve: false };
 
     const selectedItems =
       workspaceData?.workspaces.filter((ws) => selectedWorkspaces.has(ws.id)) ||
       [];
     const firstStatus = selectedItems[0]?.status;
+    const dissolvableCount = selectedItems.filter(isDissolvable).length;
 
-    // 由于不允许混合选择，所以只会显示一种操作的按钮
+    // 由于不允许混合状态选择，所以只会显示一种状态变更按钮
     return {
       showDisable: firstStatus === "ACTIVE",
       showEnable: firstStatus === "DISABLED",
+      // 已停用且为企业空间时，额外提供批量解散
+      showDissolve: dissolvableCount > 0,
     };
   };
 
@@ -622,16 +700,16 @@ export default function AdminWorkspacesPage() {
       {/* 筛选工具栏 (圆润 16px 规范卡片 + 双行清晰分治架构) */}
       <div className="bg-white/90 backdrop-blur-md p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
         {/* 第一行：多维分类筛选标签下拉框 */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-bold">空间类型:</span>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+            <span className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">空间类型:</span>
             <select
               value={filterType}
               onChange={(e) => {
                 setFilterType(e.target.value);
                 setCurrentPage(1);
               }}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
             >
               <option value="all">全部类型</option>
               <option value="PERSONAL">👤 个人空间</option>
@@ -639,15 +717,15 @@ export default function AdminWorkspacesPage() {
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-bold">组件装配:</span>
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+            <span className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">组件装配:</span>
             <select
               value={filterComponentCount}
               onChange={(e) => {
                 setFilterComponentCount(e.target.value);
                 setCurrentPage(1);
               }}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
             >
               <option value="all">全部数量</option>
               <option value="0">0 个组件</option>
@@ -660,8 +738,8 @@ export default function AdminWorkspacesPage() {
         </div>
 
         {/* 第二行：加长舒展搜索框与快捷操作 */}
-        <div className="flex flex-wrap items-center gap-2.5 pt-1 border-t border-slate-100">
-          <div className="relative w-80 sm:w-96 lg:w-[420px]">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5 pt-1 border-t border-slate-100">
+          <div className="relative w-full sm:w-96 lg:w-[420px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
@@ -736,10 +814,10 @@ export default function AdminWorkspacesPage() {
         {/* 批量操作工具栏 */}
         {showBatchActions &&
           (() => {
-            const { showDisable, showEnable } = getBatchActionButtons();
+            const { showDisable, showEnable, showDissolve } = getBatchActionButtons();
 
             // 如果没有需要显示的按钮，不显示工具栏
-            if (!showDisable && !showEnable) return null;
+            if (!showDisable && !showEnable && !showDissolve) return null;
 
             return (
               <div className="relative bg-gradient-to-r from-[#3182ce]/10 to-[#8b5cf6]/10 border-b border-white/50 px-6 py-4 flex items-center justify-between">
@@ -751,34 +829,59 @@ export default function AdminWorkspacesPage() {
                     </span>{" "}
                     个工作空间
                   </span>
-                  <button
+                  {/* 高亮提示：仅管理员空间被排除在批量管控之外 */}
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-50 text-amber-600 border border-amber-200 shadow-2xs">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    管理员空间受系统安全保护，不支持批量管控
+                  </span>
+                  <ActionButton
+                    variant="neutral"
                     onClick={() => {
                       setSelectedWorkspaces(new Set());
                       setShowBatchActions(false);
                     }}
-                    className="text-sm text-slate-600 hover:text-slate-800 font-medium"
                   >
                     取消选择
-                  </button>
+                  </ActionButton>
                 </div>
+                {/* 批量按钮与行内操作按钮使用同一组规范组件与配色语义 */}
                 <div className="flex items-center gap-2">
                   {showDisable && (
-                    <button
+                    <ActionButton
+                      variant="warn"
+                      icon={<EyeOff className="w-4 h-4" />}
+                      title={`将禁用选中的 ${selectedWorkspaces.size} 个工作空间`}
                       onClick={handleBatchDisable}
-                      className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-bold hover:bg-amber-600 transition-colors flex items-center gap-2"
                     >
-                      <EyeOff className="w-4 h-4" />
                       批量禁用
-                    </button>
+                    </ActionButton>
                   )}
                   {showEnable && (
-                    <button
+                    <ActionButton
+                      variant="success"
+                      icon={<CheckCircle className="w-4 h-4" />}
+                      title={`将启用选中的 ${selectedWorkspaces.size} 个工作空间`}
                       onClick={handleBatchEnable}
-                      className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2"
                     >
-                      <CheckCircle className="w-4 h-4" />
                       批量启用
-                    </button>
+                    </ActionButton>
+                  )}
+                  {showDissolve && (
+                    <ActionButton
+                      variant="danger"
+                      icon={<Trash2 className="w-4 h-4" />}
+                      disabledReason={
+                        batchDissolveProgress > 0
+                          ? `解散处理中，已完成 ${batchDissolveProgress} 个`
+                          : undefined
+                      }
+                      title="解散并彻底删除所选的已停用企业空间（不可恢复）"
+                      onClick={handleBatchDissolve}
+                    >
+                      {batchDissolveProgress > 0
+                        ? `解散中... (${batchDissolveProgress})`
+                        : "批量解散"}
+                    </ActionButton>
                   )}
                 </div>
               </div>
@@ -800,14 +903,15 @@ export default function AdminWorkspacesPage() {
                       <input
                         type="checkbox"
                         checked={
-                          workspaceData?.workspaces.length !== undefined &&
-                          workspaceData.workspaces.length > 0 &&
-                          workspaceData.workspaces.every((ws) =>
+                          operableWorkspaces.length > 0 &&
+                          operableWorkspaces.every((ws) =>
                             selectedWorkspaces.has(ws.id),
                           )
                         }
+                        disabled={operableWorkspaces.length === 0}
                         onChange={toggleSelectAll}
-                        className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
+                        title="全选当前页可批量管控的企业空间（不含个人空间与管理员空间）"
+                        className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                       />
                     </th>
                     <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
@@ -831,8 +935,12 @@ export default function AdminWorkspacesPage() {
                     <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       创建时间
                     </th>
+                    {/* 状态列：只读徽章，只回答"当前是什么"，不承载任何操作 */}
+                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
+                      状态
+                    </th>
                     {/* 操作列：粘性吸附在最右侧，无论横向怎么滚动均可见 */}
-                    <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">
+                    <th className="sticky right-0 bg-slate-50 z-20 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200/80">
                       操作
                     </th>
                   </tr>
@@ -857,8 +965,14 @@ export default function AdminWorkspacesPage() {
                           <input
                             type="checkbox"
                             checked={selectedWorkspaces.has(workspace.id)}
+                            disabled={!isBatchOperable(workspace)}
                             onChange={() => toggleSelectWorkspace(workspace.id)}
-                            className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
+                            title={
+                              isBatchOperable(workspace)
+                                ? "选择后可批量启用/禁用/解散（仅限同状态的空间）"
+                                : getWorkspaceInoperableReason()
+                            }
+                            className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
                           />
                         </td>
                         <td className="px-4.5 py-3.5 whitespace-nowrap">
@@ -956,65 +1070,89 @@ export default function AdminWorkspacesPage() {
                             );
                           })()}
                         </td>
+                        {/* 状态列：只读徽章 + 管控期限说明（不可点击） */}
+                        <td className="px-4.5 py-3.5 whitespace-nowrap">
+                          {workspace.status === "ACTIVE" ? (
+                            <StatusBadge tone="active" title="该工作空间当前正常运行">
+                              启用中
+                            </StatusBadge>
+                          ) : (
+                            <div className="flex flex-col gap-1">
+                              <StatusBadge tone="danger" title="该工作空间已被管理员停用管控">
+                                停用管控中
+                              </StatusBadge>
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 whitespace-nowrap"
+                                title={`【工作空间管控中】\n管控截止：${workspace.disabledUntil ? new Date(workspace.disabledUntil).toLocaleString("zh-CN") : "永久管控"}\n停用原因：${workspace.disabledReason || "未登记"}\n说明：到达截止时间后，系统将自动解除管控恢复正常启用。`}
+                              >
+                                {workspace.disabledUntil
+                                  ? `停用至 ${new Date(workspace.disabledUntil).getMonth() + 1}月${new Date(workspace.disabledUntil).getDate()}日`
+                                  : "永久管控"}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+
                         {/* 操作列：粘性吸附在最右侧，无论横向怎么滚动均触手可及 */}
-                        <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleView(workspace)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
+                        <td className="sticky right-0 bg-white group-hover:bg-slate-50 z-10 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
+                          <RowActions className="gap-1.5">
+                            <ActionButton
+                              variant="neutral"
+                              icon={<Eye className="w-3.5 h-3.5" />}
                               title="查看工作空间成员与资产详情"
+                              onClick={() => handleView(workspace)}
                             >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>详情</span>
-                            </button>
+                              详情
+                            </ActionButton>
 
                             {workspace.status === "ACTIVE" ? (
                               // 用户核心批注：受管理员安全保护的工作空间（超级管理员/系统管理员）直接隐藏停用按钮
                               workspace.isProtected ? null : (
-                                <button
-                                  onClick={() => handleOpenDisableModal(workspace)}
-                                  disabled={togglingId === workspace.id}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                <ActionButton
+                                  variant="warn"
+                                  icon={<EyeOff className="w-3.5 h-3.5" />}
+                                  disabled={
+                                    togglingId === workspace.id ? true : undefined
+                                  }
+                                  disabledReason={
+                                    togglingId === workspace.id ? "处理中，请稍候" : undefined
+                                  }
                                   title="停用管控该工作空间"
+                                  onClick={() => handleOpenDisableModal(workspace)}
                                 >
-                                  <EyeOff className="w-3.5 h-3.5" />
-                                  <span>停用</span>
-                                </button>
+                                  停用
+                                </ActionButton>
                               )
                             ) : (
                               <>
-                                <span
-                                  className="inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 bg-amber-50/95 text-amber-700 border border-amber-200/80 rounded-lg shadow-2xs whitespace-nowrap"
-                                  title={`【工作空间管控中】\n管控截止：${workspace.disabledUntil ? new Date(workspace.disabledUntil).toLocaleString("zh-CN") : "永久管控"}\n停用原因：${workspace.disabledReason || "未登记"}\n说明：到达截止时间后，系统将自动解除管控恢复正常启用。`}
-                                >
-                                  <Clock className="w-3 h-3 text-amber-500 shrink-0" />
-                                  <span>
-                                    {workspace.disabledUntil
-                                      ? `停用至 ${new Date(workspace.disabledUntil).getMonth() + 1}月${new Date(workspace.disabledUntil).getDate()}日`
-                                      : "永久管控"}
-                                  </span>
-                                </span>
-                                <button
-                                  onClick={() => handleEnableWorkspace(workspace)}
-                                  disabled={togglingId === workspace.id}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
+                                <ActionButton
+                                  variant="success"
+                                  icon={<CheckCircle className="w-3.5 h-3.5" />}
+                                  disabledReason={
+                                    togglingId === workspace.id ? "处理中，请稍候" : undefined
+                                  }
                                   title="恢复启用该工作空间"
+                                  onClick={() => handleEnableWorkspace(workspace)}
                                 >
-                                  <CheckCircle className="w-3.5 h-3.5" />
-                                  <span>启用</span>
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(workspace.id)}
-                                  disabled={deletingId === workspace.id}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs disabled:opacity-50"
-                                  title="解散并彻底删除该工作空间"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>解散</span>
-                                </button>
+                                  启用
+                                </ActionButton>
+                                {/* 解散：仅已停用的企业空间可解散（个人空间不允许删除），与勾选状态无关，始终可点 */}
+                                {workspace.type === "ENTERPRISE" && (
+                                  <ActionButton
+                                    variant="danger"
+                                    icon={<Trash2 className="w-3.5 h-3.5" />}
+                                    disabledReason={
+                                      deletingId === workspace.id ? "解散处理中，请稍候" : undefined
+                                    }
+                                    title="解散并彻底删除该工作空间（不可恢复）"
+                                    onClick={() => handleDelete(workspace.id)}
+                                  >
+                                    解散
+                                  </ActionButton>
+                                )}
                               </>
                             )}
-                          </div>
+                          </RowActions>
                         </td>
                       </tr>
                     ))
@@ -1263,21 +1401,26 @@ export default function AdminWorkspacesPage() {
                             className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
                           >
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center">
-                                {component.icon ? (
-                                  <img
-                                    src={component.icon}
-                                    alt={component.name}
-                                    className="w-6 h-6 object-cover rounded"
-                                  />
-                                ) : (
-                                  <Building2 className="w-5 h-5 text-white" />
-                                )}
+                              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shrink-0">
+                                {/* 图标 key 由数据库 componentcatalog.icon 提供，图片 URL 亦兼容且加载失败会自动回退 */}
+                                <ComponentIcon
+                                  icon={component.icon}
+                                  name={component.name}
+                                  className="w-5 h-5 text-white"
+                                />
                               </div>
-                              <div>
-                                <div className="text-sm font-bold text-slate-800">
+                              <div className="min-w-0">
+                                <div className="text-sm font-bold text-slate-800 truncate">
                                   {component.name}
                                 </div>
+                                {component.catalogId && (
+                                  <div
+                                    className="text-[11px] text-slate-400 font-mono truncate"
+                                    title={component.catalogId}
+                                  >
+                                    {component.catalogId}
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">

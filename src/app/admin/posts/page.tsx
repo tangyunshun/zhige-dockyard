@@ -24,6 +24,7 @@ import {
   ChevronsRight,
   Loader2,
   Power,
+  Ban,
   ExternalLink,
   Sparkles,
   Eye,
@@ -41,6 +42,7 @@ import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import Link from "next/link";
 import { StandardPostDetailModal } from "@/components/studio/StandardPostDetailModal";
+import { StatusBadge, ActionButton } from "@/components/common";
 
 interface UsedWorkspaceInfo {
   id: string;
@@ -188,6 +190,9 @@ function AdminPostsContent() {
   // 删除确认弹窗
   const [deletingPost, setDeletingPost] = useState<StandardPost | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  // 停用确认弹窗（状态徽章只读，停用统一走操作列的动词按钮）
+  const [togglingPost, setTogglingPost] = useState<StandardPost | null>(null);
 
   // 工作空间列表（供辅助展示）
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
@@ -399,6 +404,14 @@ function AdminPostsContent() {
       console.error("Toggle status error:", err);
       toast.error("状态更新失败");
     }
+  };
+
+  // 停用：有分发影响，走二次确认；启用为可逆低风险操作，点击即生效
+  const handleConfirmDisable = async () => {
+    if (!togglingPost) return;
+    const post = togglingPost;
+    setTogglingPost(null);
+    await handleToggleStatus(post);
   };
 
   // 确认删除标准岗位
@@ -786,7 +799,7 @@ function AdminPostsContent() {
                     className={`bg-white rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col justify-between group shadow-2xs hover:shadow-md ${
                       isActive
                         ? "border-slate-200/90 hover:border-blue-300"
-                        : "border-slate-200/60 bg-slate-50/50 opacity-80"
+                        : "border-slate-200/60 bg-slate-50/50"
                     }`}
                   >
                     {/* 卡片主体内容区域（仅作内容展示，不可随意点击弹窗，只有点击底部【详情】按钮才弹出） */}
@@ -814,27 +827,18 @@ function AdminPostsContent() {
                           </div>
                         </div>
 
-                        {/* 状态切换徽章（独立轻巧布局，阻止冒泡） */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleStatus(post);
-                          }}
-                          title={isActive ? "点击停用分发" : "点击启用分发"}
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shrink-0 ${
+                        {/* 状态徽章：只读，仅展示「启用中 / 已停用」，启停一律走底部操作列按钮 */}
+                        <StatusBadge
+                          compact
+                          tone={isActive ? "active" : "inactive"}
+                          title={
                             isActive
-                              ? "bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"
-                              : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
-                          }`}
+                              ? "该岗位已启用分发，新企业空间可一键导入"
+                              : "该岗位已停用分发，新企业空间无法导入"
+                          }
                         >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              isActive ? "bg-emerald-500" : "bg-slate-400"
-                            }`}
-                          />
-                          <span>{isActive ? "启用中" : "已停用"}</span>
-                        </button>
+                          {isActive ? "启用中" : "已停用"}
+                        </StatusBadge>
                       </div>
 
                       {/* 岗位职责描述 */}
@@ -889,25 +893,56 @@ function AdminPostsContent() {
                           <span>详情</span>
                         </button>
 
-                        {/* 编辑按钮 */}
-                        <button
-                          type="button"
+                        {/* 编辑按钮：与套餐管理页一致，启用中的岗位不可编辑，需先停用 */}
+                        <ActionButton
+                          compact
+                          variant="primary"
+                          icon={<Edit2 className="w-3 h-3" />}
+                          disabledReason={
+                            isActive ? "启用中的岗位不可编辑，请先停用" : undefined
+                          }
+                          title="编辑该岗位"
                           onClick={() => handleOpenEdit(post)}
-                          className="px-2.5 py-1 text-xs font-bold text-[#3182ce] hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>编辑</span>
-                        </button>
+                          编辑
+                        </ActionButton>
 
-                        {/* 删除按钮 */}
-                        <button
-                          type="button"
+                        {/* 停用/启用：与状态徽章解耦的动词按钮（停用需二次确认） */}
+                        {isActive ? (
+                          <ActionButton
+                            compact
+                            variant="warn"
+                            icon={<Ban className="w-3 h-3" />}
+                            title="停用该岗位的分发"
+                            onClick={() => setTogglingPost(post)}
+                          >
+                            停用
+                          </ActionButton>
+                        ) : (
+                          <ActionButton
+                            compact
+                            variant="success"
+                            icon={<Power className="w-3 h-3" />}
+                            title="启用该岗位的分发"
+                            onClick={() => handleToggleStatus(post)}
+                          >
+                            启用
+                          </ActionButton>
+                        )}
+
+                        {/* 删除按钮（不可逆，使用 danger 实心红）；启用中的岗位需先停用 */}
+                        <ActionButton
+                          compact
+                          variant="danger"
+                          icon={<Trash2 className="w-3 h-3" />}
+                          disabledReason={
+                            isActive ? "启用中的岗位不可删除，请先停用" : undefined
+                          }
+                          title="从官方标准库移除该岗位"
                           onClick={() => setDeletingPost(post)}
-                          className="px-2.5 py-1 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>删除</span>
-                        </button>
+                          删除
+                        </ActionButton>
                       </div>
                     </div>
                   </div>
@@ -1498,7 +1533,12 @@ function AdminPostsContent() {
         <StandardPostDetailModal
           post={viewingPost}
           onClose={() => setViewingPost(null)}
-          onToggleStatus={(target) => handleToggleStatus(target as any)}
+          onToggleStatus={(target) => {
+            const p = target as any;
+            // 与卡片操作保持一致：停用走二次确认，启用即时生效
+            if (p.status === "ACTIVE") setTogglingPost(p);
+            else handleToggleStatus(p);
+          }}
           onEdit={(target) => {
             setViewingPost(null);
             handleOpenEdit(target as any);
@@ -1757,6 +1797,49 @@ function AdminPostsContent() {
                   <Trash2 className="w-3.5 h-3.5" />
                 )}
                 <span>确认删除</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================= MODAL: 停用岗位二次确认 ======================= */}
+      {togglingPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <Ban className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-800">
+                  确认停用岗位【{togglingPost.name}】？
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  当前已有 <strong className="text-amber-600">{togglingPost.usageCount || 0}</strong> 个企业空间装配该岗位
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+              停用后，新企业空间将无法一键导入该岗位；已装配该岗位的空间不受影响，仍可继续使用。如需恢复，可在卡片底部点击「启用」立即生效。
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setTogglingPost(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDisable}
+                className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                <span>确认停用</span>
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -7,14 +7,26 @@ import { prisma } from "@/lib/prisma";
 export function getClientIP(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
   const realIP = request.headers.get("x-real-ip");
+  const cfConnectingIp = request.headers.get("cf-connecting-ip");
 
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
+  let rawIp = "127.0.0.1";
+  if (cfConnectingIp) {
+    rawIp = cfConnectingIp.trim();
+  } else if (forwarded) {
+    rawIp = forwarded.split(",")[0].trim();
+  } else if (realIP) {
+    rawIp = realIP.trim();
   }
-  if (realIP) {
-    return realIP;
+
+  // 清洗 IPv6 映射与回环地址，规范展示为真实的 IPv4 格式，杜绝裸露 ::1
+  if (rawIp.startsWith("::ffff:")) {
+    rawIp = rawIp.replace("::ffff:", "");
   }
-  return "unknown";
+  if (rawIp === "::1" || rawIp === "localhost" || !rawIp || rawIp === "unknown") {
+    rawIp = "127.0.0.1";
+  }
+
+  return rawIp;
 }
 
 export function isPrivateIP(ip: string): boolean {

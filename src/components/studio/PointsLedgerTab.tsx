@@ -432,6 +432,8 @@ export default function PointsLedgerTab({
                               ? "个人钱包"
                               : r.scope === "PERSONAL_GIFT"
                               ? "个人空间赠送"
+                              : r.scope === "PERSONAL_DEDUCTION"
+                              ? "个人空间扣减"
                               : "空间共享池"}
                           </span>
                         </td>

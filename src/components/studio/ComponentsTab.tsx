@@ -7,6 +7,7 @@ import { useAppContext } from "@/contexts/AppContext";
 import { iconMap } from "@/components/ComponentShowcase";
 import { useDevice } from "@/contexts/DeviceContext";
 import { categoryIconsMap } from "@/components/WorkspaceInternalLayoutV3";
+import { StatusBadge, ActionButton } from "@/components/common";
 
 // 阶段定义
 interface Stage {
@@ -241,16 +242,15 @@ export default function ComponentsTab({
                             {isManager ? "🛡️ 矩阵受限 (特权可用)" : "🔒 岗位受限"}
                           </span>
                         )}
+                        {/* 状态徽章：只读，只展示「已启用 / 已禁用」，启停一律走下方操作按钮 */}
                         {workspaceType === "ENTERPRISE" && (
-                          <span 
-                            className={`text-xs font-black px-2 py-0.5 rounded border ${
-                              isEnabled
-                                ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                : "bg-slate-100 text-slate-400 border-slate-200"
-                            }`}
+                          <StatusBadge
+                            compact
+                            tone={isEnabled ? "active" : "inactive"}
+                            title={isEnabled ? "该组件当前启用中" : "该组件已被禁用，服务已切断"}
                           >
-                            {isEnabled ? "● 已启用" : "○ 已禁用"}
-                          </span>
+                            {isEnabled ? "已启用" : "已禁用"}
+                          </StatusBadge>
                         )}
                       </div>
                     </div>
@@ -282,50 +282,53 @@ export default function ComponentsTab({
                     <span className="text-xs text-slate-400 font-mono font-bold">{comp.id}</span>
                     
                     <div className="flex gap-2">
-                      <button
-                        type="button"
+                      <ActionButton
+                        compact
+                        variant="neutral"
+                        icon={<Eye className="w-3.5 h-3.5 text-slate-500" />}
                         onClick={() => onViewDetail && onViewDetail(comp)}
-                        className="h-8 px-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-lg shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1"
                         title="查看该组件的核心功能契约与详细文档"
                       >
-                        <Eye className="w-3.5 h-3.5 text-slate-500" />
-                        <span>详情</span>
-                      </button>
+                        详情
+                      </ActionButton>
                       {isManager && (
-                        <button
-                          type="button"
+                        <ActionButton
+                          compact
+                          variant="danger"
                           onClick={() => handleRequestUninstall(comp.id, comp.name)}
-                          disabled={workspaceType === "ENTERPRISE" && isEnabled}
-                          title={workspaceType === "ENTERPRISE" && isEnabled ? "企业空间中启用中的组件禁止卸载，请先禁用组件" : "安全卸载"}
-                          className={`h-8 px-3 text-xs sm:text-sm font-bold rounded-lg shadow-sm transition-all ${
+                          disabledReason={
                             workspaceType === "ENTERPRISE" && isEnabled
-                              ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
-                              : "text-red-500 bg-red-50/50 hover:bg-red-100 border border-red-100 hover:border-red-200 cursor-pointer"
-                          }`}
+                              ? "企业空间中启用中的组件禁止卸载，请先禁用组件"
+                              : undefined
+                          }
+                          title="安全卸载该组件"
                         >
                           卸载
-                        </button>
+                        </ActionButton>
                       )}
 
-                      {/* 启停状态切换仅在【企业空间】下有效，个人空间独享无需启用/禁用操作 */}
+                      {/* 启停操作仅在【企业空间】下有效，个人空间独享无需启用/禁用操作；
+                          状态由卡片右上角徽章展示，操作一律使用动词按钮 */}
                       {workspaceType === "ENTERPRISE" && (
                         isManager ? (
                           isEnabled ? (
-                            <button
-                              type="button"
+                            <ActionButton
+                              compact
+                              variant="warn"
                               onClick={() => handleToggleComponentActive(comp, false)}
-                              className="h-7 px-2.5 text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-100 hover:border-amber-200 rounded-lg shadow-sm transition-all cursor-pointer"
+                              title="禁用该组件（切断服务后可卸载）"
                             >
                               禁用
-                            </button>
+                            </ActionButton>
                           ) : (
-                            <button
-                              type="button"
+                            <ActionButton
+                              compact
+                              variant="success"
                               onClick={() => handleToggleComponentActive(comp, true)}
-                              className="h-7 px-2.5 text-xs font-bold text-emerald-600 bg-emerald-50/50 hover:bg-emerald-100 border border-emerald-100 hover:border-emerald-200 rounded-lg shadow-sm transition-all cursor-pointer"
+                              title="启用该组件"
                             >
                               启用
-                            </button>
+                            </ActionButton>
                           )
                         ) : (
                           !isEnabled && (
@@ -335,22 +338,20 @@ export default function ComponentsTab({
                       )}
 
                       {!(workspaceType === "ENTERPRISE" && !isEnabled) && (
-                        <button
-                          type="button"
+                        <ActionButton
+                          compact
+                          variant="primary"
                           onClick={() => handleComponentClick(comp)}
-                          disabled={isRestrictedForCurrentUser}
-                          className={`h-8 px-3 text-xs sm:text-sm font-bold rounded-lg shadow-sm transition-all ${
-                            isRestrictedForCurrentUser
-                              ? "bg-amber-50 text-amber-600 border-amber-200 cursor-not-allowed font-black"
-                              : "bg-[#3182ce] hover:bg-[#2b6cb0] text-white cursor-pointer shadow-md hover:shadow-lg"
-                          }`}
+                          disabledReason={
+                            isRestrictedForCurrentUser ? "当前岗位无权限使用该组件" : undefined
+                          }
                         >
                           {isRestrictedForCurrentUser
                             ? "🔒 岗位受限 (不可用)"
                             : isManager && isRestricted
                               ? "⚡ 特权执行"
                               : "开始使用"}
-                        </button>
+                        </ActionButton>
                       )}
                     </div>
                   </div>

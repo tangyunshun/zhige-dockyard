@@ -7,6 +7,7 @@ import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Settings, Shield, Users, Save, RefreshCw, AlertTriangle, Upload, ArrowLeft, Copy } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
 import { DissolveWorkspaceCheckModal } from "@/components/workspace/DissolveWorkspaceCheckModal";
+import { StatusBadge } from "@/components/common";
 
 export default function WorkspaceSettingsPage() {
   const params = useParams();
@@ -342,16 +343,27 @@ export default function WorkspaceSettingsPage() {
             </div>
             <div>
               <span className="text-xs text-slate-400 font-bold block">当前状态</span>
+              {/* 状态只读：停用操作统一走下方「解散并停用」危险按钮 */}
               {workspace.status === "DISABLED" ? (
-                <span className="text-sm font-bold text-red-600 mt-1.5 block flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                <StatusBadge
+                  compact
+                  pulse
+                  tone="danger"
+                  className="mt-1.5"
+                  title="该空间已被管理员停用管控，服务已冻结"
+                >
                   停用管控中
-                </span>
+                </StatusBadge>
               ) : (
-                <span className="text-sm font-bold text-emerald-600 mt-1.5 block flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <StatusBadge
+                  compact
+                  pulse
+                  tone="active"
+                  className="mt-1.5"
+                  title="该空间当前正常运行"
+                >
                   正常运行中
-                </span>
+                </StatusBadge>
               )}
             </div>
           </div>

@@ -1036,7 +1036,7 @@ export default function OperationLogsPage() {
                   })
                 }
                 disabled={busy}
-                className="flex items-center gap-1.5 bg-red-50 border border-red-200 hover:bg-red-100 text-red-600 text-xs font-bold px-3 h-8 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 bg-red-600 border border-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 h-8 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>批量删除</span>
@@ -1046,10 +1046,9 @@ export default function OperationLogsPage() {
                   setSelectedIds([]);
                   setSelectAll(false);
                 }}
-                className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 text-xs font-bold px-3 h-8 rounded-lg transition-colors cursor-pointer"
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors"
               >
-                <X className="w-3.5 h-3.5" />
-                <span>取消</span>
+                取消选择
               </button>
             </div>
           </div>
@@ -1203,7 +1202,11 @@ export default function OperationLogsPage() {
                                 message: "即将永久删除这条操作审计日志，此操作不可恢复。是否继续？",
                               })
                             }
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
+                              selectedIds.includes(log.id)
+                                ? "bg-red-600 border border-red-600 hover:bg-red-700 text-white"
+                                : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
+                            }`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             删除

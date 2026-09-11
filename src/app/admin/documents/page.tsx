@@ -877,7 +877,7 @@ export default function AdminDocumentsPage() {
               </div>
 
               {/* 分类筛选 */}
-              <div className="w-36 shrink-0">
+              <div className="w-full sm:w-36 sm:shrink-0">
                 <select
                   value={filterCategory}
                   onChange={(e) => {
@@ -898,7 +898,7 @@ export default function AdminDocumentsPage() {
               </div>
 
               {/* 状态筛选 */}
-              <div className="w-36 shrink-0">
+              <div className="w-full sm:w-36 sm:shrink-0">
                 <select
                   value={filterPublished}
                   onChange={(e) => {

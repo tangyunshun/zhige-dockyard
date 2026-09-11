@@ -198,7 +198,8 @@ const perfectSvg = `<svg width="32" height="32" viewBox="10 10 180 190" fill="no
 const pngBuf = generatePNG();
 const icoBuf = generateICO(pngBuf);
 
-const root = "d:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web";
+// 使用相对脚本位置推导项目根目录：项目迁移到其它磁盘/目录后仍可正常工作
+const root = path.join(__dirname, "..");
 
 // 关键：仅在内容真正变化时写入，避免每次 next dev 启动都改变文件 mtime
 // 触发 Turbopack 把 src/app/icon.* 视为依赖变更而整图重新编译（导致首页访问极慢）。

@@ -150,7 +150,7 @@ interface DatabaseStats {
     operationLogs: number;
     accountAppeals: number;
   };
-  lastBackupTime: string;
+  lastBackupTime: string | null;
   dbEngine: string;
 }
 
@@ -2656,11 +2656,19 @@ export default function AdminSettingsPage() {
                         <span className="text-xs font-bold text-slate-500">实例健康状态</span>
                         <Server className="w-4 h-4 text-emerald-600" />
                       </div>
-                      <div className="text-xl font-black text-emerald-700 mt-2">
-                        {dbStats?.status === "HEALTHY" ? "正常运行 (HEALTHY)" : "联通检测中"}
+                      <div
+                        className={`text-xl font-black mt-2 ${
+                          dbStats?.status === "HEALTHY" ? "text-emerald-700" : "text-amber-600"
+                        }`}
+                      >
+                        {dbStats?.status === "HEALTHY"
+                          ? "正常运行 (HEALTHY)"
+                          : dbStats?.status === "DEGRADED"
+                            ? "延迟偏高 (DEGRADED)"
+                            : "联通检测中"}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                        {dbStats?.dbEngine || "PostgreSQL 15"}
+                        {dbStats?.dbEngine || "Prisma ORM"}
                       </div>
                     </div>
 
@@ -2683,10 +2691,14 @@ export default function AdminSettingsPage() {
                         <Layers className="w-4 h-4 text-purple-600" />
                       </div>
                       <div className="text-sm font-black text-slate-800 mt-2">
-                        {dbStats?.lastBackupTime ? new Date(dbStats.lastBackupTime).toLocaleTimeString("zh-CN") : "今日自动归档"}
+                        {dbStats?.lastBackupTime
+                          ? new Date(dbStats.lastBackupTime).toLocaleString("zh-CN")
+                          : "暂无归档记录"}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-1">
-                        自动异地备份机制已激活
+                        {dbStats?.lastBackupTime
+                          ? "最近一次归档时间（取自备份记录）"
+                          : "系统尚未接入自动备份任务，暂无归档记录"}
                       </div>
                     </div>
                   </div>

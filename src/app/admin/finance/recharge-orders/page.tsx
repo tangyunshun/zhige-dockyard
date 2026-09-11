@@ -113,6 +113,8 @@ export default function AdminRechargeOrdersPage() {
       });
       const json = await res.json();
       if (res.ok) {
+        // 通知侧边栏刷新待办角标（无需刷新页面）
+        window.dispatchEvent(new Event("admin-pending-tasks-changed"));
         setSelected(null);
         setReviewNote("");
         await load();

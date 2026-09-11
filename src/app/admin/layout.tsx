@@ -34,9 +34,11 @@ import {
   ReceiptText,
   ChevronLeft,
   ChevronRight,
+  Cpu,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
+import LoginNotificationPopup from "@/components/LoginNotificationPopup";
 
 interface AdminMenuItem {
   icon: any;
@@ -172,6 +174,13 @@ const adminMenuItems: AdminMenuItem[] = [
     requiredPermission: "system:health_read",
   },
   {
+    icon: Cpu,
+    label: "算力计价",
+    href: "/admin/ai-pricing",
+    description: "AI 厂商 token 折算与毛利率测算",
+    superAdminOnly: true,
+  },
+  {
     icon: Settings,
     label: "系统设置",
     href: "/admin/settings",
@@ -217,6 +226,8 @@ export default function AdminLayout({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  // 管理员待办角标（待审核申诉 + 待审批充值工单），展示在「后台总览」菜单项旁
+  const [pendingTaskCount, setPendingTaskCount] = useState(0);
   const [hovered, setHovered] = useState<{
     label: string;
     description?: string;
@@ -256,6 +267,30 @@ export default function AdminLayout({
   useEffect(() => {
     checkAdminPermission();
   }, [router]);
+
+  // 待办角标：随路由切换自动刷新，管理员处理完工单返回即可看到最新数量
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    const loadPendingTasks = async () => {
+      try {
+        const res = await fetch("/api/admin/pending-tasks");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setPendingTaskCount(Number(data?.total) || 0);
+      } catch (error) {
+        console.error("Fetch pending tasks error:", error);
+      }
+    };
+    loadPendingTasks();
+    // 页面内处理完待办（审批申诉 / 审批充值工单）后派发该事件，角标立即刷新，无需刷新页面
+    const onPendingChanged = () => loadPendingTasks();
+    window.addEventListener("admin-pending-tasks-changed", onPendingChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("admin-pending-tasks-changed", onPendingChanged);
+    };
+  }, [isAdmin, pathname]);
 
   // 当路由或用户状态改变时，强制拦截非法越权访问
   useEffect(() => {
@@ -492,7 +527,10 @@ export default function AdminLayout({
                   onMouseEnter={(e) => {
                     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     setHovered({
-                      label: item.label,
+                      label:
+                        item.href === "/admin" && pendingTaskCount > 0
+                          ? `${item.label}（${pendingTaskCount} 项待办）`
+                          : item.label,
                       description: item.description,
                       top: r.top + r.height / 2,
                       left: r.right,
@@ -505,7 +543,14 @@ export default function AdminLayout({
                       : "text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <Icon className="w-5 h-5 shrink-0" />
+                  <span className="relative">
+                    <Icon className="w-5 h-5 shrink-0" />
+                    {item.href === "/admin" && pendingTaskCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 font-bold text-center">
+                        {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             }
@@ -531,6 +576,14 @@ export default function AdminLayout({
                     {item.description}
                   </div>
                 </div>
+                {item.href === "/admin" && pendingTaskCount > 0 && (
+                  <span
+                    className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shadow-sm"
+                    title={`${pendingTaskCount} 项待处理事项`}
+                  >
+                    {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -709,6 +762,11 @@ export default function AdminLayout({
                         {item.description}
                       </div>
                     </div>
+                    {item.href === "/admin" && pendingTaskCount > 0 && (
+                      <span className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shadow-sm">
+                        {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -787,6 +845,10 @@ export default function AdminLayout({
 
       {/* 退出登录二次确认弹窗 */}
       {confirmDialog}
+
+      {/* 登录强提醒弹窗：管理员后台布局不含 GlobalHeader，需在此单独挂载，
+          否则勾选了「登录时强提醒弹窗」的通知在管理员登录后不会弹出 */}
+      <LoginNotificationPopup />
 
       {/* 收起态菜单名称悬停提示：portal 渲染到 body，避免被侧边栏 overflow 裁剪 */}
       {hovered &&

@@ -41,8 +41,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 以当前封禁周期为统计口径：pending + rejected 均占用申诉机会
-    const currentBanStartTime = user.status === "banned" ? new Date(user.updatedAt) : new Date();
+    // 以本轮限制周期为统计口径：pending + rejected 均占用申诉机会
+    // 与 my-appeal 保持完全一致：受限状态（封禁 / 禁用登录 / 注销中 / 锁定）均以
+    // 状态落库时间起算，否则被禁用登录的账号会永远统计不到已有申诉，可无限重复提交
+    const RESTRICTED_STATUSES = ["banned", "inactive", "deleting", "suspended", "locked"];
+    const currentBanStartTime = RESTRICTED_STATUSES.includes(user.status)
+      ? new Date(user.updatedAt)
+      : new Date();
     const banThreshold = new Date(currentBanStartTime.getTime() - 2000);
 
     const rejectedCount = await prisma.accountappeal.count({
@@ -53,11 +58,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 在途申诉按全局判定（不加时间窗），否则禁用登录的账号可无限重复提交
     const pendingCount = await prisma.accountappeal.count({
       where: {
         userId: user.id,
         status: "pending",
-        createdAt: { gte: banThreshold },
       },
     });
 

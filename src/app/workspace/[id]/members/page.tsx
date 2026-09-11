@@ -468,7 +468,7 @@ export default function WorkspaceMembersPage() {
 
               <div className="space-y-1.5">
                 <label className="block text-xs font-black text-slate-700">
-                  本月算力上限 (Token Limit)
+                  本月算力上限 (算力点)
                 </label>
                 <div className="relative">
                   <input

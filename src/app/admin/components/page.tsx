@@ -36,7 +36,6 @@ import {
   Workflow,
   Clock,
   Coins,
-  X,
   ExternalLink,
   ChevronLeft,
   ChevronRight,
@@ -876,9 +875,9 @@ export default function AdminComponentsPage() {
         {/* 操作工具栏 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/90 shadow-sm overflow-hidden mb-6">
           <div className="relative space-y-3">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-                <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 w-full sm:flex-1 min-w-0">
+                <div className="relative w-full sm:flex-1">
                   <input
                     type="text"
                     placeholder="搜索组件名称或功能描述..."
@@ -896,7 +895,7 @@ export default function AdminComponentsPage() {
                   onChange={(e) =>
                     setFilters({ ...filters, published: e.target.value })
                   }
-                  className="px-3 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white/80 whitespace-nowrap"
+                  className="w-full sm:w-auto px-3 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white/80 whitespace-nowrap"
                 >
                   <option value="">全部状态</option>
                   <option value="true">🟢 已上架</option>
@@ -1070,7 +1069,7 @@ export default function AdminComponentsPage() {
                       handleBatchAction("batch-delete", "删除", true)
                     }
                     disabled={batchLoading}
-                    className="px-3 py-1.5 bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                    className="px-3 py-1.5 bg-red-600 border border-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> 批量删除
                   </button>
@@ -1078,9 +1077,9 @@ export default function AdminComponentsPage() {
                     type="button"
                     onClick={clearSelection}
                     disabled={batchLoading}
-                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <X className="w-3.5 h-3.5" /> 取消
+                    取消选择
                   </button>
                 </div>
               </div>
@@ -1209,7 +1208,8 @@ export default function AdminComponentsPage() {
                                   className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white"
                                   title="下架该组件（下架后解除保护，方可重新编辑）"
                                 >
-                                  下架
+                                  <EyeOff className="w-3 h-3" />
+                                  <span>下架</span>
                                 </button>
                               ) : (
                                 <>
@@ -1220,7 +1220,8 @@ export default function AdminComponentsPage() {
                                     className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white"
                                     title="上架发布该组件"
                                   >
-                                    上架
+                                    <Eye className="w-3 h-3" />
+                                    <span>上架</span>
                                   </button>
 
                                   <button
@@ -1236,10 +1237,15 @@ export default function AdminComponentsPage() {
                                   <button
                                     type="button"
                                     onClick={() => handleDelete(component.id)}
-                                    className="px-2 py-1 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg font-bold text-[11px] transition-all cursor-pointer"
+                                    className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                      selectedIds.has(component.id)
+                                        ? "bg-red-600 border border-red-600 text-white hover:bg-red-700"
+                                        : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
+                                    }`}
                                     title="物理删除"
                                   >
                                     <Trash2 className="w-3 h-3" />
+                                    <span>删除</span>
                                   </button>
                                 </>
                               )}

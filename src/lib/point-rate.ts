@@ -11,10 +11,13 @@
  * 严禁在页面/接口中自行硬编码汇率，避免口径不一致。
  *
  * 概念边界（全系统统一口径）：
- *   - 「算力点」是本平台唯一的【计费货币】，用户级钱包(pointwallet)/空间余额(tokenBalance)/
+ *   - 「算力点」是本平台唯一的【计量与计费货币】，用户级钱包(pointwallet)/空间余额(tokenBalance)/
  *     会员额度(tokenLimit) 均属同一币种，最终应以 pointledger 流水总账为唯一真源。
- *   - 「模型 Token」(modelTokenLimit / estimatedModelTokens) 是 AI 实际输入/输出 token 的【用量度量】，
- *     不是账户货币；它只会“花费”算力点，需经本模块换算，禁止与算力点混用或重命名。
+ *   - 「模型 Token」是 AI 实际输入/输出的用量度量。全系统统一换算口径：
+ *     **1 个模型 Token = 1 个算力点（1:1）**，用户只需理解「算力点」一种单位。
+ *   - token 的【计费成本】取决于所用厂商的官方单价（DeepSeek / 智谱 / OpenAI …），
+ *     不同厂商按各自价格折算扣点，统一由 @/lib/model-rate 的折算引擎负责，
+ *     禁止在页面或接口中自行硬编码厂商价格。
  */
 
 /** 1 元可兑换的算力点数量 */
@@ -29,6 +32,13 @@ export const POINT_RATE_TEXT = "10 算力点 = 0.1 元";
 /** 规则完整说明，用于说明性文案与提示条 */
 export const POINT_RATE_HINT =
   "统一换算规则：10 算力点 = 0.1 元（即 100 算力点 = 1 元，1 算力点 = 0.01 元）";
+
+/**
+ * 单位口径说明（用户可见）：把「模型 token」与「算力点」的关系一次讲清。
+ * 用于定价页、充值页、组件分发面板等需要解释单位的位置。
+ */
+export const POINT_UNIT_HINT =
+  "全系统统一使用「算力点」计量：1 个模型 token = 1 个算力点，100 算力点 = 1 元。不同 AI 厂商（DeepSeek / 智谱 / OpenAI 等）按各自官方价折算扣点。";
 
 /** 算力点 ➔ 人民币金额（元） */
 export function pointsToYuan(points: number | bigint | null | undefined): number {

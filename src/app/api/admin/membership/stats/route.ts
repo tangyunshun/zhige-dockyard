@@ -117,10 +117,18 @@ export async function GET(request: NextRequest) {
       // 12. 全部 Token 加油包
       prisma.tokenpack.count(),
 
-      // 13. 即将到期会员数 (未来 7 天内到期且状态有效)
-      // 说明：user 模型暂未提供 membershipExpiresAt 字段，无法精确判定"即将到期"，
-      // 待 schema 补齐该字段后启用真实逻辑；此处暂时返回 0 以保持接口结构稳定
-      Promise.resolve(0).catch(() => 0),
+      // 13. 即将到期会员数：以已支付会员订单的到期时间(未来 7 天内)去重统计真实用户
+      (async () => {
+        const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const rows = await prisma.membershiporder.findMany({
+          where: {
+            status: { in: ["PAID", "COMPLETED", "paid", "completed"] },
+            endDate: { gte: new Date(), lte: in7Days },
+          },
+          select: { userId: true },
+        });
+        return new Set(rows.map((r) => r.userId)).size;
+      })(),
 
       // 14. 最近 5 笔订单流水
       prisma.membershiporder.findMany({

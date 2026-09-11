@@ -104,7 +104,7 @@ export default function ResourceOverview({
         </button>
       </div>
 
-      {/* Token 圆环消耗可视化 */}
+      {/* 算力点圆环消耗可视化 */}
       <div className="flex items-center gap-4 bg-slate-50/50 p-4 rounded-lg border border-slate-100 mb-4">
         {/* SVG 圆环 */}
         <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center">

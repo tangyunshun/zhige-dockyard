@@ -503,12 +503,12 @@ export default function AdminLogsPage() {
           </div>
 
           {/* 筛选与搜索 (圆角胶囊风格) */}
-          <form onSubmit={handleSearch} className="flex items-center gap-2">
+          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
             {activeTab === "operation" && (
               <select
                 value={filterAction}
                 onChange={(e) => { setFilterAction(e.target.value); setCurrentPage(1); }}
-                className="h-8.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 shadow-2xs cursor-pointer transition-all"
+                className="w-full sm:w-auto h-8.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 shadow-2xs cursor-pointer transition-all"
               >
                 <option value="all">全部操作类型</option>
                 <option value="DEVICE KICKED OFFLINE">设备强制下线</option>
@@ -531,7 +531,7 @@ export default function AdminLogsPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索用户名或邮箱..."
-                className="h-8.5 pl-8.5 pr-3 w-44 sm:w-56 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 shadow-2xs transition-all"
+                className="h-8.5 pl-8.5 pr-3 w-full sm:w-56 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 shadow-2xs transition-all"
               />
             </div>
 

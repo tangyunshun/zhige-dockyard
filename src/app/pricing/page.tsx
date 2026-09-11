@@ -13,7 +13,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
 import { getMembershipLevelIcon } from "@/utils/membership-icon";
 import { formatTokenBalance, isUnlimitedToken } from "@/utils/quota";
-import { formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, formatDiscountLabel } from "@/lib/point-rate";
+import { formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, POINT_UNIT_HINT, formatDiscountLabel } from "@/lib/point-rate";
 
 /** 会员等级：字段与数据库 membershiplevel 表一一对应（价格单位为「分」） */
 interface MembershipLevel {
@@ -502,11 +502,15 @@ export default function PricingPage() {
           </p>
 
           {/* 算力点统一定价规则 */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 mb-10 bg-amber-50 border border-amber-200 rounded-full shadow-xs">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full shadow-xs">
             <Zap className="w-4 h-4 text-amber-500 fill-amber-400 shrink-0" />
             <span className="text-xs font-black text-amber-800">{POINT_RATE_TEXT}</span>
             <span className="text-[11px] font-bold text-amber-600 hidden sm:inline">｜{POINT_RATE_HINT}</span>
           </div>
+          {/* 单位口径说明：全系统只使用「算力点」，1 token = 1 算力点 */}
+          <p className="text-[11px] font-bold text-slate-500 max-w-3xl mx-auto mt-3 mb-10 leading-relaxed">
+            {POINT_UNIT_HINT}
+          </p>
 
           {/* Billing Toggle Switcher */}
           <div className="inline-flex items-center gap-2 bg-white/60 backdrop-blur-md rounded-full p-1 border border-slate-200/50 shadow-sm max-w-[200px] mx-auto">

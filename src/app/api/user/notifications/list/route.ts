@@ -10,7 +10,18 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = auth.user.id;
-    const list = await getNotifications(userId);
+
+    const { searchParams } = new URL(req.url);
+    const popup = searchParams.get("popup") === "true";
+    const unread = searchParams.get("unread") === "true";
+    // includePending=true 用于管理/调试场景，强制返回未确认的弹窗；默认排除
+    const includePending = searchParams.get("includePending") === "true";
+
+    const list = await getNotifications(userId, {
+      popup,
+      unread,
+      excludePendingPopups: !includePending,
+    });
     const unreadCount = list.filter(item => !item.isRead).length;
 
     return NextResponse.json({

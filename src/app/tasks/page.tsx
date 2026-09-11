@@ -754,11 +754,11 @@ export default function PersonalTasksManagementPage() {
             </div>
 
             {/* 空间筛选：展示当前用户全部空间 */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
               <select
                 value={selectedWorkspaceId}
                 onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-                className="h-9 px-3 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all text-slate-800"
+                className="w-full sm:w-auto h-9 px-3 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all text-slate-800"
               >
                 <option value="ALL">全部工作空间 ({workspaces.length} 个)</option>
                 {workspaces.map((ws) => (

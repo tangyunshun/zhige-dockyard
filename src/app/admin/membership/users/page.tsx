@@ -127,9 +127,9 @@ export default function AdminMembershipUsersPage() {
         {/* 操作过滤栏 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/90 shadow-2xs p-4 mb-5 overflow-hidden">
           <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
+          <div className="relative flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 w-full">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
@@ -138,7 +138,7 @@ export default function AdminMembershipUsersPage() {
                   onChange={(e) =>
                     setFilters({ ...filters, search: e.target.value })
                   }
-                  className="pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                  className="w-full pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
                 />
               </div>
               <select
@@ -146,7 +146,7 @@ export default function AdminMembershipUsersPage() {
                 onChange={(e) =>
                   setFilters({ ...filters, membershipLevel: e.target.value })
                 }
-                className="px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                className="w-full sm:w-auto px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
               >
                 <option value="">全部等级</option>
                 <option value="BRONZE">青铜版</option>

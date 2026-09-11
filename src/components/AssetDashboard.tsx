@@ -99,7 +99,7 @@ export default function AssetDashboard({ userId }: AssetDashboardProps) {
       description: "系统架构、流程图、ER 图",
     },
     {
-      title: "Token 余额",
+      title: "算力点余额",
       value: stats.tokenBalance,
       icon: Zap,
       color: "#f59e0b",

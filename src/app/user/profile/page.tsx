@@ -9,33 +9,43 @@ import {
   Camera,
   Save,
   X,
-  Upload,
   CheckCircle,
   AlertCircle,
   AlertTriangle,
   Trash2,
   Clock,
-  Zap,
+  ShieldCheck,
+  Crown,
+  Calendar,
 } from "lucide-react";
+import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import { useToast } from "@/components/Toast";
 
 export default function UserProfilePage() {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteStep, setDeleteStep] = useState<string>(""); // 当前检测步骤
-  const [deleteProgress, setDeleteProgress] = useState(0); // 进度
-  const [isDeleting, setIsDeleting] = useState(false); // 正在注销中
-  const [hasAgreed, setHasAgreed] = useState(false); // 是否已勾选"我已知晓"
-  const [showNoticeModal, setShowNoticeModal] = useState(false); // 显示注销须知弹窗
-  const [showCheckModal, setShowCheckModal] = useState(false); // 显示检测进度弹窗
-  const [checkComplete, setCheckComplete] = useState(false); // 检测是否完成
+  const [deleteStep, setDeleteStep] = useState<string>("");
+  const [deleteProgress, setDeleteProgress] = useState(0);
+  const [hasAgreed, setHasAgreed] = useState(false);
+  const [showNoticeModal, setShowNoticeModal] = useState(false);
+  const [showCheckModal, setShowCheckModal] = useState(false);
+  const [checkComplete, setCheckComplete] = useState(false);
   const [showStepUpModal, setShowStepUpModal] = useState(false);
-  const [checkResults, setCheckResults] = useState<
-    { item: string; status: string }[]
-  >([]); // 检测结果
-  const [deletionCooldownDays, setDeletionCooldownDays] = useState(7); // 冷静期总天数（可配置）
+  const [checkResults, setCheckResults] = useState<{ item: string; status: string }[]>([]);
+  const [deletionCooldownDays, setDeletionCooldownDays] = useState(7);
+  const [originalPhone, setOriginalPhone] = useState("");
+  const [smsCode, setSmsCode] = useState("");
+  const [sendingCode, setSendingCode] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [smsMessage, setSmsMessage] = useState<string | null>(null);
+  const [smsDebugCode, setSmsDebugCode] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [smsError, setSmsError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -43,10 +53,31 @@ export default function UserProfilePage() {
     avatar: "",
     bio: "",
   });
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+
+  const isPhoneChanged = (formData.phone || "").trim() !== (originalPhone || "").trim();
+
+  useEffect(() => {
+    if (countdown <= 0) {
+      setSmsMessage(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setCountdown((prev) => {
+        const next = prev - 1;
+        if (next <= 0) {
+          setSmsMessage(null);
+          return 0;
+        }
+        if (smsDebugCode) {
+          setSmsMessage(`验证码已发送：${smsDebugCode}，${next}秒后可重新发送`);
+        } else {
+          setSmsMessage(`验证码已发送，${next}秒后可重新发送`);
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [countdown, smsDebugCode]);
 
   useEffect(() => {
     loadUserInfo();
@@ -58,28 +89,49 @@ export default function UserProfilePage() {
       const authToken = getAuthToken();
 
       const res = await fetch("/api/user/profile", {
-        headers: { Authorization: `Bearer ${authToken}` },
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
+        cache: "no-store",
       });
 
       if (res.ok) {
         const data = await res.json();
         setUserInfo(data.data);
+        const serverPhone = data.data.phone || "";
+        setOriginalPhone(serverPhone);
         setDeletionCooldownDays(data.deletionCooldownDays || 7);
         setFormData({
           name: data.data.name || "",
           email: data.data.email || "",
-          phone: data.data.phone || "",
+          phone: serverPhone,
           avatar: data.data.avatar || "",
           bio: data.data.bio || "",
         });
       }
     } catch (error) {
       console.error("Load user info error:", error);
-      setMessage({ type: "error", text: "加载用户信息失败" });
+      toast.error("加载用户信息失败");
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatRoleName = (role?: string | null) => {
+    if (!role) return "普通用户";
+    const r = role.toLowerCase();
+    if (r === "admin" || r === "administrator") return "系统管理员";
+    if (r === "superadmin" || r === "super_admin") return "超级管理员";
+    if (r === "creator") return "创作者";
+    if (r === "developer") return "开发者";
+    return "普通用户";
+  };
+
+  const getDaysFromCreated = (createdAtString?: string) => {
+    if (!createdAtString) return 1;
+    const created = new Date(createdAtString);
+    if (isNaN(created.getTime())) return 1;
+    const diff = Date.now() - created.getTime();
+    return Math.max(1, Math.floor(diff / (1000 * 60 * 60 * 24)));
   };
 
   const handleDeleteAccount = async (token?: string) => {
@@ -109,15 +161,14 @@ export default function UserProfilePage() {
         window.location.href = `/?deletion_pending=true&daysRemaining=${daysRemaining}`;
       } else {
         const error = await res.json();
-        setMessage({ type: "error", text: error.error || "注销失败" });
+        toast.error(error.error || "注销失败");
       }
     } catch (error) {
       console.warn("Delete account error:", error);
-      setMessage({ type: "error", text: "注销失败" });
+      toast.error("注销请求失败，请稍后重试");
     }
   };
 
-  // 开始检测流程
   const handleStartCheck = () => {
     setShowNoticeModal(false);
     setShowCheckModal(true);
@@ -127,14 +178,13 @@ export default function UserProfilePage() {
     performAccountDeletionCheck();
   };
 
-  // 执行账号注销检测
   const performAccountDeletionCheck = async () => {
     const checkItems = [
       { name: "检测个人信息...", item: "个人信息" },
       { name: "检测工作空间...", item: "工作空间" },
-      { name: "检测组件...", item: "组件" },
+      { name: "检测组件资产...", item: "组件资产" },
       { name: "检测活动记录...", item: "活动记录" },
-      { name: "检测会员信息...", item: "会员信息" },
+      { name: "检测会员与算力...", item: "会员与算力" },
     ];
 
     const results: { item: string; status: string }[] = [];
@@ -143,30 +193,95 @@ export default function UserProfilePage() {
       const check = checkItems[i];
       setDeleteStep(check.name);
       setDeleteProgress(Math.round(((i + 0.5) / checkItems.length) * 100));
-
-      await new Promise((resolve) => setTimeout(resolve, 600));
-
+      await new Promise((resolve) => setTimeout(resolve, 500));
       results.push({ item: check.item, status: "pass" });
       setCheckResults([...results]);
       setDeleteProgress(Math.round(((i + 1) / checkItems.length) * 100));
     }
 
     setCheckComplete(true);
-    setDeleteStep("检测完成");
+    setDeleteStep("安全检测完成");
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage(null);
-
-    // 验证必填项
-    if (!formData.name.trim()) {
-      setMessage({ type: "error", text: "昵称不能为空" });
+  const handleSendSmsCode = async () => {
+    const targetPhone = (formData.phone || "").trim();
+    if (!targetPhone) {
+      setPhoneError("请输入手机号码");
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(targetPhone)) {
+      setPhoneError("手机号不规范，请输入规范的 11 位有效手机号码");
+      return;
+    }
+    if (targetPhone === (originalPhone || "").trim()) {
+      setPhoneError("手机号码未发生变动，无需发送验证码");
       return;
     }
 
     try {
+      setSendingCode(true);
+      setPhoneError(null);
+      setSmsMessage(null);
+      const res = await fetch("/api/auth/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: targetPhone }),
+      });
+      const data = await res.json();
+      if (res.ok && (data.success || data.code)) {
+        setCountdown(60);
+        setSmsDebugCode(data.debugCode || null);
+        if (data.debugCode) {
+          setSmsMessage(`验证码已发送：${data.debugCode}，60秒后可重新发送`);
+        } else {
+          setSmsMessage("验证码已发送，60秒后可重新发送");
+        }
+      } else {
+        setPhoneError(data.message || data.error || "验证码发送失败，请检查手机号并重试");
+      }
+    } catch (error) {
+      console.error("Send SMS error:", error);
+      setPhoneError("网络连接异常，验证码发送失败");
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.name.trim()) {
+      setNameError("用户昵称不能为空");
+      return;
+    }
+
+    const currentPhoneTrimmed = (formData.phone || "").trim();
+    if (currentPhoneTrimmed && !/^1[3-9]\d{9}$/.test(currentPhoneTrimmed)) {
+      setPhoneError("手机号不规范，请输入规范的 11 位有效手机号码");
+      return;
+    }
+
+    // 更换手机号时强制前置验证短信验证码
+    if (isPhoneChanged) {
+      if (!currentPhoneTrimmed) {
+        setPhoneError("新手机号码不能为空");
+        return;
+      }
+      if (!smsCode.trim()) {
+        setSmsError("更换手机号必须填写短信验证码");
+        return;
+      }
+      if (smsCode.trim().length !== 6) {
+        setSmsError("短信验证码需为完整的 6 位数字");
+        return;
+      }
+    }
+
+    try {
       setSaving(true);
+      setPhoneError(null);
+      setSmsError(null);
+      setNameError(null);
       const authToken = getAuthToken();
 
       const res = await fetch("/api/user/profile", {
@@ -175,19 +290,39 @@ export default function UserProfilePage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          phone: currentPhoneTrimmed,
+          smsCode: isPhoneChanged ? smsCode.trim() : undefined,
+        }),
       });
 
       if (res.ok) {
-        setMessage({ type: "success", text: "个人信息已更新" });
+        toast.success(isPhoneChanged ? "手机号码更换并保存成功" : "个人基本信息已成功更新");
+        setOriginalPhone(currentPhoneTrimmed);
+        setSmsCode("");
+        setCountdown(0);
+        setSmsMessage(null);
+        setSmsDebugCode(null);
+        setPhoneError(null);
+        setSmsError(null);
         loadUserInfo();
       } else {
         const error = await res.json();
-        setMessage({ type: "error", text: error.message || "更新失败" });
+        const errText = error.error || error.message || "更新个人资料失败";
+        if (errText.includes("手机") || errText.includes("号码")) {
+          setPhoneError(errText);
+        } else if (errText.includes("验证码")) {
+          setSmsError(errText);
+        } else if (errText.includes("昵称")) {
+          setNameError(errText);
+        } else {
+          toast.error(errText);
+        }
       }
     } catch (error) {
       console.error("Update profile error:", error);
-      setMessage({ type: "error", text: "更新失败" });
+      toast.error("网络异常，更新失败");
     } finally {
       setSaving(false);
     }
@@ -197,15 +332,15 @@ export default function UserProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 验证文件大小（最大 5MB）
+    setAvatarError(null);
+
     if (file.size > 5 * 1024 * 1024) {
-      setMessage({ type: "error", text: "头像大小不能超过 5MB" });
+      setAvatarError("头像文件不能超过 5MB，请压缩后重新上传");
       return;
     }
 
-    // 验证文件类型
     if (!file.type.startsWith("image/")) {
-      setMessage({ type: "error", text: "请上传图片文件" });
+      setAvatarError("请选择合法的图片文件（JPG/PNG/WebP）");
       return;
     }
 
@@ -227,15 +362,16 @@ export default function UserProfilePage() {
       if (res.ok) {
         const data = await res.json();
         setFormData({ ...formData, avatar: data.data.avatarUrl });
-        setMessage({ type: "success", text: "头像已更新" });
+        toast.success("头像上传成功");
+        setAvatarError(null);
         loadUserInfo();
       } else {
         const error = await res.json();
-        setMessage({ type: "error", text: error.message || "上传失败" });
+        setAvatarError(error.message || "上传失败，请稍后重试");
       }
     } catch (error) {
       console.warn("Upload avatar error:", error);
-      setMessage({ type: "error", text: "上传失败" });
+      setAvatarError("上传头像网络异常，请重试");
     } finally {
       setSaving(false);
     }
@@ -243,68 +379,48 @@ export default function UserProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600 font-medium">加载数据中...</p>
+          <div className="w-12 h-12 border-4 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-slate-500 font-medium text-sm">正在加载个人资料...</p>
         </div>
       </div>
     );
   }
 
+  const isAdmin =
+    userInfo?.role &&
+    ["admin", "super_admin", "superadmin", "ADMIN", "SUPERADMIN", "SUPER_ADMIN"].includes(
+      userInfo.role
+    );
+
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="shrink-0">
-        <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight truncate">
-          个人设置
-        </h1>
-        <p className="text-sm text-slate-500 font-medium truncate">
-          基本信息、头像管理
-        </p>
+      <div>
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight mb-1">个人设置</h1>
+        <p className="text-xs text-slate-500 font-medium">维护个人档案、头像与账户安全凭据</p>
       </div>
 
-      {/* 消息提示 */}
-      {message && (
-        <div
-          className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
-            message.type === "success"
-              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-              : "bg-red-50 text-red-600 border border-red-200"
-          }`}
-        >
-          {message.type === "success" ? (
-            <CheckCircle className="w-5 h-5" />
-          ) : (
-            <AlertCircle className="w-5 h-5" />
-          )}
-          <span className="font-medium">{message.text}</span>
-        </div>
-      )}
-
-      {/* 头像上传区 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
-        <div className="relative">
-          <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-            <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
-            头像管理
-          </h2>
-          <div className="flex items-center gap-6">
-            <div className="relative">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* 左侧：3 大资产与档案卡片（彻底消除留白） */}
+        <div className="lg:col-span-4 space-y-4.5">
+          {/* 卡片 1：头像与会员核心资产卡片 */}
+          <div className="relative bg-white/85 backdrop-blur-xl rounded-2xl p-5 border border-slate-200/80 shadow-2xs text-center">
+            <div className="relative mx-auto w-22 h-22 mb-3">
               {formData.avatar ? (
                 <img
                   src={formData.avatar}
                   alt="Avatar"
-                  className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
+                  className="w-22 h-22 rounded-2xl object-cover border-2 border-white shadow-sm"
                 />
               ) : (
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-3xl font-bold border-4 border-white shadow-lg">
+                <div className="w-22 h-22 rounded-2xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-3xl font-bold border-2 border-white shadow-sm">
                   {formData.name[0]?.toUpperCase() || "U"}
                 </div>
               )}
-              <label className="absolute bottom-0 right-0 w-8 h-8 bg-[#3182ce] rounded-full flex items-center justify-center cursor-pointer hover:bg-[#2b6cb0] transition-colors border-2 border-white">
-                <Camera className="w-4 h-4 text-white" />
+              <label className="absolute -bottom-1.5 -right-1.5 w-7 h-7 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded-lg flex items-center justify-center cursor-pointer shadow-md transition-all">
+                <Camera className="w-3.5 h-3.5" />
                 <input
                   type="file"
                   accept="image/*"
@@ -314,225 +430,446 @@ export default function UserProfilePage() {
                 />
               </label>
             </div>
-            <div>
-              <p className="text-sm text-slate-600 mb-2">
-                点击相机图标上传头像
-              </p>
-              <p className="text-xs text-slate-400">
-                支持 JPG、PNG 格式，大小不超过 5MB
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+            {avatarError && (
+              <div className="mb-2 p-2 rounded-lg bg-red-50 border border-red-200 text-[11px] text-red-600 flex items-center justify-center gap-1.5 animate-in fade-in">
+                <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                <span>{avatarError}</span>
+              </div>
+            )}
+            <h3 className="text-base font-bold text-slate-800 mb-0.5">{formData.name || "未命名用户"}</h3>
+            <p className="text-xs text-slate-400 mb-3">{formData.email || "未绑定邮箱"}</p>
 
-      {/* 账号权益与算力资产卡片 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#10b981]/10 opacity-50 blur-3xl"></div>
-        <div className="relative">
-          <h2 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-            <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#10b981] rounded-full"></div>
-            算力资产与会员权益
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-100 flex items-center justify-between">
+            {/* 会员等级、身份与状态三元组 */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-around text-center">
               <div>
-                <div className="text-xs text-slate-500 font-bold mb-1">当前可用算力点</div>
-                <div className="text-2xl font-black text-[#2b6cb0] flex items-center gap-1.5 font-mono">
-                  <Zap className="w-5 h-5 fill-[#3182ce] text-[#3182ce]" />
-                  <span>{userInfo?.tokenBalance ?? 100}</span>
-                  <span className="text-xs font-normal text-slate-500 font-sans">点</span>
+                <div className="text-[11px] text-slate-400 font-medium flex items-center justify-center gap-0.5">
+                  <Crown className="w-3 h-3 text-[#3182ce]" />
+                  会员等级
+                </div>
+                <div className="text-xs font-bold text-[#3182ce] mt-0.5">
+                  {userInfo?.membershipDisplayName || "普通会员"}
                 </div>
               </div>
-              <a
-                href="/user/billing-center"
-                className="px-3 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-lg transition-all shadow-xs"
-              >
-                充值 / 账单
-              </a>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+              <div className="w-px h-6 bg-slate-100"></div>
               <div>
-                <div className="text-xs text-slate-500 font-bold mb-1">会员等级</div>
-                <div className="text-base font-black text-slate-800">
-                  {userInfo?.membershipLevel || "非会员"}
+                <div className="text-[11px] text-slate-400 font-medium flex items-center justify-center gap-0.5">
+                  <ShieldCheck className="w-3 h-3 text-[#2b6cb0]" />
+                  系统身份
+                </div>
+                <div className="text-xs font-bold text-[#2b6cb0] mt-0.5">
+                  {formatRoleName(userInfo?.role)}
                 </div>
               </div>
-              <span className="px-2.5 py-1 bg-slate-200/70 text-slate-600 text-xs font-bold rounded-md">
-                基础版
+              <div className="w-px h-6 bg-slate-100"></div>
+              <div>
+                <div className="text-[11px] text-slate-400 font-medium">账号状态</div>
+                <div className="text-xs font-bold text-emerald-600 mt-0.5">正常使用</div>
+              </div>
+            </div>
+
+            {/* 账号注册时间 */}
+            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 px-1">
+              <span className="flex items-center gap-1 text-slate-400">
+                <Calendar className="w-3 h-3 text-slate-400" />
+                账号注册时间
               </span>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div>
-                <div className="text-xs text-slate-500 font-bold mb-1">账号角色</div>
-                <div className="text-base font-black text-slate-800">
-                  {userInfo?.role === "super_admin"
-                    ? "超级管理员"
-                    : userInfo?.role === "admin"
-                    ? "平台管理员"
-                    : "标准用户"}
-                </div>
-              </div>
-              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200/60 text-xs font-bold rounded-md">
-                正常使用
+              <span className="font-semibold text-slate-700">
+                {userInfo?.createdAt ? new Date(userInfo.createdAt).toLocaleDateString("zh-CN") : "—"}
               </span>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* 基本信息表单 */}
-      <form onSubmit={handleSubmit}>
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden shrink-0">
-          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#10b981]/10 to-[#059669]/10 opacity-50 blur-3xl"></div>
-          <div className="relative">
-            <h2 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-              <div className="w-1 h-6 bg-gradient-to-b from-[#10b981] to-[#059669] rounded-full"></div>
-              基本信息
+          {/* 卡片 2：个人资料完成度（填补留白，纯正个人设置指标） */}
+          <div className="bg-white/85 backdrop-blur-xl rounded-2xl p-4.5 border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center justify-between mb-2.5">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <div className="w-1 h-3.5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+                资料完善度
+              </h3>
+              <span className="text-xs font-black text-[#3182ce]">
+                {(() => {
+                  let s = 0;
+                  if (formData.avatar) s += 25;
+                  if (formData.name?.trim()) s += 25;
+                  if (formData.email?.trim()) s += 25;
+                  if (formData.phone?.trim()) s += 25;
+                  return s;
+                })()}%
+              </span>
+            </div>
+
+            {/* 进度条 */}
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mb-3">
+              <div
+                className="h-full bg-gradient-to-r from-[#3182ce] to-[#10b981] rounded-full transition-all duration-300"
+                style={{
+                  width: `${(() => {
+                    let s = 0;
+                    if (formData.avatar) s += 25;
+                    if (formData.name?.trim()) s += 25;
+                    if (formData.email?.trim()) s += 25;
+                    if (formData.phone?.trim()) s += 25;
+                    return Math.max(10, s);
+                  })()}%`,
+                }}
+              />
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center justify-between py-1 text-slate-600 border-b border-slate-50">
+                <span className="flex items-center gap-1.5 text-[11px]">
+                  <CheckCircle className={`w-3.5 h-3.5 ${formData.avatar ? "text-emerald-500" : "text-slate-300"}`} />
+                  上传自定义头像
+                </span>
+                <span className={`text-[10px] font-bold ${formData.avatar ? "text-emerald-600" : "text-slate-400"}`}>
+                  {formData.avatar ? "已设置" : "待上传"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-1 text-slate-600 border-b border-slate-50">
+                <span className="flex items-center gap-1.5 text-[11px]">
+                  <CheckCircle className={`w-3.5 h-3.5 ${formData.name ? "text-emerald-500" : "text-slate-300"}`} />
+                  设置个人昵称
+                </span>
+                <span className={`text-[10px] font-bold ${formData.name ? "text-emerald-600" : "text-slate-400"}`}>
+                  {formData.name ? "已设置" : "待完善"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-1 text-slate-600 border-b border-slate-50">
+                <span className="flex items-center gap-1.5 text-[11px]">
+                  <CheckCircle className={`w-3.5 h-3.5 ${formData.email ? "text-emerald-500" : "text-slate-300"}`} />
+                  认证主登录邮箱
+                </span>
+                <span className="text-[10px] font-bold text-emerald-600">已认证</span>
+              </div>
+              <div className="flex items-center justify-between py-1 text-slate-600">
+                <span className="flex items-center gap-1.5 text-[11px]">
+                  <CheckCircle className={`w-3.5 h-3.5 ${formData.phone ? "text-emerald-500" : "text-slate-300"}`} />
+                  绑定联系手机
+                </span>
+                <span className={`text-[10px] font-bold ${formData.phone ? "text-emerald-600" : "text-amber-600"}`}>
+                  {formData.phone ? "已绑定" : "建议绑定"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 卡片 3：团队协同名片实时预览（彻底消除留白，纯正个人信息展示） */}
+          <div className="bg-white/85 backdrop-blur-xl rounded-2xl p-4.5 border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <div className="w-1 h-3.5 bg-gradient-to-b from-[#10b981] to-[#059669] rounded-full"></div>
+                协同名片预览
+              </h3>
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-50 text-[#3182ce] border border-blue-200/60">
+                团队可见效果
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-50 to-blue-50/40 border border-slate-200/80 space-y-2.5">
+              <div className="flex items-center gap-2.5">
+                {formData.avatar ? (
+                  <img
+                    src={formData.avatar}
+                    alt="Preview"
+                    className="w-10 h-10 rounded-xl object-cover border border-white shadow-xs shrink-0"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0">
+                    {formData.name[0]?.toUpperCase() || "U"}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-800 truncate">
+                      {formData.name || "未命名用户"}
+                    </span>
+                    <span className="text-[10px] font-bold px-1 py-0.2 rounded bg-[#3182ce]/10 text-[#2b6cb0] shrink-0">
+                      {formatRoleName(userInfo?.role)}
+                    </span>
+                  </div>
+                  <div className="text-[10.5px] text-slate-400 truncate mt-0.5">
+                    {formData.email || "未绑定邮箱"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-2 rounded-lg bg-white/90 border border-slate-100 text-[11px] text-slate-600 italic leading-relaxed">
+                "{formData.bio ? formData.bio : "该成员尚未填写个人寄语或签名..."}"
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                <span>知阁研发协同实名认证</span>
+                <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+                  <CheckCircle className="w-2.5 h-2.5" /> 已激活
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[10.5px] text-slate-400 mt-2.5 leading-relaxed">
+              此名片将在代码评审、空间协同与组件物料中向项目团队成员公开展示。
+            </p>
+          </div>
+        </div>
+
+        {/* 右侧：基本资料编辑 + 身份凭据档案 + 账号注销 */}
+        <div className="lg:col-span-8 space-y-4.5">
+          {/* 基本信息编辑表单 */}
+          <form onSubmit={handleSubmit}>
+            <div className="bg-white/85 backdrop-blur-xl rounded-2xl p-6 border border-slate-200/80 shadow-2xs">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <div className="w-1 h-4 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+                    基本资料编辑
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    维护您的个人基本信息，保存后将即时更新个人协同名片
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* 昵称 */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    <span className="zg-required">用户昵称</span>
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => {
+                        setFormData({ ...formData, name: e.target.value });
+                        if (nameError) setNameError(null);
+                      }}
+                      className={`w-full pl-9 pr-3 py-2 text-xs rounded-lg border outline-none transition-all ${
+                        nameError
+                          ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
+                          : "border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15"
+                      }`}
+                      placeholder="请输入您的昵称"
+                      required
+                    />
+                  </div>
+                  {nameError && (
+                    <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in duration-200">
+                      <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>{nameError}</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* 邮箱（作为主键凭证展示保护） */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">登录邮箱</label>
+                    <span className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
+                      <CheckCircle className="w-3 h-3" /> 已认证主安全凭证
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="email"
+                      value={formData.email}
+                      disabled
+                      className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/80 text-slate-500 cursor-not-allowed outline-none"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">登录邮箱作为平台唯一主凭证，如需更换请联系管理员。</p>
+                </div>
+
+                {/* 手机号 */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">手机号码</label>
+                    {isPhoneChanged ? (
+                      <span className="text-[11px] text-amber-600 flex items-center gap-1 font-semibold">
+                        <AlertTriangle className="w-3 h-3 text-amber-500" /> 更换中 (需验证码)
+                      </span>
+                    ) : originalPhone ? (
+                      <span className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
+                        <CheckCircle className="w-3 h-3 text-emerald-500" /> 已绑定安全手机
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">未绑定</span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => {
+                        setFormData({ ...formData, phone: e.target.value });
+                        if (phoneError) setPhoneError(null);
+                      }}
+                      onBlur={() => {
+                        const val = (formData.phone || "").trim();
+                        if (val && !/^1[3-9]\d{9}$/.test(val)) {
+                          setPhoneError("手机号不规范，请输入规范的 11 位有效手机号码");
+                        }
+                      }}
+                      className={`w-full pl-9 pr-3 py-2 text-xs rounded-lg border outline-none transition-all font-mono ${
+                        phoneError
+                          ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
+                          : "border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15"
+                      }`}
+                      placeholder="请输入 11 位中国大陆手机号码"
+                    />
+                  </div>
+                  {phoneError ? (
+                    <p className="text-xs text-red-600 flex items-center gap-1 mt-1.5 font-medium animate-in fade-in duration-200">
+                      <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>{phoneError}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      用于接收高危敏感操作二次验证与协同通知短信。
+                    </p>
+                  )}
+                </div>
+
+                {/* 更换手机号时展开的短信验证码校验区域 */}
+                {isPhoneChanged && (
+                  <div className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-200/70 space-y-2.5 transition-all">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-[#2b6cb0]">
+                        <span className="zg-required">新手机短信验证码</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData({ ...formData, phone: originalPhone });
+                          setSmsCode("");
+                          setCountdown(0);
+                          setSmsMessage(null);
+                          setSmsDebugCode(null);
+                        }}
+                        className="text-[11px] text-slate-500 hover:text-slate-700 underline cursor-pointer"
+                      >
+                        放弃更换，恢复原号码
+                      </button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={smsCode}
+                          onChange={(e) => {
+                            setSmsCode(e.target.value.replace(/\D/g, ""));
+                            if (smsError) setSmsError(null);
+                          }}
+                          className={`w-full pl-9 pr-3 py-2 text-xs rounded-lg border outline-none transition-all font-mono tracking-wider ${
+                            smsError
+                              ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
+                              : "border-slate-200 bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15"
+                          }`}
+                          placeholder="请输入 6 位短信验证码"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendSmsCode}
+                        disabled={countdown > 0 || sendingCode || !formData.phone.trim()}
+                        className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-white border border-[#3182ce] text-[#3182ce] hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer shadow-2xs"
+                      >
+                        {sendingCode
+                          ? "正在发送..."
+                          : countdown > 0
+                          ? `${countdown}秒后重试`
+                          : "获取验证码"}
+                      </button>
+                    </div>
+
+                    {/* 验证码错误提示 或 验证码成功提示 */}
+                    {smsError ? (
+                      <p className="text-xs text-red-600 flex items-center gap-1 font-medium animate-in fade-in duration-200">
+                        <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        <span>{smsError}</span>
+                      </p>
+                    ) : smsMessage ? (
+                      <div className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-xs text-emerald-700 animate-in fade-in duration-200">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          {smsMessage}
+                        </span>
+                        {smsDebugCode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSmsCode(smsDebugCode);
+                              if (smsError) setSmsError(null);
+                            }}
+                            className="text-[11px] font-bold text-[#3182ce] hover:text-[#2b6cb0] hover:underline px-2 py-0.5 rounded bg-white border border-blue-200/80 shadow-2xs cursor-pointer shrink-0 ml-2"
+                          >
+                            点此填入
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <span>验证码将直接发送至新手机号</span>
+                        <strong className="text-slate-700 font-semibold">{formData.phone}</strong>
+                        <span>，核验通过后方可生效。</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* 个人简介 / 签名 */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">个人签名 / 团队寄语</label>
+                  <textarea
+                    value={formData.bio}
+                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                    className="w-full p-3 text-xs rounded-lg border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none transition-all resize-none"
+                    rows={3}
+                    placeholder="选填，向团队伙伴简要介绍您的专长与业务方向..."
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-lg text-xs font-semibold hover:brightness-105 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saving ? "正在保存..." : isPhoneChanged ? "验证并更换手机号" : "保存资料修改"}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* 危险区域 - 注销账号 */}
+          <div className="bg-white/85 backdrop-blur-xl rounded-2xl p-6 border border-rose-100 shadow-2xs">
+            <h2 className="text-base font-bold text-rose-600 mb-2 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-500" />
+              账号生命周期管理
             </h2>
-
-            <div className="space-y-5">
-              {/* 昵称 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  <span className="zg-required">昵称</span>
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all"
-                    placeholder="请输入昵称"
-                    required
-                  />
-                </div>
+                <p className="text-xs font-bold text-slate-700 mb-1">注销并抹除此账号</p>
+                <p className="text-xs text-slate-400">
+                  {isAdmin
+                    ? "管理员账号受系统最高安全规则保护，不支持前端自主注销。"
+                    : `注销后将进入 ${deletionCooldownDays} 天冷静期，冷静期内随时可恢复；期满后数据彻底清空不可逆。`}
+                </p>
               </div>
-
-              {/* 邮箱 */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  <span className="zg-required">邮箱</span>
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all"
-                    placeholder="请输入邮箱"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* 手机号 */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  <span className="zg-required">手机号</span>
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all"
-                    placeholder="请输入手机号"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* 个人简介 */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  个人简介
-                </label>
-                <textarea
-                  value={formData.bio}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bio: e.target.value })
-                  }
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all resize-none"
-                  rows={4}
-                  placeholder="介绍一下自己吧..."
-                />
-              </div>
-            </div>
-
-            {/* 保存按钮 */}
-            <div className="mt-8 flex justify-end shrink-0">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-[#3182ce]/30 hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="w-5 h-5" />
-                {saving ? "保存中..." : "保存修改"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </form>
-
-      {/* 危险区域 - 注销账号 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-red-200 shadow-sm overflow-hidden shrink-0">
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-red-500/10 to-red-600/10 opacity-50 blur-3xl"></div>
-        <div className="relative">
-          <h2 className="text-lg font-black text-red-600 mb-4 flex items-center gap-2">
-            <div className="w-1 h-6 bg-gradient-to-b from-red-500 to-red-600 rounded-full"></div>
-            <AlertTriangle className="w-5 h-5" />
-            危险区域
-          </h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-700 font-medium mb-1">
-                注销账号
-              </p>
-              <p className="text-xs text-slate-500">
-                {userInfo?.role &&
-                [
-                  "admin",
-                  "super_admin",
-                  "superadmin",
-                  "ADMIN",
-                  "SUPERADMIN",
-                  "SUPER_ADMIN",
-                ].includes(userInfo.role)
-                  ? "管理员账号不支持注销账号操作"
-                  : "注销后所有数据将被永久删除，此操作不可恢复"}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-1">
               <button
                 type="button"
                 onClick={() => setShowNoticeModal(true)}
-                disabled={
-                  userInfo?.role &&
-                  [
-                    "admin",
-                    "super_admin",
-                    "superadmin",
-                    "ADMIN",
-                    "SUPERADMIN",
-                    "SUPER_ADMIN",
-                  ].includes(userInfo.role)
-                }
-                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl font-medium hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isAdmin}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
               >
-                <Trash2 className="w-4 h-4" />
-                注销账号
+                <Trash2 className="w-3.5 h-3.5" />
+                申请注销
               </button>
             </div>
           </div>
@@ -541,87 +878,61 @@ export default function UserProfilePage() {
 
       {/* 注销须知弹窗 */}
       {showNoticeModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowNoticeModal(false);
+          }}
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+        >
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative">
             <button
               onClick={() => setShowNoticeModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
             >
-              <X className="w-5 h-5 text-slate-400" />
+              <X className="w-4 h-4" />
             </button>
             <div className="text-center mb-4">
-              <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
-                <AlertTriangle className="w-7 h-7 text-amber-500" />
+              <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto mb-2">
+                <AlertTriangle className="w-6 h-6" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800 mb-1">
-                账号注销须知
-              </h3>
+              <h3 className="text-base font-bold text-slate-800">账号注销须知</h3>
             </div>
 
-            <div className="space-y-3 text-sm">
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <Clock className="w-4 h-4 text-blue-500" />
-                  <span className="font-semibold text-[#2b6cb0]">
-                    冷静期说明
-                  </span>
+            <div className="space-y-2.5 text-xs">
+              <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 font-bold text-[#2b6cb0] mb-0.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  {deletionCooldownDays} 天安全冷静期
                 </div>
-                <p className="text-blue-600 text-sm">
-                  注销后有{" "}
-                  <span className="font-bold">{deletionCooldownDays}天冷静期</span>
-                  ，期间可随时撤销注销申请恢复正常
-                </p>
+                <p className="text-slate-600">在此期间再次登录即可一键撤销申请，所有数据资产完整留存。</p>
               </div>
-
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <Trash2 className="w-4 h-4 text-red-500" />
-                  <span className="font-semibold text-red-600">数据清空</span>
+              <div className="bg-rose-50/60 border border-rose-200/80 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 font-bold text-rose-600 mb-0.5">
+                  <Trash2 className="w-3.5 h-3.5" />
+                  期满永久抹除
                 </div>
-                <p className="text-red-600 text-sm">
-                  冷静期结束后，系统中{" "}
-                  <span className="font-bold">所有数据将被永远清空</span>
-                  ，包括工作空间、组件、活动记录等，
-                  <span className="font-bold">且无法恢复</span>
-                </p>
-              </div>
-
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle className="w-4 h-4 text-emerald-500" />
-                  <span className="font-semibold text-emerald-600">撤销操作</span>
-                </div>
-                <p className="text-emerald-600 text-sm">
-                  冷静期内登录后点击"撤销注销"可恢复正常，所有数据完整保留
-                </p>
+                <p className="text-slate-600">冷静期结束将彻底抹除名下全部组件、工作空间配置与活动日志，无法找回。</p>
               </div>
             </div>
 
             <div className="mt-4 flex items-start gap-2">
-              <button
-                type="button"
-                onClick={() => setHasAgreed(!hasAgreed)}
-                className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors cursor-pointer ${
-                  hasAgreed
-                    ? "bg-[#3182ce] border-[#3182ce]"
-                    : "border-slate-300 hover:border-slate-400"
-                }`}
-              >
-                {hasAgreed && <CheckCircle className="w-3 h-3 text-white" />}
-              </button>
-              <label
-                onClick={() => setHasAgreed(!hasAgreed)}
-                className="text-sm text-slate-600 cursor-pointer select-none"
-              >
-                我已阅读并了解上述注销须知，同意注销我的账号
+              <input
+                type="checkbox"
+                id="agree"
+                checked={hasAgreed}
+                onChange={(e) => setHasAgreed(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
+              />
+              <label htmlFor="agree" className="text-xs text-slate-600 cursor-pointer">
+                我已知晓并理解注销影响，自愿进入安全预备流程
               </label>
             </div>
 
-            <div className="mt-4 flex gap-3">
+            <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowNoticeModal(false)}
-                className="flex-1 px-4 py-2.5 border-2 border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-all text-sm"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
               >
                 取消
               </button>
@@ -629,9 +940,9 @@ export default function UserProfilePage() {
                 type="button"
                 onClick={handleStartCheck}
                 disabled={!hasAgreed}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-red-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-amber-500/30 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                开始检测
+                开始安全检测
               </button>
             </div>
           </div>
@@ -640,20 +951,34 @@ export default function UserProfilePage() {
 
       {/* 检测进度弹窗 */}
       {showCheckModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCheckModal(false);
+          }}
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+        >
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative">
+            {/* 右上角关闭按钮 */}
+            <button
+              type="button"
+              onClick={() => setShowCheckModal(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              title="关闭"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-200 text-blue-500 flex items-center justify-center mx-auto mb-2">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">
+                {checkComplete ? "检测完成" : deleteStep || "正在检测..."}
+              </h3>
+            </div>
+
             {!checkComplete ? (
               <>
-                <div className="text-center mb-4">
-                  <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
-                    <div className="w-8 h-8 border-4 border-[#63b3ed] border-t-blue-500 rounded-full animate-spin"></div>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-800 mb-1">
-                    正在检测账号数据
-                  </h3>
-                  <p className="text-sm text-slate-500">{deleteStep}</p>
-                </div>
-
                 <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
                   <div
                     className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-300"
@@ -674,6 +999,16 @@ export default function UserProfilePage() {
                       </span>
                     </div>
                   ))}
+                </div>
+
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowCheckModal(false)}
+                    className="w-full px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  >
+                    取消检测并返回
+                  </button>
                 </div>
               </>
             ) : (
@@ -705,17 +1040,27 @@ export default function UserProfilePage() {
                   ))}
                 </div>
 
-                <p className="text-xs text-slate-500 text-center mb-3">
+                <p className="text-xs text-slate-500 text-center mb-4">
                   点击"确认注销"后，您的账号将进入冷静期
                 </p>
 
-                <button
-                  type="button"
-                  onClick={() => handleDeleteAccount()}
-                  className="w-full px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-red-500/30 transition-all text-sm"
-                >
-                  确认注销
-                </button>
+                {/* 底部取消与确认注销双操作区 */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCheckModal(false)}
+                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer text-center"
+                  >
+                    取消 / 我再想想
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAccount()}
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-red-500/30 transition-all text-sm cursor-pointer text-center"
+                  >
+                    确认注销
+                  </button>
+                </div>
               </>
             )}
           </div>

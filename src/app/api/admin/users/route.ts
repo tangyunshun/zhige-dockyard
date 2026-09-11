@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const role = searchParams.get("role") || "";
     const accountStatus = searchParams.get("accountStatus") || "";
     const membershipLevel = searchParams.get("membershipLevel") || "";
+    const zombie = searchParams.get("zombie") || "";
 
     const skip = (page - 1) * limit;
 
@@ -39,6 +40,11 @@ export async function GET(request: NextRequest) {
 
     if (membershipLevel) {
       where.membershipLevel = membershipLevel;
+    }
+
+    // 僵尸用户快捷筛选：zombie=1 仅展示被定时扫描标记为 is_zombie 的用户
+    if (zombie === "1") {
+      where.isZombie = true;
     }
 
     const [users, total] = await Promise.all([
@@ -65,6 +71,7 @@ export async function GET(request: NextRequest) {
           sessionToken: true,
           sessionExpiresAt: true,
           banReason: true,
+          isZombie: true,
         },
       }),
       prisma.user.count({ where }),
@@ -127,11 +134,15 @@ export async function GET(request: NextRequest) {
     const formattedUsers = users.map((user) => {
       const userPoints = userQuotaMap[user.id] ?? 0;
       let isOnline = false;
+      // 是否存在有效会话：只要 sessionToken 未清空且会话未过期即可（与 10 分钟活跃度无关）
+      // 强制下线的可用性以此为准，避免“有会话但超过 10 分钟无操作”的用户无法被踢下线
+      let hasSession = false;
       if (user.status === "active") {
         if (user.sessionToken && user.sessionExpiresAt) {
           const expiresAt = new Date(user.sessionExpiresAt).getTime();
           // 会话必须未过期，且未被管理员强制下线
           if (expiresAt > now && !user.lastForcedLogoutAt) {
+            hasSession = true;
             // 真实在线准绳：必须在最近 10 分钟内有真实系统交互或登录活动
             const latestActionTime = user.lastActivityAt
               ? new Date(user.lastActivityAt).getTime()
@@ -154,6 +165,7 @@ export async function GET(request: NextRequest) {
       return {
         ...user,
         isOnline,
+        hasSession,
         lastLoginAt: effectiveLastLoginAt,
         // 优先使用用户表权威封禁原因，历史数据兜底至封禁凭证记录
         banReason: user.banReason || banReasonMap[user.id] || "系统检测到账号存在违规行为，已被限制使用",

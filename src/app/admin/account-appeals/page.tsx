@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
+import { getAuthToken } from "@/utils/auth";
 import {
   FileText,
   Search,
@@ -25,6 +26,7 @@ import {
   Mail,
   Building2,
   Download,
+  Trash2,
 } from "lucide-react";
 
 interface Appeal {
@@ -100,7 +102,9 @@ export default function AdminAccountAppealsPage() {
     if (!userWorkspacesData) {
       setUserWorkspacesLoading(true);
       try {
-        const res = await fetch(`/api/admin/account-appeals/user-workspaces?userId=${userId}`);
+        const res = await fetch(`/api/admin/account-appeals/user-workspaces?userId=${userId}`, {
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
         const result = await res.json();
         if (result.success && result.data) {
           setUserWorkspacesData(result.data);
@@ -142,6 +146,10 @@ export default function AdminAccountAppealsPage() {
       "申诉材料不足，请在工单中心提供完整业务凭证后重新提交。",
     ],
   };
+
+  // 批量审批：仅「待处理」工单可勾选
+  const [selectedAppealIds, setSelectedAppealIds] = useState<Set<string>>(new Set());
+  const [batchProcessing, setBatchProcessing] = useState(false);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -191,12 +199,14 @@ export default function AdminAccountAppealsPage() {
       if (businessType && businessType !== "all") params.set("businessType", businessType);
       if (search && search.trim()) params.set("search", search.trim());
 
-      const res = await fetch(`/api/admin/account-appeals?${params}`);
+      const res = await fetch(`/api/admin/account-appeals?${params}`, {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+      });
       if (res.ok) {
         const json = await res.json();
         setAppealData(json);
       } else {
-        toast.error("获取申诉列表失败");
+        toast.error(res.status === 403 ? "权限不足，无法查看申诉数据" : "获取申诉列表失败");
       }
     } catch (e) {
       console.error("Load appeals error:", e);
@@ -210,13 +220,21 @@ export default function AdminAccountAppealsPage() {
     loadAppeals(currentPage, statusFilter, userStatusFilter, dateRangeFilter, businessTypeFilter, searchAccount);
   }, [currentPage, statusFilter, userStatusFilter, dateRangeFilter, businessTypeFilter]);
 
+  // 翻页 / 改筛选条件后清空批量勾选，避免跨页残留选中态
+  useEffect(() => {
+    setSelectedAppealIds(new Set());
+  }, [currentPage, statusFilter, userStatusFilter, dateRangeFilter, businessTypeFilter, searchAccount]);
+
   // 处理申诉（同意解封 / 驳回申诉）
   const doProcessAppeal = async (appealId: string, action: "approved" | "rejected", comment?: string) => {
     try {
       setProcessing(appealId);
       const res = await fetch("/api/admin/account-appeals/process", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
         body: JSON.stringify({
           appealId,
           status: action,
@@ -232,6 +250,8 @@ export default function AdminAccountAppealsPage() {
             ? (isWs ? "工作空间已成功解封，已向全员推送恢复通知！" : "已解封账号，状态恢复正常！")
             : (isWs ? "已驳回空间解封申诉，结果已通知申诉人！" : "已驳回申诉！")
         );
+        // 通知侧边栏刷新待办角标（无需刷新页面）
+        window.dispatchEvent(new Event("admin-pending-tasks-changed"));
         if (detailModalAppeal?.id === appealId) {
           setDetailModalAppeal(null);
         }
@@ -240,6 +260,7 @@ export default function AdminAccountAppealsPage() {
       } else {
         toast.error(json.message || "处理失败，请重试");
         if (json.message === "该申诉已被处理") {
+          window.dispatchEvent(new Event("admin-pending-tasks-changed"));
           if (detailModalAppeal?.id === appealId) {
             setDetailModalAppeal(null);
           }
@@ -255,6 +276,228 @@ export default function AdminAccountAppealsPage() {
     } finally {
       setProcessing(null);
     }
+  };
+
+  // ============ 批量审批（批量同意解封 / 批量驳回）与批量删除 ============
+  // 当前页全部工单均可勾选；能否执行某动作由各自的状态规则决定：
+  // - 审批：仅 pending 可审批
+  // - 删除：仅已处理（非 pending）可删除
+  const isAppealDeletable = (appeal: Appeal) => appeal.status !== "pending";
+
+  const currentPageAppeals = appealData?.appeals || [];
+  const selectedAppeals = currentPageAppeals.filter((a) => selectedAppealIds.has(a.id));
+  const selectedPendingAppeals = selectedAppeals.filter((a) => a.status === "pending");
+  const selectedDeletableAppeals = selectedAppeals.filter(isAppealDeletable);
+  const allSelected =
+    currentPageAppeals.length > 0 &&
+    currentPageAppeals.every((a) => selectedAppealIds.has(a.id));
+
+  const toggleSelectAppeal = (appeal: Appeal) => {
+    setSelectedAppealIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(appeal.id)) next.delete(appeal.id);
+      else next.add(appeal.id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllAppeals = () => {
+    setSelectedAppealIds(
+      allSelected ? new Set() : new Set(currentPageAppeals.map((a) => a.id)),
+    );
+  };
+
+  /** 逐条调用既有审批接口，统计成功/失败并刷新列表与待办角标 */
+  const runBatchAppeal = async (action: "approved" | "rejected", comment: string) => {
+    const targets = selectedPendingAppeals;
+    if (targets.length === 0) {
+      toast.error("所选工单中没有待处理项，仅「待处理」工单可审批");
+      return false;
+    }
+    setBatchProcessing(true);
+    let successCount = 0;
+    const failedAccounts: string[] = [];
+    for (const appeal of targets) {
+      try {
+        const res = await fetch("/api/admin/account-appeals/process", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAuthToken()}`,
+          },
+          body: JSON.stringify({
+            appealId: appeal.id,
+            status: action,
+            adminComment: comment || undefined,
+          }),
+        });
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success) successCount += 1;
+        else failedAccounts.push(appeal.userName || appeal.userAccount || appeal.id);
+      } catch {
+        failedAccounts.push(appeal.userName || appeal.userAccount || appeal.id);
+      }
+    }
+    setBatchProcessing(false);
+
+    if (successCount > 0) {
+      toast.success(
+        `已${action === "approved" ? "同意解封" : "驳回"} ${successCount} 条申诉${
+          failedAccounts.length ? `，${failedAccounts.length} 条处理失败` : ""
+        }`,
+      );
+      // 通知侧边栏刷新待办角标（无需刷新页面）
+      window.dispatchEvent(new Event("admin-pending-tasks-changed"));
+    } else {
+      toast.error("批量审批失败，请刷新后重试");
+    }
+    setSelectedAppealIds(new Set());
+    await loadAppeals(
+      currentPage,
+      statusFilter,
+      userStatusFilter,
+      dateRangeFilter,
+      businessTypeFilter,
+      searchAccount,
+    );
+    return successCount > 0;
+  };
+
+  // 批量审批确认弹窗（复用 ConfirmDialog，驳回必须填写统一理由）
+  const openBatchProcessModal = (action: "approved" | "rejected") => {
+    const targets = selectedPendingAppeals;
+    if (targets.length === 0) {
+      toast.error("所选工单中没有待处理项，仅「待处理」工单可审批");
+      return;
+    }
+    const wsCount = targets.filter((a) => a.businessType === "空间解封申诉").length;
+    const accCount = targets.length - wsCount;
+    const breakdown = [
+      accCount > 0 ? `账号解封 ${accCount} 条` : null,
+      wsCount > 0 ? `空间解封 ${wsCount} 条` : null,
+    ]
+      .filter(Boolean)
+      .join("、");
+
+    setAdminComment(action === "approved" ? "同意" : "");
+    setConfirmDialog({
+      isOpen: true,
+      title:
+        action === "approved"
+          ? `批量同意解封（共 ${targets.length} 条）`
+          : `批量驳回申诉（共 ${targets.length} 条）`,
+      message: `本次将处理 ${targets.length} 条待审工单（${breakdown}）。${
+        action === "approved"
+          ? "同意后对应账号 / 工作空间将立即恢复正常运行，并推送系统通知；"
+          : "驳回后将向每位申诉人推送统一驳回理由，"
+      }${action === "rejected" ? "请务必填写具体理由。" : "可填写统一审核意见。"}`,
+      type: action === "approved" ? "info" : "danger",
+      input: {
+        label:
+          action === "approved"
+            ? "统一审核意见（选填，默认“同意”）"
+            : "统一驳回理由与整改要求（必填）",
+        placeholder:
+          action === "approved"
+            ? "默认审核意见：同意（无需输入，可直接点击确认）"
+            : "请填写统一驳回理由，将作为系统通知发送给每位申诉人",
+        required: action === "rejected",
+        value: action === "approved" ? "同意" : "",
+        onChange: setAdminComment,
+      },
+      onConfirm: (typedComment?: string) => {
+        const raw = (typedComment ?? adminComment).trim();
+        if (action === "rejected" && !raw) {
+          toast.error("批量驳回必须填写统一的驳回理由与整改要求");
+          return false;
+        }
+        return runBatchAppeal(action, action === "approved" ? raw || "同意" : raw);
+      },
+    });
+  };
+
+  /** 执行删除（单个 / 批量共用）；不符合删除规则的工单由后端跳过并返回原因 */
+  const runDeleteAppeals = async (ids: string[]) => {
+    if (ids.length === 0) {
+      toast.error("没有可删除的工单，待处理工单需先完成审批");
+      return false;
+    }
+    setBatchProcessing(true);
+    try {
+      const res = await fetch("/api/admin/account-appeals/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        body: JSON.stringify({ appealIds: ids }),
+      });
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.success) {
+        toast.error(json?.message || "删除申诉工单失败");
+        return false;
+      }
+      if (json.deletedCount > 0) {
+        toast.success(json.message || `已删除 ${json.deletedCount} 条申诉工单`);
+        window.dispatchEvent(new Event("admin-pending-tasks-changed"));
+      } else if (json.skippedCount > 0) {
+        toast.error(json.skipped?.[0]?.reason || "所选工单不可删除");
+      }
+
+      setSelectedAppealIds(new Set());
+      await loadAppeals(
+        currentPage,
+        statusFilter,
+        userStatusFilter,
+        dateRangeFilter,
+        businessTypeFilter,
+        searchAccount,
+      );
+      return json.deletedCount > 0;
+    } catch (error) {
+      console.error("Delete appeals error:", error);
+      toast.error("网络异常，删除失败");
+      return false;
+    } finally {
+      setBatchProcessing(false);
+    }
+  };
+
+  // 单条删除入口：仅「已处理」工单可删（与后端规则一致，待处理必须先审批）
+  const openDeleteAppealModal = (appeal: Appeal) => {
+    if (!isAppealDeletable(appeal)) {
+      toast.error("待处理工单不可删除，请先完成审批");
+      return;
+    }
+    setConfirmDialog({
+      isOpen: true,
+      title: "删除申诉工单",
+      message: `确认删除「${appeal.userName || appeal.userAccount}」的这条申诉工单吗？删除后记录将从列表与合规留存中移除，且操作会写入审计日志，无法恢复。`,
+      type: "danger",
+      onConfirm: () => runDeleteAppeals([appeal.id]),
+    });
+  };
+
+  // 批量删除入口：自动跳过「待处理」工单
+  const openBatchDeleteModal = () => {
+    const targets = selectedDeletableAppeals;
+    if (targets.length === 0) {
+      toast.error("所选工单中没有可删除项，待处理工单需先完成审批");
+      return;
+    }
+    const pendingSkipped = selectedPendingAppeals.length;
+    setConfirmDialog({
+      isOpen: true,
+      title: `批量删除申诉工单（共 ${targets.length} 条）`,
+      message: `确认删除已选中的 ${targets.length} 条已处理工单吗？${
+        pendingSkipped > 0
+          ? `所选中的另外 ${pendingSkipped} 条「待处理」工单将被自动跳过（需先完成审批）。`
+          : ""
+      }删除后记录将从列表与合规留存中移除，且操作会写入审计日志，无法恢复。`,
+      type: "danger",
+      onConfirm: () => runDeleteAppeals(targets.map((a) => a.id)),
+    });
   };
 
   // 打开确认处理弹窗
@@ -409,11 +652,11 @@ export default function AdminAccountAppealsPage() {
                 </span>
                 <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50/90 text-[#2b6cb0] border border-blue-200/60">
                   <Lock className="w-3 h-3 text-[#2b6cb0]" />
-                  申诉流水保存 3 年，超期自动清除
+                  申诉流水保留 3 年 · 清理操作全程留痕
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                实时监管平台账号封禁记录、处置工单与在线解封申诉仲裁流程 · 严格遵循 3 年合规留存周期
+                实时监管平台账号封禁记录、处置工单与在线解封申诉仲裁流程 · 合规留存 3 年，已处理工单可由管理员清理（写入审计日志）
               </p>
             </div>
           </div>
@@ -446,11 +689,11 @@ export default function AdminAccountAppealsPage() {
 
       {/* 2. 筛选控制面板 */}
       <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col lg:flex-row lg:flex-wrap items-start lg:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
             {/* 申诉状态 */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-500 font-bold flex items-center gap-1">
+            <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+              <label className="text-xs text-slate-500 font-bold flex items-center gap-1 shrink-0 whitespace-nowrap">
                 <Filter className="w-3.5 h-3.5 text-[#3182ce]" />
                 申诉状态:
               </label>
@@ -460,7 +703,7 @@ export default function AdminAccountAppealsPage() {
                   setStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+                className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
               >
                 <option value="all">全部申诉状态</option>
                 <option value="pending">⏳ 待处理</option>
@@ -471,32 +714,33 @@ export default function AdminAccountAppealsPage() {
             </div>
 
             {/* 账号状态 */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-500 font-bold">账号状态:</label>
+            <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+              <label className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">账号状态:</label>
               <select
                 value={userStatusFilter}
                 onChange={(e) => {
                   setUserStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+                className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
               >
                 <option value="all">全部账号状态</option>
                 <option value="banned">⛔ 封禁中</option>
+                <option value="inactive">🚫 已禁用登录</option>
                 <option value="active">✓ 正常账号</option>
               </select>
             </div>
 
             {/* 提交时间 */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-500 font-bold">提交时间:</label>
+            <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+              <label className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">提交时间:</label>
               <select
                 value={dateRangeFilter}
                 onChange={(e) => {
                   setDateRangeFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+                className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
               >
                 <option value="all">全部时间段</option>
                 <option value="today">📅 今天</option>
@@ -506,15 +750,15 @@ export default function AdminAccountAppealsPage() {
             </div>
 
             {/* 审核业务类型 */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-500 font-bold">业务类型:</label>
+            <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
+              <label className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">业务类型:</label>
               <select
                 value={businessTypeFilter}
                 onChange={(e) => {
                   setBusinessTypeFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+                className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
               >
                 <option value="all">全部业务类型</option>
                 <option value="账号解封申诉">🔓 账号解封申诉</option>
@@ -524,8 +768,8 @@ export default function AdminAccountAppealsPage() {
           </div>
 
           {/* 关键字搜索（加长输入区域，宽阔舒展且不被挤压截断） */}
-          <div className="flex flex-wrap items-center gap-2.5 pt-1">
-            <div className="relative w-80 sm:w-96 lg:w-[420px]">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5 pt-1">
+            <div className="relative w-full sm:w-96 lg:w-[420px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -599,6 +843,76 @@ export default function AdminAccountAppealsPage() {
 
       {/* 3. 干练利落的数据表格 */}
       <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs">
+        {/* 批量操作栏：勾选任意工单后出现（审批只作用于待处理项，删除只作用于已处理项） */}
+        {selectedAppeals.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3 bg-slate-50 border-b border-slate-200">
+            <div className="text-xs font-bold text-slate-600">
+              已选择
+              <span className="mx-1 px-2 py-0.5 rounded-lg bg-[#3182ce] text-white font-black">
+                {selectedAppeals.length}
+              </span>
+              条
+              <span className="ml-1 text-slate-400 font-medium">
+                （待处理 {selectedPendingAppeals.length} · 已处理 {selectedDeletableAppeals.length}）
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedAppealIds(new Set())}
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+              >
+                取消选择
+              </button>
+              <button
+                type="button"
+                onClick={() => openBatchProcessModal("approved")}
+                disabled={batchProcessing || selectedPendingAppeals.length === 0}
+                title={
+                  selectedPendingAppeals.length === 0
+                    ? "所选工单中没有待处理项，仅「待处理」工单可审批"
+                    : `将同意解封 ${selectedPendingAppeals.length} 条待处理工单`
+                }
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                {batchProcessing ? "处理中..." : "批量同意解封"}
+              </button>
+              <button
+                type="button"
+                onClick={() => openBatchProcessModal("rejected")}
+                disabled={batchProcessing || selectedPendingAppeals.length === 0}
+                title={
+                  selectedPendingAppeals.length === 0
+                    ? "所选工单中没有待处理项，仅「待处理」工单可审批"
+                    : `将驳回 ${selectedPendingAppeals.length} 条待处理工单`
+                }
+                className="px-4 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl text-xs font-bold border border-red-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                批量驳回
+              </button>
+              <button
+                type="button"
+                onClick={openBatchDeleteModal}
+                disabled={batchProcessing || selectedDeletableAppeals.length === 0}
+                title={
+                  selectedDeletableAppeals.length === 0
+                    ? "所选工单中没有可删除项，待处理工单需先完成审批"
+                    : `将删除 ${selectedDeletableAppeals.length} 条已处理工单`
+                }
+                className={`px-4 py-1.5 rounded-xl text-xs font-black shadow-2xs transition-all flex items-center gap-1.5 ${
+                  batchProcessing || selectedDeletableAppeals.length === 0
+                    ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed"
+                    : "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                批量删除
+              </button>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="text-center py-16">
             <div className="w-9 h-9 border-3 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-3" />
@@ -611,9 +925,19 @@ export default function AdminAccountAppealsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[960px]">
+            <table className="w-full text-xs min-w-[1000px]">
               <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-bold">
                 <tr>
+                  <th className="w-10 px-4.5 py-3.5 text-left whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAllAppeals}
+                      disabled={currentPageAppeals.length === 0}
+                      title="全选当前页工单"
+                      className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                    />
+                  </th>
                   <th className="px-4.5 py-3.5 text-left whitespace-nowrap">申诉用户 / 账号</th>
                   <th className="px-4.5 py-3.5 text-left whitespace-nowrap">审核业务类型</th>
                   <th className="px-4.5 py-3.5 text-left whitespace-nowrap">提交时间</th>
@@ -626,7 +950,26 @@ export default function AdminAccountAppealsPage() {
                   const isBanned = appeal.user?.status === "banned";
 
                   return (
-                    <tr key={appeal.id} className="group hover:bg-slate-50/80 transition-colors items-center">
+                    <tr
+                      key={appeal.id}
+                      className={`group hover:bg-slate-50/80 transition-colors items-center ${
+                        selectedAppealIds.has(appeal.id) ? "bg-blue-50/40" : ""
+                      }`}
+                    >
+                      {/* 批量操作勾选（待处理 → 可批量审批；已处理 → 可批量删除） */}
+                      <td className="px-4.5 py-3.5">
+                        <input
+                          type="checkbox"
+                          checked={selectedAppealIds.has(appeal.id)}
+                          onChange={() => toggleSelectAppeal(appeal)}
+                          title={
+                            appeal.status === "pending"
+                              ? "待处理工单：可批量审批"
+                              : "已处理工单：可批量删除"
+                          }
+                          className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
+                        />
+                      </td>
                       {/* 用户账号与手机号/邮箱展示 */}
                       <td className="px-4.5 py-3.5">
                         <div className="flex items-center gap-3">
@@ -665,6 +1008,10 @@ export default function AdminAccountAppealsPage() {
                                   {isBanned ? (
                                     <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-black rounded border border-red-200 shrink-0">
                                       封禁中
+                                    </span>
+                                  ) : appeal.user?.status === "inactive" ? (
+                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black rounded border border-amber-200 shrink-0">
+                                      已禁用登录
                                     </span>
                                   ) : (
                                     <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded border border-emerald-200 shrink-0">
@@ -816,6 +1163,24 @@ export default function AdminAccountAppealsPage() {
                                 驳回
                               </button>
                             </>
+                          )}
+
+                          {/* 删除工单：仅「已处理」工单可删除（待处理必须先完成审批）；选中态鲜红、未选中态灰红 */}
+                          {isAppealDeletable(appeal) && (
+                            <button
+                              type="button"
+                              onClick={() => openDeleteAppealModal(appeal)}
+                              disabled={batchProcessing}
+                              title="删除该申诉工单（操作将写入审计日志）"
+                              className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 ${
+                                selectedAppealIds.has(appeal.id)
+                                  ? "bg-red-600 border border-red-600 hover:bg-red-700 text-white cursor-pointer"
+                                  : "bg-red-100/40 border border-red-200 text-red-300 cursor-pointer hover:bg-red-100/70 hover:ring-2 hover:ring-red-300/40"
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              删除
+                            </button>
                           )}
                         </div>
                       </td>

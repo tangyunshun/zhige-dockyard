@@ -375,9 +375,9 @@ export default function TasksTab({
               <button
                 type="button"
                 onClick={handleBatchDelete}
-                className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 animate-in fade-in duration-150 shrink-0 whitespace-nowrap shadow-2xs"
+                className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white border border-red-600 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 animate-in fade-in duration-150 shrink-0 whitespace-nowrap shadow-2xs"
               >
-                <Trash2 className="w-4 h-4 text-red-600" />
+                <Trash2 className="w-4 h-4 text-white" />
                 <span>批量删除 ({selectedTaskIds.length})</span>
               </button>
             </div>
@@ -627,10 +627,14 @@ export default function TasksTab({
                           <button
                             type="button"
                             onClick={() => handleSingleDelete(task)}
-                            className="text-red-500 hover:text-red-700 hover:underline cursor-pointer inline-flex items-center gap-1 font-bold"
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                              selectedTaskIds.includes(task.id)
+                                ? "bg-red-600 border border-red-600 hover:bg-red-700 text-white"
+                                : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
+                            }`}
                             title="从数据库中物理删除本笔任务分析记录"
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-red-500 shrink-0" /> 删除
+                            <Trash2 className="w-3.5 h-3.5 shrink-0" /> 删除
                           </button>
                         </div>
                       </td>
