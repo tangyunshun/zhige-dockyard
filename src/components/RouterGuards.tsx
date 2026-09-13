@@ -1,8 +1,32 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppContext } from "@/contexts/AppContext";
+
+// 客户端停机维护状态轻量缓存（10秒有效期，避免页面跳转时的高频冗余轮询）
+let cachedMaintenance: { inMaintenance: boolean; expiresAt: number } | null = null;
+
+async function queryMaintenanceMode(): Promise<boolean> {
+  const now = Date.now();
+  if (cachedMaintenance && cachedMaintenance.expiresAt > now) {
+    return cachedMaintenance.inMaintenance;
+  }
+  try {
+    const res = await fetch(`/api/system/check-maintenance?t=${now}`, {
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const inMaintenance = Boolean(data.inMaintenance);
+      cachedMaintenance = { inMaintenance, expiresAt: now + 10000 };
+      return inMaintenance;
+    }
+  } catch {
+    // 网络抖动容错放行
+  }
+  return false;
+}
 
 // 公共营销页面 - 所有人都能访问（包括未登录用户）
 const PUBLIC_ROUTES = [
@@ -37,6 +61,7 @@ export default function RouterGuards({
   const router = useRouter();
   const pathname = usePathname();
   const { userState, isLoading } = useAppContext();
+  const [isBlockedByMaintenance, setIsBlockedByMaintenance] = useState(false);
 
   useEffect(() => {
     // 检查是否是认证路由
@@ -59,7 +84,34 @@ export default function RouterGuards({
       pathname.startsWith(route)
     );
 
-    // 公共营销页面：直接允许访问，不做任何拦截
+    // 核心安全闭环：停机维护模式全站阻断判定（严防普通用户借“返回首页”绕过维护页）
+    const role = (userState.userInfo?.role || "").toLowerCase();
+    const isAdmin = ["superadmin", "super_admin", "admin"].includes(role);
+
+    // 白名单放行路径：维护展示页本身、后台运维路径、以及显式携带 admin=true 的运维登录页
+    const isMaintenanceExempt =
+      pathname === "/maintenance" ||
+      pathname.startsWith("/admin") ||
+      pathname === "/releases" ||
+      (pathname.startsWith("/auth/login") &&
+        typeof window !== "undefined" &&
+        window.location.search.includes("admin=true"));
+
+    if (!isAdmin && !isMaintenanceExempt) {
+      // 检查系统当前是否开启停机维护模式
+      queryMaintenanceMode().then((inMaintenance) => {
+        if (inMaintenance) {
+          setIsBlockedByMaintenance(true);
+          router.replace("/maintenance");
+        }
+      });
+    }
+
+    if (pathname === "/maintenance") {
+      setIsBlockedByMaintenance(false);
+    }
+
+    // 公共营销页面：直接允许访问，不做任何拦截（但需经过上述维护模式前置阻断）
     if (isPublicRoute) {
       return;
     }
@@ -112,6 +164,10 @@ export default function RouterGuards({
     }
 
   }, [userState.isLoggedIn, userState.userInfo?.role, pathname, router, isLoading]);
+
+  if (isBlockedByMaintenance && pathname !== "/maintenance") {
+    return null;
+  }
 
   return <>{children}</>;
 }

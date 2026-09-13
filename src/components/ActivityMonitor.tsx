@@ -34,7 +34,15 @@ export default function ActivityMonitor() {
         if (!loggedOutRef.current) {
           loggedOutRef.current = true;
           try {
-            await fetch("/api/auth/logout", { method: "POST" });
+            const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+            await fetch("/api/auth/logout", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({ reason: "timeout", token }),
+            });
           } catch {}
           localStorage.clear();
           router.push("/auth/login?reason=idle");

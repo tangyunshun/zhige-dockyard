@@ -34,9 +34,18 @@ import {
   Globe,
   MapPin,
   Clock,
+  Download,
+  Check,
+  Plus,
+  Minus,
+  ArrowRight,
+  Loader2,
+  Coins,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 
 /** 用户列表每页固定展示 10 条 */
 const PAGE_SIZE = 10;
@@ -70,6 +79,61 @@ function splitDevice(device?: string | null): { os: string; browser: string } {
     .filter(Boolean);
   if (parts.length >= 2) return { os: parts[0], browser: parts.slice(1).join(" · ") };
   return { os: parts[0] || raw, browser: "" };
+}
+
+/** 严格基于真实 UA 与设备信息解析终端与浏览器分类（真实数据客观判断，绝不虚构） */
+function parseClientDeviceAndBrowser(device?: string | null, userAgent?: string | null): {
+  isMobile: boolean;
+  deviceType: "DESKTOP" | "MOBILE";
+  browserType: "Chrome" | "Edge" | "IE" | "360" | "QQ" | "Other";
+  browserName: string;
+  osName: string;
+} {
+  const ua = (userAgent || "").toLowerCase();
+  const rawDev = (device || "").toLowerCase();
+
+  // 1. 终端真实客观判断
+  const isMobile =
+    /(mobile|android|iphone|ipad|ipod|phone|symbian)/i.test(ua) ||
+    /(mobile|android|iphone|ipad)/i.test(rawDev);
+  const deviceType: "DESKTOP" | "MOBILE" = isMobile ? "MOBILE" : "DESKTOP";
+
+  // 2. 浏览器分类（严格按用户指令分类：Chrome、Edge、IE 浏览器、360 浏览器、QQ 浏览器、其他）
+  let browserType: "Chrome" | "Edge" | "IE" | "360" | "QQ" | "Other" = "Other";
+  let browserName = "其他浏览器";
+
+  if (/(msie\s|trident.*rv:([\d.]+))/i.test(ua) || rawDev.includes("ie")) {
+    browserType = "IE";
+    browserName = "IE 浏览器";
+  } else if (/(edg|edge)\//i.test(ua) || rawDev.includes("edge")) {
+    browserType = "Edge";
+    browserName = "Edge 浏览器";
+  } else if (/(qihu\s*360|360ee|360se)/i.test(ua) || rawDev.includes("360")) {
+    browserType = "360";
+    browserName = "360 浏览器";
+  } else if (/(qqbrowser|mqqbrowser)/i.test(ua) || rawDev.includes("qq")) {
+    browserType = "QQ";
+    browserName = "QQ 浏览器";
+  } else if (
+    (/(chrome\/|crios\/)/i.test(ua) || rawDev.includes("chrome")) &&
+    !/(micromessenger|edg|edge|360ee|360se|qqbrowser)/i.test(ua)
+  ) {
+    browserType = "Chrome";
+    browserName = "Chrome 浏览器";
+  } else {
+    // Safari、微信客户端、Firefox、原生 WebView 等统一归类为“其他”
+    browserType = "Other";
+    browserName = "其他浏览器";
+  }
+
+  const { os } = splitDevice(device);
+  return {
+    isMobile,
+    deviceType,
+    browserType,
+    browserName,
+    osName: os || (isMobile ? "移动端" : "桌面端"),
+  };
 }
 
 // 定义完整的筛选项值（不依赖动态数据）
@@ -132,6 +196,17 @@ interface UserData {
 
 export default function AdminUsersPage() {
   const toast = useToast();
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
+
+  // 细粒度业务权限判定（若无某权限，界面对应操作按钮与入口严格隐藏）
+  const canViewDetail = hasPermission("user:detail");
+  const canUpdate = hasPermission("user:update");
+  const canChangeRole = hasPermission("user:role_change");
+  const canBan = hasPermission("user:ban");
+  const canUnban = hasPermission("user:unban");
+  const canResetSession = hasPermission("user:reset_session");
+  const canSecurityReset = hasPermission("user:security_reset");
+
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -142,6 +217,7 @@ export default function AdminUsersPage() {
     useState<string>("all");
   const [filterZombie, setFilterZombie] = useState<string>("all"); // 僵尸用户快捷筛选
   const [scanning, setScanning] = useState(false); // 手动扫描僵尸用户中
+  const [exporting, setExporting] = useState(false); // 导出 Excel 中
   const [currentPage, setCurrentPage] = useState(1);
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
   const [actionMenuPos, setActionMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -270,11 +346,17 @@ export default function AdminUsersPage() {
   });
   const [adjustPointsUser, setAdjustPointsUser] = useState<User | null>(null);
   const [adjustPointsForm, setAdjustPointsForm] = useState({ points: "", reason: "" });
+  const [adjustPointsSubmitting, setAdjustPointsSubmitting] = useState(false);
   const [loginHistoryUser, setLoginHistoryUser] = useState<User | null>(null);
   const [loginHistories, setLoginHistories] = useState<any[]>([]);
   const [loginHistoryLoading, setLoginHistoryLoading] = useState(false);
   const [loginHistoryTotal, setLoginHistoryTotal] = useState(0);
   const [loginHistoryPage, setLoginHistoryPage] = useState(1);
+  // 登录历史多维筛选状态
+  const [loginHistoryFilterDevice, setLoginHistoryFilterDevice] = useState<"ALL" | "DESKTOP" | "MOBILE">("ALL");
+  const [loginHistoryFilterBrowser, setLoginHistoryFilterBrowser] = useState<string>("ALL");
+  const [loginHistoryFilterTimeRange, setLoginHistoryFilterTimeRange] = useState<"ALL" | "24H" | "7D" | "30D">("ALL");
+  const [loginHistoryKeyword, setLoginHistoryKeyword] = useState<string>("");
 
   /** 弹窗表单字段级必填校验错误提示 */
   const [notifyErrors, setNotifyErrors] = useState<{ title?: string; content?: string }>({});
@@ -502,6 +584,102 @@ export default function AdminUsersPage() {
     setCurrentPage(1);
   };
 
+  /** 导出当前筛选条件下的全量用户为 Excel 表格 */
+  const handleExportExcel = async () => {
+    if (exporting) return;
+    try {
+      setExporting(true);
+      const authToken = getAuthToken();
+      // 获取当前筛选条件下的全量匹配用户（单次拉取最多 5000 条）
+      const queryParams = new URLSearchParams({
+        page: "1",
+        limit: "5000",
+        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+        ...(filterRole !== "all" && { role: filterRole }),
+        ...(filterAccountStatus !== "all" && { accountStatus: filterAccountStatus }),
+        ...(filterMembershipLevel !== "all" && { membershipLevel: filterMembershipLevel }),
+        ...(filterZombie === "1" && { zombie: "1" }),
+      });
+
+      const res = await fetch(`/api/admin/users?${queryParams}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (!res.ok) {
+        throw new Error("拉取用户导出数据失败");
+      }
+
+      const data = await res.json();
+      const exportList: User[] = data.users || [];
+
+      if (exportList.length === 0) {
+        showToast("当前筛选条件下暂无用户数据可导出", "warning");
+        return;
+      }
+
+      exportToExcel({
+        filename: "知阁用户清单",
+        sheetName: "用户数据",
+        columns: [
+          { header: "用户ID", key: "id", width: 28 },
+          { header: "用户名", key: "name", width: 16 },
+          { header: "邮箱地址", key: "email", width: 26 },
+          { header: "手机号码", key: "phone", width: 16, formatter: (val) => val || "-" },
+          {
+            header: "平台角色",
+            key: "role",
+            width: 14,
+            formatter: (val) => {
+              if (val === "super_admin") return "超级管理员";
+              if (val === "admin") return "平台管理员";
+              return "普通用户";
+            },
+          },
+          {
+            header: "账号状态",
+            key: "status",
+            width: 12,
+            formatter: (val) => {
+              if (val === "active") return "正常";
+              if (val === "disabled") return "已禁用";
+              if (val === "banned") return "已封禁";
+              if (val === "deleted") return "已注销";
+              return val || "正常";
+            },
+          },
+          {
+            header: "会员等级",
+            key: "membershipLevel",
+            width: 14,
+            formatter: (val) => {
+              const map: Record<string, string> = {
+                FREE: "免费版",
+                BRONZE: "青铜会员",
+                SILVER: "白银会员",
+                GOLD: "黄金会员",
+                DIAMOND: "钻石会员",
+                CROWN: "皇冠会员",
+              };
+              return map[val] || val || "免费版";
+            },
+          },
+          { header: "算力点余额", key: "points", width: 14, formatter: (val, row) => row.tokenBalance ?? val ?? 0 },
+          { header: "是否僵尸用户", key: "isZombie", width: 14, formatter: (val) => (val ? "是" : "否") },
+          { header: "最近登录时间", key: "lastLoginAt", width: 20, formatter: formatExcelDateTime },
+          { header: "注册时间", key: "createdAt", width: 20, formatter: formatExcelDateTime },
+        ],
+        data: exportList,
+      });
+
+      showToast(`已成功导出 ${exportList.length} 位用户数据为 Excel 表格！`, "success");
+    } catch (e: any) {
+      console.error("Export users error:", e);
+      showToast(e.message || "导出用户数据失败", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const isSelectableUser = (user: User) =>
     user.role !== "super_admin" &&
     user.role !== "admin" &&
@@ -551,7 +729,11 @@ export default function AdminUsersPage() {
       ban: pool.some((u) => u.status === "active"),
       unban: pool.some((u) => u.status === "banned"),
       kick: pool.some((u) => u.status === "active" && !!u.hasSession),
-      delete: currentUserRole === "super_admin",
+      // 核心安全红线：只有超级管理员且所选用户中包含已被封禁的用户时，才允许执行批量删除
+      delete:
+        currentUserRole === "super_admin" &&
+        pool.length > 0 &&
+        pool.some((u) => u.status === "banned"),
     };
   })();
 
@@ -586,6 +768,17 @@ export default function AdminUsersPage() {
     if (!selectAllMatching && selectedUsers.size === 0) {
       showToast("请先选择要操作的用户", "warning");
       return;
+    }
+    // 前置校验：批量删除时如果所选用户中均未封禁，予以友好明确的拦截提示
+    if (action === "delete") {
+      const pool = selectAllMatching
+        ? userData?.users?.filter(isSelectableUser) || []
+        : selectedUserList;
+      const hasBanned = pool.some((u) => u.status === "banned");
+      if (!hasBanned) {
+        showToast("所选用户均未被封禁。根据平台安全规则，只有已被封禁的用户才允许执行删除，请先封禁目标用户", "warning");
+        return;
+      }
     }
     setShowBatchActions(false);
     setBatchFlow({ action, open: true, processing: false });
@@ -811,6 +1004,12 @@ export default function AdminUsersPage() {
 
   const handleDelete = async (userId: string) => {
     setDeleteError(null);
+    // 前置安全红线校验：只有已被封禁(banned)的用户才允许被删除
+    const target = userData?.users?.find((u) => u.id === userId);
+    if (target && target.status !== "banned") {
+      showToast("平台安全规则拦截：只有已被封禁的用户才能被删除，请先封禁该用户", "warning");
+      return;
+    }
     try {
       // 先拉取归属分析与数据摘要，再弹窗让管理员确认策略
       const res = await fetch(`/api/admin/user/delete-preview?userId=${userId}`);
@@ -1039,6 +1238,7 @@ export default function AdminUsersPage() {
     }
     setAdjustPointsErrors({});
     try {
+      setAdjustPointsSubmitting(true);
       const res = await fetch("/api/admin/user/adjust-points", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
@@ -1056,6 +1256,8 @@ export default function AdminUsersPage() {
       loadUsers(currentPage);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "调整失败", "error");
+    } finally {
+      setAdjustPointsSubmitting(false);
     }
   };
 
@@ -1065,6 +1267,10 @@ export default function AdminUsersPage() {
       setLoginHistoryUser(user);
       setLoginHistories([]);
       setLoginHistoryTotal(0);
+      setLoginHistoryFilterDevice("ALL");
+      setLoginHistoryFilterBrowser("ALL");
+      setLoginHistoryFilterTimeRange("ALL");
+      setLoginHistoryKeyword("");
     }
     setLoginHistoryLoading(true);
     try {
@@ -1092,17 +1298,60 @@ export default function AdminUsersPage() {
     }
   };
 
+  // 根据多维筛选条件过滤登录历史（严格基于数据库真实数据与真实 UA，绝不虚构）
+  const filteredLoginHistories = React.useMemo(() => {
+    const now = Date.now();
+    return loginHistories.filter((h) => {
+      const parsed = parseClientDeviceAndBrowser(h.device, h.userAgent);
+      const isMobile = h.deviceType ? h.deviceType === "MOBILE" : parsed.isMobile;
+      const bType = h.browserType || parsed.browserType;
+
+      // 1. 设备终端过滤（桌面端 vs 移动端，基于真实数据）
+      if (loginHistoryFilterDevice === "DESKTOP" && isMobile) return false;
+      if (loginHistoryFilterDevice === "MOBILE" && !isMobile) return false;
+
+      // 2. 浏览器过滤（Chrome, Edge, IE, 360, QQ, Other）
+      if (loginHistoryFilterBrowser !== "ALL") {
+        if (bType !== loginHistoryFilterBrowser) return false;
+      }
+
+      // 3. 时间范围过滤（严格比对真实的 loginAt 时间戳）
+      if (loginHistoryFilterTimeRange !== "ALL") {
+        const itemTime = new Date(h.loginAt).getTime();
+        const diffHours = (now - itemTime) / (1000 * 60 * 60);
+        if (loginHistoryFilterTimeRange === "24H" && diffHours > 24) return false;
+        if (loginHistoryFilterTimeRange === "7D" && diffHours > 24 * 7) return false;
+        if (loginHistoryFilterTimeRange === "30D" && diffHours > 24 * 30) return false;
+      }
+
+      // 4. 关键词过滤（匹配真实的 IP、地点、设备名、UA）
+      if (loginHistoryKeyword.trim()) {
+        const kw = loginHistoryKeyword.trim().toLowerCase();
+        const text = `${h.ipAddress || ""} ${h.location || ""} ${h.device || ""} ${parsed.osName} ${parsed.browserName} ${h.userAgent || ""}`.toLowerCase();
+        if (!text.includes(kw)) return false;
+      }
+
+      return true;
+    });
+  }, [
+    loginHistories,
+    loginHistoryFilterDevice,
+    loginHistoryFilterBrowser,
+    loginHistoryFilterTimeRange,
+    loginHistoryKeyword,
+  ]);
+
   // 登录历史分组：相邻同源（IP + 设备 + 归属地）记录合并为一组，避免重复堆叠
   const loginHistoryGroups = React.useMemo(() => {
     const groups: { key: string; items: any[] }[] = [];
-    loginHistories.forEach((h) => {
+    filteredLoginHistories.forEach((h) => {
       const key = `${h.ipAddress}#${h.device}#${h.location}`;
       const last = groups[groups.length - 1];
       if (last && last.key === key) last.items.push(h);
       else groups.push({ key, items: [h] });
     });
     return groups;
-  }, [loginHistories]);
+  }, [filteredLoginHistories]);
 
   const showToast = (message: string, type: "success" | "error" | "warning") => {
     const container = document.getElementById("zg-toast-container");
@@ -1500,16 +1749,30 @@ export default function AdminUsersPage() {
             <span>僵尸用户</span>
           </button>
 
-          {/* 手动触发全量僵尸扫描：刷新 is_zombie 标记并向超管推送清理提醒 */}
+          {/* 手动触发全量僵尸扫描：仅超级管理员或拥有更新权限的管理员可见 */}
+          {(isSuperAdmin || canUpdate) && (
+            <button
+              type="button"
+              onClick={handleZombieScan}
+              disabled={scanning}
+              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-amber-200/80 active:scale-95 disabled:opacity-50"
+              title="立即扫描僵尸用户（每日定时任务亦可触发）"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`} />
+              <span>扫描僵尸</span>
+            </button>
+          )}
+
+          {/* 导出 Excel 表格 */}
           <button
             type="button"
-            onClick={handleZombieScan}
-            disabled={scanning}
-            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-amber-200/80 active:scale-95 disabled:opacity-50"
-            title="立即扫描僵尸用户（每日定时任务亦可触发）"
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-emerald-200/80 active:scale-95 disabled:opacity-50"
+            title="将当前筛选匹配的全量用户导出为 Excel 表格 (.xlsx)"
           >
-            <RotateCcw className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`} />
-            <span>扫描僵尸</span>
+            <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-spin" : ""}`} />
+            <span>导出 Excel</span>
           </button>
         </div>
       </div>
@@ -1563,7 +1826,7 @@ export default function AdminUsersPage() {
               </button>
             </div>
             <div className="flex items-center gap-2">
-              {batchActionEligible.ban && (
+              {canBan && batchActionEligible.ban && (
                 <button
                   onClick={() => openBatchFlow("ban")}
                   className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 transition-colors flex items-center gap-2"
@@ -1572,7 +1835,7 @@ export default function AdminUsersPage() {
                   批量封禁
                 </button>
               )}
-              {batchActionEligible.unban && (
+              {canUnban && batchActionEligible.unban && (
                 <button
                   onClick={() => openBatchFlow("unban")}
                   className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2"
@@ -1581,7 +1844,7 @@ export default function AdminUsersPage() {
                   批量解封
                 </button>
               )}
-              {batchActionEligible.kick && (
+              {canResetSession && batchActionEligible.kick && (
                 <button
                   onClick={() => openBatchFlow("kick")}
                   className="px-4 py-2 bg-[#3182ce] text-white rounded-lg text-sm font-bold hover:bg-[#2b6cb0] transition-colors flex items-center gap-2"
@@ -1590,7 +1853,7 @@ export default function AdminUsersPage() {
                   批量强制下线
                 </button>
               )}
-              {batchActionEligible.delete && (
+              {isSuperAdmin && batchActionEligible.delete && (
                 <button
                   onClick={() => openBatchFlow("delete")}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors flex items-center gap-2"
@@ -1804,52 +2067,79 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
                             <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleViewDetails(user)}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
-                                title="查看用户 360° 全景画像与风控记录"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>详情</span>
-                              </button>
-
-                              {/* 特权角色（超级管理员 / 管理员）不展示高危操作菜单：业务上不允许对这两类账号执行强制下线 / 禁用登录 / 封禁 / 删除，菜单永远会是空的，直接不渲染按钮避免干扰 */}
-                              {user.role !== "super_admin" && user.role !== "admin" && (
-                              <div className="relative inline-block">
+                              {/* 详情按钮：严格受控于 user:detail 权限，无权限直接隐藏 */}
+                              {canViewDetail && (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (showActionMenu === user.id) {
-                                      setShowActionMenu(null);
-                                      setActionMenuPos(null);
-                                      return;
-                                    }
-                                    const anchorEl = e.currentTarget as HTMLElement;
-                                    const rect = anchorEl.getBoundingClientRect();
-                                    const menuWidth = 256; // w-64
-                                    const gap = 8; // mt-2
-                                    const margin = 16;
-                                    let left = rect.right - menuWidth;
-                                    // 防止菜单超出视口左/右边界
-                                    if (left < margin) left = margin;
-                                    if (left + menuWidth > window.innerWidth - margin) {
-                                      left = window.innerWidth - menuWidth - margin;
-                                    }
-                                    // 初值统一放在按钮下方，真实高度由 useLayoutEffect 量测后
-                                    // 决定「上翻」还是「自动滚动页面」补偿
-                                    const top = Math.max(rect.bottom + gap, margin);
-                                    menuAnchorElRef.current = anchorEl;
-                                    menuPositionAdjustedRef.current = null;
-                                    setActionMenuPos({ top, left });
-                                    setShowActionMenu(user.id);
-                                  }}
-                                  className="p-1.5 hover:bg-slate-100 rounded-xl transition-colors inline-flex items-center justify-center border border-slate-200 text-slate-600 font-bold text-xs gap-1"
-                                  title="展开更多高危风控与下线管控操作"
+                                  onClick={() => handleViewDetails(user)}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs"
+                                  title="查看用户 360° 全景画像与风控记录"
                                 >
-                                  <MoreVertical className="w-4 h-4 text-slate-600" />
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>详情</span>
                                 </button>
-                              </div>
                               )}
+
+                              {(() => {
+                                const isTargetAdmin = user.role === "super_admin" || user.role === "admin";
+                                const hasRowAction = !isTargetAdmin && user.id !== currentUserId && (
+                                  (canResetSession && user.status === "active" && !!user.hasSession) ||
+                                  (canUpdate && (user.status === "active" || user.status === "inactive")) ||
+                                  (canBan && user.status !== "banned") ||
+                                  (canUnban && user.status === "banned") ||
+                                  canChangeRole ||
+                                  canSecurityReset ||
+                                  hasPermission("announcement:publish") ||
+                                  hasPermission("order:update") ||
+                                  hasPermission("audit:read") ||
+                                  (isSuperAdmin && user.status === "banned")
+                                );
+
+                                return (
+                                  <>
+                                    {/* 更多高危/风控操作菜单：若该管理员没有任何一项可执行的动作，彻底不渲染更多按钮 */}
+                                    {hasRowAction && (
+                                      <div className="relative inline-block">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (showActionMenu === user.id) {
+                                              setShowActionMenu(null);
+                                              setActionMenuPos(null);
+                                              return;
+                                            }
+                                            const anchorEl = e.currentTarget as HTMLElement;
+                                            const rect = anchorEl.getBoundingClientRect();
+                                            const menuWidth = 256; // w-64
+                                            const gap = 8; // mt-2
+                                            const margin = 16;
+                                            let left = rect.right - menuWidth;
+                                            if (left < margin) left = margin;
+                                            if (left + menuWidth > window.innerWidth - margin) {
+                                              left = window.innerWidth - menuWidth - margin;
+                                            }
+                                            const top = Math.max(rect.bottom + gap, margin);
+                                            menuAnchorElRef.current = anchorEl;
+                                            menuPositionAdjustedRef.current = null;
+                                            setActionMenuPos({ top, left });
+                                            setShowActionMenu(user.id);
+                                          }}
+                                          className="p-1.5 hover:bg-slate-100 rounded-xl transition-colors inline-flex items-center justify-center border border-slate-200 text-slate-600 font-bold text-xs gap-1 cursor-pointer"
+                                          title="展开更多风控与安全操作"
+                                        >
+                                          <MoreVertical className="w-4 h-4 text-slate-600" />
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {/* 若该管理员既无查看详情权限、又无任何行内操作权限，显示纯粹的只读占位 */}
+                                    {!canViewDetail && !hasRowAction && (
+                                      <span className="text-xs text-slate-400 font-medium px-2 py-1 select-none">
+                                        只读
+                                      </span>
+                                    )}
+                                  </>
+                                );
+                              })()}
                           </div>
                         </td>
                         </tr>
@@ -2959,217 +3249,616 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      {/* 调整算力点弹窗 */}
-      {adjustPointsUser && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setAdjustPointsUser(null)}
-          />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-slate-100">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
-              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                <div className="w-1.5 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
-                调整算力点
-              </h3>
-              <button
-                onClick={() => setAdjustPointsUser(null)}
-                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
-                <div className="text-sm text-slate-600 min-w-0">
-                  目标用户：
-                  <span className="font-bold text-slate-800">
-                    {adjustPointsUser.name || adjustPointsUser.email}
-                  </span>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-[10px] text-slate-400 font-bold">当前算力点</div>
-                  <div className="text-sm font-black text-[#3182ce]">
-                    {adjustPointsUser.points ?? 0}
+      {/* 调整算力点弹窗 (知阁设计系统顶级规范组件) */}
+      {adjustPointsUser && (() => {
+        const delta = Number(adjustPointsForm.points);
+        const hasValidDelta = adjustPointsForm.points.trim() !== "" && Number.isFinite(delta) && delta !== 0;
+        const currentPoints = adjustPointsUser.points ?? 0;
+        const afterPoints = currentPoints + (hasValidDelta ? delta : 0);
+        const isNegativeAfter = hasValidDelta && afterPoints < 0;
+
+        // 常用快捷数额预设
+        const quickAddOptions = [50, 100, 200, 500, 1000];
+        const quickSubOptions = [-50, -100, -200, -500];
+
+        // 常用原因标签预设
+        const quickReasons = ["活动奖励", "系统补偿", "新人赠送", "企业采购充值", "违规核减", "售后调账"];
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in-50 duration-200">
+            {/* 遮罩背景 */}
+            <div
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+              onClick={() => !adjustPointsSubmitting && setAdjustPointsUser(null)}
+            />
+
+            {/* 弹窗主体容器 */}
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-auto overflow-hidden border border-blue-100 animate-in zoom-in-95 duration-200 text-left flex flex-col">
+              
+              {/* Header 顶部标题栏 */}
+              <div className="px-6 py-4.5 bg-gradient-to-r from-blue-50/80 via-indigo-50/30 to-white border-b border-blue-100/70 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#3182ce] text-white flex items-center justify-center shadow-md shadow-[#3182ce]/20 shrink-0">
+                    <Zap className="w-5 h-5 fill-current" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
+                      <span>调整算力点</span>
+                      <span className="px-2 py-0.5 rounded-[4px] text-[10px] font-bold bg-blue-50 text-[#2b6cb0] border border-blue-200/80">
+                        人工调账
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">
+                      用于用户算力补充、活动奖励核发或异常核减
+                    </p>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => !adjustPointsSubmitting && setAdjustPointsUser(null)}
+                  disabled={adjustPointsSubmitting}
+                  className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors flex items-center justify-center cursor-pointer disabled:opacity-50"
+                  title="关闭"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  调整数量（正数赠送，负数扣除） <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  value={adjustPointsForm.points}
-                  onChange={(e) => {
-                    setAdjustPointsForm({ ...adjustPointsForm, points: e.target.value });
-                    if (adjustPointsErrors.points) setAdjustPointsErrors({});
-                  }}
-                  className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition-colors ${
+
+              {/* Body 表单内容区 */}
+              <div className="p-5 sm:p-6 space-y-3.5 overflow-y-auto max-h-[calc(88vh-120px)]">
+
+                {/* 用户信息与当前算力点微名片 */}
+                <div className="p-3.5 bg-gradient-to-r from-slate-50 to-blue-50/30 rounded-xl border border-slate-200/80 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3182ce] to-[#1a365d] text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                      {(adjustPointsUser.name || adjustPointsUser.email || "U").charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-slate-800 text-sm truncate" title={adjustPointsUser.name || "用户"}>
+                          {adjustPointsUser.name || "极客用户"}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                          {adjustPointsUser.role === "super_admin" ? "超管" : adjustPointsUser.role === "admin" ? "管理员" : "普通用户"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400 font-mono truncate mt-0.5">
+                        {adjustPointsUser.email || `ID: ${adjustPointsUser.id}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 当前算力点 */}
+                  <div className="text-right shrink-0 bg-white px-3.5 py-1.5 rounded-lg border border-slate-200/70 shadow-2xs">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">当前算力余额</div>
+                    <div className="text-base font-black text-[#3182ce] font-mono flex items-center justify-end gap-1">
+                      <Coins className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span>{currentPoints}</span>
+                      <span className="text-xs text-slate-400 font-normal">点</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 调整数量输入区 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-700 flex items-center gap-1">
+                      <span>调整数量</span>
+                      <span className="text-red-500">*</span>
+                      <span className="text-[10px] font-normal text-slate-400">（支持直接输入正负整数，或点击下方快捷选项）</span>
+                    </label>
+                  </div>
+
+                  {/* 快捷数值选项栏 */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-400 shrink-0 mr-1">快捷预设:</span>
+                    {quickAddOptions.map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => {
+                          setAdjustPointsForm({ ...adjustPointsForm, points: String(num) });
+                          if (adjustPointsErrors.points) setAdjustPointsErrors({});
+                        }}
+                        className={`h-6 px-2 rounded-[4px] text-xs font-mono font-bold transition-all cursor-pointer border ${
+                          adjustPointsForm.points === String(num)
+                            ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                        }`}
+                      >
+                        +{num}
+                      </button>
+                    ))}
+                    {quickSubOptions.map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => {
+                          setAdjustPointsForm({ ...adjustPointsForm, points: String(num) });
+                          if (adjustPointsErrors.points) setAdjustPointsErrors({});
+                        }}
+                        className={`h-6 px-2 rounded-[4px] text-xs font-mono font-bold transition-all cursor-pointer border ${
+                          adjustPointsForm.points === String(num)
+                            ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
+                            : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 数值复合输入框 (消除原生上下箭头与文字标签重叠) */}
+                  <div className={`flex items-center w-full h-11 border rounded-xl bg-white transition-all overflow-hidden ${
                     adjustPointsErrors.points
-                      ? "border-red-300 bg-red-50/40 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                      : "border-slate-200 focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20"
-                  }`}
-                  placeholder="如 100 或 -50"
-                />
-                {adjustPointsErrors.points ? (
-                  <p className="mt-1 text-[11px] text-red-500 font-bold">
-                    {adjustPointsErrors.points}
-                  </p>
-                ) : (() => {
-                  const delta = Number(adjustPointsForm.points);
-                  const raw = adjustPointsForm.points.trim();
-                  if (!raw || !Number.isFinite(delta) || delta === 0) return null;
-                  const after = (adjustPointsUser.points ?? 0) + delta;
-                  return (
-                    <p className="mt-1.5 text-[11px] font-bold text-slate-500">
-                      调整后余额：
-                      <span className={after < 0 ? "text-red-500" : "text-[#3182ce]"}>
-                        {after}
-                      </span>
-                      点
+                      ? "border-red-300 ring-2 ring-red-100"
+                      : "border-slate-200 focus-within:border-[#3182ce] focus-within:ring-2 focus-within:ring-[#3182ce]/20"
+                  }`}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={adjustPointsForm.points}
+                      onChange={(e) => {
+                        // 仅允许负号与整数数字
+                        const val = e.target.value.replace(/[^0-9-]/g, "");
+                        const sanitized = val.startsWith("-") 
+                          ? "-" + val.slice(1).replace(/-/g, "") 
+                          : val.replace(/-/g, "");
+                        setAdjustPointsForm({ ...adjustPointsForm, points: sanitized });
+                        if (adjustPointsErrors.points) setAdjustPointsErrors({});
+                      }}
+                      className="flex-1 h-full px-3.5 border-none outline-none text-sm font-mono font-bold bg-transparent text-slate-800 placeholder:text-slate-300"
+                      placeholder="输入增减数量，如 100 或 -50"
+                    />
+                    {/* 右侧独立挂件区：左右物理分隔，绝无重叠 */}
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border-l border-slate-100 h-full shrink-0 select-none">
+                      {hasValidDelta && (
+                        <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase shrink-0 ${
+                          delta > 0
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}>
+                          {delta > 0 ? "赠送 (+)" : "扣除 (-)"}
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-400 font-bold shrink-0">点算力</span>
+                    </div>
+                  </div>
+
+                  {adjustPointsErrors.points && (
+                    <p className="text-[11px] text-red-500 font-bold flex items-center gap-1 mt-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{adjustPointsErrors.points}</span>
                     </p>
-                  );
-                })()}
+                  )}
+                </div>
+
+                {/* 实时演算与变动对照预览卡片 */}
+                {hasValidDelta && (
+                  <div className={`p-3.5 rounded-xl border transition-all ${
+                    isNegativeAfter
+                      ? "bg-red-50/60 border-red-200"
+                      : "bg-blue-50/40 border-blue-100"
+                  }`}>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                      算力点调整演算明细
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-white p-2 rounded-lg border border-slate-200/70">
+                        <div className="text-[10px] text-slate-400 font-medium">当前可用</div>
+                        <div className="text-sm font-black text-slate-700 font-mono mt-0.5">
+                          {currentPoints}
+                        </div>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200/70">
+                        <div className="text-[10px] text-slate-400 font-medium">本次增减</div>
+                        <div className={`text-sm font-black font-mono mt-0.5 ${
+                          delta > 0 ? "text-emerald-600" : "text-amber-600"
+                        }`}>
+                          {delta > 0 ? `+${delta}` : delta}
+                        </div>
+                      </div>
+                      <div className={`p-2 rounded-lg border ${
+                        isNegativeAfter
+                          ? "bg-red-50 border-red-200"
+                          : "bg-blue-50/70 border-blue-200"
+                      }`}>
+                        <div className="text-[10px] text-slate-500 font-bold">调整后预计</div>
+                        <div className={`text-sm font-black font-mono mt-0.5 ${
+                          isNegativeAfter ? "text-red-600" : "text-[#3182ce]"
+                        }`}>
+                          {afterPoints}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isNegativeAfter && (
+                      <div className="mt-2 text-xs font-bold text-red-600 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>警告：扣减后该用户算力余额将变为负数 ({afterPoints} 点)</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 调整原因输入区 */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700 flex items-center justify-between">
+                    <span>调整原因与备注说明</span>
+                    <span className="text-[10px] text-slate-400 font-normal">（选填，将记录在算力收支明细中）</span>
+                  </label>
+
+                  {/* 快捷原因标签胶囊 */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {quickReasons.map((reason) => (
+                      <button
+                        key={reason}
+                        type="button"
+                        onClick={() => setAdjustPointsForm({ ...adjustPointsForm, reason })}
+                        className={`px-2 py-0.5 rounded-[4px] text-[11px] font-bold transition-all cursor-pointer border ${
+                          adjustPointsForm.reason === reason
+                            ? "bg-[#3182ce] text-white border-[#3182ce] shadow-2xs"
+                            : "bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200"
+                        }`}
+                      >
+                        {reason}
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="text"
+                    value={adjustPointsForm.reason}
+                    onChange={(e) =>
+                      setAdjustPointsForm({ ...adjustPointsForm, reason: e.target.value })
+                    }
+                    className="w-full h-9 px-3 border border-slate-200 rounded-xl text-xs outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 bg-white"
+                    placeholder="可输入自定义调整原因（如：平台活动奖励核发）"
+                  />
+                </div>
+
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">
-                  调整原因（可选）
-                </label>
-                <input
-                  value={adjustPointsForm.reason}
-                  onChange={(e) =>
-                    setAdjustPointsForm({ ...adjustPointsForm, reason: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20"
-                  placeholder="如 活动奖励 / 违规扣减"
-                />
+
+              {/* Footer 底部操作按钮栏 */}
+              <div className="px-6 py-3.5 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                <div className="text-[11px] text-slate-400 font-medium">
+                  操作即时生效并写入流水台账
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => !adjustPointsSubmitting && setAdjustPointsUser(null)}
+                    disabled={adjustPointsSubmitting}
+                    className="h-9 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitAdjustPoints}
+                    disabled={adjustPointsSubmitting}
+                    className="h-9 px-5 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:bg-slate-300 text-white rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:cursor-not-allowed"
+                  >
+                    {adjustPointsSubmitting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>正在提交...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>确认调整</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setAdjustPointsUser(null)}
-                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-100 rounded-xl text-sm font-bold transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={submitAdjustPoints}
-                  className="px-5 py-2 bg-tech-blue hover:bg-tech-blueDark text-white rounded-xl text-sm font-bold transition-colors"
-                >
-                  确认调整
-                </button>
-              </div>
+
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {/* 查看登录历史弹窗 */}
-      {loginHistoryUser && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setLoginHistoryUser(null)}
-          />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 shrink-0">
-              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                <div className="w-1.5 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
-                登录历史
-              </h3>
-              <button
-                onClick={() => setLoginHistoryUser(null)}
-                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-black flex items-center justify-center transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto flex-1 min-h-0">
-              {loginHistoryLoading && loginHistories.length === 0 ? (
-                <div className="text-center text-slate-400 text-sm py-8">加载中…</div>
-              ) : loginHistories.length === 0 ? (
-                <div className="text-center text-slate-400 text-sm py-8">暂无登录记录</div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-3 gap-2 mb-4">
-                    <div className="bg-slate-50 rounded-xl py-2.5 text-center border border-slate-100">
-                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">登录记录总数</div>
-                      <div className="text-base font-black text-[#3182ce]">
-                        {loginHistoryTotal || loginHistories.length}
-                      </div>
-                    </div>
-                    <div className="bg-slate-50 rounded-xl py-2.5 text-center border border-slate-100">
-                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">最近登录</div>
-                      <div className="text-sm font-black text-slate-700">
-                        {formatRelativeTime(loginHistories[0]?.loginAt)}
-                      </div>
-                    </div>
-                    <div className="bg-slate-50 rounded-xl py-2.5 px-1 text-center border border-slate-100">
-                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">最近归属地</div>
-                      <div className="text-xs font-black text-slate-700 truncate">
-                        {loginHistories[0]?.location || "—"}
-                      </div>
+      {/* 查看登录历史弹窗 (知阁设计系统顶级规范组件) */}
+      {loginHistoryUser && (() => {
+        const isFiltering =
+          loginHistoryFilterDevice !== "ALL" ||
+          loginHistoryFilterBrowser !== "ALL" ||
+          loginHistoryFilterTimeRange !== "ALL" ||
+          loginHistoryKeyword.trim() !== "";
+
+        const resetFilters = () => {
+          setLoginHistoryFilterDevice("ALL");
+          setLoginHistoryFilterBrowser("ALL");
+          setLoginHistoryFilterTimeRange("ALL");
+          setLoginHistoryKeyword("");
+        };
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in-50 duration-200">
+            {/* 背景遮罩 */}
+            <div
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+              onClick={() => setLoginHistoryUser(null)}
+            />
+
+            {/* 弹窗主体：扩大高度与宽度，将 80% 以上垂直空间释放给时间轴数据展示 */}
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-auto overflow-hidden border border-blue-100 h-[84vh] max-h-[800px] flex flex-col animate-in zoom-in-95 duration-200 text-left">
+              
+              {/* Header 顶部标题栏：极简单行整合，高度仅 48px */}
+              <div className="px-5 py-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-white border-b border-blue-100/70 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-[#3182ce] text-white flex items-center justify-center shadow-xs shrink-0">
+                    <History className="w-4 h-4" />
+                  </div>
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <h3 className="text-sm font-black text-slate-800 tracking-tight shrink-0">
+                      登录历史
+                    </h3>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-[#2b6cb0] border border-blue-200/80 truncate max-w-[200px]" title={loginHistoryUser.name || loginHistoryUser.email || loginHistoryUser.id}>
+                      <span className="truncate">{loginHistoryUser.name || loginHistoryUser.email || loginHistoryUser.id}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shrink-0">
+                      <Shield className="w-2.5 h-2.5 text-emerald-600" />
+                      <span>审计凭证 · 存留3年</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-xs font-semibold text-slate-400">
+                    总计 <strong className="text-[#3182ce] font-mono">{loginHistoryTotal}</strong> 次
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLoginHistoryUser(null)}
+                    className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors flex items-center justify-center cursor-pointer"
+                    title="关闭"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* 极致紧凑多维筛选工具栏（高度缩至最低，释放大面积给列表） */}
+              <div className="px-5 py-2.5 bg-slate-50/80 border-b border-slate-200/70 space-y-2 shrink-0">
+                {/* 选项组微型条：终端、时间跨度、浏览器平铺排布 */}
+                <div className="flex items-center justify-between gap-x-4 gap-y-1.5 flex-wrap text-xs">
+                  {/* 终端分类 */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[11px] font-bold text-slate-400">终端:</span>
+                    <div className="inline-flex rounded-md bg-slate-200/60 p-0.5 gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setLoginHistoryFilterDevice("ALL")}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                          loginHistoryFilterDevice === "ALL"
+                            ? "bg-white text-[#2b6cb0] shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        全部
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLoginHistoryFilterDevice("DESKTOP")}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                          loginHistoryFilterDevice === "DESKTOP"
+                            ? "bg-white text-[#2b6cb0] shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <Monitor className="w-3 h-3" />
+                        <span>桌面端</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLoginHistoryFilterDevice("MOBILE")}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                          loginHistoryFilterDevice === "MOBILE"
+                            ? "bg-white text-[#2b6cb0] shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <Smartphone className="w-3 h-3" />
+                        <span>移动端</span>
+                      </button>
                     </div>
                   </div>
+
+                  {/* 时间跨度 */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[11px] font-bold text-slate-400">时间:</span>
+                    <div className="inline-flex rounded-md bg-slate-200/60 p-0.5 gap-0.5">
+                      {(
+                        [
+                          { key: "ALL", label: "全部" },
+                          { key: "24H", label: "24小时" },
+                          { key: "7D", label: "近7天" },
+                          { key: "30D", label: "近30天" },
+                        ] as const
+                      ).map((t) => (
+                        <button
+                          key={t.key}
+                          type="button"
+                          onClick={() => setLoginHistoryFilterTimeRange(t.key)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                            loginHistoryFilterTimeRange === t.key
+                              ? "bg-white text-[#2b6cb0] shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 浏览器筛选：严格遵循用户指定的 Chrome、Edge、IE、360、QQ、其他 */}
+                  <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-400">浏览器:</span>
+                    <div className="inline-flex rounded-md bg-slate-200/60 p-0.5 gap-0.5 flex-wrap">
+                      {[
+                        { key: "ALL", label: "全部" },
+                        { key: "Chrome", label: "Chrome" },
+                        { key: "Edge", label: "Edge" },
+                        { key: "IE", label: "IE 浏览器" },
+                        { key: "360", label: "360 浏览器" },
+                        { key: "QQ", label: "QQ 浏览器" },
+                        { key: "Other", label: "其他" },
+                      ].map((b) => (
+                        <button
+                          key={b.key}
+                          type="button"
+                          onClick={() => setLoginHistoryFilterBrowser(b.key)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                            loginHistoryFilterBrowser === b.key
+                              ? "bg-white text-[#2b6cb0] shadow-2xs font-black"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 搜索输入与筛选状态指示条 */}
+                <div className="flex items-center justify-between gap-3 pt-0.5">
+                  <div className="relative w-72">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={loginHistoryKeyword}
+                      onChange={(e) => setLoginHistoryKeyword(e.target.value)}
+                      placeholder="搜索真实 IP、归属专网或设备型号..."
+                      className="w-full h-7 pl-7 pr-6 text-xs bg-white border border-slate-200/90 rounded-md outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 transition-all font-mono"
+                    />
+                    {loginHistoryKeyword && (
+                      <button
+                        type="button"
+                        onClick={() => setLoginHistoryKeyword("")}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-500 font-medium">
+                      匹配 <strong className="text-[#3182ce] font-mono">{filteredLoginHistories.length}</strong> 条（聚合为 {loginHistoryGroups.length} 组）
+                    </span>
+                    {isFiltering && (
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>重置筛选</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Body 时间轴内容区 */}
+              <div className="p-6 overflow-y-auto flex-1 min-h-[220px]">
+                {loginHistoryLoading && loginHistories.length === 0 ? (
+                  <div className="text-center text-slate-400 text-xs py-12 flex flex-col items-center gap-2">
+                    <div className="w-6 h-6 border-2 border-[#3182ce] border-t-transparent rounded-full animate-spin" />
+                    <span>正在从安全审计日志加载中...</span>
+                  </div>
+                ) : filteredLoginHistories.length === 0 ? (
+                  <div className="text-center text-slate-400 text-xs py-12 space-y-2">
+                    <p className="font-bold text-slate-600">
+                      {isFiltering ? "未匹配到符合条件的登录历史记录" : "暂无任何登录记录"}
+                    </p>
+                    {isFiltering && (
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="px-3 py-1 bg-blue-50 text-[#3182ce] rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
+                      >
+                        清空筛选条件
+                      </button>
+                    )}
+                  </div>
+                ) : (
                   <div className="relative">
                     {loginHistoryGroups.map((group, gi) => {
                       const latest = group.items[0];
-                      const { os, browser } = splitDevice(latest.device);
-                      const isMobile = /iphone|ipad|android/i.test(os);
+                      const parsed = parseClientDeviceAndBrowser(latest.device, latest.userAgent);
+                      const isMobile = latest.deviceType ? latest.deviceType === "MOBILE" : parsed.isMobile;
+                      const os = latest.osName || parsed.osName;
+                      const browser = latest.browserName || parsed.browserName;
                       const absolute = new Date(latest.loginAt).toLocaleString("zh-CN");
                       const earliest = new Date(
                         group.items[group.items.length - 1].loginAt,
                       ).toLocaleString("zh-CN");
+
                       return (
                         <div key={`${group.key}-${gi}`} className="relative pl-7 pb-4 last:pb-0">
+                          {/* 纵向时间轴连接线 */}
                           {gi !== loginHistoryGroups.length - 1 && (
                             <div className="absolute left-[9px] top-5 bottom-0 w-px bg-slate-200"></div>
                           )}
-                          <div className="absolute left-0 top-1 w-[18px] h-[18px] rounded-full bg-blue-50 border-2 border-[#3182ce] flex items-center justify-center">
+
+                          {/* 时间轴节点圆点图标 */}
+                          <div className="absolute left-0 top-1 w-[19px] h-[19px] rounded-full bg-blue-50 border-2 border-[#3182ce] flex items-center justify-center shadow-2xs">
                             {isMobile ? (
                               <Smartphone className="w-2.5 h-2.5 text-[#3182ce]" />
                             ) : (
                               <Monitor className="w-2.5 h-2.5 text-[#3182ce]" />
                             )}
                           </div>
-                          <div className="border border-slate-100 hover:border-slate-200 rounded-xl p-3 transition-colors">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
+
+                          {/* 历史记录卡片 */}
+                          <div className="border border-slate-200/80 hover:border-blue-200 rounded-xl p-3.5 bg-white transition-all shadow-2xs hover:shadow-xs space-y-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 space-y-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-sm font-black text-slate-800 break-all">
+                                  <span className="text-sm font-black text-slate-800 font-mono">
                                     {os}
                                   </span>
                                   {browser && (
-                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
+                                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200/70 rounded px-1.5 py-0.5">
                                       {browser}
                                     </span>
                                   )}
                                   {group.items.length > 1 && (
-                                    <span className="text-[10px] font-black text-[#3182ce] bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+                                    <span className="text-[10px] font-black text-[#3182ce] bg-blue-50 border border-blue-200/80 rounded-full px-2 py-0.5">
                                       连续 {group.items.length} 次
                                     </span>
                                   )}
                                 </div>
+
                                 <div
-                                  className="text-[11px] text-slate-500 mt-1 flex items-center gap-1 flex-wrap"
+                                  className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap"
                                   title={latest.userAgent || "未提供 User-Agent"}
                                 >
-                                  <Globe className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span className="font-mono">{latest.ipAddress}</span>
-                                  <span className="text-slate-300">·</span>
-                                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span>{latest.location}</span>
+                                  <span className="inline-flex items-center gap-1 font-mono text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200/60">
+                                    <Globe className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>{latest.ipAddress}</span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200/60">
+                                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>{latest.location}</span>
+                                  </span>
                                 </div>
                               </div>
+
                               <div className="text-right shrink-0">
-                                <div className="text-xs font-black text-slate-700">
+                                <div className="text-xs font-black text-slate-800">
                                   {formatRelativeTime(latest.loginAt)}
                                 </div>
                                 <div
-                                  className="text-[10px] text-slate-400 mt-0.5"
+                                  className="text-[10px] text-slate-400 font-mono mt-0.5"
                                   title={
                                     group.items.length > 1
-                                      ? `${group.items.length} 次同源登录，最早 ${earliest}`
+                                      ? `${group.items.length} 次同源连续登录，最早 ${earliest}`
                                       : absolute
                                   }
                                 >
@@ -3177,10 +3866,12 @@ export default function AdminUsersPage() {
                                 </div>
                               </div>
                             </div>
+
+                            {/* 连续登录时间跨度提示 */}
                             {group.items.length > 1 && (
-                              <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400 flex items-center gap-1">
-                                <Clock className="w-3 h-3 shrink-0" />
-                                区间：{earliest} ~ {absolute}
+                              <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+                                <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>时间跨度：{earliest} ~ {absolute}</span>
                               </div>
                             )}
                           </div>
@@ -3188,26 +3879,52 @@ export default function AdminUsersPage() {
                       );
                     })}
                   </div>
-                  {loginHistories.length < loginHistoryTotal && (
+                )}
+
+                {/* 加载更多操作栏 */}
+                {loginHistories.length < loginHistoryTotal && (
+                  <div className="pt-3 text-center">
                     <button
+                      type="button"
                       onClick={() =>
                         loginHistoryUser &&
                         handleViewLoginHistory(loginHistoryUser, loginHistoryPage + 1)
                       }
                       disabled={loginHistoryLoading}
-                      className="w-full mt-2 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                      className="h-9 px-6 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 text-slate-700 hover:text-[#3182ce] rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-2xs active:scale-95"
                     >
-                      {loginHistoryLoading
-                        ? "加载中…"
-                        : `加载更多（剩余 ${loginHistoryTotal - loginHistories.length} 条）`}
+                      {loginHistoryLoading ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 border-2 border-[#3182ce] border-t-transparent rounded-full animate-spin" />
+                          <span>正在加载更多...</span>
+                        </span>
+                      ) : (
+                        <span>加载更多记录（剩余 {loginHistoryTotal - loginHistories.length} 条）</span>
+                      )}
                     </button>
-                  )}
-                </>
-              )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer 底部栏 */}
+              <div className="px-6 py-3 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between text-xs shrink-0">
+                <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5 text-slate-400" />
+                  <span>登录日志为法律合规凭证，严禁篡改与删除</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLoginHistoryUser(null)}
+                  className="h-8 px-4 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  关闭
+                </button>
+              </div>
+
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 操作下拉菜单：通过 React Portal 渲染到 document.body，规避外层 overflow-hidden 卡片与 sticky 单元格的裁切与层级问题 */}
       {showActionMenu && (() => {
@@ -3220,8 +3937,9 @@ export default function AdminUsersPage() {
             style={{ top: actionMenuPos.top, left: actionMenuPos.left }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* 强制下线 - 对存在有效会话的活跃用户显示（是否在线不影响，挂机中的会话同样可踢），不能操作超级管理员和自己；角色权限由后端校验 */}
-            {currentMenuUser.status === "active" &&
+            {/* 强制下线 - 受控于 canResetSession：对存在有效会话的活跃用户显示，不能操作超级管理员和自己 */}
+            {canResetSession &&
+              currentMenuUser.status === "active" &&
               !!currentMenuUser.hasSession &&
               currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
@@ -3232,15 +3950,16 @@ export default function AdminUsersPage() {
                     setShowActionMenu(null);
                     setActionMenuPos(null);
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50 cursor-pointer"
                 >
                   <LogOut className="w-4 h-4 text-blue-600" />
                   强制下线
                 </button>
               )}
 
-            {/* 禁用登录 - 对离线的活跃用户显示（包括从未登录和已登录但当前离线的），不能操作超级管理员和自己；角色权限由后端校验 */}
-            {currentMenuUser.status === "active" &&
+            {/* 禁用登录 - 受控于 canUpdate：对离线的活跃用户显示，不能操作超级管理员和自己 */}
+            {canUpdate &&
+              currentMenuUser.status === "active" &&
               !currentMenuUser.hasSession &&
               currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
@@ -3251,15 +3970,16 @@ export default function AdminUsersPage() {
                     setShowActionMenu(null);
                     setActionMenuPos(null);
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-amber-50 transition-colors border-b border-slate-50"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-amber-50 transition-colors border-b border-slate-50 cursor-pointer"
                 >
                   <UserX className="w-4 h-4 text-amber-600" />
                   禁用登录
                 </button>
               )}
 
-            {/* 解禁登录 - 已停用用户恢复登录，不能操作超级管理员和自己；角色权限由后端校验 */}
-            {currentMenuUser.status === "inactive" &&
+            {/* 解禁登录 - 受控于 canUpdate：已停用用户恢复登录，不能操作超级管理员和自己 */}
+            {canUpdate &&
+              currentMenuUser.status === "inactive" &&
               currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
                 <button
@@ -3269,124 +3989,154 @@ export default function AdminUsersPage() {
                     setShowActionMenu(null);
                     setActionMenuPos(null);
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 transition-colors border-b border-slate-50"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 transition-colors border-b border-slate-50 cursor-pointer"
                 >
                   <UserCheck className="w-4 h-4 text-emerald-600" />
                   解禁登录
                 </button>
               )}
 
-            {/* 封禁/解封用户 - 不能操作超级管理员和自己 */}
-            {currentMenuUser.role !== "super_admin" &&
+            {/* 封禁用户 - 受控于 canBan：对非封禁用户显示，不能操作超级管理员和自己 */}
+            {canBan &&
+              currentMenuUser.status !== "banned" &&
+              currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={() => {
-                    if (currentMenuUser.status === "banned") {
-                      // 解封
-                      handleChangeStatus(currentMenuUser.id, "active");
-                      setShowActionMenu(null);
-                      setActionMenuPos(null);
-                    } else {
-                      // 封禁，需要选择封禁时长
-                      setBanningUser(currentMenuUser);
-                      setBanDuration("permanent"); // 默认永久
-                      setShowActionMenu(null);
-                      setActionMenuPos(null);
-                    }
+                    setBanningUser(currentMenuUser);
+                    setBanDuration("permanent"); // 默认永久
+                    setShowActionMenu(null);
+                    setActionMenuPos(null);
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors border-b border-slate-50 ${
-                    currentMenuUser.status === "banned"
-                      ? "text-slate-700 hover:bg-emerald-50"
-                      : "text-red-600 hover:bg-red-50"
-                  }`}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors border-b border-slate-50 cursor-pointer"
                 >
-                  {currentMenuUser.status === "banned" ? (
-                    <>
-                      <UserCheck className="w-4 h-4 text-emerald-600" />
-                      <span>解封用户</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserX className="w-4 h-4 text-red-600" />
-                      <span>封禁用户</span>
-                    </>
-                  )}
+                  <UserX className="w-4 h-4 text-red-600" />
+                  <span>封禁用户</span>
                 </button>
               )}
 
-            {/* 新增：单用户全局运营操作（与通知/算力点/会员/安全模块闭环），不能操作超级管理员和自己 */}
-            {currentMenuUser.role !== "super_admin" &&
+            {/* 解封用户 - 受控于 canUnban：对已封禁用户显示，不能操作超级管理员和自己 */}
+            {canUnban &&
+              currentMenuUser.status === "banned" &&
+              currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
+                <button
+                  onClick={() => {
+                    handleChangeStatus(currentMenuUser.id, "active");
+                    setShowActionMenu(null);
+                    setActionMenuPos(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 transition-colors border-b border-slate-50 cursor-pointer"
+                >
+                  <UserCheck className="w-4 h-4 text-emerald-600" />
+                  <span>解封用户</span>
+                </button>
+              )}
+
+            {/* 修改角色身份 - 受控于 canChangeRole：不能操作超级管理员和自己 */}
+            {canChangeRole &&
+              currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId && (
+                <button
+                  onClick={() => {
+                    handleEdit(currentMenuUser);
+                    setShowActionMenu(null);
+                    setActionMenuPos(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50 cursor-pointer"
+                >
+                  <Shield className="w-4 h-4 text-[#3182ce]" />
+                  <span>修改角色身份</span>
+                </button>
+              )}
+
+            {/* 单用户高级运营操作分区（重置密码 / 发送通知 / 调整算力 / 查看登录历史） */}
+            {currentMenuUser.role !== "super_admin" &&
+              currentMenuUser.id !== currentUserId &&
+              (canSecurityReset ||
+                hasPermission("announcement:publish") ||
+                hasPermission("order:update") ||
+                hasPermission("audit:read") ||
+                isSuperAdmin) && (
                 <>
-                  <div className="my-2 border-t border-slate-100" />
+                  <div className="my-1 border-t border-slate-100" />
 
-                  {/* 重置密码 */}
-                  <button
-                    onClick={() => {
-                      handleResetPassword(currentMenuUser);
-                      setShowActionMenu(null);
-                      setActionMenuPos(null);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
-                  >
-                    <KeyRound className="w-4 h-4 text-[#3182ce]" />
-                    重置密码
-                  </button>
+                  {/* 重置密码 - 受控于 canSecurityReset */}
+                  {canSecurityReset && (
+                    <button
+                      onClick={() => {
+                        handleResetPassword(currentMenuUser);
+                        setShowActionMenu(null);
+                        setActionMenuPos(null);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50 cursor-pointer"
+                    >
+                      <KeyRound className="w-4 h-4 text-[#3182ce]" />
+                      重置密码
+                    </button>
+                  )}
 
-                  {/* 发送通知 */}
-                  <button
-                    onClick={() => {
-                      handleSendNotify(currentMenuUser);
-                      setShowActionMenu(null);
-                      setActionMenuPos(null);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
-                  >
-                    <Bell className="w-4 h-4 text-[#3182ce]" />
-                    发送通知
-                  </button>
+                  {/* 发送通知 - 受控于 announcement:publish 或超管 */}
+                  {(hasPermission("announcement:publish") || isSuperAdmin) && (
+                    <button
+                      onClick={() => {
+                        handleSendNotify(currentMenuUser);
+                        setShowActionMenu(null);
+                        setActionMenuPos(null);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50 cursor-pointer"
+                    >
+                      <Bell className="w-4 h-4 text-[#3182ce]" />
+                      发送通知
+                    </button>
+                  )}
 
-                  {/* 调整算力点 */}
-                  <button
-                    onClick={() => {
-                      handleAdjustPoints(currentMenuUser);
-                      setShowActionMenu(null);
-                      setActionMenuPos(null);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50"
-                  >
-                    <Zap className="w-4 h-4 text-[#3182ce]" />
-                    调整算力点
-                  </button>
+                  {/* 调整算力点 - 受控于 order:update 或超管 */}
+                  {(hasPermission("order:update") || isSuperAdmin) && (
+                    <button
+                      onClick={() => {
+                        handleAdjustPoints(currentMenuUser);
+                        setShowActionMenu(null);
+                        setActionMenuPos(null);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors border-b border-slate-50 cursor-pointer"
+                    >
+                      <Zap className="w-4 h-4 text-[#3182ce]" />
+                      调整算力点
+                    </button>
+                  )}
 
-                  {/* 查看登录历史 */}
-                  <button
-                    onClick={() => {
-                      handleViewLoginHistory(currentMenuUser);
-                      setShowActionMenu(null);
-                      setActionMenuPos(null);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors"
-                  >
-                    <History className="w-4 h-4 text-[#3182ce]" />
-                    查看登录历史
-                  </button>
+                  {/* 查看登录历史 - 受控于 audit:read 或超管 */}
+                  {(hasPermission("audit:read") || isSuperAdmin) && (
+                    <button
+                      onClick={() => {
+                        handleViewLoginHistory(currentMenuUser);
+                        setShowActionMenu(null);
+                        setActionMenuPos(null);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      <History className="w-4 h-4 text-[#3182ce]" />
+                      查看登录历史
+                    </button>
+                  )}
                 </>
               )}
 
-            {/* 删除用户 - 只对已封禁(banned)用户显示，不能删除超级管理员和自己 */}
-            {currentMenuUser.status === "banned" &&
+            {/* 删除用户 - 受控于 isSuperAdmin：只对已封禁(banned)用户显示，不能删除超级管理员和自己 */}
+            {isSuperAdmin &&
+              currentMenuUser.status === "banned" &&
               currentMenuUser.role !== "super_admin" &&
               currentMenuUser.id !== currentUserId && (
                 <>
-                  <div className="my-2 border-t border-slate-100" />
+                  <div className="my-1 border-t border-slate-100" />
                   <button
                     onClick={() => {
                       handleDelete(currentMenuUser.id);
                       setShowActionMenu(null);
                       setActionMenuPos(null);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                     删除用户
@@ -3427,12 +4177,12 @@ export default function AdminUsersPage() {
                     </span>
                   </div>
 
-                  {/* 情况 C：企业唯一所有者 —— 红线拦截 */}
-                  {deletePreview.case === "ENTERPRISE_SOLE_OWNER" && (
+                  {/* 平台安全红线拦截（未封禁或企业唯一所有者） */}
+                  {(deletePreview.case === "ENTERPRISE_SOLE_OWNER" || (deletePreview.blockers && deletePreview.blockers.length > 0)) && (
                     <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                       <div className="flex items-center gap-2 font-bold mb-1">
                         <AlertTriangle className="w-4 h-4" />
-                        操作被拦截（企业空间唯一所有者）
+                        操作被拦截（平台安全规则约束）
                       </div>
                       {deletePreview.blockers.map((b: string, i: number) => (
                         <p key={i} className="leading-relaxed">{b}</p>
@@ -3566,6 +4316,7 @@ export default function AdminUsersPage() {
                     disabled={
                       deleting ||
                       deletePreview.case === "ENTERPRISE_SOLE_OWNER" ||
+                      (deletePreview.blockers && deletePreview.blockers.length > 0) ||
                       (deletePreview.requiresTransferOrArchive && !transferToUserId && !archivePersonal)
                     }
                     className="flex-1 rounded-xl bg-gradient-to-r from-red-600 to-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"

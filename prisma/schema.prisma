@@ -554,6 +554,10 @@ model userpreference {
   topP             Float    @default(0.9)
   frequencyPenalty Float    @default(0)
   presencePenalty  Float    @default(0)
+  /// 高危操作二次验证(2FA)开关：开启后敏感操作需二次身份验证
+  twoFactorEnabled Boolean  @default(false)
+  /// 新设备登录与异地登录安全告警开关
+  loginAlertEnabled Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime
   user             user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserPreference_userId_fkey")

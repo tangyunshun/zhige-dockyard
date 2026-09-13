@@ -23,16 +23,49 @@ export async function GET(request: NextRequest) {
       if (!documentId) {
         return NextResponse.json({ error: "缺少文档 ID" }, { status: 400 });
       }
-      const history = await prisma.systemdocumenthistory.findMany({
-        where: { documentId },
-        include: {
-          user: {
-            select: { id: true, name: true, email: true },
+      const [history, mainDoc] = await Promise.all([
+        prisma.systemdocumenthistory.findMany({
+          where: { documentId },
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
           },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-      return NextResponse.json({ success: true, data: history });
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.systemdocument.findUnique({
+          where: { id: documentId },
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        }),
+      ]);
+
+      if (!mainDoc) {
+        return NextResponse.json({ error: "未找到目标文档" }, { status: 404 });
+      }
+
+      // 若历史快照表尚无记录（刚新建尚未经历二次编辑），自动以主文档数据构建 V1.0 初始创建快照
+      const enrichedHistory = [...history];
+      if (enrichedHistory.length === 0) {
+        enrichedHistory.push({
+          id: `init-${mainDoc.id}`,
+          documentId: mainDoc.id,
+          title: mainDoc.title,
+          content: mainDoc.content,
+          category: mainDoc.category,
+          tags: mainDoc.tags,
+          isPublished: mainDoc.isPublished,
+          sortOrder: mainDoc.sortOrder,
+          editorId: mainDoc.authorId,
+          createdAt: mainDoc.createdAt,
+          user: mainDoc.user,
+        } as any);
+      }
+
+      return NextResponse.json({ success: true, data: enrichedHistory });
     }
 
     const page = parseInt(searchParams.get("page") || "1");
@@ -202,6 +235,26 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 写入第一条初始创建快照，确保历史版本追踪链路从首版即形成闭环
+    await prisma.systemdocumenthistory.create({
+      data: {
+        documentId: document.id,
+        title: document.title,
+        content: document.content,
+        category: document.category,
+        tags: document.tags,
+        summary: document.summary,
+        codeSample: document.codeSample,
+        relatedLink: document.relatedLink,
+        helpfulCount: document.helpfulCount,
+        isPublished: document.isPublished,
+        sortOrder: document.sortOrder,
+        editorId: userId,
+      },
+    }).catch((err) => {
+      console.warn("[文档历史快照] 记录初始创建版本非阻断提示:", err);
+    });
+
     return NextResponse.json({ success: true, data: document });
   } catch (error) {
     console.error("Create document error:", error);
@@ -248,6 +301,23 @@ export async function PATCH(request: NextRequest) {
     });
     if (!current) {
       return NextResponse.json({ error: "文档不存在或已被删除" }, { status: 404 });
+    }
+
+    // 核心安全约束：已发布上线状态下禁止直接修改正文与标题内容，需先下架为草稿
+    const isEditingContent =
+      (title !== undefined && title.trim() !== current.title) ||
+      (content !== undefined && content !== current.content) ||
+      (category !== undefined && category !== current.category) ||
+      (summary !== undefined && summary !== current.summary) ||
+      (codeSample !== undefined && codeSample !== current.codeSample);
+
+    if (current.isPublished && isEditingContent && isPublished !== false) {
+      return NextResponse.json(
+        {
+          error: `文档《${current.title}》当前处于已发布上线状态，禁止直接修改正文。请先下架为草稿后再进行编辑修改与重新发布上线。`,
+        },
+        { status: 400 }
+      );
     }
 
     const newTitle = title !== undefined ? title.trim() : current.title;

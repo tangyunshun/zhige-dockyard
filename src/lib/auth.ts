@@ -208,8 +208,8 @@ export async function validateUser(
       return { valid: false, error: "ACCOUNT_DISABLED" };
     }
 
-    // 3. 系统维护模式（G-02）：维护中全局拦截
-    if (await isMaintenanceMode()) {
+    // 3. 系统维护模式（G-02）：仅拦截非管理员用户；管理员角色放行以保障后台运维与应急恢复
+    if (!isAdminRole(user.role) && (await isMaintenanceMode())) {
       return { valid: false, error: "MAINTENANCE_MODE" };
     }
 

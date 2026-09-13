@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const search = searchParams.get("search") || "";
+    const status = searchParams.get("status") || "";
+    const createDateStart = searchParams.get("createDateStart") || "";
+    const createDateEnd = searchParams.get("createDateEnd") || "";
 
     const skip = (page - 1) * limit;
 
@@ -48,11 +51,27 @@ export async function GET(request: NextRequest) {
 
     const totalComponents = await prisma.componentcatalog.count();
 
-    // 搜索过滤（按名称）
+    // 搜索与状态、日期过滤
     let filtered = categories;
     if (search) {
       const kw = search.toLowerCase();
-      filtered = filtered.filter((c) => c.name.toLowerCase().includes(kw));
+      filtered = filtered.filter(
+        (c) => c.name.toLowerCase().includes(kw) || c.key.toLowerCase().includes(kw)
+      );
+    }
+    if (status === "active") {
+      filtered = filtered.filter((c) => c.isActive);
+    } else if (status === "inactive") {
+      filtered = filtered.filter((c) => !c.isActive);
+    }
+    if (createDateStart) {
+      const start = new Date(createDateStart);
+      filtered = filtered.filter((c) => new Date(c.createdAt) >= start);
+    }
+    if (createDateEnd) {
+      const end = new Date(createDateEnd);
+      end.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((c) => new Date(c.createdAt) <= end);
     }
 
     const buildStage = (cat: {
@@ -292,7 +311,24 @@ async function handleUpdateStage(request: NextRequest) {
     if (range !== undefined) data.range = range;
     if (sortOrder !== undefined) data.sortOrder = Number(sortOrder);
     // 启用/停用切换：启用(isActive=true)或禁用(isActive=false)
-    if (isActive !== undefined) data.isActive = Boolean(isActive);
+    if (isActive !== undefined) {
+      const nextActive = Boolean(isActive);
+      if (!nextActive) {
+        // 安全红线校验：若阶段名下仍有组件，禁止直接停用/禁用，必须先解绑卸载
+        const compCount = await prisma.componentcatalog.count({
+          where: { category: stageId },
+        });
+        if (compCount > 0) {
+          return NextResponse.json(
+            {
+              error: `该阶段名下仍挂载有 ${compCount} 个组件，无法直接禁用！必须先将关联组件卸载或迁移至其他阶段后再禁用。`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+      data.isActive = nextActive;
+    }
 
     const updated = await prisma.componentcategory.update({
       where: { key: stageId },

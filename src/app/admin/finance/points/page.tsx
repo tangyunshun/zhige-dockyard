@@ -290,7 +290,14 @@ export default function AdminPointsLedgerPage() {
                         <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-600 whitespace-nowrap">
                           ¥{(Number(r.amountCents || 0) / 100).toFixed(2)}
                         </td>
-                        <td className="px-4 py-3.5 whitespace-nowrap text-slate-500 font-medium">{r.operator}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-slate-500 font-medium">
+                          {!r.operator ||
+                          r.operator.toLowerCase() === "superadmin" ||
+                          r.operator.toLowerCase() === "super_admin" ||
+                          r.operator.toLowerCase() === "admin"
+                            ? "系统管理员"
+                            : r.operator}
+                        </td>
                       </tr>
                     );
                   })}

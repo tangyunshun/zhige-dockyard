@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
 import { getAuthToken } from "@/utils/auth";
-import { UNIT_EXPLAIN_HINT, formatModelRateHint } from "@/lib/model-rate";
 import {
   Settings,
   ArrowLeft,
@@ -681,7 +680,7 @@ export default function PersonalWorkspaceSettings() {
                       {/* 默认引擎 */}
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-3">
-                          默认引擎
+                          生成引擎
                         </label>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           {[
@@ -742,24 +741,18 @@ export default function PersonalWorkspaceSettings() {
                           ))}
                         </div>
 
-                        {/* 折算说明：全系统只用「算力点」，1 token = 1 算力点，各引擎按自身官方价折算 */}
+                        {/* 折算说明：全系统统一以「算力点」结算，避免 AI / token 术语 */}
                         <p className="mt-2.5 text-[11px] font-bold text-slate-500 leading-relaxed">
-                          {(() => {
-                            const engine = preferences.aiEngine || "zhige";
-                            if (engine === "custom") {
-                              return `${UNIT_EXPLAIN_HINT}自带 API 密钥时按您配置的厂商价格折算，可在后台「算力计价」中核对。`;
-                            }
-                            return formatModelRateHint(
-                              engine === "deepseek" ? "deepseek" : "zhige"
-                            );
-                          })()}
+                          {preferences.aiEngine === "custom"
+                            ? "自带密钥时按您配置的厂商官方单价折算，可在后台「算力计价」中核对。"
+                            : `已选「${preferences.aiEngine === "deepseek" ? "DeepSeek-V3" : "知阁自研引擎"}」生成引擎：全系统统一以「算力点」结算，1 个生成单元 = 1 个算力点，具体单价可在后台「算力计价」核对。`}
                         </p>
                       </div>
 
                       {/* 全局 System Prompt */}
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">
-                          全局 System Prompt
+                          默认对话引导语
                         </label>
                         <textarea
                           value={preferences.systemPrompt}
@@ -769,7 +762,7 @@ export default function PersonalWorkspaceSettings() {
                               systemPrompt: e.target.value,
                             })
                           }
-                          placeholder="设定该沙盒空间的默认角色，例如：'你是一位资深的全栈架构师，擅长...'"
+                          placeholder="设定该工作空间的默认对话角色，例如：'你是一位资深的全栈工程师，擅长...'"
                           rows={5}
                           className="w-full px-[14px] py-[12px] rounded-[8px] text-[14px] border-[1.5px] border-[#e2e8f0] bg-white/60 backdrop-blur-sm focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 transition-all outline-none resize-none"
                         />

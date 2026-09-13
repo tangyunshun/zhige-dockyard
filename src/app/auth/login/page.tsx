@@ -49,6 +49,7 @@ function LoginForm() {
   const [showAppealModal, setShowAppealModal] = useState(false);
   const [qrModalChannel, setQrModalChannel] = useState<OAuthChannelMeta | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isSystemInMaintenance, setIsSystemInMaintenance] = useState(false);
   const [redirectPath, setRedirectPath] = useState("/");
   const [formData, setFormData] = useState({
     account: "",
@@ -100,6 +101,16 @@ function LoginForm() {
       channels: [],
     },
   });
+
+  // 第三方登录平台目录（取自数据库，与后台「系统设置」同源；加载失败时回退内置默认）
+  const [providerCatalog, setProviderCatalog] = useState<OAuthChannelMeta[]>([]);
+
+  /** 优先使用数据库目录，未取到时回退内置规范，保证登录流程始终可用 */
+  const getChannelMeta = (typeOrId: string): OAuthChannelMeta => {
+    const normalized = (typeOrId || "").toLowerCase();
+    const hit = providerCatalog.find((p) => p.type === normalized || p.id === normalized);
+    return hit || getOAuthChannelMeta(normalized);
+  };
 
   const [accountType, setAccountType] = useState<
     "phone" | "email" | "username" | "unknown"
@@ -204,6 +215,26 @@ function LoginForm() {
   // 检查用户是否已登录，如果已登录则重定向
   useEffect(() => {
     const checkLoggedIn = async () => {
+      // 维护模式拦截：严格依据真实系统停机维护状态同步；非管理员在维护期直接重定向至全屏维护页
+      const isAdminLogin = searchParams.get("admin") === "true";
+      try {
+        const mRes = await fetch("/api/system/check-maintenance");
+        if (mRes.ok) {
+          const mData = await mRes.json();
+          const inMaint = Boolean(mData.inMaintenance);
+          setIsSystemInMaintenance(inMaint);
+          if (inMaint && !isAdminLogin) {
+            window.location.href = "/maintenance";
+            return;
+          }
+        } else {
+          setIsSystemInMaintenance(false);
+        }
+      } catch {
+        // 容错放行
+        setIsSystemInMaintenance(false);
+      }
+
       // 快速检查：如果 localStorage 没有有效 JWT 凭证，直接显示登录页
       const authToken = getAuthToken();
 
@@ -253,6 +284,24 @@ function LoginForm() {
 
     return () => clearTimeout(timer);
   }, [searchParams]);
+
+  // 维护状态动态复查：停服结束时实时更新状态，让“返回维护公告”自动无缝变为“返回首页”
+  useEffect(() => {
+    const pollMaintenance = async () => {
+      try {
+        const res = await fetch(`/api/system/check-maintenance?t=${Date.now()}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setIsSystemInMaintenance(Boolean(data.inMaintenance));
+        }
+      } catch {
+        // 静默
+      }
+    };
+
+    const interval = setInterval(pollMaintenance, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // 检查是否有保存的原页面 URL，以及是否是刚刚被重定向过来的
   useEffect(() => {
@@ -329,6 +378,18 @@ function LoginForm() {
         }
       })
       .catch((err) => console.warn("获取公共系统配置异常:", err));
+  }, []);
+
+  // 加载第三方登录平台目录（与后台「系统设置」共用同一份数据库配置）
+  useEffect(() => {
+    fetch("/api/auth/oauth-providers")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.catalog) && data.catalog.length > 0) {
+          setProviderCatalog(data.catalog);
+        }
+      })
+      .catch((err) => console.warn("获取第三方登录平台目录异常，回退内置默认:", err));
   }, []);
 
   // 监听 OAuth 错误提示
@@ -609,7 +670,7 @@ function LoginForm() {
 
   // 微信登录处理（按国内微信开放平台规范：纯扫码型，直接呼出微信二维码模态框）
   const handleWechatLogin = () => {
-    const meta = getOAuthChannelMeta("wechat");
+    const meta = getChannelMeta("wechat");
     setQrModalChannel(meta);
   };
 
@@ -934,7 +995,18 @@ function LoginForm() {
 
           let finalPath = targetPath;
 
-          if (isAdminPage && !isAdminUser) {
+          if (isSystemInMaintenance) {
+            // 系统处于维护中
+            if (!isAdminUser) {
+              setGlobalError("系统正在停机维护升级中，普通用户暂无法进入系统");
+              setTimeout(() => {
+                window.location.href = "/maintenance";
+              }, 1500);
+              return;
+            }
+            // 管理员用户进入运维中枢
+            finalPath = "/admin/maintenance";
+          } else if (isAdminPage && !isAdminUser) {
             // 普通用户尝试访问管理员页面，重定向到用户首页
             console.log("普通用户尝试访问管理员页面，重定向到用户首页");
             finalPath = "/workspace-hub";
@@ -943,6 +1015,8 @@ function LoginForm() {
             const explicitRedirect = searchParams.get("redirect");
             if (explicitRedirect && explicitRedirect !== "/") {
               finalPath = explicitRedirect;
+            } else if (searchParams.get("admin") === "true") {
+              finalPath = "/admin/maintenance";
             } else {
               finalPath = "/workspace-hub";
             }
@@ -1117,13 +1191,28 @@ function LoginForm() {
         <div className="md:col-span-3 p-6 md:p-8">
           <div className="mb-6 flex items-center justify-between">
             <button
-              onClick={() => router.push("/")}
+              onClick={() => {
+                if (isSystemInMaintenance) {
+                  router.push("/maintenance");
+                } else {
+                  router.push("/");
+                }
+              }}
               className="group flex items-center gap-1.5 text-slate-600 hover:text-[#3182ce] transition-colors text-sm cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-              返回首页
+              {isSystemInMaintenance ? "返回维护公告" : "返回首页"}
             </button>
-            <Logo variant="light" />
+            <Logo
+              variant="light"
+              onClick={() => {
+                if (isSystemInMaintenance) {
+                  router.push("/maintenance");
+                } else {
+                  router.push("/");
+                }
+              }}
+            />
           </div>
 
           <div className="flex justify-between items-end mb-6">
@@ -1647,7 +1736,7 @@ function LoginForm() {
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   {activeChannels.map((channel) => {
-                    const meta = getOAuthChannelMeta(channel.type || channel.id);
+                    const meta = getChannelMeta(channel.type || channel.id);
 
                     const handleChannelClick = () => {
                       // 纯扫码型（如微信）或混合双模型（如 QQ、微博、飞书、钉钉）：统一弹出扫码快捷登录弹窗

@@ -38,7 +38,24 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ apiKeys: apiKeys.map(toPublic) });
+    // 统计每个 Key 的调用次数（来源：开放接口鉴权时写入的 APIKey:Use 审计日志）
+    const usageLogs = await prisma.operationlog.findMany({
+      where: { userId, action: "APIKey:Use" },
+      select: { details: true },
+    });
+    const usageMap: Record<string, number> = {};
+    for (const log of usageLogs) {
+      const details = log.details as any;
+      const keyId = details?.keyId;
+      if (keyId) usageMap[keyId] = (usageMap[keyId] || 0) + 1;
+    }
+
+    return NextResponse.json({
+      apiKeys: apiKeys.map((k) => ({
+        ...toPublic(k),
+        usageCount: usageMap[k.id] || 0,
+      })),
+    });
   } catch (error) {
     console.error("获取 API Keys 错误:", error);
     return NextResponse.json({ error: "获取 API Keys 失败" }, { status: 500 });
@@ -59,10 +76,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "缺少 API Key 名称" }, { status: 400 });
     }
 
-    // 生成 API Key
-    const keyPrefix = "sk-";
+    // 生成 API Key：前缀为可识别且唯一的 "sk-" + 8 位随机字符，
+    // 修复此前所有 Key 前缀恒为 "sk-"、列表中无法区分与检索的业务逻辑缺陷
     const keyBody = uuidv4().replace(/-/g, "");
-    const apiKey = keyPrefix + keyBody;
+    const apiKey = "sk-" + keyBody;
+    const keyPrefix = apiKey.slice(0, 11);
 
     // 哈希处理
     const hashedKey = await bcrypt.hash(apiKey, 10);

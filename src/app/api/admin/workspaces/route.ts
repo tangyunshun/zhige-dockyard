@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    // 严格校验工作空间读取权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "workspace:read");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const { searchParams } = new URL(request.url);
@@ -53,26 +46,45 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 统计所有工作空间的组件数量
-    const allWorkspacesWithComponentCount = await Promise.all(
-      allWorkspaces.map(async (workspace) => {
-        const members = await prisma.workspacemember.findMany({
-          where: { workspaceId: workspace.id },
-          select: { userId: true },
-        });
-        const memberIds = members.map((m) => m.userId);
-        const componentCountValue = await prisma.componenttask.count({
-          where: { userId: { in: memberIds } },
-        });
-        // 剔除原始 workspacemember（含 BigInt 字段），避免序列化报错
-        const { workspacemember, ...workspaceBase } = workspace;
-        return {
-          ...workspaceBase,
-          componentCount: componentCountValue,
-          members: workspacemember,
-        };
-      }),
-    );
+    // 统计所有工作空间实际装配启用的组件数量
+    const allWorkspaceIds = allWorkspaces.map((w) => w.id);
+    const allUsages = await prisma.componentusage.findMany({
+      where: {
+        workspaceId: { in: allWorkspaceIds },
+      },
+      select: {
+        workspaceId: true,
+        componentId: true,
+        metadata: true,
+      },
+    });
+
+    const allWsCompMap = new Map<string, Set<string>>();
+    allUsages.forEach((u) => {
+      if (!u.workspaceId || !u.componentId) return;
+      let enabled = true;
+      if (u.metadata) {
+        try {
+          const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : u.metadata;
+          if (meta && meta.enabled === false) enabled = false;
+        } catch {}
+      }
+      if (enabled) {
+        if (!allWsCompMap.has(u.workspaceId)) allWsCompMap.set(u.workspaceId, new Set());
+        allWsCompMap.get(u.workspaceId)!.add(u.componentId);
+      }
+    });
+
+    const allWorkspacesWithComponentCount = allWorkspaces.map((workspace) => {
+      const componentCountValue = allWsCompMap.get(workspace.id)?.size || 0;
+      // 剔除原始 workspacemember（含 BigInt 字段），避免序列化报错
+      const { workspacemember, ...workspaceBase } = workspace;
+      return {
+        ...workspaceBase,
+        componentCount: componentCountValue,
+        members: workspacemember,
+      };
+    });
 
     // 再获取筛选后的工作空间（用于列表显示）
     const [workspaces, total] = await Promise.all([
@@ -123,17 +135,38 @@ export async function GET(request: NextRequest) {
       } catch {}
     });
 
-    // 统计筛选后的工作空间的组件数量与算力配额
+    // 统计筛选后的工作空间的真实装配组件数量与算力配额
+    const pageWorkspaceIds = workspaces.map((w) => w.id);
+    const pageUsages = await prisma.componentusage.findMany({
+      where: {
+        workspaceId: { in: pageWorkspaceIds },
+      },
+      select: {
+        workspaceId: true,
+        componentId: true,
+        metadata: true,
+      },
+    });
+
+    const pageWsCompMap = new Map<string, Set<string>>();
+    pageUsages.forEach((u) => {
+      if (!u.workspaceId || !u.componentId) return;
+      let enabled = true;
+      if (u.metadata) {
+        try {
+          const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : u.metadata;
+          if (meta && meta.enabled === false) enabled = false;
+        } catch {}
+      }
+      if (enabled) {
+        if (!pageWsCompMap.has(u.workspaceId)) pageWsCompMap.set(u.workspaceId, new Set());
+        pageWsCompMap.get(u.workspaceId)!.add(u.componentId);
+      }
+    });
+
     const workspacesWithComponentCount = await Promise.all(
       workspaces.map(async (workspace) => {
-        const members = await prisma.workspacemember.findMany({
-          where: { workspaceId: workspace.id },
-          select: { userId: true },
-        });
-        const memberIds = members.map((m) => m.userId);
-        const componentCountValue = await prisma.componenttask.count({
-          where: { userId: { in: memberIds } },
-        });
+        const componentCountValue = pageWsCompMap.get(workspace.id)?.size || 0;
         let quota = await prisma.workspacequota.findUnique({
           where: { workspaceId: workspace.id },
           select: {
@@ -323,18 +356,13 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    // 严格校验超级管理员权限（工作空间解散与销毁为高危动作，仅限超级管理员）
+    const authCheck = await requirePlatformPermission(request, "workspace:status_update");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    if (!authCheck.isSuperAdmin) {
+      return NextResponse.json({ error: "工作空间彻底解散仅限超级管理员执行" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

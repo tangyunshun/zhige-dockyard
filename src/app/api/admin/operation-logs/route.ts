@@ -11,6 +11,117 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const detailId = searchParams.get("id");
+
+    // 单条审计流水详情实时精准查询（支持关联操作人、工作空间、关联目标）
+    if (detailId) {
+      const log = await prisma.operationlog.findUnique({
+        where: { id: detailId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar: true,
+              role: true,
+              status: true,
+              phone: true,
+              createdAt: true,
+            },
+          },
+        },
+      });
+
+      if (!log) {
+        return NextResponse.json({ error: "未找到该条操作审计日志记录" }, { status: 404 });
+      }
+
+      // 关联工作空间实体
+      let workspace: any = null;
+      if (log.workspaceId) {
+        workspace = await prisma.workspace.findUnique({
+          where: { id: log.workspaceId },
+          select: {
+            id: true,
+            name: true,
+            plan: true,
+            type: true,
+            description: true,
+          },
+        }).catch(() => null);
+      }
+
+      // 解析 details 深度扩展关联
+      let parsedDetails: any = null;
+      try {
+        parsedDetails = typeof log.details === "string" ? JSON.parse(log.details) : log.details;
+      } catch {
+        parsedDetails = log.details;
+      }
+
+      let targetUser: any = null;
+      let targetUsers: any[] = [];
+      let targetComponent: any = null;
+      let targetDocument: any = null;
+
+      if (parsedDetails && typeof parsedDetails === "object") {
+        const targetUserIdsList: string[] = [];
+        if (parsedDetails.targetUserId) targetUserIdsList.push(parsedDetails.targetUserId);
+        if (parsedDetails.kickedUserId) targetUserIdsList.push(parsedDetails.kickedUserId);
+        if (parsedDetails.userId) targetUserIdsList.push(parsedDetails.userId);
+        if (Array.isArray(parsedDetails.targetUserIds)) {
+          targetUserIdsList.push(...parsedDetails.targetUserIds);
+        }
+        const uniqueUserIds = Array.from(new Set(targetUserIdsList.filter((id) => typeof id === "string" && id.trim())));
+        if (uniqueUserIds.length > 0) {
+          targetUsers = await prisma.user.findMany({
+            where: { id: { in: uniqueUserIds } },
+            select: { id: true, name: true, email: true, role: true, avatar: true },
+          }).catch(() => []);
+          targetUser = targetUsers.find((u) => u.id !== log.userId) || targetUsers[0] || null;
+        }
+
+        const componentId = parsedDetails.componentId;
+        if (componentId) {
+          targetComponent = await prisma.componentcatalog.findUnique({
+            where: { id: componentId },
+            select: { id: true, name: true, category: true },
+          }).catch(() => null);
+        }
+
+        const documentId = parsedDetails.documentId || parsedDetails.knowledgeId;
+        if (documentId) {
+          targetDocument = await prisma.systemdocument.findUnique({
+            where: { id: documentId },
+            select: { id: true, title: true, category: true, version: true, status: true },
+          }).catch(() => null);
+        }
+      }
+
+      // 清洗 IP
+      let cleanIp = log.ipAddress || "";
+      if (!cleanIp || cleanIp === "::1" || cleanIp === "127.0.0.1" || cleanIp.includes("127.0.0.1")) {
+        cleanIp = "127.0.0.1 (本地局域网)";
+      } else if (cleanIp.startsWith("::ffff:")) {
+        const v4 = cleanIp.replace("::ffff:", "");
+        cleanIp = v4 === "127.0.0.1" ? "127.0.0.1 (本地局域网)" : v4;
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...log,
+          ipAddress: cleanIp,
+          workspace,
+          targetUser,
+          targetUsers,
+          targetComponent,
+          targetDocument,
+        },
+      });
+    }
+
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
     const actionType = searchParams.get("action") || "";
@@ -102,7 +213,47 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    // 清洗 IP 地址，杜绝 ::1
+    // 批量提取涉及的目标实体 ID
+    const targetUserIds = new Set<string>();
+    const targetCompIds = new Set<string>();
+
+    for (const l of logs) {
+      let d: any = l.details;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          d = null;
+        }
+      }
+      if (d && typeof d === "object") {
+        const uid = d.targetUserId || d.kickedUserId || d.userId;
+        if (uid && typeof uid === "string" && uid !== l.userId) targetUserIds.add(uid);
+        const cid = d.componentId || d.targetComponentId;
+        if (cid && typeof cid === "string") targetCompIds.add(cid);
+      }
+    }
+
+    // 批量并发查询目标用户与组件信息
+    const [targetUsers, targetComponents] = await Promise.all([
+      targetUserIds.size > 0
+        ? prisma.user.findMany({
+            where: { id: { in: Array.from(targetUserIds) } },
+            select: { id: true, name: true, email: true, role: true },
+          })
+        : [],
+      targetCompIds.size > 0
+        ? prisma.componentcatalog.findMany({
+            where: { id: { in: Array.from(targetCompIds) } },
+            select: { id: true, name: true, category: true },
+          })
+        : [],
+    ]);
+
+    const userMap = new Map(targetUsers.map((u) => [u.id, u]));
+    const compMap = new Map(targetComponents.map((c) => [c.id, c]));
+
+    // 清洗 IP 地址并挂载关联实体
     const enrichedLogs = logs.map((log) => {
       let cleanIp = log.ipAddress || "";
       if (!cleanIp || cleanIp === "::1" || cleanIp === "127.0.0.1" || cleanIp.includes("127.0.0.1")) {
@@ -111,9 +262,23 @@ export async function GET(request: NextRequest) {
         const v4 = cleanIp.replace("::ffff:", "");
         cleanIp = v4 === "127.0.0.1" ? "127.0.0.1 (本地局域网)" : v4;
       }
+
+      let d: any = log.details;
+      if (typeof d === "string") {
+        try {
+          d = JSON.parse(d);
+        } catch {
+          d = null;
+        }
+      }
+      const targetUserId = d?.targetUserId || d?.kickedUserId || d?.userId;
+      const componentId = d?.componentId || d?.targetComponentId;
+
       return {
         ...log,
         ipAddress: cleanIp,
+        targetUser: targetUserId ? userMap.get(targetUserId) || null : null,
+        targetComponent: componentId ? compMap.get(componentId) || null : null,
       };
     });
 

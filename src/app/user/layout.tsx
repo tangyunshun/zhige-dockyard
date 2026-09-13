@@ -134,13 +134,20 @@ export default function UserDashboardLayout({
         },
       ];
 
-      // 企业用户额外显示团队管理
+      // 企业用户额外显示团队管理（锚定在「工作空间」之前，避免菜单顺序变化导致错位）
       if (isEnterprise) {
-        baseMenuItems.splice(5, 0, {
+        const anchorIndex = baseMenuItems.findIndex((m) => m.href === "/user/workspaces");
+        baseMenuItems.splice(anchorIndex >= 0 ? anchorIndex : baseMenuItems.length, 0, {
           icon: Users,
           label: "团队管理",
           href: "/user/team",
           description: "团队成员、协作管理",
+        });
+        baseMenuItems.splice(anchorIndex >= 0 ? anchorIndex + 1 : baseMenuItems.length, 0, {
+          icon: Briefcase,
+          label: "子账号管理",
+          href: "/user/sub-accounts",
+          description: "子账号开通与停用",
         });
       }
 
@@ -250,7 +257,7 @@ export default function UserDashboardLayout({
                     });
                   }}
                   onMouseLeave={() => setHovered(null)}
-                  className={`w-full flex items-center justify-center p-3 rounded-lg transition-all mb-1 ${
+                  className={`relative w-full flex items-center justify-center p-3 rounded-lg transition-all mb-1 ${
                     isActive
                       ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
                       : "text-slate-600 hover:bg-slate-50"
@@ -272,7 +279,7 @@ export default function UserDashboardLayout({
                 }`}
               >
                 <Icon className="w-5 h-5 shrink-0" />
-                <div className="text-left min-w-0">
+                <div className="text-left min-w-0 flex-1">
                   <div className="text-sm font-bold truncate">{item.label}</div>
                   <div
                     className={`text-xs truncate ${
@@ -440,7 +447,7 @@ export default function UserDashboardLayout({
                     }`}
                   >
                     <Icon className="w-5 h-5 shrink-0" />
-                    <div className="text-left min-w-0">
+                    <div className="text-left min-w-0 flex-1">
                       <div className="text-sm font-bold truncate">
                         {item.label}
                       </div>

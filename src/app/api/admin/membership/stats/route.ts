@@ -162,9 +162,10 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    const totalRevenue = Number(allPaidOrders._sum.amount || 0);
-    const monthRevenue = Number(monthPaidOrders._sum.amount || 0);
-    const todayRevenue = Number(todayPaidOrders._sum.amount || 0);
+    // 数据库订单 amount 存储单位为「分」，统计汇总统一换算为「元」
+    const totalRevenue = Number(((allPaidOrders._sum.amount || 0) / 100).toFixed(2));
+    const monthRevenue = Number(((monthPaidOrders._sum.amount || 0) / 100).toFixed(2));
+    const todayRevenue = Number(((todayPaidOrders._sum.amount || 0) / 100).toFixed(2));
 
     return NextResponse.json({
       success: true,

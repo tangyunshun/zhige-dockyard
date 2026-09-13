@@ -2,19 +2,21 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  LogOut, 
-  Shield, 
-  Settings, 
-  User, 
-  Lock, 
-  CreditCard, 
-  Code, 
-  HelpCircle, 
-  Sliders 
+import {
+  LogOut,
+  Shield,
+  Settings,
+  User,
+  Lock,
+  CreditCard,
+  Code,
+  HelpCircle,
+  Sliders,
+  History
 } from "lucide-react";
 import { useAppContext } from "@/contexts/AppContext";
 import { useLogout } from "@/hooks/useLogout";
+import { getMembershipLevelIcon } from "@/utils/membership-icon";
 
 interface AvatarDropdownProps {
   workspaceId?: string | null;
@@ -57,15 +59,15 @@ export default function AvatarDropdown({
 
   // === 权限与多管理身份判定逻辑 (全栈互斥算法) ===
   const isSuperAdmin = !!(
-    userInfo.role?.toUpperCase() === "SUPER_ADMIN" || 
+    userInfo.role?.toUpperCase() === "SUPER_ADMIN" ||
     userInfo.role?.toUpperCase() === "SUPERADMIN"
   );
-  
+
   const isPlatformAdmin = !!(
-    userInfo.role?.toUpperCase() === "ADMIN" || 
+    userInfo.role?.toUpperCase() === "ADMIN" ||
     userInfo.role?.toUpperCase() === "PLATFORM_ADMIN"
   );
-  
+
   const isEnterpriseAdmin = workspaceType === "ENTERPRISE" && (userRole === "Owner" || userRole === "Admin");
   const isComponentAdmin = userRole === "ComponentAdmin";
   const isKnowledgeAdmin = userRole === "KnowledgeAdmin";
@@ -91,9 +93,39 @@ export default function AvatarDropdown({
     return "bg-slate-105 text-slate-500 border-slate-200/60";
   };
 
+  // 当前会员等级计算
+  const membershipLevelKey = (userInfo.membershipLevel || "FREE").toUpperCase();
+  const MembershipIcon = getMembershipLevelIcon(membershipLevelKey);
+
+  const getMembershipLabel = () => {
+    switch (membershipLevelKey) {
+      case "CROWN": return "皇冠会员";
+      case "DIAMOND": return "钻石会员";
+      case "GOLD": return "黄金会员";
+      case "SILVER": return "白银会员";
+      case "BRONZE": return "青铜会员";
+      case "FREE":
+      default:
+        return "免费版";
+    }
+  };
+
+  const getMembershipBadgeClass = () => {
+    switch (membershipLevelKey) {
+      case "CROWN": return "bg-purple-50 text-purple-600 border-purple-200/80";
+      case "DIAMOND": return "bg-cyan-50 text-cyan-700 border-cyan-200/80";
+      case "GOLD": return "bg-amber-50 text-amber-600 border-amber-200/80";
+      case "SILVER": return "bg-slate-100 text-slate-700 border-slate-300/80";
+      case "BRONZE": return "bg-orange-50 text-orange-700 border-orange-200/80";
+      case "FREE":
+      default:
+        return "bg-slate-50 text-slate-500 border-slate-200/70";
+    }
+  };
+
   // 计算管理入口
   const adminIdentities = [];
-  if (isSuperAdmin || isPlatformAdmin) adminIdentities.push({ label: "平台后台", path: "/admin", icon: Shield });
+  if (isSuperAdmin || isPlatformAdmin) adminIdentities.push({ label: "系统管理后台", path: "/admin", icon: Shield });
   if (isComponentAdmin) adminIdentities.push({ label: "组件管理", path: "/workspace-hub?filter=component-managed", icon: Sliders });
   if (isKnowledgeAdmin) adminIdentities.push({ label: "知识库管理", path: "/workspace-hub?filter=knowledge-managed", icon: Sliders });
 
@@ -130,9 +162,8 @@ export default function AvatarDropdown({
           </span>
         </span>
         <svg
-          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-            showDropdown ? "rotate-180" : ""
-          }`}
+          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${showDropdown ? "rotate-180" : ""
+            }`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -148,13 +179,22 @@ export default function AvatarDropdown({
 
       {showDropdown && (
         <div className="absolute right-0 mt-2.5 w-48 bg-white/98 backdrop-blur-xl rounded-[20px] shadow-[0_10px_25px_-5px_rgba(15,23,42,0.12)] border border-slate-200/60 p-2 z-50 text-left animate-in fade-in slide-in-from-top-1 duration-200 space-y-1.5">
-          
-          {/* 精致的身份标识区 (不再重复显示姓名与邮箱) */}
-          <div className="px-2.5 pt-1.5 pb-2 border-b border-slate-100/80 flex items-center justify-between">
-            <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider">账户身份</span>
-            <span className={`px-2.5 py-0.5 border text-[9px] font-black rounded-full select-none shadow-sm ${getRoleBadgeClass()}`}>
-              {getRoleLabel()}
-            </span>
+
+          {/* 精致的身份与会员标识区 */}
+          <div className="px-2.5 pt-1.5 pb-2 border-b border-slate-100/80 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider">账户身份</span>
+              <span className={`px-2.5 py-0.5 border text-[9px] font-black rounded-full select-none shadow-sm ${getRoleBadgeClass()}`}>
+                {getRoleLabel()}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider">会员等级</span>
+              <span className={`px-2 py-0.5 border text-[9px] font-black rounded-full select-none shadow-sm flex items-center gap-1 ${getMembershipBadgeClass()}`}>
+                <MembershipIcon className="w-2.5 h-2.5 shrink-0" />
+                <span>{getMembershipLabel()}</span>
+              </span>
+            </div>
           </div>
 
           {/* 第三方快捷登录用户未设独立密码或未绑定邮箱手机的提示卡片 */}
@@ -197,12 +237,11 @@ export default function AvatarDropdown({
                     <adminEntry.icon className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
                     <span className="group-hover:translate-x-0.5 transition-transform">{adminEntry.label}</span>
                   </div>
-                  {adminEntry.label === "平台后台" && (
-                    <span className={`px-1.5 py-0.2 rounded text-[8px] font-black shrink-0 select-none border shadow-sm ${
-                      isSuperAdmin 
-                        ? "bg-amber-50 text-amber-600 border-amber-100" 
-                        : "bg-red-50 text-red-500 border-red-100"
-                    }`}>
+                  {adminEntry.label === "系统管理后台" && (
+                    <span className={`px-1.5 py-0.2 rounded text-[8px] font-black shrink-0 select-none border shadow-sm ${isSuperAdmin
+                      ? "bg-amber-50 text-amber-600 border-amber-100"
+                      : "bg-red-50 text-red-500 border-red-100"
+                      }`}>
                       {isSuperAdmin ? "超管" : "管理"}
                     </span>
                   )}
@@ -254,6 +293,13 @@ export default function AvatarDropdown({
             >
               <HelpCircle className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">帮助与反馈</span>
+            </button>
+            <button
+              onClick={() => { router.push("/releases"); setShowDropdown(false); }}
+              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"
+            >
+              <History className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
+              <span className="group-hover:translate-x-0.5 transition-transform">系统更新日志</span>
             </button>
             <button
               onClick={() => { handleLogout(); setShowDropdown(false); }}

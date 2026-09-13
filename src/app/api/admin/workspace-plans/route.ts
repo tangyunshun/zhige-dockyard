@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 import { buildDynamicPlanFeatures } from "@/lib/workspace-plan-service";
+import { requirePlatformPermission } from "@/lib/security";
 
 function serializePlan(plan: any) {
   const maxComponents = Number(plan.maxComponents ?? 0);
@@ -36,18 +37,10 @@ function serializePlan(plan: any) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
-
-    if (!authResult.valid) {
-      return NextResponse.json(
-        { message: authResult.error || "UNAUTHORIZED" },
-        { status: 401 },
-      );
-    }
-
-    if (!isAdmin(authResult.user!)) {
-      return NextResponse.json({ message: "权限不足" }, { status: 403 });
+    // 严格校验空间套餐列表查看权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "workspace_plan:read");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
     }
 
     const { searchParams } = new URL(request.url);
@@ -108,18 +101,10 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    const authResult = await validateUser(authHeader);
-
-    if (!authResult.valid) {
-      return NextResponse.json(
-        { message: authResult.error || "UNAUTHORIZED" },
-        { status: 401 },
-      );
-    }
-
-    if (!isAdmin(authResult.user!)) {
-      return NextResponse.json({ message: "无权访问" }, { status: 403 });
+    // 严格校验空间套餐创建权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "workspace_plan:create");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
     }
 
     const body = await request.json();

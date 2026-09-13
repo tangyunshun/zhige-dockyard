@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 /**
  * GET /api/admin/billing-records
@@ -10,21 +11,10 @@ import { validateUser } from "@/lib/auth";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "未授权" }, { status: 401 });
-    }
-
-    const roleUpper = (auth.user.role || "").toUpperCase();
-    const isAdminUser =
-      roleUpper === "ADMIN" ||
-      roleUpper === "SUPER_ADMIN" ||
-      roleUpper === "PLATFORM_ADMIN";
-    if (!isAdminUser) {
-      return NextResponse.json(
-        { error: "越权警告：仅系统超级管理员可查看交易账单" },
-        { status: 403 }
-      );
+    // 严格校验订单流水查看权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "order:read");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const model = (prisma as any).billing_record || (prisma as any).billingrecord;

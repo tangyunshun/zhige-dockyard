@@ -28,6 +28,8 @@ const PUBLIC_PATHS = [
   "/auth/cancel-deletion",
   "/auth/oauth-callback",
   "/init",
+  "/maintenance",
+  "/releases",
 ];
 
 export default function AuthCheck({ children }: { children: React.ReactNode }) {
@@ -158,11 +160,10 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // G-02：系统维护中 → 展示维护页
+        // G-02：系统维护中 → 立即无缝重定向至专属全屏维护公告页，严禁清退凭证或闪现未登录
         if (code === SESSION_ERROR_CODES.M_503 || reason === "MAINTENANCE_MODE") {
-          setTimeout(() => {
-            window.location.href = "/maintenance";
-          }, 1600);
+          isRedirectingRef.current = true;
+          window.location.href = "/maintenance";
           return;
         }
 

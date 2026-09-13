@@ -384,6 +384,92 @@ export async function saveAdminPermissions(
 }
 
 /**
+ * 管理员后台管理特权生效状态管理
+ * 彻底实现前后台解耦：停用仅挂起该管理员在后台的管理权限，而绝不破坏该用户的全站前台账号（前台登录、工作空间创建与协作 100% 正常）
+ */
+const ADMIN_STATUS_CONFIG_KEY = "platform_admin_status_map";
+
+interface AdminStatusCache {
+  mapping: Record<string, "active" | "inactive">;
+  fetchedAt: number;
+}
+
+const globalForAdminStatus = globalThis as unknown as {
+  adminStatusCache: AdminStatusCache | null;
+};
+
+export async function getAdminStatusMap(): Promise<Record<string, "active" | "inactive">> {
+  const now = Date.now();
+  const cache = globalForAdminStatus.adminStatusCache;
+  if (cache && now - cache.fetchedAt < ADMIN_PERMISSIONS_CACHE_MS) {
+    return cache.mapping;
+  }
+
+  let mapping: Record<string, "active" | "inactive"> = {};
+  try {
+    const row = await prisma.systemconfig.findUnique({
+      where: { key: ADMIN_STATUS_CONFIG_KEY },
+    });
+    if (row?.value) {
+      try {
+        mapping = JSON.parse(row.value);
+      } catch (e) {
+        console.warn("[权限] systemconfig 中管理员后台状态 JSON 解析失败:", e);
+      }
+    }
+  } catch (error) {
+    console.error("读取管理员后台特权状态映射失败:", error);
+  }
+
+  globalForAdminStatus.adminStatusCache = { mapping, fetchedAt: now };
+  return mapping;
+}
+
+export async function getAdminStatus(userId: string): Promise<"active" | "inactive"> {
+  const mapping = await getAdminStatusMap();
+  return mapping[userId] || "active";
+}
+
+export async function saveAdminStatus(
+  userId: string,
+  status: "active" | "inactive"
+): Promise<boolean> {
+  let mapping: Record<string, "active" | "inactive">;
+  try {
+    mapping = await getAdminStatusMap();
+  } catch {
+    mapping = {};
+  }
+
+  mapping[userId] = status;
+  const json = JSON.stringify(mapping);
+
+  let dbOk = false;
+  try {
+    await prisma.systemconfig.upsert({
+      where: { key: ADMIN_STATUS_CONFIG_KEY },
+      create: {
+        key: ADMIN_STATUS_CONFIG_KEY,
+        value: json,
+      },
+      update: {
+        value: json,
+      },
+    });
+    dbOk = true;
+  } catch (dbError) {
+    console.error("[权限] 管理员后台特权状态写入 systemconfig 失败:", dbError);
+  }
+
+  globalForAdminStatus.adminStatusCache = {
+    mapping,
+    fetchedAt: Date.now(),
+  };
+
+  return dbOk;
+}
+
+/**
  * 服务端 API 统一平台角色与权限鉴权中继
  */
 export async function requirePlatformAuth(
@@ -457,8 +543,23 @@ export async function requirePlatformAuth(
     return { authorized: true, user };
   }
 
-  // 2. PLATFORM_ADMIN 检查 PlatformAdminPermission
+  // 2. PLATFORM_ADMIN 检查后台特权状态及具体权限项
   if (platformRole === "PLATFORM_ADMIN") {
+    // 检查管理员后台特权是否被停用（前台用户账号依然保持正常）
+    const adminStatus = await getAdminStatus(user.id);
+    if (adminStatus === "inactive") {
+      return {
+        authorized: false,
+        errorResponse: new Response(
+          JSON.stringify({
+            error: "ADMIN_SUSPENDED",
+            message: "您的管理员后台管理权限已被临时停用（前台全站功能不受影响），如需恢复请联系超级管理员。",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        ),
+      };
+    }
+
     if (!requiredPermission) {
       return { authorized: true, user }; // 仅要求管理员权限
     }
@@ -773,6 +874,53 @@ export async function requirePlatformPermission(
   errorResponse?: Response;
 }> {
   return requirePlatformAuth(request, permissionKey);
+}
+
+/** 归一化角色，兼容历史遗留的 SUPER 写法 */
+function isSuperAdminPlatformRole(role: string | null | undefined): boolean {
+  const r = String(role || "").toUpperCase().trim();
+  return (
+    r === "SUPER_ADMIN" ||
+    r === "SUPERADMIN" ||
+    r === "SUPER_ADMIN_ROLE" ||
+    r === "SUPER"
+  );
+}
+
+/**
+ * 「系统设置」等高危配置域的统一守卫
+ *
+ * 与后台前端布局对 /admin/settings、/admin/permissions 的 superAdminOnly 路由守卫保持一致：
+ * 既要通过 system:settings 权限点校验，又必须是平台超级管理员，二者缺一不可。
+ * 避免运营管理员绕开页面直接调用接口修改 SMTP / 短信网关 / 安全策略等全局配置。
+ */
+export async function requireSystemSettingsAdmin(
+  request: Request
+): Promise<{
+  authorized: boolean;
+  user?: { id: string; email: string; name: string; role: string; status: string };
+  errorResponse?: Response;
+}> {
+  const authResult = await requirePlatformPermission(request, "system:settings");
+  if (!authResult.authorized) {
+    return authResult;
+  }
+
+  const user = authResult.user!;
+  if (
+    normalizePlatformRole(user.role) !== "SUPER_ADMIN" &&
+    !isSuperAdminPlatformRole(user.role)
+  ) {
+    return {
+      authorized: false,
+      errorResponse: new Response(
+        JSON.stringify({ error: "越权警告：系统全局设置仅允许平台超级管理员操作" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+
+  return authResult;
 }
 
 /**

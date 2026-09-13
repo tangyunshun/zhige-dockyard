@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -101,7 +101,15 @@ function ChangePasswordForm() {
       if (res.ok) {
         toast.success("密码已修改成功");
 
-        const response = await fetch("/api/auth/logout", { method: "POST" });
+        const currentToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+        const response = await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+          },
+          body: JSON.stringify({ reason: "password_changed", token: currentToken }),
+        });
         if (response.ok) {
           localStorage.removeItem("userId");
           localStorage.removeItem("auth_token");

@@ -4,19 +4,12 @@ import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
-    // 鉴权：解封审批属于高危操作，必须由具备用户管理权限的平台管理员执行
-    //（历史上此接口完全无鉴权，任何人凭 appealId 即可解封账号）
-    const authResult = await requirePlatformPermission(request, "user:update");
-    if (!authResult.authorized) {
-      return authResult.errorResponse!;
-    }
-    const operator = authResult.user!;
-
+    const body = await request.json();
     const {
       appealId,
       status,
       adminComment,
-    } = await request.json();
+    } = body;
 
     // 验证必填字段
     if (!appealId || !status) {
@@ -25,6 +18,14 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 细粒度动作鉴权：通过需 appeal:approve，驳回需 appeal:reject
+    const requiredPermission = status === "approved" ? "appeal:approve" : "appeal:reject";
+    const authResult = await requirePlatformPermission(request, requiredPermission);
+    if (!authResult.authorized) {
+      return authResult.errorResponse!;
+    }
+    const operator = authResult.user!;
 
     if (status === "rejected" && (!adminComment || !adminComment.trim())) {
       return NextResponse.json(

@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    // 细粒度平台权限校验：announcement:read
+    const authCheck = await requirePlatformPermission(request, "announcement:read");
+    if (!authCheck.authorized) {
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -148,16 +141,10 @@ export async function GET(request: NextRequest) {
 // POST: 管理员发布/推送系统通知（支持全员广播或指定用户单发）
 export async function POST(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const adminUser = await prisma.user.findUnique({
-      where: { id: auth.user.id },
-    });
-
-    if (!adminUser || !isAdminRole(adminUser.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    // 细粒度平台权限校验：announcement:publish
+    const authCheck = await requirePlatformPermission(request, "announcement:publish");
+    if (!authCheck.authorized) {
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const body = await request.json();

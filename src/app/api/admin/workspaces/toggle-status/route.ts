@@ -2,21 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 import { addNotification } from "@/lib/notifications-store";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function PATCH(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
+    // 严格校验工作空间状态更新权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "workspace:status_update");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     // 支持同时从 URL searchParams 或 JSON body 获取参数
@@ -74,6 +67,39 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json(
           { error: "超级管理员与系统管理员的工作空间受系统安全保护，不可停用" },
           { status: 403 },
+        );
+      }
+
+      // 前置合规依赖检测：空间内若存在协同成员或装配组件，必须阻断停用
+      const otherMemberCount = await prisma.workspacemember.count({
+        where: {
+          workspaceId,
+          userId: { not: workspace.ownerId },
+        },
+      });
+
+      const usages = await prisma.componentusage.findMany({
+        where: { workspaceId },
+        select: { metadata: true },
+      });
+      let boundComponentCount = 0;
+      usages.forEach((u: any) => {
+        if (!u.metadata) return;
+        try {
+          const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : u.metadata;
+          if (meta && meta.enabled === true) boundComponentCount++;
+        } catch {}
+      });
+
+      if (otherMemberCount > 0 || boundComponentCount > 0) {
+        const errors: string[] = [];
+        if (otherMemberCount > 0) errors.push(`${otherMemberCount} 位协同成员`);
+        if (boundComponentCount > 0) errors.push(`${boundComponentCount} 个装配组件`);
+        return NextResponse.json(
+          {
+            error: `停用管控已被阻断：检测到该空间仍存在 ${errors.join("及")}。为保障数据资产与成员权益，请先移出成员并卸载组件后再执行停用。`,
+          },
+          { status: 400 },
         );
       }
     }

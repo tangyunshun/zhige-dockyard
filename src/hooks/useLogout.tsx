@@ -51,10 +51,15 @@ export function useLogout() {
       // 等待 1 秒，让用户看到提示
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // 调用退出登录 API
+      // 调用退出登录 API（附带当前 token 与原因，确保后端精准写入审计日志）
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       const res = await fetch("/api/auth/logout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reason: "user_logout", token }),
       });
 
       if (res.ok) {

@@ -167,7 +167,13 @@ export async function analyzeUserDeletion(userId: string): Promise<DeletionPrevi
   // 4. 归属判定
   const blockers: string[] = [];
   const warnings: string[] = [];
-  let dc: DeletionCase = "REGULAR";
+  // 核心安全红线校验：只有已被封禁的用户才允许被删除
+  if (user.status !== "banned") {
+    const statusText = user.status === "active" ? "正常活跃" : user.status === "inactive" ? "已停用" : user.status;
+    blockers.push(
+      `该用户当前状态为「${statusText}」，未被封禁。根据平台安全合规红线，只有处于「已封禁」状态的用户才允许被删除。请先对其执行封禁后再行删除。`
+    );
+  }
 
   if (soleOwnerBlocked) {
     dc = "ENTERPRISE_SOLE_OWNER";
@@ -234,7 +240,8 @@ export interface ExecuteResult {
 
 /**
  * 执行管理员删除：归属优先 + 默认软删除。
- * - 情况 C：直接抛错（不执行任何删除）。
+ * - 只有 status === 'banned'（已封禁）用户才允许删除。
+ * - 情况 C 或存在 blocker：直接抛错（不执行任何删除）。
  * - 情况 A：必须 transferToUserId 或 archivePersonalData 二选一，否则抛错。
  * - 情况 B / REGULAR：软删除（逻辑删除 + 匿名化），保留企业资产。
  */
@@ -247,9 +254,18 @@ export async function executeAdminUserDeletion(
     throw new Error("用户不存在");
   }
 
-  // 情况 C：红线拦截
-  if (preview.case === "ENTERPRISE_SOLE_OWNER") {
+  // 核心安全红线拦截：未封禁用户或存在阻断项，坚决禁止删除
+  if (preview.blockers.length > 0) {
     throw new Error(preview.blockers.join(" "));
+  }
+
+  // 二次数据库状态硬校验
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, status: true },
+  });
+  if (!targetUser || targetUser.status !== "banned") {
+    throw new Error("平台安全红线拦截：只有已被封禁的用户才允许被删除。请先封禁该用户。");
   }
 
   const transferredWorkspaces: string[] = [];

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole, validateUser } from "@/lib/auth";
+import { requireSystemSettingsAdmin } from "@/lib/security";
 import {
   DELETION_COOLDOWN_CONFIG_KEY,
   DEFAULT_DELETION_COOLDOWN_DAYS,
@@ -16,16 +16,21 @@ import {
 const COOLDOWN_DAYS_MIN = 1;
 const COOLDOWN_DAYS_MAX = 90;
 
+/**
+ * 与「系统设置」页保持一致的鉴权口径：
+ * 必须是平台超级管理员且具备 system:settings 权限点。
+ */
 async function assertAdmin(request: NextRequest): Promise<{ ok: true; adminId: string } | { ok: false; status: number; message: string }> {
-  const auth = await validateUser(request.headers.get("Authorization"), request);
-  if (!auth.valid || !auth.user) {
-    return { ok: false, status: 401, message: "未授权" };
+  const result = await requireSystemSettingsAdmin(request);
+  if (!result.authorized || !result.user) {
+    const status = result.errorResponse?.status === 401 ? 401 : 403;
+    return {
+      ok: false,
+      status,
+      message: status === 401 ? "未授权，请重新登录" : "越权警告：仅允许平台超级管理员操作",
+    };
   }
-  const admin = await prisma.user.findUnique({ where: { id: auth.user.id } });
-  if (!admin || !isAdminRole(admin.role)) {
-    return { ok: false, status: 403, message: "需要管理员权限" };
-  }
-  return { ok: true, adminId: auth.user.id };
+  return { ok: true, adminId: result.user.id };
 }
 
 /** 获取当前冷静期配置 */

@@ -27,10 +27,10 @@ function genTempPassword(len = 12): string {
   return s;
 }
 
-// POST: 管理员代用户重置登录密码（需要 user:update 权限）
+// POST: 管理员代用户重置登录密码（需要 user:security_reset 权限）
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "user:update");
+    const authResult = await requirePlatformPermission(request, "user:security_reset");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }

@@ -74,6 +74,65 @@ interface MembershipLevelOption {
   icon?: string;
 }
 
+// 支付方式中文映射字典
+const formatPaymentMethod = (method?: string) => {
+  if (!method) return "在线支付";
+  const upper = method.toUpperCase();
+  const map: Record<string, string> = {
+    WECHAT: "微信支付",
+    WECHAT_PAY: "微信支付",
+    ALIPAY: "支付宝",
+    ALIPAY_PAY: "支付宝",
+    BANK_TRANSFER: "对公转账",
+    BANK: "银行转账",
+    POINTS: "算力点兑换",
+    BALANCE: "账户余额",
+    SIMULATED: "模拟支付",
+    SYSTEM: "系统调账",
+    FREE: "免费开通",
+    CREDIT_CARD: "信用卡",
+  };
+  return map[upper] || method;
+};
+
+// 订单状态中文映射字典
+const formatOrderStatus = (status?: string) => {
+  if (!status) return { label: "已完成", bg: "bg-emerald-50 text-emerald-600 border-emerald-200" };
+  const upper = status.toUpperCase();
+  const map: Record<string, { label: string; bg: string }> = {
+    PAID: { label: "已支付", bg: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+    COMPLETED: { label: "已完成", bg: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+    SUCCESS: { label: "交易成功", bg: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+    PENDING: { label: "待支付", bg: "bg-amber-50 text-amber-600 border-amber-200" },
+    WAIT_BUYER_PAY: { label: "等待付款", bg: "bg-amber-50 text-amber-600 border-amber-200" },
+    REFUNDED: { label: "已退款", bg: "bg-purple-50 text-purple-600 border-purple-200" },
+    CANCELLED: { label: "已取消", bg: "bg-slate-100 text-slate-500 border-slate-200" },
+    FAILED: { label: "失败", bg: "bg-rose-50 text-rose-600 border-rose-200" },
+  };
+  return map[upper] || { label: status, bg: "bg-slate-100 text-slate-600 border-slate-200" };
+};
+
+// 等级变更类型中文映射字典
+const formatChangeType = (type?: string) => {
+  if (!type) return "等级调整";
+  const upper = type.toUpperCase();
+  const map: Record<string, string> = {
+    MEMBERSHIP_UPGRADE: "会员升级",
+    UPGRADE: "会员升级",
+    LEVEL_UP: "等级提升",
+    MEMBERSHIP_RENEW: "会员续费",
+    RENEW: "会员续费",
+    MANUAL_ADJUST: "手动调整",
+    ADMIN_CHANGE: "后台调整",
+    DOWNGRADE: "等级降级",
+    EXPIRED: "到期失效",
+    EXPIRE: "到期失效",
+    INITIAL: "初始开通",
+    SYSTEM_INIT: "系统初始化",
+  };
+  return map[upper] || type;
+};
+
 export default function AdminMembershipIndex() {
   const router = useRouter();
   const toast = useToast();
@@ -394,7 +453,7 @@ export default function AdminMembershipIndex() {
             </div>
           ) : (
             <div className="space-y-2.5 flex-1">
-              {recentOrders.map((order) => (
+              {recentOrders.slice(0, 5).map((order) => (
                 <div
                   key={order.id}
                   className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 hover:bg-blue-50/40 border border-slate-200/70 transition-colors text-xs"
@@ -413,17 +472,22 @@ export default function AdminMembershipIndex() {
                         </span>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        {new Date(order.createdAt).toLocaleString("zh-CN", { hour12: false })} · {order.paymentMethod}
+                        {new Date(order.createdAt).toLocaleString("zh-CN", { hour12: false })} · {formatPaymentMethod(order.paymentMethod)}
                       </div>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="font-black text-slate-900">
-                      ¥{order.amount.toFixed(2)}
+                      ¥{(order.amount / 100).toFixed(2)}
                     </div>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                      已完成
-                    </span>
+                    {(() => {
+                      const st = formatOrderStatus(order.status);
+                      return (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${st.bg}`}>
+                          {st.label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
@@ -471,7 +535,7 @@ export default function AdminMembershipIndex() {
             </div>
           ) : (
             <div className="space-y-2.5 flex-1">
-              {recentLogs.map((log) => (
+              {recentLogs.slice(0, 5).map((log) => (
                 <div
                   key={log.id}
                   className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 hover:bg-purple-50/40 border border-slate-200/70 transition-colors text-xs"
@@ -486,7 +550,7 @@ export default function AdminMembershipIndex() {
                           {log.user?.name || log.user?.email || "用户"}
                         </span>
                         <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 shrink-0">
-                          {log.level?.nameZh || "等级调整"}
+                          {log.level?.nameZh || formatChangeType(log.changeType)}
                         </span>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[240px]">

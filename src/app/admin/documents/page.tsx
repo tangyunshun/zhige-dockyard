@@ -40,6 +40,10 @@ import {
   History,
   Building2,
   Database,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
 } from "lucide-react";
 
 interface Document {
@@ -104,48 +108,48 @@ interface SystemDocumentHistoryItem {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  "user-guide": "用户指南",
-  "user_guide": "用户指南",
-  guide: "用户指南",
-  start: "开始使用",
-  "api-doc": "API 文档",
-  "api_doc": "API 文档",
-  api: "API 文档",
-  developer: "开发者集成",
-  workspace: "空间治理",
-  workspaces: "空间治理",
-  "system-doc": "系统文档",
-  "system_doc": "系统文档",
-  system: "系统文档",
-  enterprise: "企业私有部署",
-  knowledge: "知识库文档",
-  faq: "常见问题",
-  help: "帮助与支持",
-  announcement: "官方公告",
-  notice: "官方通知",
-  "privacy-policy": "平台隐私协议",
-  "privacy_policy": "平台隐私协议",
-  "terms-of-service": "平台服务条款",
-  "terms_of_service": "平台服务条款",
-  agreement: "法律协议",
-  policy: "合规政策",
+  "user-guide": "用户指南·快速入门",
+  "user_guide": "用户指南·快速入门",
+  guide: "用户指南·快速入门",
+  start: "用户指南·快速入门",
+  "api-doc": "接口开发与接入文档",
+  "api_doc": "接口开发与接入文档",
+  api: "接口开发与接入文档",
+  developer: "接口开发与接入文档",
+  workspace: "工作空间治理与权限说明",
+  workspaces: "工作空间治理与权限说明",
+  "system-doc": "企业部署与系统运行手册",
+  "system_doc": "企业部署与系统运行手册",
+  system: "企业部署与系统运行手册",
+  enterprise: "企业部署与系统运行手册",
+  knowledge: "知识库与组件规范指南",
+  faq: "常见问题与故障排查",
+  help: "常见问题与故障排查",
+  announcement: "平台官方更新公告",
+  notice: "平台官方更新公告",
+  "privacy-policy": "平台用户隐私保护协议",
+  "privacy_policy": "平台用户隐私保护协议",
+  "terms-of-service": "平台用户服务条款协议",
+  "terms_of_service": "平台用户服务条款协议",
+  agreement: "平台用户服务条款协议",
+  policy: "平台用户隐私保护协议",
 };
 
 export function getCategoryLabel(category: string | null | undefined): string {
-  if (!category) return "综合文档";
+  if (!category) return "综合知识文档";
   const raw = String(category).trim();
   if (CATEGORY_LABELS[raw]) return CATEGORY_LABELS[raw];
   const normalized = raw.toLowerCase().replace(/_/g, "-");
   if (CATEGORY_LABELS[normalized]) return CATEGORY_LABELS[normalized];
-  if (normalized.includes("privacy")) return "平台隐私协议";
-  if (normalized.includes("term")) return "平台服务条款";
-  if (normalized.includes("guide")) return "使用指南";
-  if (normalized.includes("api")) return "API 文档";
-  if (normalized.includes("faq")) return "常见问题";
-  if (normalized.includes("system")) return "系统文档";
-  if (normalized.includes("workspace")) return "空间治理";
-  if (normalized.includes("knowledge")) return "知识库文档";
-  if (normalized.includes("enterprise")) return "企业私有部署";
+  if (normalized.includes("privacy")) return "平台用户隐私保护协议";
+  if (normalized.includes("term")) return "平台用户服务条款协议";
+  if (normalized.includes("guide")) return "用户指南·快速入门";
+  if (normalized.includes("api")) return "接口开发与接入文档";
+  if (normalized.includes("faq")) return "常见问题与故障排查";
+  if (normalized.includes("system") || normalized.includes("enterprise")) return "企业部署与系统运行手册";
+  if (normalized.includes("workspace")) return "工作空间治理与权限说明";
+  if (normalized.includes("knowledge")) return "知识库与组件规范指南";
+  if (normalized.includes("announcement") || normalized.includes("notice")) return "平台官方更新公告";
   return raw;
 }
 
@@ -173,23 +177,22 @@ export function getCategoryIcon(category: string | null | undefined): any {
   if (normalized.includes("guide")) return Book;
   if (normalized.includes("api")) return FileCode;
   if (normalized.includes("faq")) return HelpCircle;
-  if (normalized.includes("system")) return Settings;
+  if (normalized.includes("system") || normalized.includes("enterprise")) return Settings;
   if (normalized.includes("workspace")) return Building2;
   if (normalized.includes("knowledge")) return Database;
-  if (normalized.includes("enterprise")) return Building2;
   return FileText;
 }
 
 const STANDARD_CATEGORIES: { key: string; label: string; icon: any }[] = [
-  { key: "user-guide", label: "用户指南", icon: Book },
-  { key: "api-doc", label: "API 文档", icon: FileCode },
-  { key: "workspace", label: "空间治理", icon: Building2 },
-  { key: "knowledge", label: "知识库文档", icon: Database },
-  { key: "system-doc", label: "系统/企业部署", icon: Settings },
-  { key: "faq", label: "常见问题", icon: HelpCircle },
-  { key: "announcement", label: "官方公告", icon: Bell },
-  { key: "privacy-policy", label: "隐私协议", icon: BookOpen },
-  { key: "terms-of-service", label: "服务条款", icon: FileText },
+  { key: "user-guide", label: "用户指南·快速入门", icon: Book },
+  { key: "api-doc", label: "接口开发与接入文档", icon: FileCode },
+  { key: "workspace", label: "工作空间治理与权限说明", icon: Building2 },
+  { key: "system-doc", label: "企业部署与系统运行手册", icon: Settings },
+  { key: "knowledge", label: "知识库与组件规范指南", icon: Database },
+  { key: "faq", label: "常见问题与故障排查", icon: HelpCircle },
+  { key: "announcement", label: "平台官方更新公告", icon: Bell },
+  { key: "privacy-policy", label: "平台用户隐私保护协议", icon: BookOpen },
+  { key: "terms-of-service", label: "平台用户服务条款协议", icon: FileText },
 ];
 
 export default function AdminDocumentsPage() {
@@ -210,6 +213,8 @@ export default function AdminDocumentsPage() {
   const [historyDoc, setHistoryDoc] = useState<Document | null>(null);
   const [historyList, setHistoryList] = useState<SystemDocumentHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
   const [editorTab, setEditorTab] = useState<"edit" | "preview">("edit");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -252,6 +257,19 @@ export default function AdminDocumentsPage() {
     message: "",
     type: "info",
     onConfirm: () => {},
+  });
+
+  // 上下架专属高级模态框状态（知阁设计系统顶级视觉规范）
+  const [publishModal, setPublishModal] = useState<{
+    isOpen: boolean;
+    doc: Document | null;
+    nextStatus: boolean;
+    loading: boolean;
+  }>({
+    isOpen: false,
+    doc: null,
+    nextStatus: false,
+    loading: false,
   });
 
   const loadDocuments = async (isSilent: boolean = false) => {
@@ -326,6 +344,7 @@ export default function AdminDocumentsPage() {
   const loadHistory = async (doc: Document) => {
     setHistoryDoc(doc);
     setHistoryLoading(true);
+    setHistoryPage(1);
     try {
       const authToken = getAuthToken();
       const res = await fetch(
@@ -336,7 +355,14 @@ export default function AdminDocumentsPage() {
       );
       if (res.ok) {
         const data = await res.json();
-        setHistoryList(data.data || []);
+        const list = data.data || [];
+        setHistoryList(list);
+        // 默认展开最新一条，其余收起保持清爽
+        if (list.length > 0) {
+          setExpandedHistoryIds(new Set([list[0].id]));
+        } else {
+          setExpandedHistoryIds(new Set());
+        }
       } else {
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) {
@@ -353,52 +379,88 @@ export default function AdminDocumentsPage() {
     }
   };
 
-  const handleTogglePublished = async (id: string, isPublished: boolean) => {
-    const action = isPublished ? "下架" : "上架";
-    setConfirmModal({
-      isOpen: true,
-      title: `${action}确认`,
-      message: `${action}后，用户将${isPublished ? "无法" : "可以"}查看此文档。\n\n请确认是否继续？`,
-      type: "info",
-      onConfirm: async () => {
-        setDocuments((prev) =>
-          prev.map((doc) =>
-            doc.id === id ? { ...doc, isPublished: !isPublished } : doc
-          )
-        );
-        try {
-          const authToken = getAuthToken();
+  // 历史版本分页（每页严格 10 条）与展开/收起辅助函数
+  const HISTORY_PAGE_SIZE = 10;
+  const historyTotalPages = Math.max(1, Math.ceil(historyList.length / HISTORY_PAGE_SIZE));
+  const paginatedHistory = historyList.slice(
+    (historyPage - 1) * HISTORY_PAGE_SIZE,
+    historyPage * HISTORY_PAGE_SIZE
+  );
 
-          const res = await fetch(`/api/admin/documents?id=${id}`, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${authToken}`,
-            },
-            body: JSON.stringify({
-              id,
-              isPublished: !isPublished,
-            }),
-          });
-
-          if (res.ok) {
-            toast.success(isPublished ? "已下架" : "已上架");
-            loadDocuments(true);
-          } else {
-            setDocuments((prev) =>
-              prev.map((doc) =>
-                doc.id === id ? { ...doc, isPublished } : doc
-              )
-            );
-            const error = await res.json();
-            toast.error(error.message || "操作失败");
-          }
-        } catch (error) {
-          console.error("Toggle published error:", error);
-          toast.error("操作失败");
-        }
-      },
+  const toggleExpandHistory = (id: string) => {
+    setExpandedHistoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
     });
+  };
+
+  const expandAllHistory = () => {
+    setExpandedHistoryIds(new Set(historyList.map((item) => item.id)));
+  };
+
+  const collapseAllHistory = () => {
+    setExpandedHistoryIds(new Set());
+  };
+
+  // 打开知阁顶级规范的上下架确认模态框
+  const handleOpenPublishModal = (doc: Document) => {
+    setPublishModal({
+      isOpen: true,
+      doc,
+      nextStatus: !doc.isPublished,
+      loading: false,
+    });
+  };
+
+  // 执行上下架状态变更闭环
+  const handleExecutePublishToggle = async () => {
+    if (!publishModal.doc) return;
+    const doc = publishModal.doc;
+    const targetStatus = publishModal.nextStatus;
+    setPublishModal((prev) => ({ ...prev, loading: true }));
+
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch(`/api/admin/documents?id=${doc.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          id: doc.id,
+          isPublished: targetStatus,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(
+          targetStatus
+            ? `文档《${doc.title}》已成功发布上线`
+            : `文档《${doc.title}》已下架为草稿，现已开放编辑与删除权限`
+        );
+        setPublishModal({
+          isOpen: false,
+          doc: null,
+          nextStatus: false,
+          loading: false,
+        });
+        loadDocuments(true);
+      } else {
+        const error = await res.json().catch(() => ({}));
+        toast.error(error.error || error.message || "状态变更失败");
+        setPublishModal((prev) => ({ ...prev, loading: false }));
+      }
+    } catch (error) {
+      console.error("Toggle published error:", error);
+      toast.error("网络异常，状态变更失败");
+      setPublishModal((prev) => ({ ...prev, loading: false }));
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -728,7 +790,7 @@ export default function AdminDocumentsPage() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-black text-slate-800 tracking-tight">
-                  帮助与知识文档中心 (Docs & Knowledge)
+                  帮助与知识文档中心
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200/80">
                   知识库引擎
@@ -887,13 +949,15 @@ export default function AdminDocumentsPage() {
                   className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                 >
                   <option value="">全部分类</option>
-                  <option value="user-guide">用户指南</option>
-                  <option value="api-doc">API 文档</option>
-                  <option value="system-doc">系统文档</option>
-                  <option value="faq">常见问题</option>
-                  <option value="announcement">官方公告</option>
-                  <option value="privacy-policy">平台隐私协议</option>
-                  <option value="terms-of-service">服务条款</option>
+                  <option value="user-guide">用户指南·快速入门</option>
+                  <option value="api-doc">接口开发与接入文档</option>
+                  <option value="workspace">工作空间治理与权限说明</option>
+                  <option value="system-doc">企业部署与系统运行手册</option>
+                  <option value="knowledge">知识库与组件规范指南</option>
+                  <option value="faq">常见问题与故障排查</option>
+                  <option value="announcement">平台官方更新公告</option>
+                  <option value="privacy-policy">平台用户隐私保护协议</option>
+                  <option value="terms-of-service">平台用户服务条款协议</option>
                 </select>
               </div>
 
@@ -1235,9 +1299,7 @@ export default function AdminDocumentsPage() {
 
                             {/* 状态控制：上线文档可下架为草稿；草稿文档可发布上线 */}
                             <button
-                              onClick={() =>
-                                handleTogglePublished(doc.id, doc.isPublished)
-                              }
+                              onClick={() => handleOpenPublishModal(doc)}
                               className={`px-2.5 h-7 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer ${
                                 doc.isPublished
                                   ? "bg-amber-50 hover:bg-amber-500 text-amber-700 hover:text-white"
@@ -1416,15 +1478,15 @@ export default function AdminDocumentsPage() {
                       }
                       className="w-full px-3 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
-                      <option value="user-guide">📘 用户指南·快速入门 (User Guide)</option>
-                      <option value="api-doc">💻 API 开发者文档 (API Docs)</option>
-                      <option value="workspace">🏢 空间治理与权限文档 (Workspace)</option>
-                      <option value="system-doc">⚙️ 企业部署与系统文档 (System/Enterprise)</option>
-                      <option value="knowledge">📚 知识库与组件文档 (Knowledge)</option>
-                      <option value="faq">❓ 常见问题汇总 (FAQ)</option>
-                      <option value="announcement">📢 官方更新公告 (Announcement)</option>
-                      <option value="privacy-policy">🛡️ 平台隐私协议 (Privacy Policy)</option>
-                      <option value="terms-of-service">📜 服务条款 (Terms of Service)</option>
+                      <option value="user-guide">📘 用户指南·快速入门</option>
+                      <option value="api-doc">💻 接口开发与接入文档</option>
+                      <option value="workspace">🏢 工作空间治理与权限说明</option>
+                      <option value="system-doc">⚙️ 企业部署与系统运行手册</option>
+                      <option value="knowledge">📚 知识库与组件规范指南</option>
+                      <option value="faq">❓ 常见问题与故障排查</option>
+                      <option value="announcement">📢 平台官方更新公告</option>
+                      <option value="privacy-policy">🛡️ 平台用户隐私保护协议</option>
+                      <option value="terms-of-service">📜 平台用户服务条款协议</option>
                     </select>
                   </div>
 
@@ -1989,10 +2051,10 @@ export default function AdminDocumentsPage() {
                 ) : (
                   <button
                     type="button"
-                    onClick={async () => {
-                      const targetId = previewDoc.id;
+                    onClick={() => {
+                      const target = previewDoc;
                       setPreviewDoc(null);
-                      await handleTogglePublished(targetId, true);
+                      handleOpenPublishModal(target);
                     }}
                     className="px-3.5 h-8 bg-amber-50 hover:bg-amber-500 text-amber-700 hover:text-white rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer border border-amber-200 hover:border-amber-500"
                     title="下架此文档转为草稿，之后可进行编辑或删除"
@@ -2040,73 +2102,327 @@ export default function AdminDocumentsPage() {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1 bg-white">
+            <div className="p-6 overflow-y-auto flex-1 bg-white space-y-4">
               {historyLoading ? (
-                <div className="py-10 text-center text-xs text-slate-500 font-medium">
-                  正在加载历史版本...
+                <div className="py-12 text-center text-xs text-slate-500 font-medium flex flex-col items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-[#3182ce] animate-spin mb-2" />
+                  <span>正在加载历史版本...</span>
                 </div>
               ) : historyList.length === 0 ? (
-                <div className="py-10 text-center text-xs text-slate-500 font-medium">
+                <div className="py-12 text-center text-xs text-slate-400 font-medium">
                   暂无编辑历史记录
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {historyList.map((item, index) => (
-                    <div
-                      key={item.id}
-                      className="border border-slate-200 rounded-xl overflow-hidden"
-                    >
-                      <div className="bg-slate-50 px-4 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] font-black text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded">
-                            版本 {historyList.length - index}
-                          </span>
-                          <span className="text-xs font-bold text-slate-700">
-                            {new Date(item.createdAt).toLocaleString("zh-CN", {
-                              hour12: false,
-                            })}
-                          </span>
-                          <span className="text-[11px] text-slate-500">
-                            编辑者：{item.user?.name || item.user?.email || "系统官方"}
-                          </span>
-                        </div>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                            item.isPublished
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-slate-100 text-slate-500 border-slate-200"
-                          }`}
-                        >
-                          {item.isPublished ? "已发布上线" : "未发布草稿"}
+                <>
+                  {/* 顶部统计与全部展开/收起快捷工具栏 */}
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div className="text-xs text-slate-500 font-medium">
+                      共 <strong className="text-slate-800 font-bold">{historyList.length}</strong> 个历史版本快照
+                      {historyTotalPages > 1 && (
+                        <span className="ml-2 text-slate-400 font-mono text-[11px]">
+                          (当前第 {historyPage} / {historyTotalPages} 页)
                         </span>
-                      </div>
-                      <div className="px-4 py-3 bg-white">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                          快照标题
-                        </div>
-                        <div className="text-xs font-bold text-slate-800 mb-3">
-                          {item.title}
-                        </div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                          快照内容
-                        </div>
-                        <div className="text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100 max-h-60 overflow-y-auto">
-                          {renderMarkdownContent(item.content || "")}
-                        </div>
-                      </div>
+                      )}
                     </div>
-                  ))}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={expandAllHistory}
+                        className="text-[11px] font-bold text-slate-600 hover:text-[#3182ce] transition-colors cursor-pointer px-2 py-0.5 rounded hover:bg-slate-100"
+                      >
+                        全部展开
+                      </button>
+                      <span className="text-slate-200 text-xs">|</span>
+                      <button
+                        type="button"
+                        onClick={collapseAllHistory}
+                        className="text-[11px] font-bold text-slate-600 hover:text-[#3182ce] transition-colors cursor-pointer px-2 py-0.5 rounded hover:bg-slate-100"
+                      >
+                        全部收起
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 历史版本列表（每页 10 条） */}
+                  <div className="space-y-3">
+                    {paginatedHistory.map((item) => {
+                      const isExpanded = expandedHistoryIds.has(item.id);
+                      const originalIndex = historyList.findIndex((h) => h.id === item.id);
+                      const versionNum = historyList.length - originalIndex;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="border border-slate-200 rounded-xl overflow-hidden transition-all shadow-2xs"
+                        >
+                          {/* 快照条目头部：支持整行点击切换展开/收起 */}
+                          <div
+                            onClick={() => toggleExpandHistory(item.id)}
+                            className="bg-slate-50 hover:bg-slate-100/80 px-4 py-3 flex items-center justify-between cursor-pointer select-none transition-colors border-b border-transparent"
+                            style={isExpanded ? { borderBottomColor: "#e2e8f0" } : {}}
+                          >
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <span
+                                className={`text-[11px] font-black px-2 py-0.5 rounded border ${
+                                  versionNum === 1
+                                    ? "bg-blue-50 text-[#3182ce] border-blue-200"
+                                    : "bg-white text-slate-600 border-slate-200"
+                                }`}
+                              >
+                                {versionNum === 1
+                                  ? "V1.0 初始基线版本"
+                                  : `V${versionNum}.0 修订快照`}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700">
+                                {new Date(item.createdAt).toLocaleString("zh-CN", {
+                                  hour12: false,
+                                })}
+                              </span>
+                              <span className="text-[11px] text-slate-500">
+                                操作者：{item.user?.name || item.user?.email || "系统官方"}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                正文约 {(item.content || "").length} 字
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                  item.isPublished
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-slate-100 text-slate-500 border-slate-200"
+                                }`}
+                              >
+                                {item.isPublished ? "已发布上线" : "未发布草稿"}
+                              </span>
+
+                              {/* 展开/收起状态指示器 */}
+                              <div className="flex items-center gap-1 text-[11px] font-bold text-[#3182ce] ml-1 pl-2 border-l border-slate-200">
+                                <span>{isExpanded ? "收起" : "展开"}</span>
+                                <ChevronDown
+                                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                    isExpanded ? "rotate-180" : ""
+                                  }`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 展开的正文内容区域 */}
+                          {isExpanded && (
+                            <div className="px-4 py-3.5 bg-white space-y-3 animate-in fade-in-50 duration-150">
+                              <div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                  快照标题
+                                </div>
+                                <div className="text-xs font-bold text-slate-800">
+                                  {item.title}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                                  <span>快照正文内容</span>
+                                  <span className="font-normal text-slate-400">
+                                    分类：{getCategoryLabel(item.category)}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-700 bg-slate-50 p-3.5 rounded-xl border border-slate-100 max-h-60 overflow-y-auto leading-relaxed">
+                                  {renderMarkdownContent(item.content || "")}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 弹窗底部：分页（每页严格 10 条）与关闭按钮 */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex items-center justify-between shrink-0">
+              {historyTotalPages > 1 ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-500 text-[11px]">
+                    显示第 {(historyPage - 1) * HISTORY_PAGE_SIZE + 1} -{" "}
+                    {Math.min(historyPage * HISTORY_PAGE_SIZE, historyList.length)} 条，共{" "}
+                    {historyList.length} 条
+                  </span>
+
+                  <div className="flex items-center gap-1 ml-2">
+                    <button
+                      type="button"
+                      disabled={historyPage <= 1}
+                      onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold flex items-center gap-0.5 cursor-pointer shadow-2xs transition-colors"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>上一页</span>
+                    </button>
+
+                    <span className="px-2 text-xs font-mono font-bold text-slate-700">
+                      {historyPage} / {historyTotalPages}
+                    </span>
+
+                    <button
+                      type="button"
+                      disabled={historyPage >= historyTotalPages}
+                      onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold flex items-center gap-0.5 cursor-pointer shadow-2xs transition-colors"
+                    >
+                      <span>下一页</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 text-[11px]">
+                  共 {historyList.length} 条历史版本快照（每页 10 条）
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setHistoryDoc(null)}
+                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 知阁设计系统顶级标准 · 上下架专属确认模态框 */}
+      {publishModal.isOpen && publishModal.doc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => !publishModal.loading && setPublishModal({ ...publishModal, isOpen: false })}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 顶栏 Header：上架为知阁蓝渐变，下架为暖色琥珀橙渐变 */}
+            <div
+              className={`px-6 py-4.5 flex items-center justify-between shrink-0 text-white ${
+                publishModal.nextStatus
+                  ? "bg-gradient-to-r from-[#2b6cb0] to-[#3182ce]"
+                  : "bg-gradient-to-r from-amber-500 to-orange-500"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center font-bold text-white shrink-0 backdrop-blur-xs shadow-xs">
+                  {publishModal.nextStatus ? (
+                    <CheckCircle2 className="w-5 h-5 text-white" />
+                  ) : (
+                    <EyeOff className="w-5 h-5 text-white" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight text-white">
+                    {publishModal.nextStatus ? "确认发布上线文档" : "确认下架文档为草稿"}
+                  </h3>
+                  <p className="text-[11px] text-white/80 mt-0.5 font-medium">
+                    {publishModal.nextStatus
+                      ? "发布后将实时面向全站用户与外部开发者公开查阅"
+                      : "下架后前台将立即隐藏此文档，并恢复编辑与删除权限"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={publishModal.loading}
+                onClick={() => setPublishModal({ ...publishModal, isOpen: false })}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 核心内容区 */}
+            <div className="p-6 space-y-4">
+              {/* 文档详情概要卡片 */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-2.5">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  待处理目标文档
+                </div>
+                <div className="text-sm font-black text-slate-800 break-all leading-snug">
+                  《{publishModal.doc.title}》
+                </div>
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-blue-50 text-[#3182ce] border border-blue-200/60">
+                    {getCategoryLabel(publishModal.doc.category)}
+                  </span>
+                  <span className="text-xs font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    排序权重 #{publishModal.doc.sortOrder}
+                  </span>
+                  <span className="text-xs text-slate-500 font-medium">
+                    累计浏览 {publishModal.doc.viewCount} 次
+                  </span>
+                </div>
+              </div>
+
+              {/* 业务影响与操作指引提示 */}
+              {publishModal.nextStatus ? (
+                <div className="bg-blue-50/70 border border-blue-200/70 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-[#2b6cb0] leading-relaxed">
+                  <CheckCircle className="w-4 h-4 text-[#3182ce] shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">上线业务规则说明：</span>
+                    文档发布后将立即在前台帮助文档中心（<span className="font-mono font-bold text-slate-700">/docs</span>）向所有注册用户与访客公开。线上已发布文档将自动开启安全锁定，禁止直接编辑或删除。如需调整正文，请随时下架后编辑。
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-50/70 border border-amber-200/70 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-amber-800 leading-relaxed">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">下架业务规则说明：</span>
+                    文档下架后将转入“未发布草稿”状态，前台页面实时下线不可见。管理员将解锁针对此文档的<span className="font-bold text-slate-800">【编辑正文】</span>、<span className="font-bold text-slate-800">【修改分类】</span>与<span className="font-bold text-red-600">【永久删除】</span>权限，亦可随时再次发布上线。
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex justify-end shrink-0">
+            {/* 底部操作工具条 */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-end gap-2.5 shrink-0">
               <button
                 type="button"
-                onClick={() => setHistoryDoc(null)}
-                className="px-4 h-8 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                disabled={publishModal.loading}
+                onClick={() => setPublishModal({ ...publishModal, isOpen: false })}
+                className="px-4 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
               >
-                关闭
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={publishModal.loading}
+                onClick={handleExecutePublishToggle}
+                className={`px-5 h-9 rounded-xl text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1.5 ${
+                  publishModal.nextStatus
+                    ? "bg-[#3182ce] hover:bg-[#2b6cb0]"
+                    : "bg-amber-500 hover:bg-amber-600"
+                }`}
+              >
+                {publishModal.loading ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    <span>处理中...</span>
+                  </>
+                ) : publishModal.nextStatus ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>确认发布上线</span>
+                  </>
+                ) : (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5" />
+                    <span>确认下架为草稿</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

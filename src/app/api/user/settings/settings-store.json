@@ -1,0 +1,27 @@
+{
+  "cmtd04l660000y2miz6av52qn": {
+    "language": "zh-CN",
+    "theme": "light",
+    "displayDensity": "comfortable",
+    "enableAnimations": true,
+    "defaultWorkspaceId": "auto",
+    "workspaceView": "grid",
+    "sidebarDefaultExpanded": true,
+    "componentSort": "popularity",
+    "codeTheme": "dark",
+    "codeFontSize": "13px",
+    "tabSize": 2,
+    "showLineNumbers": true,
+    "dateFormat": "YYYY-MM-DD",
+    "timeFormat": "24h",
+    "exportFormat": "xlsx",
+    "soundEffects": true,
+    "stealthMode": false,
+    "requireDeleteConfirm": true,
+    "notifications": {
+      "email": true,
+      "browser": true,
+      "marketing": false
+    }
+  }
+}

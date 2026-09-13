@@ -35,6 +35,35 @@ import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
 import ConfirmModal from "@/components/ConfirmModal";
+import * as XLSX from "xlsx";
+
+/**
+ * 将系统角色代码转译为标准商务简体中文，杜绝英文暴露
+ */
+function getRoleChineseName(role?: string | null): string {
+  if (!role) return "普通用户";
+  const r = role.toLowerCase().replace(/[-_]/g, "");
+  if (r.includes("superadmin")) return "超级管理员团队";
+  if (r === "admin") return "平台管理员组";
+  if (r === "creator") return "创作者与开发组";
+  if (r === "user") return "普通注册用户群";
+  return `${role} 组`;
+}
+
+/**
+ * 智能分词提取文本或表格中的用户邮箱、用户ID与标识
+ */
+function splitIdentifiers(raw: string): string[] {
+  if (!raw) return [];
+  // 提取标准邮箱
+  const emails = raw.match(/[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g) || [];
+  // 分隔提取 ID 与其它非空 token
+  const tokens = raw
+    .split(/[\n,;，；\s\t\r]+/)
+    .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+    .filter((s) => s.length >= 2 && !s.startsWith("#") && !s.includes(" "));
+  return Array.from(new Set([...emails, ...tokens]));
+}
 
 interface UserNotification {
   id: string;
@@ -110,6 +139,11 @@ interface HistoryStats {
 
 export default function AdminNotificationsPage() {
   const toast = useToast();
+  const { hasPermission } = useAdminPermission();
+  // 细粒度权限控制：发布通知绑定 announcement:publish；删除/出清流水绑定 announcement:delete
+  const canPublish = hasPermission("announcement:publish");
+  const canDelete = hasPermission("announcement:delete");
+
   const [notificationData, setNotificationData] =
     useState<NotificationData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -276,6 +310,10 @@ export default function AdminNotificationsPage() {
   const [historyReadFilter, setHistoryReadFilter] = useState("");
   const [historyUserSearch, setHistoryUserSearch] = useState("");
 
+  // 历史多维勾选与批量删除状态
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
+  const [deletingHistory, setDeletingHistory] = useState(false);
+
   // 查看历史详情模态框
   const [viewingHistory, setViewingHistory] = useState<NotificationHistoryItem | null>(null);
 
@@ -318,6 +356,7 @@ export default function AdminNotificationsPage() {
   useEffect(() => {
     if (activeTab === "history") {
       loadHistory();
+      setSelectedHistoryIds([]);
     }
   }, [activeTab, historyPage, historySearch, historyType, historyReadFilter, historyUserSearch]);
 
@@ -327,6 +366,101 @@ export default function AdminNotificationsPage() {
     setHistoryReadFilter("");
     setHistoryUserSearch("");
     setHistoryPage(1);
+    setSelectedHistoryIds([]);
+  };
+
+  // 切换勾选单条历史记录
+  const handleToggleSelectHistory = (id: string) => {
+    setSelectedHistoryIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // 全选/全不选当前页历史记录
+  const handleToggleSelectAllHistory = () => {
+    if (historyList.length === 0) return;
+    const allIds = historyList.map((item) => item.id);
+    const isAllSelected = allIds.every((id) => selectedHistoryIds.includes(id));
+    if (isAllSelected) {
+      setSelectedHistoryIds((prev) => prev.filter((id) => !allIds.includes(id)));
+    } else {
+      setSelectedHistoryIds((prev) => Array.from(new Set([...prev, ...allIds])));
+    }
+  };
+
+  // 单条删除历史记录
+  const handleDeleteHistory = (id: string, title?: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "确认删除此条推送流水？",
+      message: `确定要删除通知「${title || id}」的推送记录吗？删除后此条流水将无法恢复。`,
+      type: "danger",
+      onConfirm: async () => {
+        try {
+          setDeletingHistory(true);
+          const res = await fetch(`/api/admin/notifications/history?id=${encodeURIComponent(id)}`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${getAuthToken()}`,
+            },
+          });
+          const data = await res.json();
+          if (res.ok) {
+            toast.success(data.message || "该条推送历史记录已成功删除");
+            setSelectedHistoryIds((prev) => prev.filter((item) => item !== id));
+            loadHistory(true);
+          } else {
+            toast.error(data.error || "删除失败");
+          }
+        } catch {
+          toast.error("网络异常，删除失败");
+        } finally {
+          setDeletingHistory(false);
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
+  };
+
+  // 批量删除选中的历史记录
+  const handleBatchDeleteHistory = () => {
+    if (selectedHistoryIds.length === 0) {
+      toast.info("请先勾选需要删除的推送历史记录");
+      return;
+    }
+    const count = selectedHistoryIds.length;
+    setConfirmModal({
+      isOpen: true,
+      title: `确认批量删除选中的 ${count} 条流水？`,
+      message: `确定要永久删除当前已勾选的 ${count} 条系统推送流水记录吗？此操作不可逆，删除后流水将无法回溯。`,
+      type: "danger",
+      onConfirm: async () => {
+        try {
+          setDeletingHistory(true);
+          const res = await fetch("/api/admin/notifications/history", {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${getAuthToken()}`,
+            },
+            body: JSON.stringify({ ids: selectedHistoryIds }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            toast.success(data.message || `成功删除 ${count} 条推送历史记录`);
+            setSelectedHistoryIds([]);
+            loadHistory(true);
+          } else {
+            toast.error(data.error || "批量删除失败");
+          }
+        } catch {
+          toast.error("网络异常，批量删除失败");
+        } finally {
+          setDeletingHistory(false);
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        }
+      },
+    });
   };
 
   const getNotificationTypeBadge = (type: string) => {
@@ -835,35 +969,124 @@ export default function AdminNotificationsPage() {
     }
   };
 
-  // 上传 CSV/TXT 文件批量导入用户标识
+  // 上传 Excel (.xlsx/.xls) 或 CSV/TXT 文件批量导入用户标识
   const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
       setBulkImporting(true);
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/admin/users/import-identifiers", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getAuthToken()}` },
-        body: fd,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error || "文件导入失败");
+      const fileName = file.name.toLowerCase();
+      let extractedTokens: string[] = [];
+
+      // 1. 判断是否为 Excel 文件 (.xlsx / .xls)
+      if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
+        const textParts: string[] = [];
+        workbook.SheetNames.forEach((sheetName) => {
+          const worksheet = workbook.Sheets[sheetName];
+          if (worksheet) {
+            // 将每一个 sheet 转换为 csv 文本格式分词
+            const csv = XLSX.utils.sheet_to_csv(worksheet);
+            textParts.push(csv);
+          }
+        });
+        extractedTokens = splitIdentifiers(textParts.join("\n"));
+      } else {
+        // 纯文本、CSV 或 TSV
+        const text = await file.text();
+        extractedTokens = splitIdentifiers(text);
+      }
+
+      if (extractedTokens.length === 0) {
+        toast.error("表格或文件中未识别出有效的用户邮箱、手机号或用户ID");
         return;
       }
-      const data = await res.json();
-      const matchedUsers = data.matched || [];
-      setDispatchForm((prev) => {
-        const existing = new Set(prev.targetUsers.map((u) => u.id));
-        const toAdd = matchedUsers.filter((u: { id: string }) => !existing.has(u.id));
-        return { ...prev, targetUsers: [...prev.targetUsers, ...toAdd] };
+
+      // 2. 请求服务端批量识别接口获取真实的用户详情（带真实姓名与角色）
+      let matchedUsers: Array<{ id: string; name: string | null; email: string | null; role?: string }> = [];
+      let unmatchedTokens: string[] = [];
+
+      try {
+        const res = await fetch("/api/admin/users/import-identifiers", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getAuthToken()}`,
+          },
+          body: JSON.stringify({ identifiers: extractedTokens }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          matchedUsers = data.matched || [];
+          unmatchedTokens = data.unmatched || [];
+        }
+      } catch (err) {
+        console.warn("请求服务端匹配用户标识失败，启用客户端本地解析模式", err);
+      }
+
+      // 3. 将用户安全追加进已选定向池并去重
+      const existingIds = new Set(dispatchForm.targetUsers.map((u) => u.id));
+      const existingEmails = new Set(
+        dispatchForm.targetUsers.map((u) => u.email).filter(Boolean) as string[]
+      );
+
+      const toAdd: Array<{ id: string; name: string | null; email: string | null; role?: string }> = [];
+
+      // 3.1 优先装载服务端精准匹配到的系统用户
+      matchedUsers.forEach((u) => {
+        if (!existingIds.has(u.id) && (!u.email || !existingEmails.has(u.email))) {
+          existingIds.add(u.id);
+          if (u.email) existingEmails.add(u.email);
+          toAdd.push(u);
+        }
       });
-      const unmatchedHint = data.unmatchedCount > 0 ? `；${data.unmatchedCount.toLocaleString()} 位未能匹配（已忽略）` : "";
-      toast.success(`已导入 ${data.matchedCount.toLocaleString()} / ${data.totalInput.toLocaleString()} 位用户${unmatchedHint}`);
-    } catch {
-      toast.error("文件导入失败");
+
+      // 3.2 未匹配但格式合法的 token 作为兜底用户添加（例如外部邮箱或手机）
+      const fallbackTokens = matchedUsers.length > 0 ? unmatchedTokens : extractedTokens;
+      fallbackTokens.forEach((token) => {
+        const isEmail = token.includes("@");
+        if (isEmail) {
+          if (!existingEmails.has(token) && !existingIds.has(token)) {
+            existingEmails.add(token);
+            existingIds.add(token);
+            toAdd.push({
+              id: token,
+              name: token.split("@")[0],
+              email: token,
+              role: "user",
+            });
+          }
+        } else if (!existingIds.has(token)) {
+          existingIds.add(token);
+          toAdd.push({
+            id: token,
+            name: `用户 (${token.slice(0, 8)}...)`,
+            email: null,
+            role: "user",
+          });
+        }
+      });
+
+      if (toAdd.length === 0) {
+        toast.info("表格中识别到的所有用户均已在发送池中，无需重复添加");
+        return;
+      }
+
+      setDispatchForm((prev) => ({
+        ...prev,
+        targetUsers: [...prev.targetUsers, ...toAdd],
+        errors: { ...prev.errors, target: "" },
+      }));
+
+      toast.success(
+        `成功解析表格！已将 ${toAdd.length} 位用户加入发送池${
+          matchedUsers.length > 0 ? `（其中精准匹配平台用户 ${matchedUsers.length} 位）` : ""
+        }`
+      );
+    } catch (err) {
+      console.error("解析导入表格文件失败:", err);
+      toast.error("表格文件解析失败，请检查文件是否损坏或受密码保护");
     } finally {
       setBulkImporting(false);
       e.target.value = "";
@@ -1121,7 +1344,7 @@ export default function AdminNotificationsPage() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-black text-slate-800 tracking-tight">
-                  通知与消息推送治理中心 (Notifications & Alerts)
+                  通知与消息推送治理中心
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200/80">
                   通道偏好与系统调度
@@ -1134,24 +1357,28 @@ export default function AdminNotificationsPage() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              onClick={() => openDispatchModal()}
-              className="h-9 px-4 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl shadow-xs transition-all inline-flex items-center gap-1.5 cursor-pointer active:scale-95"
-              title="向全平台用户或指定账户发送站内信或服务通知"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>发布系统通知</span>
-            </button>
+            {canPublish && (
+              <button
+                onClick={() => openDispatchModal()}
+                className="h-9 px-4 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl shadow-xs transition-all inline-flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title="向全平台用户或指定账户发送站内信或服务通知"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>发布系统通知</span>
+              </button>
+            )}
 
-            <Link
-              href="/admin/documents?category=announcement"
-              className="h-9 px-3.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-colors inline-flex items-center gap-1.5 shadow-2xs"
-              title="前往文档中心发布或管理系统官方公告"
-            >
-              <Megaphone className="w-4 h-4 text-[#3182ce]" />
-              <span>官方公告管理</span>
-              <ExternalLink className="w-3 h-3 text-slate-400" />
-            </Link>
+            {hasPermission("document:read") && (
+              <Link
+                href="/admin/documents?category=announcement"
+                className="h-9 px-3.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-colors inline-flex items-center gap-1.5 shadow-2xs"
+                title="前往文档中心发布或管理系统官方公告"
+              >
+                <Megaphone className="w-4 h-4 text-[#3182ce]" />
+                <span>官方公告管理</span>
+                <ExternalLink className="w-3 h-3 text-slate-400" />
+              </Link>
+            )}
 
             <button
               onClick={() => loadNotifications()}
@@ -1525,9 +1752,9 @@ export default function AdminNotificationsPage() {
                                   >
                                     {item.user.name || "未设置昵称"}
                                   </Link>
-                                  {item.user.role === "admin" && (
+                                  {item.user.role && (
                                     <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-50 text-[#3182ce] border border-blue-200">
-                                      管理员
+                                      {getRoleChineseName(item.user.role)}
                                     </span>
                                   )}
                                 </div>
@@ -1608,17 +1835,19 @@ export default function AdminNotificationsPage() {
                           {/* 操作列 */}
                           <td className="sticky right-0 bg-white/95 group-hover:bg-blue-50/95 backdrop-blur-xs z-10 py-3.5 px-5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
                             <div className="flex items-center justify-end gap-1.5">
-                              {/* 定向推送通知 */}
-                              <button
-                                onClick={() => openDispatchModal(item.user)}
-                                className="px-2.5 h-7 bg-blue-50 hover:bg-[#3182ce] text-[#3182ce] hover:text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
-                                title="向该用户发送一条定向系统通知"
-                              >
-                                <Send className="w-3.5 h-3.5" />
-                                <span>推送</span>
-                              </button>
+                              {/* 定向推送通知：受控于 canPublish */}
+                              {canPublish && (
+                                <button
+                                  onClick={() => openDispatchModal(item.user)}
+                                  className="px-2.5 h-7 bg-blue-50 hover:bg-[#3182ce] text-[#3182ce] hover:text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                  title="向该用户发送一条定向系统通知"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>推送</span>
+                                </button>
+                              )}
 
-                              {/* 偏好详情（明确管理端诊断定位，更名为偏好详情） */}
+                              {/* 偏好详情（明确管理端诊断定位，纯只读查看） */}
                               <button
                                 onClick={() => openPrefModal(item)}
                                 className="px-2.5 h-7 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
@@ -1628,15 +1857,17 @@ export default function AdminNotificationsPage() {
                                 <span>偏好详情</span>
                               </button>
 
-                              {/* 连通性测试（带清晰文字描述） */}
-                              <button
-                                onClick={() => handleSendTestNotification(item)}
-                                className="px-2.5 h-7 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
-                                title="向该用户发送一条通道健康连通性自检通知"
-                              >
-                                <Activity className="w-3.5 h-3.5" />
-                                <span>连通测试</span>
-                              </button>
+                              {/* 连通性测试（带清晰文字描述，发信写操作）：受控于 canPublish */}
+                              {canPublish && (
+                                <button
+                                  onClick={() => handleSendTestNotification(item)}
+                                  className="px-2.5 h-7 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                  title="向该用户发送一条通道健康连通性自检通知"
+                                >
+                                  <Activity className="w-3.5 h-3.5" />
+                                  <span>连通测试</span>
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1718,6 +1949,40 @@ export default function AdminNotificationsPage() {
               </div>
             </div>
 
+            {/* 1 年生命周期与合规出清策略 Banner */}
+            <div className="bg-gradient-to-r from-blue-50/90 to-indigo-50/70 p-4 rounded-2xl border border-blue-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-[#3182ce] text-white flex items-center justify-center font-bold shrink-0 shadow-2xs">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <span>系统消息流水生命周期管理（默认合规留存 1 年）</span>
+                    <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-blue-100 text-[#3182ce] border border-blue-300">
+                      自动滚动出清
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    平台系统消息推送历史记录合规留存 <strong>1 年（365天）</strong>。超期 1 年的陈旧流水将由系统自动安全出清；管理员可在此进行多维检索、单条删除与批量出清。
+                  </p>
+                </div>
+              </div>
+              {canDelete && selectedHistoryIds.length > 0 && (
+                <div className="flex items-center gap-2 shrink-0 bg-white/80 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-blue-200">
+                  <span className="text-xs font-bold text-slate-700">
+                    已选定 <strong className="text-red-600">{selectedHistoryIds.length}</strong> 条流水
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedHistoryIds([])}
+                    className="text-[11px] text-slate-400 hover:text-slate-600 underline cursor-pointer"
+                  >
+                    取消勾选
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* 历史多维搜索与筛选卡片 */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5">
@@ -1787,6 +2052,20 @@ export default function AdminNotificationsPage() {
                   </select>
                 </div>
 
+                {/* 批量删除按钮（受控于 canDelete，勾选后鲜红高亮呈现） */}
+                {canDelete && selectedHistoryIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBatchDeleteHistory}
+                    disabled={deletingHistory}
+                    className="h-10 px-3.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 shadow-xs cursor-pointer shrink-0 animate-in fade-in"
+                    title="批量删除已勾选的历史记录"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>批量删除 ({selectedHistoryIds.length})</span>
+                  </button>
+                )}
+
                 {/* 重置筛选 */}
                 {(historySearch || historyType || historyReadFilter || historyUserSearch) && (
                   <button
@@ -1818,18 +2097,31 @@ export default function AdminNotificationsPage() {
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mb-4">
                     未检索到符合条件的系统消息派发记录。您可以点击右上角发布通知，或调整搜索关键词。
                   </p>
-                  <button
-                    onClick={() => openDispatchModal()}
-                    className="px-4 h-8.5 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl transition-colors cursor-pointer"
-                  >
-                    立即发布新通知
-                  </button>
+                  {canPublish && (
+                    <button
+                      onClick={() => openDispatchModal()}
+                      className="px-4 h-8.5 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl transition-colors cursor-pointer"
+                    >
+                      立即发布新通知
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse min-w-[1000px]">
                     <thead>
                       <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                        {canDelete && (
+                          <th className="py-3 px-3 text-center whitespace-nowrap w-12">
+                            <input
+                              type="checkbox"
+                              checked={historyList.length > 0 && historyList.every((item) => selectedHistoryIds.includes(item.id))}
+                              onChange={handleToggleSelectAllHistory}
+                              className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                              title="全选/全不选当前页"
+                            />
+                          </th>
+                        )}
                         <th className="py-3 px-5 whitespace-nowrap">消息类型</th>
                         <th className="py-3 px-5 whitespace-nowrap">通知标题与内容</th>
                         <th className="py-3 px-5 whitespace-nowrap">接收目标账户</th>
@@ -1843,8 +2135,26 @@ export default function AdminNotificationsPage() {
                     <tbody className="divide-y divide-slate-100 text-xs">
                       {historyList.map((item) => {
                         const typeBadge = getNotificationTypeBadge(item.type);
+                        const isSelected = selectedHistoryIds.includes(item.id);
                         return (
-                          <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
+                          <tr
+                            key={item.id}
+                            className={`transition-colors group ${
+                              isSelected ? "bg-blue-50/60" : "hover:bg-blue-50/30"
+                            }`}
+                          >
+                            {/* 单项多选 Checkbox：受控于 canDelete */}
+                            {canDelete && (
+                              <td className="py-3.5 px-3 text-center whitespace-nowrap w-12">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleSelectHistory(item.id)}
+                                  className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                                />
+                              </td>
+                            )}
+
                             {/* 消息类型 */}
                             <td className="py-3.5 px-5 whitespace-nowrap">
                               <div className="flex flex-col items-start gap-1.5">
@@ -1918,18 +2228,32 @@ export default function AdminNotificationsPage() {
                               </div>
                             </td>
 
-                            {/* 操作列 (Sticky Right 固定吸附，仅提供详情查看) */}
+                            {/* 操作列 (Sticky Right 固定吸附，支持详情查看与受控删除) */}
                             <td className="sticky right-0 bg-white/95 group-hover:bg-blue-50/95 backdrop-blur-xs z-10 py-3.5 px-5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
-                              <div className="flex items-center justify-end">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => setViewingHistory(item)}
-                                  className="px-3 h-7 bg-blue-50 hover:bg-[#3182ce] text-[#3182ce] hover:text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                  className="px-2.5 h-7 bg-blue-50 hover:bg-[#3182ce] text-[#3182ce] hover:text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
                                   title="查看此条通知推送的完整内容与详情"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                   <span>详情</span>
                                 </button>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteHistory(item.id, item.title)}
+                                    disabled={deletingHistory}
+                                    className="px-2.5 h-7 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer border border-red-600 shadow-xs"
+                                    title="删除此条推送流水记录"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-white" />
+                                    <span>删除</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-slate-400 font-medium">只读</span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2126,7 +2450,7 @@ export default function AdminNotificationsPage() {
                                     }`}
                                 >
                                   <div className="text-xs font-bold text-slate-800">{g.name}</div>
-                                  <div className="text-[10px] text-slate-400 mt-0.5">{g.description || `角色值：${g.roleKey}`}</div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5">{g.description || `适用人群：${getRoleChineseName(g.roleKey)}`}</div>
                                   <div className="mt-1 flex items-center justify-between gap-1">
                                     <span className="text-[10px] font-bold text-[#3182ce]">{g.finalCount} 人</span>
                                     {(g.excludeCount > 0 || g.includeCount > 0) && (
@@ -2445,14 +2769,14 @@ export default function AdminNotificationsPage() {
                             />
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[10px] text-slate-400">
-                                支持换行/逗号/分号分隔；如需数万用户，可直接上传 CSV/TXT
+                                支持 Excel (.xlsx/.xls)、CSV 或纯文本整列导入，自动智能识别邮箱与用户ID
                               </span>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <label className={`px-3 h-7 flex items-center text-xs font-bold rounded-lg transition-colors cursor-pointer ${bulkImporting ? "bg-slate-200 text-slate-500" : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`}>
-                                  {bulkImporting ? "导入中..." : "📂 上传 CSV/TXT"}
+                                  {bulkImporting ? "正在解析导入..." : "📂 导入 Excel / 表格文件"}
                                   <input
                                     type="file"
-                                    accept=".csv,.txt,.tsv"
+                                    accept=".xlsx,.xls,.csv,.txt,.tsv"
                                     className="hidden"
                                     disabled={bulkImporting}
                                     onChange={handleImportFile}
@@ -2489,16 +2813,16 @@ export default function AdminNotificationsPage() {
                       onChange={(e) =>
                         setDispatchForm({ ...dispatchForm, type: e.target.value })
                       }
-                      className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] text-xs font-bold text-slate-800 bg-slate-50/50 focus:bg-white"
+                      className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] text-xs font-bold text-slate-800 bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
-                      <option value="system">🔔 系统通知 (System Notice)</option>
-                      <option value="update">🚀 功能与版本更新 (Feature Update)</option>
-                      <option value="alert">⚠️ 安全与业务告警 (Important Alert)</option>
-                      <option value="activity">🎁 平台活动与福利 (Event & Reward)</option>
-                      <option value="task">📋 任务处理 (Task)</option>
-                      <option value="security">🛡️ 安全隔离 (Security)</option>
-                      </select>
-                      </div>
+                      <option value="system">🔔 平台系统通知</option>
+                      <option value="update">🚀 功能与版本更新</option>
+                      <option value="alert">⚠️ 安全与业务告警</option>
+                      <option value="activity">🎁 平台活动与福利</option>
+                      <option value="task">📋 任务处理与工单</option>
+                      <option value="security">🛡️ 账号与安全隔离</option>
+                    </select>
+                  </div>
 
                       <label className="flex items-center gap-2.5 p-3 bg-amber-50/60 border border-amber-100 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors">
                       <input
@@ -2617,13 +2941,7 @@ export default function AdminNotificationsPage() {
                       </span>
                     ) : dispatchForm.targetType === "role" ? (
                       <span>
-                        当前将批量推送到【<strong className="text-slate-900">{
-                          dispatchForm.targetRole === "admin"
-                            ? "管理与运营团队"
-                            : dispatchForm.targetRole === "creator"
-                              ? "创作者与开发组"
-                              : "普通注册会员"
-                        }</strong>】群组（预计覆盖 {roleCountEstimate !== null ? `${roleCountEstimate} 位` : "全量"} 活跃用户）。
+                        当前将批量推送到【<strong className="text-slate-900">{getRoleChineseName(dispatchForm.targetRole)}</strong>】群组（预计覆盖 {roleCountEstimate !== null ? `${roleCountEstimate} 位` : "全量"} 活跃用户）。
                       </span>
                     ) : (
                       <span>
@@ -2702,7 +3020,7 @@ export default function AdminNotificationsPage() {
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     {managingGroup.type === "system"
-                      ? `系统角色群组（角色值：${managingGroup.roleKey}）· 可剔除个别成员，也可跨角色追加成员`
+                      ? `系统角色群组（${getRoleChineseName(managingGroup.roleKey)}）· 可剔除个别成员，也可跨角色追加成员`
                       : "自定义群组 · 通过下方搜索添加成员"}
                   </p>
                 </div>
@@ -2783,10 +3101,16 @@ export default function AdminNotificationsPage() {
                           <div className="text-[11px] font-bold text-slate-700 truncate">
                             {m.name || m.email}
                           </div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {m.email} · {m.role}
+                          <div className="text-[10px] text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
+                            <span>{m.email || "无邮箱"}</span>
+                            <span className="text-slate-300">·</span>
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                              {getRoleChineseName(m.role)}
+                            </span>
                             {m.source === "include" && (
-                              <span className="ml-1 text-[#3182ce] font-bold">（额外追加）</span>
+                              <span className="text-[#3182ce] font-bold text-[9px] bg-blue-50 px-1 py-0.2 rounded border border-blue-200">
+                                额外追加
+                              </span>
                             )}
                           </div>
                         </div>
@@ -2818,7 +3142,13 @@ export default function AdminNotificationsPage() {
                             <div className="text-[11px] font-bold text-slate-700 truncate">
                               {m.name || m.email}
                             </div>
-                            <div className="text-[10px] text-slate-400 truncate">{m.email}</div>
+                            <div className="text-[10px] text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
+                              <span>{m.email || "无邮箱"}</span>
+                              <span className="text-slate-300">·</span>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                {getRoleChineseName(m.role)}
+                              </span>
+                            </div>
                           </div>
                           <button
                             type="button"

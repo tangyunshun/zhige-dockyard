@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 /**
  * 通知受众群组管理接口
@@ -13,34 +14,64 @@ import { isAdminRole, validateUser } from "@/lib/auth";
  *      最终推送人群 = (系统群组基础人群 − exclude 名单) ∪ include 名单
  */
 
-// 系统角色群组建档时的默认展示文案（仅默认值，管理员可在后台改名/改描述）
+// 系统角色群组建档时的默认展示文案（全面支持平台所有角色变体，100% 简体中文）
 const ROLE_LABELS: Record<string, string> = {
-  admin: "管理运营团队",
+  "super-admin": "超级管理员团队",
+  superadmin: "超级管理员团队",
+  super_admin: "超级管理员团队",
+  SUPER_ADMIN: "超级管理员团队",
+  admin: "平台管理员组",
+  ADMIN: "平台管理员组",
   creator: "创作者与开发组",
-  user: "普通注册会员",
+  CREATOR: "创作者与开发组",
+  user: "普通注册用户群",
+  USER: "普通注册用户群",
 };
 
 const ROLE_DESCS: Record<string, string> = {
-  admin: "超级管理员与平台管理员",
-  creator: "开发者、创作者及项目经理",
-  user: "全站普通社区用户与终端客户",
+  "super-admin": "拥有全平台最高权限的系统架构师与平台主管团队",
+  superadmin: "拥有全平台最高权限的系统架构师与平台主管团队",
+  super_admin: "拥有全平台最高权限的系统架构师与平台主管团队",
+  SUPER_ADMIN: "拥有全平台最高权限的系统架构师与平台主管团队",
+  admin: "负责平台日常运维、订单审核与内容治理的管理人员",
+  ADMIN: "负责平台日常运维、订单审核与内容治理的管理人员",
+  creator: "入驻知阁平台的组件开发者、算法工程师及项目经理",
+  CREATOR: "入驻知阁平台的组件开发者、算法工程师及项目经理",
+  user: "知阁全站注册用户与终端工作空间协作成员",
+  USER: "知阁全站注册用户与终端工作空间协作成员",
 };
 
-async function requireAdmin(request: NextRequest) {
-  const auth = await validateUser(request.headers.get("Authorization"), request);
-  if (!auth.valid || !auth.user) {
-    return { error: NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }) };
+function getRoleChineseName(role: string): string {
+  if (ROLE_LABELS[role]) return ROLE_LABELS[role];
+  const r = role.toLowerCase().replace(/[-_]/g, "");
+  if (r.includes("superadmin")) return "超级管理员团队";
+  if (r === "admin") return "平台管理员组";
+  if (r === "creator") return "创作者与开发组";
+  if (r === "user") return "普通注册用户群";
+  return `${role} 角色组`;
+}
+
+function getRoleChineseDesc(role: string): string {
+  if (ROLE_DESCS[role]) return ROLE_DESCS[role];
+  const r = role.toLowerCase().replace(/[-_]/g, "");
+  if (r.includes("superadmin")) return "拥有全平台最高权限的系统架构师与平台主管团队";
+  if (r === "admin") return "负责平台日常运维、订单审核与内容治理的管理人员";
+  if (r === "creator") return "入驻知阁平台的组件开发者、算法工程师及项目经理";
+  if (r === "user") return "知阁全站注册用户与终端工作空间协作成员";
+  return `系统内置角色群体（${getRoleChineseName(role)}）`;
+}
+
+async function requireAdmin(request: NextRequest, permissionKey: string = "announcement:read") {
+  const authCheck = await requirePlatformPermission(request, permissionKey);
+  if (!authCheck.authorized || !authCheck.user) {
+    return { error: authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 }) };
   }
-  const user = await prisma.user.findUnique({ where: { id: auth.user.id } });
-  if (!user || !isAdminRole(user.role)) {
-    return { error: NextResponse.json({ error: "权限不足" }, { status: 403 }) };
-  }
-  return { admin: user };
+  return { admin: authCheck.user };
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request);
+    const guard = await requireAdmin(request, "announcement:read");
     if (guard.error) return guard.error;
 
     // 1. 动态聚合出平台内真实存在的全部用户角色
@@ -50,19 +81,36 @@ export async function GET(request: NextRequest) {
     });
     const roles = roleRows.map((r) => r.role).filter(Boolean);
 
-    // 2. 为每个真实存在的角色自动建立/复用一条系统群组档案
+    // 2. 为每个真实存在的角色自动建立/复用一条系统群组档案，并自动修正旧数据中的英文命名
     for (const role of roles) {
+      const standardName = getRoleChineseName(role);
+      const standardDesc = getRoleChineseDesc(role);
       const existing = await prisma.notificationgroup.findFirst({
         where: { type: "system", roleKey: role },
-        select: { id: true },
+        select: { id: true, name: true, description: true },
       });
       if (!existing) {
         await prisma.notificationgroup.create({
           data: {
-            name: ROLE_LABELS[role] || role,
+            name: standardName,
             type: "system",
             roleKey: role,
-            description: ROLE_DESCS[role] || `系统角色（${role}）`,
+            description: standardDesc,
+          },
+        });
+      } else if (
+        existing.name === role ||
+        existing.name.toLowerCase() === "super-admin" ||
+        existing.name.toLowerCase() === "admin" ||
+        !existing.description ||
+        existing.description.includes(role)
+      ) {
+        // 自动纠偏旧数据中的英文名称和描述
+        await prisma.notificationgroup.update({
+          where: { id: existing.id },
+          data: {
+            name: standardName,
+            description: standardDesc,
           },
         });
       }
@@ -126,10 +174,13 @@ export async function GET(request: NextRequest) {
 
       result.push({
         id: g.id,
-        name: g.name,
+        name: g.type === "system" && g.roleKey ? getRoleChineseName(g.roleKey) : g.name,
         type: g.type,
         roleKey: g.roleKey,
-        description: g.description,
+        description:
+          g.type === "system" && g.roleKey
+            ? getRoleChineseDesc(g.roleKey)
+            : g.description || "自定义受众群组",
         baseCount,
         includeCount: includeIds.length,
         excludeCount: excludeIds.length,
@@ -147,7 +198,7 @@ export async function GET(request: NextRequest) {
 // 创建自定义群组
 export async function POST(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request);
+    const guard = await requireAdmin(request, "announcement:publish");
     if (guard.error) return guard.error;
 
     const body = await request.json();
@@ -181,7 +232,7 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request);
+    const guard = await requireAdmin(request, "announcement:publish");
     if (guard.error) return guard.error;
 
     const body = await request.json();
@@ -238,7 +289,7 @@ export async function PATCH(request: NextRequest) {
 // 删除群组（仅自定义群组可删，系统角色群组随角色存在）
 export async function DELETE(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request);
+    const guard = await requireAdmin(request, "announcement:publish");
     if (guard.error) return guard.error;
 
     const groupId = new URL(request.url).searchParams.get("id");

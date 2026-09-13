@@ -14,9 +14,13 @@ import {
   Mail,
   Phone,
   Calendar,
+  Clock,
   Crown,
+  RefreshCw,
+  Download,
 } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
 
 interface MemberUser {
   id: string;
@@ -25,6 +29,8 @@ interface MemberUser {
   phone: string;
   membershipLevel: string;
   createdAt: string;
+  membershipActivatedAt?: string | null;
+  membershipExpireAt?: string | null;
   membershipConfig: {
     name: string;
     nameZh: string;
@@ -42,10 +48,26 @@ interface Pagination {
 
 const PAGE_SIZE = 10;
 
+/** 格式化日期时间为 YYYY/MM/DD HH:mm:ss 完整精确时间 */
+const formatDateTime = (dateStr?: string | Date | null) => {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "-";
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  const seconds = pad(d.getSeconds());
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+};
+
 export default function AdminMembershipUsersPage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [users, setUsers] = useState<MemberUser[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -61,6 +83,100 @@ export default function AdminMembershipUsersPage() {
   useEffect(() => {
     loadUsers();
   }, [pagination.page, filters]);
+
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const authToken = getAuthToken();
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "5000",
+        ...(filters.membershipLevel && {
+          membership_level: filters.membershipLevel,
+        }),
+        ...(filters.search && {
+          search: filters.search,
+        }),
+      });
+
+      const res = await fetch(`/api/admin/membership/users?${params}`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        toast.error("获取会员用户全量数据失败，请重试");
+        return;
+      }
+
+      const responseData = await res.json();
+      const allUsers: MemberUser[] = responseData.data?.users || [];
+
+      if (allUsers.length === 0) {
+        toast.error("当前筛选条件下无会员用户数据可导出");
+        return;
+      }
+
+      const levelNameMap: Record<string, string> = {
+        FREE: "免费版",
+        PRO: "专业版",
+        ENTERPRISE: "企业版",
+        FLAGSHIP: "旗舰版",
+        CROWN: "皇冠版",
+      };
+
+      exportToExcel({
+        filename: "知阁会员用户列表",
+        sheetName: "会员用户",
+        data: allUsers,
+        columns: [
+          { header: "用户 ID", key: "id", width: 28 },
+          { header: "用户姓名", key: "name", width: 16 },
+          { header: "电子邮箱", key: "email", width: 26 },
+          {
+            header: "手机号码",
+            key: "phone",
+            width: 16,
+            formatter: (v: any) => v || "-",
+          },
+          {
+            header: "当前会员等级",
+            key: "membershipLevel",
+            width: 16,
+            formatter: (_v: string, row: MemberUser) =>
+              row.membershipConfig?.nameZh || levelNameMap[row.membershipLevel] || row.membershipLevel || "未知等级",
+          },
+          {
+            header: "会员开通时间",
+            key: "membershipActivatedAt",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+          {
+            header: "会员到期时间",
+            key: "membershipExpireAt",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+          {
+            header: "账号注册时间",
+            key: "createdAt",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+        ],
+      });
+
+      toast.success(`成功导出 ${allUsers.length} 位会员用户信息！`);
+    } catch (err) {
+      console.error("导出会员用户 Excel 失败:", err);
+      toast.error("导出 Excel 异常，请检查控制台");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -126,27 +242,32 @@ export default function AdminMembershipUsersPage() {
       <div>
         {/* 操作过滤栏 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/90 shadow-2xs p-4 mb-5 overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
-          <div className="relative flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3">
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 w-full">
-              <div className="relative w-full sm:w-auto">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl pointer-events-none"></div>
+          <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0">
+              {/* 搜索框：提供充足宽度，杜绝 placeholder 截断 */}
+              <div className="relative w-full sm:w-80 md:w-96 shrink-0">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
                   placeholder="搜索用户名、邮箱、手机号..."
                   value={filters.search}
-                  onChange={(e) =>
-                    setFilters({ ...filters, search: e.target.value })
-                  }
-                  className="w-full pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                  onChange={(e) => {
+                    setFilters((prev) => ({ ...prev, search: e.target.value }));
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  className="w-full pl-10 pr-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all bg-white placeholder:text-slate-400"
                 />
               </div>
+
+              {/* 等级下拉筛选 */}
               <select
                 value={filters.membershipLevel}
-                onChange={(e) =>
-                  setFilters({ ...filters, membershipLevel: e.target.value })
-                }
-                className="w-full sm:w-auto px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                onChange={(e) => {
+                  setFilters((prev) => ({ ...prev, membershipLevel: e.target.value }));
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+                className="w-full sm:w-36 h-10 px-3.5 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white cursor-pointer shrink-0 text-slate-700"
               >
                 <option value="">全部等级</option>
                 <option value="BRONZE">青铜版</option>
@@ -155,9 +276,34 @@ export default function AdminMembershipUsersPage() {
                 <option value="DIAMOND">钻石版</option>
                 <option value="CROWN">皇冠版</option>
               </select>
+
+              {/* 刷新数据按钮 */}
+              <button
+                type="button"
+                onClick={loadUsers}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-2xs border border-slate-200/80 active:scale-95 disabled:opacity-50 whitespace-nowrap shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
+                <span>刷新数据</span>
+              </button>
+
+              {/* 导出 Excel 按钮 */}
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={exporting || loading}
+                className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-2xs border border-emerald-200/90 active:scale-95 disabled:opacity-50 whitespace-nowrap shrink-0"
+                title="导出符合当前筛选条件的全部会员用户为 Excel 表格"
+              >
+                <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-bounce" : ""}`} />
+                <span>{exporting ? "导出中..." : "导出 Excel"}</span>
+              </button>
             </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-              <Users className="w-4 h-4" />
+
+            {/* 会员总数徽章统计 */}
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-100/90 px-3.5 py-2 rounded-xl border border-slate-200/70 shrink-0 self-start md:self-auto">
+              <Users className="w-4 h-4 text-[#3182ce]" />
               <span>共 {pagination.total} 位会员</span>
             </div>
           </div>
@@ -189,7 +335,7 @@ export default function AdminMembershipUsersPage() {
             <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
               <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
               <div className="relative overflow-x-auto">
-                <table className="w-full table-auto min-w-[860px]">
+                <table className="w-full table-auto min-w-[960px]">
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
@@ -197,6 +343,9 @@ export default function AdminMembershipUsersPage() {
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         会员等级
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                        开通会员时间
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         注册时间
@@ -280,17 +429,30 @@ export default function AdminMembershipUsersPage() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-                            <Calendar className="w-4 h-4 shrink-0 text-slate-400" />
+                          {user.membershipActivatedAt ? (
+                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                              <Calendar className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
+                              <span
+                                className="font-mono tracking-tight"
+                                title={`开通时间：${formatDateTime(user.membershipActivatedAt)}${user.membershipExpireAt ? `\n到期时间：${formatDateTime(user.membershipExpireAt)}` : ""}`}
+                              >
+                                {formatDateTime(user.membershipActivatedAt)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium">
+                              -
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span
-                              className="whitespace-nowrap"
-                              title={new Date(
-                                user.createdAt,
-                              ).toLocaleDateString("zh-CN")}
+                              className="font-mono tracking-tight"
+                              title={`注册时间：${formatDateTime(user.createdAt)}`}
                             >
-                              {new Date(user.createdAt).toLocaleDateString(
-                                "zh-CN",
-                              )}
+                              {formatDateTime(user.createdAt)}
                             </span>
                           </div>
                         </td>

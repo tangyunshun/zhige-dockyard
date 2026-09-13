@@ -19,10 +19,43 @@ import {
   Zap,
   Search,
   Clock,
+  Download,
+  ShieldAlert,
+  ShieldCheck,
+  Layers,
+  UserCheck,
+  Package,
+  Info,
+  Shield,
 } from "lucide-react";
 import Pagination from "@/components/Pagination";
 import { StatusBadge, ActionButton, RowActions } from "@/components/common";
 import { ComponentIcon } from "@/lib/component-icons";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
+
+interface DisableCheckResult {
+  canDisable: boolean;
+  isProtected?: boolean;
+  memberCount: number;
+  members: Array<{
+    id: string;
+    userId: string;
+    role: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    avatar: string | null;
+  }>;
+  componentCount: number;
+  components: Array<{
+    id: string;
+    name: string;
+    category: string;
+    icon: string | null;
+  }>;
+  blockReason: string | null;
+}
 
 interface Workspace {
   id: string;
@@ -102,6 +135,14 @@ const PAGE_SIZE = 10;
 export default function AdminWorkspacesPage() {
   const toast = useToast();
   const router = useRouter();
+
+  // 统一平台 RBAC 细粒度权限判断（无权直接隐藏，杜绝 403 页面）
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
+  const canViewDetail = isSuperAdmin || hasPermission("workspace:detail") || hasPermission("workspace:read");
+  const canUpdateStatus = isSuperAdmin || hasPermission("workspace:status_update");
+  const canDeleteWorkspace = isSuperAdmin;
+  const canBatchOperate = canUpdateStatus || canDeleteWorkspace;
+
   const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(
     null,
   );
@@ -111,6 +152,7 @@ export default function AdminWorkspacesPage() {
   const [filterComponentCount, setFilterComponentCount] =
     useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   // 批量解散进度（已完成数量），用于按钮上的处理中反馈
   const [batchDissolveProgress, setBatchDissolveProgress] = useState(0);
@@ -139,6 +181,9 @@ export default function AdminWorkspacesPage() {
   const [disableReason, setDisableReason] = useState<string>("违反平台运营与合规规范");
   const [disableDuration, setDisableDuration] = useState<string>("7d");
   const [disableSubmitting, setDisableSubmitting] = useState<boolean>(false);
+  // 停用前置依赖检测状态
+  const [checkingDisable, setCheckingDisable] = useState<boolean>(false);
+  const [disableCheckResult, setDisableCheckResult] = useState<DisableCheckResult | null>(null);
 
   useEffect(() => {
     // 获取当前用户 ID
@@ -204,6 +249,120 @@ export default function AdminWorkspacesPage() {
     loadWorkspaces(1, value);
   }, []);
 
+  /** 导出当前筛选条件下的全量工作空间为 Excel 表格 */
+  const handleExportExcel = async () => {
+    if (exporting) return;
+    try {
+      setExporting(true);
+      const authToken = getAuthToken();
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "5000",
+        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+        ...(filterType !== "all" && { type: filterType }),
+        ...(filterComponentCount !== "all" && { componentCount: filterComponentCount }),
+      });
+
+      const res = await fetch(`/api/admin/workspaces?${params}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (!res.ok) {
+        throw new Error("拉取工作空间导出数据失败");
+      }
+
+      const data = await res.json();
+      const exportList: Workspace[] = data.workspaces || [];
+
+      if (exportList.length === 0) {
+        toast.error("当前筛选条件下暂无工作空间数据可导出");
+        return;
+      }
+
+      exportToExcel({
+        filename: "知阁工作空间清单",
+        sheetName: "空间列表",
+        columns: [
+          { header: "空间ID", key: "id", width: 28 },
+          { header: "空间名称", key: "name", width: 22 },
+          {
+            header: "空间类型",
+            key: "type",
+            width: 14,
+            formatter: (val) => (val === "ENTERPRISE" ? "企业空间" : "个人空间"),
+          },
+          {
+            header: "空间套餐",
+            key: "plan",
+            width: 14,
+            formatter: (val) => WORKSPACE_PLAN_BADGES[val]?.label || val || "标准版",
+          },
+          {
+            header: "运行状态",
+            key: "status",
+            width: 12,
+            formatter: (val) => (val === "ACTIVE" ? "正常运行" : "已停用/禁用"),
+          },
+          {
+            header: "所有者姓名",
+            key: "owner.name",
+            width: 16,
+            formatter: (val, row) => row.owner?.name || "-",
+          },
+          {
+            header: "所有者邮箱",
+            key: "owner.email",
+            width: 26,
+            formatter: (val, row) => row.owner?.email || "-",
+          },
+          {
+            header: "成员数量",
+            key: "memberCount",
+            width: 12,
+            formatter: (val, row) =>
+              row.memberCount ??
+              row._count?.workspacemember ??
+              row._count?.members ??
+              row.members?.length ??
+              1,
+          },
+          {
+            header: "装配组件数",
+            key: "componentCount",
+            width: 14,
+            formatter: (val) => val ?? 0,
+          },
+          {
+            header: "算力点余额",
+            key: "quota.tokenBalance",
+            width: 14,
+            formatter: (val, row) => row.quota?.tokenBalance ?? "-",
+          },
+          {
+            header: "存储使用量",
+            key: "quota.storageUsed",
+            width: 16,
+            formatter: (val, row) => formatWorkspaceBytes(row.quota?.storageUsed),
+          },
+          {
+            header: "创建时间",
+            key: "createdAt",
+            width: 20,
+            formatter: formatExcelDateTime,
+          },
+        ],
+        data: exportList,
+      });
+
+      toast.success(`已成功导出 ${exportList.length} 个工作空间数据为 Excel 表格！`);
+    } catch (e: any) {
+      console.error("Export workspaces error:", e);
+      toast.error(e.message || "导出工作空间数据失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleDelete = async (workspaceId: string) => {
     showConfirm("确定要删除该工作空间吗？此操作不可恢复！", async () => {
       try {
@@ -259,8 +418,8 @@ export default function AdminWorkspacesPage() {
     }
   };
 
-  // 唤起工作空间停用管控弹窗
-  const handleOpenDisableModal = (workspace: Workspace) => {
+  // 唤起工作空间停用管控弹窗，并自动触发协同成员与装配组件的前置合规穿透检测
+  const handleOpenDisableModal = async (workspace: Workspace) => {
     // 再次前置防护：如果是受保护的超级管理员/管理员空间，直接拦截提示
     if (workspace.isProtected || workspace.ownerId === currentUserId) {
       showToast("超级管理员与系统管理员的工作空间受系统安全保护，不可停用", "error");
@@ -269,11 +428,37 @@ export default function AdminWorkspacesPage() {
     setDisablingWorkspace(workspace);
     setDisableReason("违反平台运营与合规规范");
     setDisableDuration("7d");
+    setDisableCheckResult(null);
+    setCheckingDisable(true);
+
+    try {
+      const res = await fetch(`/api/admin/workspaces/disable-check?workspaceId=${workspace.id}`, {
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDisableCheckResult(data);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "获取前置合规检测结果失败", "error");
+      }
+    } catch (err) {
+      console.error("执行停用前置检测出错:", err);
+      showToast("网络请求异常，前置检测失败", "error");
+    } finally {
+      setCheckingDisable(false);
+    }
   };
 
   // 确认执行停用管控操作（携带理由调用 API 并向成员发送站内信通知）
   const handleConfirmDisable = async () => {
     if (!disablingWorkspace) return;
+    if (disableCheckResult && !disableCheckResult.canDisable) {
+      showToast(disableCheckResult.blockReason || "空间内存在协同成员或装配组件，已被系统阻断停用", "error");
+      return;
+    }
     if (!disableReason.trim()) {
       showToast("请填写或选择停用管控原因", "error");
       return;
@@ -597,9 +782,9 @@ export default function AdminWorkspacesPage() {
     );
   };
 
-  // 根据选中项判断需要显示哪些批量操作按钮
+  // 根据选中项判断需要显示哪些批量操作按钮（严格根据管理员细粒度权限受控）
   const getBatchActionButtons = () => {
-    if (selectedWorkspaces.size === 0)
+    if (selectedWorkspaces.size === 0 || !canBatchOperate)
       return { showDisable: false, showEnable: false, showDissolve: false };
 
     const selectedItems =
@@ -608,12 +793,12 @@ export default function AdminWorkspacesPage() {
     const firstStatus = selectedItems[0]?.status;
     const dissolvableCount = selectedItems.filter(isDissolvable).length;
 
-    // 由于不允许混合状态选择，所以只会显示一种状态变更按钮
+    // 只有拥有对应权限时才允许显示批量按钮
     return {
-      showDisable: firstStatus === "ACTIVE",
-      showEnable: firstStatus === "DISABLED",
-      // 已停用且为企业空间时，额外提供批量解散
-      showDissolve: dissolvableCount > 0,
+      showDisable: canUpdateStatus && firstStatus === "ACTIVE",
+      showEnable: canUpdateStatus && firstStatus === "DISABLED",
+      // 已停用且为企业空间时，额外提供批量解散（仅限超级管理员）
+      showDissolve: canDeleteWorkspace && dissolvableCount > 0,
     };
   };
 
@@ -791,6 +976,18 @@ export default function AdminWorkspacesPage() {
             <span>刷新数据</span>
           </button>
 
+          {/* 导出 Excel 表格 */}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-emerald-200/80 active:scale-95 disabled:opacity-50"
+            title="将当前筛选匹配的全量工作空间导出为 Excel 表格 (.xlsx)"
+          >
+            <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-spin" : ""}`} />
+            <span>导出 Excel</span>
+          </button>
+
           {(searchQuery || filterType !== "all" || filterComponentCount !== "all") && (
             <button
               type="button"
@@ -828,11 +1025,6 @@ export default function AdminWorkspacesPage() {
                       {selectedWorkspaces.size}
                     </span>{" "}
                     个工作空间
-                  </span>
-                  {/* 高亮提示：仅管理员空间被排除在批量管控之外 */}
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-50 text-amber-600 border border-amber-200 shadow-2xs">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    管理员空间受系统安全保护，不支持批量管控
                   </span>
                   <ActionButton
                     variant="neutral"
@@ -899,21 +1091,23 @@ export default function AdminWorkspacesPage() {
               <table className="w-full text-xs">
                 <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-bold">
                   <tr>
-                    <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={
-                          operableWorkspaces.length > 0 &&
-                          operableWorkspaces.every((ws) =>
-                            selectedWorkspaces.has(ws.id),
-                          )
-                        }
-                        disabled={operableWorkspaces.length === 0}
-                        onChange={toggleSelectAll}
-                        title="全选当前页可批量管控的企业空间（不含个人空间与管理员空间）"
-                        className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                      />
-                    </th>
+                    {canBatchOperate && (
+                      <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={
+                            operableWorkspaces.length > 0 &&
+                            operableWorkspaces.every((ws) =>
+                              selectedWorkspaces.has(ws.id),
+                            )
+                          }
+                          disabled={operableWorkspaces.length === 0}
+                          onChange={toggleSelectAll}
+                          title="全选当前页可批量管控的企业空间（不含个人空间与管理员空间）"
+                          className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                      </th>
+                    )}
                     <th className="px-4.5 py-3.5 text-left whitespace-nowrap">
                       工作空间
                     </th>
@@ -949,7 +1143,7 @@ export default function AdminWorkspacesPage() {
                   {workspaceData?.workspaces.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={canBatchOperate ? 10 : 9}
                         className="px-6 py-20 text-center text-slate-400"
                       >
                         暂无工作空间数据
@@ -961,20 +1155,21 @@ export default function AdminWorkspacesPage() {
                         key={workspace.id}
                         className="group hover:bg-slate-50/80 transition-colors"
                       >
-                        <td className="px-4.5 py-3.5 whitespace-nowrap">
-                          <input
-                            type="checkbox"
-                            checked={selectedWorkspaces.has(workspace.id)}
-                            disabled={!isBatchOperable(workspace)}
-                            onChange={() => toggleSelectWorkspace(workspace.id)}
-                            title={
-                              isBatchOperable(workspace)
-                                ? "选择后可批量启用/禁用/解散（仅限同状态的空间）"
-                                : getWorkspaceInoperableReason()
-                            }
-                            className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
-                          />
-                        </td>
+                        {canBatchOperate && (
+                          <td className="px-4.5 py-3.5 whitespace-nowrap">
+                            {isBatchOperable(workspace) ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedWorkspaces.has(workspace.id)}
+                                onChange={() => toggleSelectWorkspace(workspace.id)}
+                                title="选择后可批量启用/禁用/解散（仅限同状态的空间）"
+                                className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                              />
+                            ) : (
+                              <div className="w-4 h-4" />
+                            )}
+                          </td>
+                        )}
                         <td className="px-4.5 py-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white shadow-2xs">
@@ -1095,49 +1290,62 @@ export default function AdminWorkspacesPage() {
 
                         {/* 操作列：粘性吸附在最右侧，无论横向怎么滚动均触手可及 */}
                         <td className="sticky right-0 bg-white group-hover:bg-slate-50 z-10 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
-                          <RowActions className="gap-1.5">
-                            <ActionButton
-                              variant="neutral"
-                              icon={<Eye className="w-3.5 h-3.5" />}
-                              title="查看工作空间成员与资产详情"
-                              onClick={() => handleView(workspace)}
-                            >
-                              详情
-                            </ActionButton>
+                          {(() => {
+                            const hasView = canViewDetail;
+                            const hasDisable = workspace.status === "ACTIVE" && canUpdateStatus && !workspace.isProtected;
+                            const hasEnable = workspace.status !== "ACTIVE" && canUpdateStatus;
+                            const hasDissolve = workspace.status !== "ACTIVE" && workspace.type === "ENTERPRISE" && canDeleteWorkspace;
+                            const hasAnyAction = hasView || hasDisable || hasEnable || hasDissolve;
 
-                            {workspace.status === "ACTIVE" ? (
-                              // 用户核心批注：受管理员安全保护的工作空间（超级管理员/系统管理员）直接隐藏停用按钮
-                              workspace.isProtected ? null : (
-                                <ActionButton
-                                  variant="warn"
-                                  icon={<EyeOff className="w-3.5 h-3.5" />}
-                                  disabled={
-                                    togglingId === workspace.id ? true : undefined
-                                  }
-                                  disabledReason={
-                                    togglingId === workspace.id ? "处理中，请稍候" : undefined
-                                  }
-                                  title="停用管控该工作空间"
-                                  onClick={() => handleOpenDisableModal(workspace)}
-                                >
-                                  停用
-                                </ActionButton>
-                              )
-                            ) : (
-                              <>
-                                <ActionButton
-                                  variant="success"
-                                  icon={<CheckCircle className="w-3.5 h-3.5" />}
-                                  disabledReason={
-                                    togglingId === workspace.id ? "处理中，请稍候" : undefined
-                                  }
-                                  title="恢复启用该工作空间"
-                                  onClick={() => handleEnableWorkspace(workspace)}
-                                >
-                                  启用
-                                </ActionButton>
-                                {/* 解散：仅已停用的企业空间可解散（个人空间不允许删除），与勾选状态无关，始终可点 */}
-                                {workspace.type === "ENTERPRISE" && (
+                            if (!hasAnyAction) {
+                              return <span className="text-xs text-slate-400 font-medium">只读</span>;
+                            }
+
+                            return (
+                              <RowActions className="gap-1.5">
+                                {hasView && (
+                                  <ActionButton
+                                    variant="neutral"
+                                    icon={<Eye className="w-3.5 h-3.5" />}
+                                    title="查看工作空间成员与资产详情"
+                                    onClick={() => handleView(workspace)}
+                                  >
+                                    详情
+                                  </ActionButton>
+                                )}
+
+                                {hasDisable && (
+                                  <ActionButton
+                                    variant="warn"
+                                    icon={<EyeOff className="w-3.5 h-3.5" />}
+                                    disabled={
+                                      togglingId === workspace.id ? true : undefined
+                                    }
+                                    disabledReason={
+                                      togglingId === workspace.id ? "处理中，请稍候" : undefined
+                                    }
+                                    title="停用管控该工作空间"
+                                    onClick={() => handleOpenDisableModal(workspace)}
+                                  >
+                                    停用
+                                  </ActionButton>
+                                )}
+
+                                {hasEnable && (
+                                  <ActionButton
+                                    variant="success"
+                                    icon={<CheckCircle className="w-3.5 h-3.5" />}
+                                    disabledReason={
+                                      togglingId === workspace.id ? "处理中，请稍候" : undefined
+                                    }
+                                    title="恢复启用该工作空间"
+                                    onClick={() => handleEnableWorkspace(workspace)}
+                                  >
+                                    启用
+                                  </ActionButton>
+                                )}
+
+                                {hasDissolve && (
                                   <ActionButton
                                     variant="danger"
                                     icon={<Trash2 className="w-3.5 h-3.5" />}
@@ -1150,9 +1358,9 @@ export default function AdminWorkspacesPage() {
                                     解散
                                   </ActionButton>
                                 )}
-                              </>
-                            )}
-                          </RowActions>
+                              </RowActions>
+                            );
+                          })()}
                         </td>
                       </tr>
                     ))
@@ -1486,180 +1694,402 @@ export default function AdminWorkspacesPage() {
         </div>
       )}
 
-      {/* 工作空间停用管控确认模态弹窗（带原因录入、全员站内信推送与防截断架构） */}
+      {/* 工作空间停用管控与前置合规检测模态弹窗（知阁设计系统顶级视觉规范 + 前置依赖穿透检测 + 防截断弹性架构） */}
       {disablingWorkspace && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-            {/* 头部 */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-amber-50/40 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                  <AlertCircle className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in-50 duration-200">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[88vh] animate-in zoom-in-95 duration-200">
+            {/* 1. 顶部 Header */}
+            <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50/80 via-white to-amber-50/30 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Shield className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-800">工作空间停用管控确认</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">请谨慎评估，停用后将冻结空间组件与算力</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">工作空间停用管控与合规检测</h3>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-[#2b6cb0] border border-blue-100">
+                      Pre-check & Governance
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    穿透检测协同成员与装配组件依赖 · 严格遵循安全隔离规范
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setDisablingWorkspace(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                onClick={() => {
+                  setDisablingWorkspace(null);
+                  setDisableCheckResult(null);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* 内容滚动区 */}
-            <div className="p-6 space-y-4 flex-1 min-h-0 overflow-y-auto">
-              {/* 空间基本信息概要卡片 */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+            {/* 2. 中部内容滚动区（自适应防截断） */}
+            <div className="p-6 space-y-4.5 flex-1 min-h-0 overflow-y-auto">
+              {/* 空间基本画像简报卡片 */}
+              <div className="p-4 rounded-2xl bg-slate-50/90 border border-slate-200/80 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 font-bold">目标工作空间:</span>
-                  <span className="font-black text-slate-800 text-sm">{disablingWorkspace.name}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-bold">所属拥有者:</span>
-                  <span className="font-bold text-slate-700">
-                    {disablingWorkspace.owner?.name || "空间管理员"}
-                    {disablingWorkspace.owner?.email ? ` (${disablingWorkspace.owner.email})` : ""}
+                  <span className="font-black text-slate-900 text-sm font-mono flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-[#3182ce]" />
+                    {disablingWorkspace.name}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-bold">空间规模:</span>
-                  <span className="font-bold text-slate-700">
-                    {(disablingWorkspace as any).memberCount ?? disablingWorkspace.members?.length ?? 0} 位成员 · {disablingWorkspace.componentCount} 个组件
+                  <span className="text-slate-500 font-bold">空间类型与所有者:</span>
+                  <span className="font-bold text-slate-700 flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                      disablingWorkspace.type === "ENTERPRISE"
+                        ? "bg-purple-50 text-purple-700 border-purple-200"
+                        : "bg-blue-50 text-blue-700 border-blue-200"
+                    }`}>
+                      {disablingWorkspace.type === "ENTERPRISE" ? "企业空间" : "个人空间"}
+                    </span>
+                    <span>{disablingWorkspace.owner?.name || "空间管理员"}</span>
+                    {disablingWorkspace.owner?.email && (
+                      <span className="text-slate-400 font-normal">({disablingWorkspace.owner.email})</span>
+                    )}
                   </span>
                 </div>
               </div>
 
-              {/* 停用期限选择（1天、3天、7天、1个月、1年、永久） */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-black text-slate-700">
-                    停用期限 <span className="text-red-500 font-bold ml-0.5">*</span>
+              {/* 前置依赖合规穿透检测仪表盘（实时真实数据检测） */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-[#3182ce]" />
+                    停用前置依赖合规检测仪表盘
                   </label>
-                  <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
-                    到期系统将自动解除管控
-                  </span>
+                  {checkingDisable ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600">
+                      <RotateCcw className="w-3 h-3 animate-spin text-amber-600" />
+                      正在穿透数据库核验资源...
+                    </span>
+                  ) : disableCheckResult ? (
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-full border ${
+                      disableCheckResult.canDisable
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-red-50 text-red-700 border-red-200"
+                    }`}>
+                      {disableCheckResult.canDisable ? (
+                        <>
+                          <CheckCircle className="w-3 h-3 text-emerald-600" />
+                          合规检测通过 · 允许停用
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3 h-3 text-red-600" />
+                          存在依赖项 · 阻断停用
+                        </>
+                      )}
+                    </span>
+                  ) : null}
                 </div>
 
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-2">
-                  {[
-                    { key: "1d", label: "1 天", desc: "短时管控" },
-                    { key: "3d", label: "3 天", desc: "合规核验" },
-                    { key: "7d", label: "7 天", desc: "标准整改" },
-                    { key: "30d", label: "1 个月", desc: "严肃惩戒" },
-                    { key: "365d", label: "1 年", desc: "长期管控" },
-                    { key: "permanent", label: "永久", desc: "永久封禁" },
-                  ].map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => setDisableDuration(item.key)}
-                      className={`px-1.5 py-2 rounded-xl border text-center transition-all cursor-pointer whitespace-nowrap ${
-                        disableDuration === item.key
-                          ? "bg-amber-500 text-white border-amber-600 shadow-sm font-black scale-[1.02]"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 font-bold"
-                      }`}
-                    >
-                      <div className="text-xs font-black">{item.label}</div>
-                      <div className={`text-[10px] mt-0.5 font-medium ${disableDuration === item.key ? "text-amber-100 font-bold" : "text-slate-400"}`}>
-                        {item.desc}
+                {checkingDisable ? (
+                  <div className="p-6 rounded-2xl bg-blue-50/40 border border-blue-100 flex flex-col items-center justify-center text-center space-y-2">
+                    <div className="w-6 h-6 border-2 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin" />
+                    <p className="text-xs font-bold text-slate-600">正在严格排查空间成员与装配组件资产...</p>
+                  </div>
+                ) : disableCheckResult ? (
+                  <div className="space-y-3">
+                    {/* 双列检测明细卡片 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* 检测项 1：协同成员 */}
+                      <div className={`p-3.5 rounded-2xl border transition-all text-xs space-y-2 ${
+                        disableCheckResult.memberCount > 0
+                          ? "bg-red-50/50 border-red-200"
+                          : "bg-emerald-50/40 border-emerald-200"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-black text-slate-800">
+                            <Users className={`w-3.5 h-3.5 ${disableCheckResult.memberCount > 0 ? "text-red-600" : "text-emerald-600"}`} />
+                            <span>协同成员检测</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            disableCheckResult.memberCount > 0
+                              ? "bg-red-100 text-red-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {disableCheckResult.memberCount > 0 ? `${disableCheckResult.memberCount} 位活跃成员` : "0 协同成员（合规）"}
+                          </span>
+                        </div>
+
+                        {disableCheckResult.memberCount > 0 ? (
+                          <div className="space-y-1.5 pt-1">
+                            <p className="text-[11px] text-red-700 font-medium">
+                              检测到该空间仍有多位团队成员在编协作：
+                            </p>
+                            <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                              {disableCheckResult.members.map((m) => (
+                                <div key={m.id} className="bg-white/90 p-1.5 rounded-lg border border-red-100 flex items-center justify-between text-[11px]">
+                                  <span className="font-bold text-slate-800 truncate max-w-[120px]">{m.name}</span>
+                                  <span className="text-slate-400 font-mono">{m.phone || m.email || m.role}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-emerald-700 font-medium pt-1 flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                            空间无除所有者外的协同成员，符合停用前提
+                          </p>
+                        )}
                       </div>
-                    </button>
-                  ))}
-                </div>
 
-                {/* 预计自动解封时间展示 */}
-                <div className="p-2.5 rounded-xl bg-blue-50/60 border border-blue-200/60 text-xs flex items-center justify-between">
-                  <span className="text-slate-600 font-medium">预计自动解封节点：</span>
-                  <span className="font-mono font-bold text-[#2b6cb0]">
-                    {(() => {
-                      if (disableDuration === "permanent") return "永久封禁（无自动解封节点，须提交申诉经风控审核）";
-                      const daysMap: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30, "365d": 365 };
-                      const days = daysMap[disableDuration] || 7;
-                      const target = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-                      return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")} ${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")} (${days}天后)`;
-                    })()}
-                  </span>
-                </div>
-              </div>
+                      {/* 检测项 2：装配组件 */}
+                      <div className={`p-3.5 rounded-2xl border transition-all text-xs space-y-2 ${
+                        disableCheckResult.componentCount > 0
+                          ? "bg-red-50/50 border-red-200"
+                          : "bg-emerald-50/40 border-emerald-200"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-black text-slate-800">
+                            <Package className={`w-3.5 h-3.5 ${disableCheckResult.componentCount > 0 ? "text-red-600" : "text-emerald-600"}`} />
+                            <span>装配组件检测</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            disableCheckResult.componentCount > 0
+                              ? "bg-red-100 text-red-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {disableCheckResult.componentCount > 0 ? `${disableCheckResult.componentCount} 个装配组件` : "0 装配组件（合规）"}
+                          </span>
+                        </div>
 
-              {/* 停用原因选择 */}
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1.5">
-                  停用管控原因 <span className="text-red-500 font-bold ml-0.5">*</span>
-                </label>
+                        {disableCheckResult.componentCount > 0 ? (
+                          <div className="space-y-1.5 pt-1">
+                            <p className="text-[11px] text-red-700 font-medium">
+                              检测到空间仍装配有以下运行中的算力组件：
+                            </p>
+                            <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                              {disableCheckResult.components.map((c) => (
+                                <div key={c.id} className="bg-white/90 p-1.5 rounded-lg border border-red-100 flex items-center justify-between text-[11px]">
+                                  <span className="font-bold text-slate-800 truncate max-w-[130px]">{c.name}</span>
+                                  <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-medium">{c.category}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-emerald-700 font-medium pt-1 flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                            空间无已装配组件，符合停用前提
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
-                {/* 快捷原因胶囊 */}
-                <div className="flex flex-wrap gap-1.5 mb-2.5">
-                  {[
-                    "违反平台运营与合规规范",
-                    "涉嫌数据违规爬取或接口滥用",
-                    "空间安全与风控合规审查",
-                    "长期闲置沉睡空间清理",
-                  ].map((preset) => (
+                    {/* 综合阻断 / 通过横幅 */}
+                    {!disableCheckResult.canDisable ? (
+                      <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-800 space-y-1 animate-in fade-in">
+                        <div className="font-black flex items-center gap-1.5 text-red-900">
+                          <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                          <span>系统安全拦截：当前工作空间严禁直接停用管控</span>
+                        </div>
+                        <p className="leading-relaxed text-red-700">
+                          {disableCheckResult.blockReason}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-1 animate-in fade-in">
+                        <div className="font-black flex items-center gap-1.5 text-emerald-900">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>合规检测通过：无任何关联成员与运行组件</span>
+                        </div>
+                        <p className="leading-relaxed text-emerald-700">
+                          当前工作空间处于纯净闲置状态，允许执行停用管控。请在下方配置停用期限与管控原因。
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200/80 text-xs text-red-700 flex items-center justify-between gap-3 animate-in fade-in">
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                      未能获取合规检测诊断数据，请检查网络或点击重新检测
+                    </span>
                     <button
-                      key={preset}
                       type="button"
-                      onClick={() => setDisableReason(preset)}
-                      className={`px-2.5 py-1 text-xs rounded-lg border font-bold transition-all cursor-pointer ${
-                        disableReason === preset
-                          ? "bg-amber-500 text-white border-amber-500 shadow-2xs"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                      }`}
+                      onClick={() => disablingWorkspace && handleOpenDisableModal(disablingWorkspace)}
+                      className="px-3 py-1.5 bg-white border border-red-200 text-red-700 hover:bg-red-50 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0 active:scale-95"
                     >
-                      {preset}
+                      重新检测
                     </button>
-                  ))}
-                </div>
-
-                <textarea
-                  rows={3}
-                  required
-                  value={disableReason}
-                  onChange={(e) => setDisableReason(e.target.value)}
-                  placeholder="请输入详细的停用管控理由（该理由将以站内信通知该空间的全体在编成员）..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500 focus:bg-white resize-none transition-all placeholder:text-slate-400"
-                />
+                  </div>
+                )}
               </div>
 
-              {/* 管控影响警示 */}
-              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-800 leading-relaxed space-y-1">
-                <div className="font-black flex items-center gap-1 text-amber-900">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  <span>执行停用管控后的系统联动效果：</span>
+              {/* 停用管控配置区：仅当检测通过时开放填写 */}
+              {disableCheckResult?.canDisable && (
+                <div className="space-y-4 pt-2 border-t border-slate-100 animate-in fade-in">
+                  {/* 停用期限选择 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-black text-slate-800">
+                        停用期限 <span className="text-red-500 font-bold ml-0.5">*</span>
+                      </label>
+                      <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+                        到期系统将自动解除管控
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-2">
+                      {[
+                        { key: "1d", label: "1 天", desc: "短时管控" },
+                        { key: "3d", label: "3 天", desc: "合规核验" },
+                        { key: "7d", label: "7 天", desc: "标准整改" },
+                        { key: "30d", label: "1 个月", desc: "严肃惩戒" },
+                        { key: "365d", label: "1 年", desc: "长期管控" },
+                        { key: "permanent", label: "永久", desc: "永久封禁" },
+                      ].map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setDisableDuration(item.key)}
+                          className={`px-1.5 py-2 rounded-xl border text-center transition-all cursor-pointer whitespace-nowrap ${
+                            disableDuration === item.key
+                              ? "bg-red-600 text-white border-red-600 shadow-sm font-black scale-[1.02]"
+                              : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 font-bold"
+                          }`}
+                        >
+                          <div className="text-xs font-black">{item.label}</div>
+                          <div className={`text-[10px] mt-0.5 font-medium ${disableDuration === item.key ? "text-red-100 font-bold" : "text-slate-400"}`}>
+                            {item.desc}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* 预计自动解封时间展示 */}
+                    <div className="p-2.5 rounded-xl bg-blue-50/60 border border-blue-200/60 text-xs flex items-center justify-between">
+                      <span className="text-slate-600 font-medium">预计自动解封节点：</span>
+                      <span className="font-mono font-bold text-[#2b6cb0]">
+                        {(() => {
+                          if (disableDuration === "permanent") return "永久封禁（无自动解封节点，须由管理员人工解封）";
+                          const daysMap: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30, "365d": 365 };
+                          const days = daysMap[disableDuration] || 7;
+                          const target = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+                          return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")} ${String(target.getHours()).padStart(2, "0")}:${String(target.getMinutes()).padStart(2, "0")} (${days}天后)`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 停用原因录入 */}
+                  <div>
+                    <label className="block text-xs font-black text-slate-800 mb-1.5">
+                      停用管控原因 <span className="text-red-500 font-bold ml-0.5">*</span>
+                    </label>
+
+                    {/* 快捷原因胶囊 */}
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[
+                        "违反平台运营与合规规范",
+                        "涉嫌数据违规爬取或接口滥用",
+                        "空间安全与风控合规审查",
+                        "长期闲置沉睡空间清理",
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setDisableReason(preset)}
+                          className={`px-2.5 py-1 text-xs rounded-lg border font-bold transition-all cursor-pointer ${
+                            disableReason === preset
+                              ? "bg-red-600 text-white border-red-600 shadow-2xs"
+                              : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+
+                    <textarea
+                      rows={3}
+                      required
+                      value={disableReason}
+                      onChange={(e) => setDisableReason(e.target.value)}
+                      placeholder="请输入详细的停用管控理由（将作为站内信明确通知空间所有者）..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-red-500 focus:bg-white resize-none transition-all placeholder:text-slate-400"
+                    />
+                  </div>
                 </div>
-                <p>1. 系统将自动向该工作空间的所有者及全体成员发送系统安全管控通知；</p>
-                <p>2. 前台中枢将对该空间高亮标红「已停用管控」，阻断进入和敏感配置；</p>
-                <p>3. 空间内所有组件算力调用与数据写入操作将被冻结，直至管理员解除管控。</p>
-              </div>
+              )}
             </div>
 
-            {/* 底部操作常驻条 */}
-            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/80 shrink-0">
-              <button
-                type="button"
-                disabled={disableSubmitting}
-                onClick={() => setDisablingWorkspace(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={disableSubmitting || !disableReason.trim()}
-                onClick={handleConfirmDisable}
-                className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-              >
-                {disableSubmitting ? (
-                  <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+            {/* 3. 底部操作常驻条（绝不溢出与截断） */}
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/90 shrink-0">
+              <div className="text-xs text-slate-500 font-medium">
+                {checkingDisable ? (
+                  <span className="text-blue-600 font-bold flex items-center gap-1">
+                    <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                    正在穿透核验空间资源...
+                  </span>
+                ) : !disableCheckResult ? (
+                  <span className="text-amber-700 font-bold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                    合规检测未就绪
+                  </span>
+                ) : !disableCheckResult.canDisable ? (
+                  <span className="text-red-600 font-bold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    需先清空成员与组件方可停用
+                  </span>
                 ) : (
-                  <EyeOff className="w-3.5 h-3.5" />
+                  <span className="text-emerald-700 font-bold flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    已通过检测，可确认执行
+                  </span>
                 )}
-                <span>确认实施停用管控</span>
-              </button>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={disableSubmitting}
+                  onClick={() => {
+                    setDisablingWorkspace(null);
+                    setDisableCheckResult(null);
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200/70 rounded-xl transition-colors cursor-pointer"
+                >
+                  关闭
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    disableSubmitting ||
+                    checkingDisable ||
+                    !disableCheckResult ||
+                    !disableCheckResult.canDisable ||
+                    !disableReason.trim()
+                  }
+                  onClick={handleConfirmDisable}
+                  className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 ${
+                    disableCheckResult?.canDisable
+                      ? "bg-red-600 hover:bg-red-700 text-white cursor-pointer active:scale-95"
+                      : "bg-slate-200 text-slate-400 border border-slate-300/60 cursor-not-allowed"
+                  }`}
+                >
+                  {disableSubmitting ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {checkingDisable
+                      ? "合规检测中..."
+                      : disableCheckResult && !disableCheckResult.canDisable
+                      ? "不可停用（存在成员或组件）"
+                      : "确认实施停用管控"}
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

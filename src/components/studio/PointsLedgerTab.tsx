@@ -464,7 +464,12 @@ export default function PointsLedgerTab({
                           )}
                         </td>
                         <td className="px-5 py-3.5 text-slate-500 font-medium whitespace-nowrap">
-                          {r.operator}
+                          {!r.operator ||
+                          r.operator.toLowerCase() === "superadmin" ||
+                          r.operator.toLowerCase() === "super_admin" ||
+                          r.operator.toLowerCase() === "admin"
+                            ? "系统管理员"
+                            : r.operator}
                         </td>
                       </tr>
                     );

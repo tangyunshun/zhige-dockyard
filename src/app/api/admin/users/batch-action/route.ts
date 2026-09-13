@@ -27,7 +27,7 @@ type ActionType = "ban" | "unban" | "kick" | "delete";
 
 const ACTION_PERMISSION: Record<ActionType, string> = {
   ban: "user:ban",
-  unban: "user:update",
+  unban: "user:unban",
   kick: "user:reset_session",
   delete: "user:delete",
 };
@@ -97,7 +97,12 @@ function classify(
         return { processable: false, reason: "该用户当前无有效会话，无需下线" };
       return { processable: true };
     case "delete":
-      // 候选用户已在调用方排除特权角色与操作者本人，普通用户均可删除
+      if (u.status !== "banned") {
+        return {
+          processable: false,
+          reason: "该用户未被封禁。根据平台安全规范，只有已被封禁的用户才允许被删除",
+        };
+      }
       return { processable: true };
     default:
       return { processable: false, reason: "未知操作" };
@@ -189,15 +194,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "无效的操作类型" }, { status: 400 });
     }
 
-    // 权限校验：仅平台管理员（ADMIN / OWNER）且具备对应动作权限
-    const authResult = await requirePlatformPermission(
-      request,
-      ACTION_PERMISSION[action]
-    );
-    if (!authResult.authorized) {
-      return authResult.errorResponse!;
+    // 权限校验：若为删除动作，仅超级管理员可执行
+    if (action === "delete") {
+      const authResult = await requirePlatformPermission(request, "user:update");
+      if (!authResult.authorized) return authResult.errorResponse!;
+      if (normalizePlatformRole(authResult.user?.role) !== "SUPER_ADMIN") {
+        return NextResponse.json(
+          { error: "FORBIDDEN", message: "权限不足，批量删除用户仅限超级管理员执行" },
+          { status: 403 }
+        );
+      }
+    } else {
+      const authResult = await requirePlatformPermission(
+        request,
+        ACTION_PERMISSION[action]
+      );
+      if (!authResult.authorized) {
+        return authResult.errorResponse!;
+      }
     }
-    const adminId = authResult.user!.id;
+    const adminId = (await requirePlatformPermission(request, "user:read")).user!.id;
 
     // 必须提供 userIds 或 filters 之一
     const useFilter = !userIds || userIds.length === 0;

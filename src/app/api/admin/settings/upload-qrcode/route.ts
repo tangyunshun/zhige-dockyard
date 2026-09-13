@@ -4,25 +4,24 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 import crypto from "crypto";
-import { isAdminRole, validateUser } from "@/lib/auth";
+import { requireSystemSettingsAdmin } from "@/lib/security";
 
 /**
  * 社交二维码（微信、QQ群、微博）上传 API
- * 权限：仅系统管理员
+ * 权限：平台超级管理员（与 /admin/settings 页面守卫一致）
  * 目标目录：public/uploads/qrcodes/
  * 格式支持：PNG, JPG, JPEG, SVG, WEBP (最大 5MB)
  * 联动：可选自动持久化更新 systemconfig 表中的对应二维码字段
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "未授权，请重新登录" }, { status: 401 });
-    }
-
-    const admin = await prisma.user.findUnique({ where: { id: auth.user.id } });
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "需要管理员权限" }, { status: 403 });
+    const result = await requireSystemSettingsAdmin(request);
+    if (!result.authorized) {
+      const status = result.errorResponse?.status === 401 ? 401 : 403;
+      return NextResponse.json(
+        { error: status === 401 ? "未授权，请重新登录" : "越权警告：仅允许平台超级管理员操作" },
+        { status }
+      );
     }
 
     const formData = await request.formData();

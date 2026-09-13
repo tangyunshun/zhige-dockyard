@@ -40,16 +40,36 @@ export async function GET(req: NextRequest) {
     }
     const userId = auth.user.id;
 
-    const store = readStore();
-    const userSettings = store[userId] || {
+    const DEFAULT_SETTINGS = {
       language: "zh-CN",
       theme: "light",
-      notifications: {
-        email: true,
-        browser: true,
-        marketing: false,
-      },
       displayDensity: "comfortable",
+      enableAnimations: true,
+      // 默认工作空间与中枢偏好
+      defaultWorkspaceId: "auto", // auto | workspaceId
+      workspaceView: "grid", // grid | list
+      sidebarDefaultExpanded: true,
+      componentSort: "popularity", // popularity | updatedAt | name
+      // 代码与开发偏好
+      codeTheme: "dark", // dark | light
+      codeFontSize: "13px", // 12px | 13px | 14px
+      tabSize: 2, // 2 | 4
+      showLineNumbers: true,
+      // 日期时间与数据导出偏好
+      dateFormat: "YYYY-MM-DD", // YYYY-MM-DD | YYYY/MM/DD | YYYY年MM月DD日
+      timeFormat: "24h", // 24h | 12h
+      exportFormat: "xlsx", // xlsx | json
+      // 声音与交互
+      soundEffects: true,
+      // 隐私安全
+      stealthMode: false,
+      requireDeleteConfirm: true,
+    };
+
+    const store = readStore();
+    const userSettings = {
+      ...DEFAULT_SETTINGS,
+      ...(store[userId] || {}),
     };
 
     return NextResponse.json({

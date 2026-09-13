@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge, ActionButton, RowActions } from "@/components/common";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 import {
   Plus,
   Search,
@@ -125,6 +126,13 @@ function generateCoreQuotaFeatures(f: Partial<WorkspacePlan>) {
 
 export default function WorkspacePlansAdminPage() {
   const { success, error: toastError } = useToast();
+
+  // 细粒度权限校验（无权则隐藏对应操作按钮，杜绝 403 页面）
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
+  const canCreate = isSuperAdmin || hasPermission("workspace_plan:create");
+  const canUpdate = isSuperAdmin || hasPermission("workspace_plan:update");
+  const canPublish = isSuperAdmin || hasPermission("workspace_plan:publish");
+  const canDelete = isSuperAdmin;
 
   const [plans, setPlans] = useState<WorkspacePlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -383,13 +391,15 @@ export default function WorkspacePlansAdminPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
             <span>刷新列表</span>
           </button>
-          <button
-            onClick={openCreate}
-            className="px-5 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>新增套餐</span>
-          </button>
+          {canCreate && (
+            <button
+              onClick={openCreate}
+              className="px-5 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>新增套餐</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -614,48 +624,67 @@ export default function WorkspacePlansAdminPage() {
                     </td>
 
                     <td className="sticky right-0 bg-white group-hover:bg-slate-50 z-10 px-4.5 py-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
-                      <RowActions>
-                        <ActionButton
-                          variant="primary"
-                          icon={<Edit2 className="w-4 h-4" />}
-                          disabledReason={
-                            plan.isActive ? "启用中的套餐不可编辑，请先停用" : undefined
-                          }
-                          onClick={() => openEdit(plan)}
-                        >
-                          编辑
-                        </ActionButton>
+                      {(() => {
+                        const hasEdit = canUpdate;
+                        const hasToggle = canPublish;
+                        const hasDelete = canDelete;
+                        const hasAnyAction = hasEdit || hasToggle || hasDelete;
 
-                        {/* 停用/启用：始终可见的动词按钮，与状态徽章解耦 */}
-                        {plan.isActive ? (
-                          <ActionButton
-                            variant="warn"
-                            icon={<Ban className="w-4 h-4" />}
-                            onClick={() => setToggleTarget(plan)}
-                          >
-                            停用
-                          </ActionButton>
-                        ) : (
-                          <ActionButton
-                            variant="success"
-                            icon={<Power className="w-4 h-4" />}
-                            onClick={() => handleToggleActive(plan)}
-                          >
-                            启用
-                          </ActionButton>
-                        )}
+                        if (!hasAnyAction) {
+                          return <span className="text-xs text-slate-400 font-medium">只读</span>;
+                        }
 
-                        <ActionButton
-                          variant="danger"
-                          icon={<Trash2 className="w-4 h-4" />}
-                          disabledReason={
-                            plan.isActive ? "启用中的套餐不可删除，请先停用" : undefined
-                          }
-                          onClick={() => setDeleteTarget(plan)}
-                        >
-                          删除
-                        </ActionButton>
-                      </RowActions>
+                        return (
+                          <RowActions>
+                            {hasEdit && (
+                              <ActionButton
+                                variant="primary"
+                                icon={<Edit2 className="w-4 h-4" />}
+                                disabledReason={
+                                  plan.isActive ? "启用中的套餐不可编辑，请先停用" : undefined
+                                }
+                                onClick={() => openEdit(plan)}
+                              >
+                                编辑
+                              </ActionButton>
+                            )}
+
+                            {/* 停用/启用：始终可见的动词按钮，与状态徽章解耦 */}
+                            {hasToggle && (
+                              plan.isActive ? (
+                                <ActionButton
+                                  variant="warn"
+                                  icon={<Ban className="w-4 h-4" />}
+                                  onClick={() => setToggleTarget(plan)}
+                                >
+                                  停用
+                                </ActionButton>
+                              ) : (
+                                <ActionButton
+                                  variant="success"
+                                  icon={<Power className="w-4 h-4" />}
+                                  onClick={() => handleToggleActive(plan)}
+                                >
+                                  启用
+                                </ActionButton>
+                              )
+                            )}
+
+                            {hasDelete && (
+                              <ActionButton
+                                variant="danger"
+                                icon={<Trash2 className="w-4 h-4" />}
+                                disabledReason={
+                                  plan.isActive ? "启用中的套餐不可删除，请先停用" : undefined
+                                }
+                                onClick={() => setDeleteTarget(plan)}
+                              >
+                                删除
+                              </ActionButton>
+                            )}
+                          </RowActions>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 
@@ -143,6 +144,7 @@ export async function GET(request: NextRequest) {
     const uniqueWorkspacesWithPosts = new Set<string>();
     const allUsageRows: Array<{
       id: string;
+      postId: string;
       postName: string;
       postCode: string;
       postColor: string;
@@ -168,20 +170,20 @@ export async function GET(request: NextRequest) {
         const ws = workspaceMap.get(m.workspaceId);
         if (!ws) return;
 
-        const roleUpper = (m.role || "").toUpperCase();
-        const roleName = (dbPositionMap.get(roleUpper) || "").toLowerCase();
-        const postNameLower = post.name.toLowerCase();
+        const roleUpper = (m.role || "").trim().toUpperCase();
+        const roleName = (dbPositionMap.get(roleUpper) || "").trim().toLowerCase();
+        const postNameLower = post.name.trim().toLowerCase();
 
         // 岗位 code 精确匹配：同 code 直连 + code 别名表（如 OWNER<->CREATOR、PROJECT_MANAGER<->PM）
         const isCodeMatch =
-          roleUpper === postCodeUpper ||
-          (codeAliasMap.get(postCodeUpper)?.has(roleUpper) ?? false);
+          Boolean(roleUpper) &&
+          (roleUpper === postCodeUpper ||
+            (codeAliasMap.get(postCodeUpper)?.has(roleUpper) ?? false));
 
+        // 岗位名称精确匹配：需确保 roleName 非空，防止空字符串 includes 导致误匹配
         const isNameMatch =
-          roleName === postNameLower ||
-          aliasList.includes(roleName) ||
-          roleName.includes(postNameLower) ||
-          postNameLower.includes(roleName);
+          Boolean(roleName) &&
+          (roleName === postNameLower || aliasList.includes(roleName));
 
         if (isCodeMatch || isNameMatch) {
           uniqueWorkspacesWithPosts.add(ws.id);
@@ -198,14 +200,13 @@ export async function GET(request: NextRequest) {
       // 7.2 从空间独立创建的 workspacepost 归集引用
       allWorkspacePosts.forEach((wp) => {
         if (!wp.workspace) return;
-        const wpNameLower = wp.name.trim().toLowerCase();
+        const wpNameLower = (wp.name || "").trim().toLowerCase();
         const postNameLower = post.name.trim().toLowerCase();
 
+        // 精确匹配岗位名称或同义别名表，防止模糊 includes 导致串岗误伤
         const isMatched =
-          wpNameLower === postNameLower ||
-          aliasList.includes(wpNameLower) ||
-          wpNameLower.includes(postNameLower) ||
-          postNameLower.includes(wpNameLower);
+          Boolean(wpNameLower) &&
+          (wpNameLower === postNameLower || aliasList.includes(wpNameLower));
 
         if (isMatched) {
           uniqueWorkspacesWithPosts.add(wp.workspace.id);
@@ -227,6 +228,7 @@ export async function GET(request: NextRequest) {
       usedWorkspaces.forEach((ws) => {
         allUsageRows.push({
           id: `${post.id}_${ws.id}`,
+          postId: post.id,
           postName: post.name,
           postCode: post.code,
           postColor: post.color,
@@ -281,17 +283,10 @@ export async function GET(request: NextRequest) {
 // POST: 管理员新增标准岗位
 export async function POST(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-
-    const admin = await prisma.user.findUnique({
-      where: { id: auth.user.id },
-    });
-
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    // 严格校验标准岗位创建权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "post:create");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const body = await request.json();
@@ -343,17 +338,10 @@ export async function POST(request: NextRequest) {
 // PATCH: 管理员编辑标准岗位 / 切换状态
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-
-    const admin = await prisma.user.findUnique({
-      where: { id: auth.user.id },
-    });
-
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    // 严格校验标准岗位更新与启停分发权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "post:update", "post:toggle");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const body = await request.json();
@@ -373,6 +361,50 @@ export async function PATCH(request: NextRequest) {
       const dup = await prisma.platformstandardpost.findUnique({ where: { name: name.trim() } });
       if (dup && dup.id !== id) {
         return NextResponse.json({ error: "已存在同名岗位" }, { status: 400 });
+      }
+    }
+
+    // 停用门禁：若请求停用该岗位，必须检查是否正被企业空间运用（被空间运用的岗位严禁停用）
+    if (status === "DISABLED") {
+      const aliasMap = await getPostNameAliasMap();
+      const codeAliasMap = await getPostCodeAliasMap();
+      const aliases = aliasMap[existing.name] || [];
+      const targetNames = [existing.name, ...aliases];
+
+      const matchingWorkspacePostsCount = await prisma.workspacepost.count({
+        where: {
+          name: { in: targetNames },
+        },
+      });
+
+      let matchingMembersCount = 0;
+      if (existing.code) {
+        const postCodeUpper = existing.code.toUpperCase();
+        const codeAliases = Array.from(codeAliasMap.get(postCodeUpper) || []);
+        const targetRoles = [postCodeUpper, ...codeAliases];
+
+        // 空间成员角色 (workspacemember.role) 在数据库中为枚举类型 workspacemember_role (OWNER | ADMIN | MEMBER)
+        // 需过滤出合法的枚举成员方可执行 Prisma 查询，避免传递业务岗位代码（如 DEVOPS_ENG）触发 PrismaClientValidationError 异常
+        const validEnumRoles = targetRoles.filter((r): r is "OWNER" | "ADMIN" | "MEMBER" =>
+          r === "OWNER" || r === "ADMIN" || r === "MEMBER"
+        );
+
+        if (validEnumRoles.length > 0) {
+          matchingMembersCount = await prisma.workspacemember.count({
+            where: {
+              role: { in: validEnumRoles },
+            },
+          });
+        }
+      }
+
+      if (matchingWorkspacePostsCount > 0 || matchingMembersCount > 0) {
+        return NextResponse.json(
+          {
+            error: `该标准岗位已被企业空间运用（存在空间岗位配置或在编成员），系统禁止停用！请先在【企业空间岗位应用一览】中解除相关空间引用后再尝试停用。`,
+          },
+          { status: 400 }
+        );
       }
     }
 
@@ -396,24 +428,20 @@ export async function PATCH(request: NextRequest) {
     });
   } catch (error) {
     console.error("更新标准岗位失败:", error);
-    return NextResponse.json({ error: "更新标准岗位失败" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "更新标准岗位失败" },
+      { status: 500 }
+    );
   }
 }
 
 // DELETE: 删除标准岗位
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-
-    const admin = await prisma.user.findUnique({
-      where: { id: auth.user.id },
-    });
-
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    // 严格校验标准岗位删除权限（高危操作，无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "post:delete");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const { searchParams } = new URL(request.url);

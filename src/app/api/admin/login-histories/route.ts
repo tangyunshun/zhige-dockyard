@@ -80,33 +80,51 @@ export async function GET(request: NextRequest) {
         cleanIp = v4 === "127.0.0.1" ? "127.0.0.1 (本地局域网)" : v4;
       }
 
-      // 设备：以数据库中真实存储的数据为准；若历史数据为空，基于真实 User-Agent 智能提取
-      let displayDevice = item.device?.trim();
-      if (!displayDevice || displayDevice === "未知" || displayDevice === "unknown") {
-        const ua = item.userAgent || "";
-        if (ua && ua !== "unknown") {
-          let os = "Windows 终端";
-          if (/windows nt 10/i.test(ua)) os = "Windows 11/10";
-          else if (/windows nt 6\.3/i.test(ua)) os = "Windows 8.1";
-          else if (/windows nt 6\.1/i.test(ua)) os = "Windows 7";
-          else if (/macintosh|mac os x/i.test(ua)) os = "macOS";
-          else if (/iphone/i.test(ua)) os = "iPhone (iOS)";
-          else if (/ipad/i.test(ua)) os = "iPad (iPadOS)";
-          else if (/android/i.test(ua)) os = "Android 终端";
-          else if (/linux/i.test(ua)) os = "Linux 终端";
+      // 真实 UA 解析：严格提取客观数据，绝不虚假捏造
+      const ua = item.userAgent || "";
+      let osName = "Windows";
+      let isMobile = false;
 
-          let browser = "Web 浏览器";
-          if (/micromessenger/i.test(ua)) browser = "微信客户端";
-          else if (/edg/i.test(ua)) browser = "Edge 浏览器";
-          else if (/chrome/i.test(ua)) browser = "Chrome 浏览器";
-          else if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = "Safari 浏览器";
-          else if (/firefox/i.test(ua)) browser = "Firefox 浏览器";
+      if (ua && ua !== "unknown") {
+        if (/windows nt 10/i.test(ua)) osName = "Windows 11/10";
+        else if (/windows nt 6\.3/i.test(ua)) osName = "Windows 8.1";
+        else if (/windows nt 6\.1/i.test(ua)) osName = "Windows 7";
+        else if (/macintosh|mac os x/i.test(ua)) osName = "macOS";
+        else if (/iphone/i.test(ua)) { osName = "iPhone (iOS)"; isMobile = true; }
+        else if (/ipad/i.test(ua)) { osName = "iPad (iPadOS)"; isMobile = true; }
+        else if (/android/i.test(ua)) { osName = "Android"; isMobile = true; }
+        else if (/linux/i.test(ua)) osName = "Linux";
 
-          displayDevice = `${os} · ${browser}`;
-        } else {
-          displayDevice = "Web 客户端";
-        }
+        if (/mobile|phone|symbian/i.test(ua)) isMobile = true;
       }
+
+      // 浏览器严格客观分类：Chrome、Edge、IE 浏览器、360 浏览器、QQ 浏览器、其他
+      let browserType: "Chrome" | "Edge" | "IE" | "360" | "QQ" | "Other" = "Other";
+      let browserName = "其他浏览器";
+
+      if (/(msie\s|trident.*rv:([\d.]+))/i.test(ua)) {
+        browserType = "IE";
+        browserName = "IE 浏览器";
+      } else if (/(edg|edge)\//i.test(ua)) {
+        browserType = "Edge";
+        browserName = "Edge 浏览器";
+      } else if (/(qihu\s*360|360ee|360se)/i.test(ua)) {
+        browserType = "360";
+        browserName = "360 浏览器";
+      } else if (/(qqbrowser|mqqbrowser)/i.test(ua)) {
+        browserType = "QQ";
+        browserName = "QQ 浏览器";
+      } else if (/chrome\//i.test(ua) && !/micromessenger/i.test(ua)) {
+        browserType = "Chrome";
+        browserName = "Chrome 浏览器";
+      } else {
+        // Safari、微信、Firefox等均按统一规范归类为其他浏览器
+        browserType = "Other";
+        browserName = "其他浏览器";
+      }
+
+      const deviceType: "DESKTOP" | "MOBILE" = isMobile ? "MOBILE" : "DESKTOP";
+      const displayDevice = `${osName} · ${browserName}`;
 
       // 地理归属地：严格以数据库真实字段为主；若为空或内网 IP，客观标定为网络属性，坚决不凭空伪造具体城市
       let displayLocation = item.location?.trim();
@@ -123,6 +141,10 @@ export async function GET(request: NextRequest) {
         ipAddress: cleanIp,
         device: displayDevice,
         location: displayLocation,
+        deviceType,
+        browserType,
+        browserName,
+        osName,
       };
     });
 

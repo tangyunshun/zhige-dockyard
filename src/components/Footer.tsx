@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Hexagon } from "lucide-react";
 import Link from "next/link";
+import { triggerCheckUpdate } from "@/components/WhatsNewModal";
 
 interface NavLinkItem {
   label: string;
@@ -272,10 +273,28 @@ export default function Footer() {
             <Link href="/terms-of-service" className="text-[13px] text-blue-200 hover:text-white transition-colors">
               服务条款
             </Link>
-            <div className="flex items-center gap-1.5 text-[13px] text-emerald-300">
+            <Link
+              href="/releases"
+              className="flex items-center gap-1.5 text-[13px] text-emerald-300 hover:text-emerald-200 transition-colors"
+              title="查看系统运行状态与维护排期"
+            >
               <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.6)] animate-pulse"></span>
-              系统服务状态正常
-            </div>
+              系统运行正常
+            </Link>
+            <Link
+              href="/releases?tab=releases"
+              className="px-2 py-0.5 rounded-[4px] bg-white/10 hover:bg-white/20 text-blue-100 hover:text-white text-xs font-mono font-bold transition-colors"
+              title="查看更新日志"
+            >
+              更新日志
+            </Link>
+            <button
+              type="button"
+              onClick={triggerCheckUpdate}
+              className="text-[13px] text-blue-200 hover:text-white transition-colors cursor-pointer hover:underline"
+            >
+              检查更新
+            </button>
           </div>
         </div>
       </div>

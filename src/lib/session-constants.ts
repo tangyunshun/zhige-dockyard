@@ -7,12 +7,14 @@
  * 数据库 refreshToken(RT) 落地。
  */
 
+import { prisma } from "@/lib/prisma";
+
 // ============ 超时与有效期（PRD 模块 A）============
 /** 空闲滑动超时：无任何请求 >= 10 分钟，RT 失效（A-01） */
 export const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
-/** 绝对硬性超时：未勾选记住我 = 8 小时（A-02/A-03） */
-export const ABSOLUTE_TIMEOUT_NO_REMEMBER_MS = 8 * 60 * 60 * 1000;
+/** 绝对硬性超时：未勾选记住我 = 默认 24 小时（由 systemconfig 的 sessionTimeoutHours 驱动） */
+export const ABSOLUTE_TIMEOUT_NO_REMEMBER_MS = 24 * 60 * 60 * 1000;
 /** 绝对硬性超时：勾选记住我 = 7 天（A-02/A-03） */
 export const ABSOLUTE_TIMEOUT_REMEMBER_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -20,8 +22,58 @@ export const ABSOLUTE_TIMEOUT_REMEMBER_MS = 7 * 24 * 60 * 60 * 1000;
 export const ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
 
 /** Refresh Token 有效期随绝对超时策略：与绝对硬超时一致（A-02/A-03/E-06） */
-export function refreshTokenTtlMs(rememberMe: boolean): number {
-  return rememberMe ? ABSOLUTE_TIMEOUT_REMEMBER_MS : ABSOLUTE_TIMEOUT_NO_REMEMBER_MS;
+export function refreshTokenTtlMs(rememberMe: boolean, customTimeoutHours?: number): number {
+  if (rememberMe) return ABSOLUTE_TIMEOUT_REMEMBER_MS;
+  if (customTimeoutHours && customTimeoutHours > 0) {
+    return customTimeoutHours * 60 * 60 * 1000;
+  }
+  return ABSOLUTE_TIMEOUT_NO_REMEMBER_MS;
+}
+
+export interface DynamicSecurityConfig {
+  loginMaxFailures: number;
+  sessionTimeoutHours: number;
+  ipRateLimitMinute: number;
+  passwordExpireDays: number;
+}
+
+/**
+ * 实时从数据库 systemconfig 表中读取系统设置中保存的安全与风控策略
+ * 杜绝任何固定死值或模拟配置，使后台设置实时驱动前台业务
+ */
+export async function getDynamicSecurityConfig(): Promise<DynamicSecurityConfig> {
+  try {
+    const rows = await prisma.systemconfig.findMany({
+      where: {
+        key: {
+          in: ["loginMaxFailures", "sessionTimeoutHours", "ipRateLimitMinute", "passwordExpireDays"],
+        },
+      },
+    });
+    const map: Record<string, string> = {};
+    rows.forEach((r) => {
+      if (r.value) map[r.key] = r.value.trim();
+    });
+
+    const loginMaxFailures = Number(map.loginMaxFailures) || MAX_LOGIN_ATTEMPTS;
+    const sessionTimeoutHours = Number(map.sessionTimeoutHours) || 24;
+    const ipRateLimitMinute = Number(map.ipRateLimitMinute) || 120;
+    const passwordExpireDays = Number(map.passwordExpireDays) || PASSWORD_EXPIRY_DAYS;
+
+    return {
+      loginMaxFailures: Math.max(1, loginMaxFailures),
+      sessionTimeoutHours: Math.max(1, sessionTimeoutHours),
+      ipRateLimitMinute: Math.max(10, ipRateLimitMinute),
+      passwordExpireDays: Math.max(1, passwordExpireDays),
+    };
+  } catch {
+    return {
+      loginMaxFailures: MAX_LOGIN_ATTEMPTS,
+      sessionTimeoutHours: 24,
+      ipRateLimitMinute: 120,
+      passwordExpireDays: PASSWORD_EXPIRY_DAYS,
+    };
+  }
 }
 
 // ============ 风控与封禁阈值（PRD 模块 C/E）============

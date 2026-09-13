@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 import { buildDynamicPlanFeatures } from "@/lib/workspace-plan-service";
+import { requirePlatformPermission } from "@/lib/security";
 
 function serializePlan(plan: any) {
   const maxComponents = Number(plan.maxComponents ?? 0);
@@ -61,8 +62,10 @@ function getKey(request: NextRequest, context?: any): string {
  * 更新空间套餐
  */
 export async function PUT(request: NextRequest, context?: any) {
-  const guard = await adminGuard(request);
-  if (guard.error) return guard.error;
+  const authCheck = await requirePlatformPermission(request, "workspace_plan:update", "workspace_plan:publish");
+  if (!authCheck.authorized) {
+    return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
+  }
 
   const key = getKey(request, context);
   if (!key) {
@@ -166,8 +169,14 @@ export async function PUT(request: NextRequest, context?: any) {
  * 删除空间套餐
  */
 export async function DELETE(request: NextRequest, context?: any) {
-  const guard = await adminGuard(request);
-  if (guard.error) return guard.error;
+  // 空间套餐删除为高危动作，仅限超级管理员
+  const authCheck = await requirePlatformPermission(request, "workspace_plan:update");
+  if (!authCheck.authorized) {
+    return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
+  }
+  if (!authCheck.isSuperAdmin) {
+    return NextResponse.json({ message: "空间套餐删除仅限超级管理员操作" }, { status: 403 });
+  }
 
   const key = getKey(request, context);
   if (!key) {

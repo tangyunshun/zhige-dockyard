@@ -49,7 +49,15 @@ export interface ActionButtonProps
   disabledReason?: string;
   /** 紧凑尺寸：用于卡片等空间受限场景 */
   compact?: boolean;
+  /** 极简微型尺寸：用于卡片底部操作栏等极度受限场景，杜绝溢出 */
+  size?: "default" | "compact" | "xs";
 }
+
+const SIZES: Record<"default" | "compact" | "xs", string> = {
+  default: "px-3.5 py-2 text-xs rounded-xl gap-1",
+  compact: "px-2.5 py-1 text-[11px] rounded-lg gap-1",
+  xs: "px-1.5 py-0.5 text-[11px] rounded-md gap-0.5",
+};
 
 export const ActionButton: React.FC<ActionButtonProps> = ({
   variant = "neutral",
@@ -57,20 +65,20 @@ export const ActionButton: React.FC<ActionButtonProps> = ({
   children,
   disabledReason,
   compact = false,
+  size,
   disabled,
   className = "",
   ...rest
 }) => {
   const isDisabled = disabled || !!disabledReason;
+  const sizeClass = size ? SIZES[size] : compact ? SIZES.compact : SIZES.default;
   return (
     <button
       type="button"
       disabled={isDisabled}
       title={disabledReason || rest.title}
       style={isDisabled ? { cursor: RED_NO_CURSOR } : undefined}
-      className={`${
-        compact ? "px-2.5 py-1 text-[11px] rounded-lg" : "px-3.5 py-2 text-xs rounded-xl"
-      } font-black border shadow-2xs transition-colors inline-flex items-center gap-1 whitespace-nowrap ${
+      className={`${sizeClass} font-black border shadow-2xs transition-colors inline-flex items-center whitespace-nowrap ${
         isDisabled
           ? `${DISABLED[variant]} cursor-not-allowed`
           : `${VARIANTS[variant]} cursor-pointer`

@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/auth";
 import { validateUser } from "@/lib/auth";
@@ -37,7 +37,12 @@ export async function GET(request: NextRequest) {
     const where: any = {};
 
     if (userId) {
-      where.userId = userId;
+      where.OR = [
+        { userId: { contains: userId } },
+        { user_membershipchangelog_userIdTouser: { name: { contains: userId } } },
+        { user_membershipchangelog_userIdTouser: { email: { contains: userId } } },
+        { reason: { contains: userId } },
+      ];
     }
 
     if (changeType) {
@@ -59,6 +64,8 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               email: true,
+              phone: true,
+              avatar: true,
             },
           },
           user_membershipchangelog_operatorIdTouser: {

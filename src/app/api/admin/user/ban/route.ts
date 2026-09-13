@@ -14,7 +14,7 @@ const getCleanRole = (role: string | null | undefined): string => {
 // POST: 封禁用户 API (需要 user:ban 权限)
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "user:update");
+    const authResult = await requirePlatformPermission(request, "user:ban");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 写入操作审计日志
-    await writeAuditLog(adminId, "user:update", { targetUserId: userId, bannedUntil, reason: banReasonText }, null, null, request);
+    await writeAuditLog(adminId, "user:ban", { targetUserId: userId, bannedUntil, reason: banReasonText, status: "banned" }, "user", userId, request);
 
     return NextResponse.json({
       success: true,

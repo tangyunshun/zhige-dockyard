@@ -17,6 +17,7 @@ import {
   Terminal,
   Check,
   AlertCircle,
+  Activity,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
@@ -29,6 +30,7 @@ interface ApiKey {
   lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  usageCount?: number;
 }
 
 export default function DeveloperCenterPage() {
@@ -37,6 +39,7 @@ export default function DeveloperCenterPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
+  const [origin, setOrigin] = useState("");
 
   // 创建弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -85,6 +88,7 @@ export default function DeveloperCenterPage() {
 
   useEffect(() => {
     loadKeys(false);
+    setOrigin(window.location.origin);
   }, []);
 
   const handleCreate = async () => {
@@ -229,6 +233,10 @@ export default function DeveloperCenterPage() {
                       <Clock className="w-3 h-3" />
                       最近使用：{fmtDate(k.lastUsedAt)}
                     </span>
+                    <span className="flex items-center gap-1">
+                      <Activity className="w-3 h-3" />
+                      累计调用 {k.usageCount ?? 0} 次
+                    </span>
                   </div>
                 </div>
                 <button
@@ -268,7 +276,7 @@ export default function DeveloperCenterPage() {
           </h2>
           <button
             onClick={() => {
-              const code = `curl -X GET "https://api.zhige.dev/v1/user/profile" \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json"`;
+              const code = `curl -X GET "${origin}/api/open/v1/me" \\\n  -H "Authorization: Bearer YOUR_API_KEY"`;
               copy(code, "调用示例代码已复制");
               setCopiedCurl(true);
               setTimeout(() => setCopiedCurl(false), 2000);
@@ -280,13 +288,37 @@ export default function DeveloperCenterPage() {
           </button>
         </div>
         <p className="text-xs text-slate-500 mb-3">
-          通过 HTTP Header 携带 Bearer 令牌完成安全鉴权：
+          创建 API Key 后，即可通过 HTTP Header 携带 Bearer 令牌调用开放接口（适用于服务端到服务端集成）：
         </p>
         <pre className="text-xs font-mono text-emerald-400 bg-slate-950 rounded-xl p-4 overflow-x-auto leading-relaxed border border-slate-800">
-          {`curl -X GET "https://api.zhige.dev/v1/user/profile" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json"`}
+          {`curl -X GET "${origin}/api/open/v1/me" \\
+  -H "Authorization: Bearer YOUR_API_KEY"`}
         </pre>
+
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="text-xs font-bold text-slate-700 mb-2">可用开放接口</div>
+          <div className="space-y-2">
+            {[
+              { method: "GET", path: "/api/open/v1/me", desc: "获取当前账号概要信息与算力余额" },
+              { method: "GET", path: "/api/open/v1/workspaces", desc: "获取当前账号可访问的工作空间列表" },
+            ].map((ep) => (
+              <div
+                key={ep.path}
+                className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+              >
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                  {ep.method}
+                </span>
+                <code className="text-xs font-mono text-slate-700">{ep.path}</code>
+                <span className="text-xs text-slate-400 ml-auto text-right">{ep.desc}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2">
+            同时支持 <code className="font-mono text-slate-500">x-api-key: YOUR_API_KEY</code> 请求头。
+            Key 仅用于服务端调用，请勿在前端代码中暴露；每次请求都会计入上方「累计调用」统计。
+          </p>
+        </div>
       </div>
 
       {/* 创建弹窗 */}

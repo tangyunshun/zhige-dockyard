@@ -123,14 +123,7 @@ export default function UserSecurityPage() {
     loadUserProfile();
     loadLoginHistory(1);
     loadDevices(1);
-
-    // 读取本地偏好设置缓存
-    try {
-      const saved2FA = localStorage.getItem("zg_security_2fa_enabled");
-      if (saved2FA !== null) setTwoFactorEnabled(saved2FA === "true");
-      const savedAlert = localStorage.getItem("zg_security_alert_enabled");
-      if (savedAlert !== null) setLoginAlertEnabled(savedAlert !== "false");
-    } catch {}
+    loadSecuritySettings();
   }, []);
 
   // 读取当前用户基础安全档案
@@ -152,6 +145,25 @@ export default function UserSecurityPage() {
       }
     } catch (e) {
       console.warn("Load user profile security info failed:", e);
+    }
+  };
+
+  // 从服务端读取安全偏好（2FA / 异地登录告警），替代原 localStorage 仅前端缓存
+  const loadSecuritySettings = async () => {
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch("/api/user/security-settings", {
+        headers: { Authorization: authToken ? `Bearer ${authToken}` : "" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          setTwoFactorEnabled(!!data.data.twoFactorEnabled);
+          setLoginAlertEnabled(data.data.loginAlertEnabled !== false);
+        }
+      }
+    } catch (e) {
+      console.warn("Load security settings failed:", e);
     }
   };
 
@@ -352,27 +364,48 @@ export default function UserSecurityPage() {
   };
 
   // 切换高危操作二次验证 (2FA) 开关
-  const handleToggle2FA = () => {
+  const handleToggle2FA = async () => {
     const nextVal = !twoFactorEnabled;
     setTwoFactorEnabled(nextVal);
     try {
-      localStorage.setItem("zg_security_2fa_enabled", String(nextVal));
-    } catch {}
-    if (nextVal) {
-      toast.success("敏感高危操作二次保护已启用");
-    } else {
-      toast.info("已关闭敏感高危操作二次保护");
+      const authToken = getAuthToken();
+      const res = await fetch("/api/user/security-settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authToken ? `Bearer ${authToken}` : "",
+        },
+        body: JSON.stringify({ twoFactorEnabled: nextVal }),
+      });
+      if (!res.ok) throw new Error("保存失败");
+      if (nextVal) toast.success("敏感高危操作二次保护已启用");
+      else toast.info("已关闭敏感高危操作二次保护");
+    } catch {
+      setTwoFactorEnabled(!nextVal);
+      toast.error("保存失败，请稍后重试");
     }
   };
 
   // 切换安全告警偏好开关
-  const handleToggleAlert = () => {
+  const handleToggleAlert = async () => {
     const nextVal = !loginAlertEnabled;
     setLoginAlertEnabled(nextVal);
     try {
-      localStorage.setItem("zg_security_alert_enabled", String(nextVal));
-    } catch {}
-    toast.success(`新设备登录与异常安全告警已${nextVal ? "开启" : "暂停"}`);
+      const authToken = getAuthToken();
+      const res = await fetch("/api/user/security-settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authToken ? `Bearer ${authToken}` : "",
+        },
+        body: JSON.stringify({ loginAlertEnabled: nextVal }),
+      });
+      if (!res.ok) throw new Error("保存失败");
+      toast.success(`新设备登录与异常安全告警已${nextVal ? "开启" : "暂停"}`);
+    } catch {
+      setLoginAlertEnabled(!nextVal);
+      toast.error("保存失败，请稍后重试");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

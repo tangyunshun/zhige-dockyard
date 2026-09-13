@@ -4,19 +4,42 @@ import {
   requirePlatformPermission,
   getAdminPermissions,
   saveAdminPermissions,
+  getAdminStatusMap,
+  saveAdminStatus,
   writeAuditLog,
 } from "@/lib/security";
+import {
+  PLATFORM_PERMISSION_CATALOG_KEY,
+  PLATFORM_PERMISSION_LEVELS_KEY,
+  PLATFORM_PERMISSION_RULES_KEY,
+  PLATFORM_MODULE_REGISTRY_KEY,
+  getPermissionRulesFromDB,
+  savePermissionRulesToDB,
+  getFeatureModulesFromDB,
+  saveFeatureModulesToDB,
+  derivePermissionsByModuleAndRules,
+  autoHealPermissionsByDBRules,
+  autoGrantNewFeatureRulesToAdmins,
+  PlatformFeatureModuleItem,
+} from "@/lib/permission-rules-engine";
 
 export const dynamic = "force-dynamic";
 
-const PLATFORM_PERMISSION_CATALOG_KEY = "PLATFORM_PERMISSION_CATALOG_V1";
+/** 平台管理员/超级管理员角色取值（兼容历史大小写与拼写） */
+const ADMIN_ROLE_VALUES = [
+  "admin",
+  "PLATFORM_ADMIN",
+  "super_admin",
+  "SUPER_ADMIN",
+  "superadmin",
+];
 
 export interface PermissionKeyItem {
   key: string;
   label: string;
   desc: string;
   moduleName: string;
-  level: "read" | "normal" | "sensitive" | "high";
+  level: string;
 }
 
 export interface PermissionGroupItem {
@@ -25,6 +48,21 @@ export interface PermissionGroupItem {
   description: string;
   keys: PermissionKeyItem[];
 }
+
+/** 风险等级字典项（value/label 全部源自数据库，前端不再硬编码） */
+export interface PermissionLevelItem {
+  value: string;
+  label: string;
+  desc: string;
+}
+
+/** 风险等级官方标准字典（仅用于数据库冷启动初始化写入） */
+const INITIAL_PERMISSION_LEVELS: PermissionLevelItem[] = [
+  { value: "read", label: "只读", desc: "仅可查看数据，不产生任何写入或状态变更" },
+  { value: "normal", label: "常规", desc: "日常业务操作，风险可控" },
+  { value: "sensitive", label: "敏感", desc: "涉及用户资料或业务配置变更，需谨慎授予" },
+  { value: "high", label: "高危", desc: "涉及资金、权限与全站配置，仅限核心管理员" },
+];
 
 // 系统官方初始标准权限目录元数据（仅用于数据库冷启动初始化写入）
 const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
@@ -602,6 +640,160 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
       },
     ],
   },
+  {
+    group: "AI 算力与模型定价模块 (AI Pricing)",
+    moduleRoute: "/admin/ai-pricing",
+    description: "全网大模型算力消耗比率核定、Token计费单价微调与服务通道启停",
+    keys: [
+      {
+        key: "ai_pricing:read",
+        label: "查看模型算力单价列表",
+        desc: "查看全网已接入的大模型算力倍率、输入输出单价与实时状态",
+        moduleName: "AI 算力与定价",
+        level: "read",
+      },
+      {
+        key: "ai_pricing:update",
+        label: "调整模型算力单价与折扣",
+        desc: "修改各AI引擎的消耗点数、并发限制与不同会员等级专享折扣",
+        moduleName: "AI 算力与定价",
+        level: "sensitive",
+      },
+      {
+        key: "ai_pricing:toggle",
+        label: "启停特定模型服务通道",
+        desc: "控制特定底层大模型通道对工作空间前台的开放或维护状态",
+        moduleName: "AI 算力与定价",
+        level: "high",
+      },
+    ],
+  },
+  {
+    group: "运营数据分析大盘 (Analytics)",
+    moduleRoute: "/admin/analytics",
+    description: "平台多维数据总览、用户活跃趋势、算力消耗分析与转化漏斗",
+    keys: [
+      {
+        key: "analytics:read",
+        label: "查看全站经营分析大盘",
+        desc: "查阅用户增长趋势、工作空间活跃度、算力消耗与营收态势",
+        moduleName: "数据分析",
+        level: "read",
+      },
+      {
+        key: "analytics:export",
+        label: "导出数据报表与凭证",
+        desc: "将指定统计周期内的经营数据、活跃指标导出为分析报表",
+        moduleName: "数据分析",
+        level: "normal",
+      },
+    ],
+  },
+  {
+    group: "API 密钥管理模块 (API Keys)",
+    moduleRoute: "/admin/api-keys",
+    description: "开发者 API Key 发放流水监控、调用鉴权审查与违规密钥吊销",
+    keys: [
+      {
+        key: "apikey:read",
+        label: "查看全站 API 密钥流水",
+        desc: "浏览各工作空间及用户创建的 API Key 列表与调用频次",
+        moduleName: "API 密钥管理",
+        level: "read",
+      },
+      {
+        key: "apikey:manage",
+        label: "吊销违规密钥与调整限流",
+        desc: "手动冻结、吊销异常调用密钥，或调整其单日接口调用频次上限",
+        moduleName: "API 密钥管理",
+        level: "high",
+      },
+    ],
+  },
+  {
+    group: "多租户机构管理模块 (Tenants)",
+    moduleRoute: "/admin/tenants",
+    description: "企业客户多租户架构配置、机构域名白名单与组织专属权限隔离",
+    keys: [
+      {
+        key: "tenant:read",
+        label: "查看多租户企业机构",
+        desc: "查阅企业入驻机构名单、签约套餐级别与机构负责人信息",
+        moduleName: "多租户管理",
+        level: "read",
+      },
+      {
+        key: "tenant:manage",
+        label: "修改机构配置与状态",
+        desc: "调整企业专属域名绑定、席位数量配额与机构启用状态",
+        moduleName: "多租户管理",
+        level: "high",
+      },
+    ],
+  },
+  {
+    group: "升级申请审核模块 (Upgrade Applications)",
+    moduleRoute: "/admin/upgrade-applications",
+    description: "企业空间升级审核、创作者入驻资质审核与增值功能申请审批",
+    keys: [
+      {
+        key: "upgrade:read",
+        label: "查看升级申请工单",
+        desc: "查阅用户提交的企业空间认证、高级创作者申请资料与资质证明",
+        moduleName: "升级申请审核",
+        level: "read",
+      },
+      {
+        key: "upgrade:audit",
+        label: "审批通过或驳回申请",
+        desc: "审核营业执照或个人资质，执行审核通过自动升级或驳回并填写意见",
+        moduleName: "升级申请审核",
+        level: "sensitive",
+      },
+    ],
+  },
+  {
+    group: "财务结算管理模块 (Finance)",
+    moduleRoute: "/admin/finance",
+    description: "平台资金流入流出对账、开发者收益提现清算与对公发票管理",
+    keys: [
+      {
+        key: "finance:read",
+        label: "查看财务对账看板",
+        desc: "查看支付通道日结账单、创作者收益池与待结算提现申请",
+        moduleName: "财务结算",
+        level: "read",
+      },
+      {
+        key: "finance:settle",
+        label: "执行收益提现打款复核",
+        desc: "复核创作者提现账号与金额，标记打款完成或原路驳回",
+        moduleName: "财务结算",
+        level: "high",
+      },
+    ],
+  },
+  {
+    group: "系统维护与发版模块 (Maintenance)",
+    moduleRoute: "/admin/maintenance",
+    description: "系统版本发布记录管理、平滑升级公告下发与停机倒计时维护",
+    keys: [
+      {
+        key: "maintenance:read",
+        label: "查看发版与维护记录",
+        desc: "查阅平台历次版本发布变更说明与历史维护记录日志",
+        moduleName: "系统维护",
+        level: "read",
+      },
+      {
+        key: "maintenance:publish",
+        label: "发布系统更新与维护预警",
+        desc: "发布最新产品变更日志，或预先配置全站停机维护倒计时与告警",
+        moduleName: "系统维护",
+        level: "high",
+      },
+    ],
+  },
 ];
 
 const getCleanRole = (role: string | null | undefined): string => {
@@ -618,7 +810,7 @@ const getCleanRole = (role: string | null | undefined): string => {
   return "USER";
 };
 
-// 辅助：从数据库读取系统权限目录
+// 辅助：从数据库读取系统权限目录（结合数据库模块注册表与规则引擎自动自愈对齐）
 export async function getPermissionCatalogFromDB(): Promise<PermissionGroupItem[]> {
   try {
     const record = await prisma.systemconfig.findUnique({
@@ -626,12 +818,22 @@ export async function getPermissionCatalogFromDB(): Promise<PermissionGroupItem[
     });
     if (record && record.value) {
       const parsed = JSON.parse(record.value);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        // 核心扩展：通过数据库驱动规则引擎执行无损自愈检测（绝不覆盖管理员自定义权限）
+        const healingResult = await autoHealPermissionsByDBRules(parsed);
+        if (healingResult.addedModulesCount > 0 || healingResult.addedKeysCount > 0) {
+          await savePermissionCatalogToDB(healingResult.healedCatalog);
+          const rules = await getPermissionRulesFromDB();
+          await autoGrantNewFeatureRulesToAdmins(healingResult.newlyDiscoveredKeys, rules);
+          console.log(
+            `[权限自愈引擎] 数据库自动感知并对齐：新增 ${healingResult.addedModulesCount} 个功能模块，补齐 ${healingResult.addedKeysCount} 项细粒度权限`
+          );
+        }
+        return healingResult.healedCatalog;
       }
     }
 
-    // 首次冷启动：写入数据库持久化
+    // 首次冷启动：写入数据库持久化（此后一律以数据库为准）
     await prisma.systemconfig.upsert({
       where: { key: PLATFORM_PERMISSION_CATALOG_KEY },
       create: {
@@ -669,6 +871,68 @@ export async function savePermissionCatalogToDB(catalog: PermissionGroupItem[]):
   }
 }
 
+/** 辅助：从数据库读取风险等级字典（冷启动时写入官方标准值） */
+export async function getPermissionLevelsFromDB(): Promise<PermissionLevelItem[]> {
+  try {
+    const record = await prisma.systemconfig.findUnique({
+      where: { key: PLATFORM_PERMISSION_LEVELS_KEY },
+    });
+    if (record && record.value) {
+      const parsed = JSON.parse(record.value);
+      // 数据库中已有记录即以数据库为准
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+    await prisma.systemconfig.upsert({
+      where: { key: PLATFORM_PERMISSION_LEVELS_KEY },
+      create: {
+        key: PLATFORM_PERMISSION_LEVELS_KEY,
+        value: JSON.stringify(INITIAL_PERMISSION_LEVELS),
+      },
+      update: { value: JSON.stringify(INITIAL_PERMISSION_LEVELS) },
+    });
+    return INITIAL_PERMISSION_LEVELS;
+  } catch (err) {
+    console.error("从数据库读取风险等级字典失败:", err);
+    return INITIAL_PERMISSION_LEVELS;
+  }
+}
+
+/** 辅助：按数据库字典校验风险等级，非法值回退到常规等级（字典中的默认项） */
+function resolveLevel(value: unknown, levels: PermissionLevelItem[]): string {
+  const v = String(value ?? "").trim();
+  if (levels.some((l) => l.value === v)) return v;
+  return levels.find((l) => l.value === "normal")?.value ?? levels[0]?.value ?? "";
+}
+
+/**
+ * 权限目录变更后，同步剔除各管理员权限包中已失效的 key，避免残留脏权限。
+ * 属于补偿性清理，失败不阻断主流程，仅记录告警。
+ */
+async function purgeInvalidPermissionsFromAdmins(invalidKeys: Set<string>): Promise<number> {
+  if (invalidKeys.size === 0) return 0;
+  let affectedAdmins = 0;
+  try {
+    const adminUsers = await prisma.user.findMany({
+      where: { role: { in: ADMIN_ROLE_VALUES } },
+      select: { id: true },
+    });
+    for (const admin of adminUsers) {
+      const perms = await getAdminPermissions(admin.id);
+      if (perms.length === 0) continue;
+      const cleaned = perms.filter((p) => !invalidKeys.has(p));
+      if (cleaned.length !== perms.length) {
+        await saveAdminPermissions(admin.id, cleaned);
+        affectedAdmins += 1;
+      }
+    }
+  } catch (err) {
+    console.warn("[权限] 清理管理员失效权限项失败:", err);
+  }
+  return affectedAdmins;
+}
+
 // GET: 统一从数据库获取系统权限目录、管理员列表及权限包 (仅 SuperAdmin 可用)
 export async function GET(request: NextRequest) {
   try {
@@ -687,26 +951,30 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
-    // 1. 从数据库读取真实权限目录（确保全站无硬编码）
+    // 1. 从数据库读取真实权限目录、风险等级字典、规则引擎配置与模块注册表（全站100%数据库驱动）
     const catalog = await getPermissionCatalogFromDB();
+    const levels = await getPermissionLevelsFromDB();
+    const rules = await getPermissionRulesFromDB();
+    const modules = await getFeatureModulesFromDB();
 
     // 2. 如果传入了 userId，返回该特定管理员的权限包与数据库权限字典
     if (userId) {
       const permissions = await getAdminPermissions(userId);
-      return NextResponse.json({ success: true, data: permissions, catalog });
+      return NextResponse.json({ success: true, data: permissions, catalog, levels, rules, modules });
     }
 
     // 3. 从数据库获取所有平台普通管理员和超级管理员
     const admins = await prisma.user.findMany({
       where: {
         role: {
-          in: ["admin", "PLATFORM_ADMIN", "super_admin", "SUPER_ADMIN", "superadmin"],
+          in: ADMIN_ROLE_VALUES,
         },
       },
       select: {
         id: true,
         name: true,
         email: true,
+        avatar: true,
         role: true,
         status: true,
         createdAt: true,
@@ -714,29 +982,45 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
+    const adminStatusMap = await getAdminStatusMap();
+
     const adminsWithPerms = await Promise.all(
       admins.map(async (admin) => ({
         ...admin,
         permissions: await getAdminPermissions(admin.id),
         isSuper: getCleanRole(admin.role) === "SUPER_ADMIN",
+        // status 标识管理员后台特权状态（active | inactive），与前台全站 user.status 彻底解耦
+        status: adminStatusMap[admin.id] || "active",
+        userAccountStatus: admin.status, // 前台全站用户状态
       }))
     );
 
-    // 4. 后台功能动态监测态势数据（对照平台后台真实运行中的 18 大核心模块）
+    // 4. 后台功能动态监测态势数据（全部由数据库实际数据推导）
     const totalKeysCount = catalog.reduce((acc, g) => acc + g.keys.length, 0);
+    const officialKeysCount = INITIAL_PERMISSIONS_CATALOG.reduce(
+      (acc, g) => acc + g.keys.length,
+      0
+    );
     const systemSyncReport = {
       syncStatus: "IN_SYNC",
       totalModules: catalog.length,
       activeModules: catalog.length,
       totalKeys: totalKeysCount,
+      officialModules: modules.length,
+      officialKeys: officialKeysCount,
+      customKeys: Math.max(0, totalKeysCount - officialKeysCount),
       lastCheckTime: new Date().toISOString(),
       dataSource: "DATABASE (system_config)",
-      message: `从数据库实时查询：当前权限矩阵与后台 ${catalog.length} 个管理模块保持 100% 动态同步`,
+      autoDiscoveryEngine: "ACTIVE (DB_DRIVEN)",
+      message: `从数据库实时查询：当前权限矩阵与后台 ${catalog.length} 个模块、${modules.length} 个注册功能保持 100% 动态自愈对齐`,
     };
 
     return NextResponse.json({
       success: true,
       catalog, // 返回从数据库查询的真实权限目录字典
+      levels, // 返回从数据库查询的风险等级字典
+      rules, // 返回从数据库查询的规则引擎字典
+      modules, // 返回从数据库查询的功能模块注册表
       data: adminsWithPerms,
       systemSync: systemSyncReport,
     });
@@ -766,23 +1050,610 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, targetUserId, permissions } = body;
+    const { action, targetUserId, permissions, nextStatus } = body;
 
-    // 动作：恢复数据库中的官方标准权限字典
-    if (action === "reset_defaults") {
-      await savePermissionCatalogToDB(INITIAL_PERMISSIONS_CATALOG);
+    // 动作 1：纯数据库驱动 - 注册新功能模块，自动根据数据库规则派生权限并自动赋权入库
+    if (action === "register_feature_module") {
+      const { moduleItem } = body;
+      if (!moduleItem || !moduleItem.name || !moduleItem.route || !moduleItem.resourceKey) {
+        return NextResponse.json(
+          { error: "缺少新功能模块的核心参数（name, route, resourceKey 均为必填项）" },
+          { status: 400 }
+        );
+      }
+
+      const cleanId = String(moduleItem.id || moduleItem.resourceKey).trim().toLowerCase();
+      const cleanName = String(moduleItem.name).trim();
+      const cleanRoute = String(moduleItem.route).trim();
+      const cleanResourceKey = String(moduleItem.resourceKey).trim().toLowerCase();
+      const cleanDescription = String(moduleItem.description || `${cleanName}业务管理中枢`).trim();
+      const supportedActions: string[] = Array.isArray(moduleItem.supportedActions) && moduleItem.supportedActions.length > 0
+        ? moduleItem.supportedActions
+        : ["read", "create", "update", "delete"];
+
+      const existingModules = await getFeatureModulesFromDB();
+      if (
+        existingModules.some(
+          (m) =>
+            m.id === cleanId ||
+            m.route === cleanRoute ||
+            m.resourceKey === cleanResourceKey
+        )
+      ) {
+        return NextResponse.json(
+          { error: `功能模块代号【${cleanId}】、路由【${cleanRoute}】或资源前缀【${cleanResourceKey}】在数据库中已存在，请勿重复注册！` },
+          { status: 400 }
+        );
+      }
+
+      const newModuleRecord: PlatformFeatureModuleItem = {
+        id: cleanId,
+        name: cleanName,
+        route: cleanRoute,
+        resourceKey: cleanResourceKey,
+        description: cleanDescription,
+        supportedActions,
+        isSystemCore: false,
+      };
+
+      // 1. 存入数据库模块注册表
+      const updatedModules = [...existingModules, newModuleRecord];
+      await saveFeatureModulesToDB(updatedModules);
+
+      // 2. 从数据库读取规则配置，自动派生出权限项
+      const rules = await getPermissionRulesFromDB();
+      const derivedKeys = derivePermissionsByModuleAndRules(newModuleRecord, rules);
+
+      // 3. 将派生权限自动注入数据库权限目录
+      const currentCatalog = await getPermissionCatalogFromDB();
+      const targetGroupTitle = `${cleanName} (${cleanResourceKey.toUpperCase()})`;
+      const existingGroup = currentCatalog.find(
+        (g) => g.group === targetGroupTitle || g.moduleRoute === cleanRoute
+      );
+
+      let updatedCatalog: PermissionGroupItem[];
+      if (existingGroup) {
+        updatedCatalog = currentCatalog.map((g) => {
+          if (g === existingGroup) {
+            const existingKeys = new Set(g.keys.map((k) => k.key));
+            const newKeysToAdd = derivedKeys.filter((k) => !existingKeys.has(k.key));
+            return { ...g, keys: [...g.keys, ...newKeysToAdd] };
+          }
+          return g;
+        });
+      } else {
+        updatedCatalog = [
+          ...currentCatalog,
+          {
+            group: targetGroupTitle,
+            moduleRoute: cleanRoute,
+            description: cleanDescription,
+            keys: derivedKeys,
+          },
+        ];
+      }
+
+      await savePermissionCatalogToDB(updatedCatalog);
+
+      // 4. 执行新功能上线自动赋权规则（按数据库策略为普通管理员追加默认基线权限）
+      const grantedAdminCount = await autoGrantNewFeatureRulesToAdmins(
+        derivedKeys.map((k) => k.key),
+        rules
+      );
+
+      // 5. 记录高危审计日志
       await writeAuditLog(
         operatorId,
         "system:settings",
-        { action: "RESET_ALL_DEFAULT_PERMISSIONS_IN_DB" },
+        {
+          action: "REGISTER_NEW_FEATURE_MODULE",
+          moduleId: cleanId,
+          moduleName: cleanName,
+          resourceKey: cleanResourceKey,
+          generatedKeysCount: derivedKeys.length,
+          grantedAdminCount,
+        },
         null,
         null,
         request
       );
+
       return NextResponse.json({
         success: true,
-        catalog: INITIAL_PERMISSIONS_CATALOG,
-        message: "数据库已成功重置并恢复全平台官方标准权限库！",
+        message: `新功能【${cleanName}】已成功在数据库中注册，规则引擎全自动生成 ${derivedKeys.length} 项标准权限并入库，已为 ${grantedAdminCount} 位管理员自动同步默认权限规则！`,
+        catalog: updatedCatalog,
+        modules: updatedModules,
+        generatedKeys: derivedKeys,
+      });
+    }
+
+    // 动作 2：纯数据库驱动 - 手动触发全系统功能自愈与自适应对齐
+    if (action === "sync_rules_healing") {
+      const currentCatalog = await getPermissionCatalogFromDB();
+      const healingResult = await autoHealPermissionsByDBRules(currentCatalog);
+      const rules = await getPermissionRulesFromDB();
+      const modules = await getFeatureModulesFromDB();
+
+      if (healingResult.addedModulesCount > 0 || healingResult.addedKeysCount > 0) {
+        await savePermissionCatalogToDB(healingResult.healedCatalog);
+        await autoGrantNewFeatureRulesToAdmins(healingResult.newlyDiscoveredKeys, rules);
+      }
+
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        {
+          action: "SYNC_RULES_HEALING",
+          addedModulesCount: healingResult.addedModulesCount,
+          addedKeysCount: healingResult.addedKeysCount,
+        },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        message:
+          healingResult.addedKeysCount > 0
+            ? `自愈对齐完成：从数据库规则中自动感知并补齐 ${healingResult.addedModulesCount} 个功能模块，生成 ${healingResult.addedKeysCount} 项细粒度权限！`
+            : `数据库规则自检完成：全系统 ${modules.length} 个功能模块均已 100% 对齐，无需额外补齐。`,
+        catalog: healingResult.healedCatalog,
+        modules,
+        rules,
+        stats: {
+          addedModulesCount: healingResult.addedModulesCount,
+          addedKeysCount: healingResult.addedKeysCount,
+        },
+      });
+    }
+
+    // 动作 3：纯数据库驱动 - 更新权限派生规则与自动赋权策略配置
+    if (action === "update_permission_rules") {
+      const { rulesConfig } = body;
+      if (!rulesConfig || !Array.isArray(rulesConfig.actionRules)) {
+        return NextResponse.json({ error: "规则配置数据格式非法" }, { status: 400 });
+      }
+
+      await savePermissionRulesToDB(rulesConfig);
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        { action: "UPDATE_PERMISSION_RULES_CONFIG" },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: "数据库权限派生规则与自动赋权策略已成功更新落库！",
+        rules: rulesConfig,
+      });
+    }
+
+    // 动作：临时停用 / 恢复启用管理员后台管理特权（绝不修改前台用户账号状态，保留全部已配权限）
+    if (action === "toggle_admin_status") {
+      if (!targetUserId || (nextStatus !== "active" && nextStatus !== "inactive")) {
+        return NextResponse.json({ error: "缺少参数或状态值非法" }, { status: 400 });
+      }
+
+      const targetUser = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, role: true, name: true, email: true, status: true },
+      });
+
+      if (!targetUser) {
+        return NextResponse.json({ error: "目标管理员不存在" }, { status: 404 });
+      }
+
+      if (getCleanRole(targetUser.role) === "SUPER_ADMIN") {
+        return NextResponse.json({ error: "超级管理员不可被停用" }, { status: 400 });
+      }
+
+      // 仅更新后台管理员特权映射，绝不篡改用户的全站前台账号状态！
+      await saveAdminStatus(targetUserId, nextStatus);
+
+      // 防御性补偿：若该用户历史曾被误改为 inactive，在此自动恢复其前台账号为 active，修复其全站操作资格
+      if (targetUser.status === "inactive") {
+        await prisma.user.update({
+          where: { id: targetUserId },
+          data: { status: "active" },
+        });
+      }
+
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        {
+          action: "TOGGLE_ADMIN_STATUS",
+          targetUserId,
+          nextStatus,
+          targetName: targetUser.name || targetUser.email,
+        },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        message:
+          nextStatus === "inactive"
+            ? "已成功临时停用该管理员后台管理权限（已完整保留已配权限，其全站前台账号与空间操作100%正常）！"
+            : "已成功恢复该管理员后台管理权限并即刻生效！",
+        status: nextStatus,
+      });
+    }
+
+    // 动作：恢复数据库中的官方标准权限字典
+    if (action === "reset_defaults") {
+      // 智能恢复官方标准：补齐缺失的标准项 + 修正被改动的标准项，保留管理员自定义补充项
+      const currentCatalog = await getPermissionCatalogFromDB();
+      const currentKeySet = new Set(
+        currentCatalog.flatMap((g) => g.keys.map((k) => k.key))
+      );
+      const officialKeySet = new Set(
+        INITIAL_PERMISSIONS_CATALOG.flatMap((g) => g.keys.map((k) => k.key))
+      );
+
+      // 1. 以官方标准库为骨架重建，标准项一律取官方定义
+      const mergedCatalog: PermissionGroupItem[] = INITIAL_PERMISSIONS_CATALOG.map(
+        (officialGroup) => {
+          const existing = currentCatalog.find((g) => g.group === officialGroup.group);
+          // 该模块下管理员自定义补充的项（非官方标准）原样保留
+          const customKeys = existing
+            ? existing.keys.filter((k) => !officialKeySet.has(k.key))
+            : [];
+          return {
+            group: officialGroup.group,
+            moduleRoute: officialGroup.moduleRoute,
+            description: officialGroup.description,
+            keys: [...officialGroup.keys.map((k) => ({ ...k })), ...customKeys],
+          };
+        }
+      );
+
+      // 2. 官方标准库之外的自定义模块整体保留
+      currentCatalog.forEach((g) => {
+        if (!mergedCatalog.some((m) => m.group === g.group)) {
+          mergedCatalog.push(g);
+        }
+      });
+
+      const addedOfficialKeys = [...officialKeySet].filter((k) => !currentKeySet.has(k)).length;
+      const totalKeys = mergedCatalog.reduce((acc, g) => acc + g.keys.length, 0);
+      const retainedCustomKeys = Math.max(0, totalKeys - officialKeySet.size);
+
+      await savePermissionCatalogToDB(mergedCatalog);
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        {
+          action: "RESTORE_OFFICIAL_PERMISSIONS_IN_DB",
+          addedOfficialKeys,
+          retainedCustomKeys,
+        },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        catalog: mergedCatalog,
+        message:
+          addedOfficialKeys > 0
+            ? `官方标准权限库已恢复：补齐 ${addedOfficialKeys} 项缺失标准权限，保留 ${retainedCustomKeys} 项自定义补充权限！`
+            : `官方标准权限库已校验恢复，标准项定义已还原，保留 ${retainedCustomKeys} 项自定义补充权限！`,
+      });
+    }
+
+    // 动作：灵活补充单项权限（支持现有模块追加或新建模块）
+    if (action === "add_permission") {
+      const { permission } = body;
+      if (!permission || !permission.key || !permission.label) {
+        return NextResponse.json({ error: "缺少权限代号 (key) 或权限名称 (label)" }, { status: 400 });
+      }
+      const keyTrimmed = permission.key.trim();
+      const labelTrimmed = permission.label.trim();
+      const groupName = (permission.group || "自定义业务功能模块").trim();
+      const moduleRoute = (permission.moduleRoute || "/admin").trim();
+      const description = (permission.description || "管理员自定义灵活补充的功能模块").trim();
+      const desc = (permission.desc || labelTrimmed).trim();
+      const level = resolveLevel(permission.level, await getPermissionLevelsFromDB());
+
+      const currentCatalog = await getPermissionCatalogFromDB();
+      const allKeys = currentCatalog.flatMap((g) => g.keys.map((k) => k.key));
+      if (allKeys.includes(keyTrimmed)) {
+        return NextResponse.json({ error: `权限代号【${keyTrimmed}】已存在，请勿重复添加` }, { status: 400 });
+      }
+
+      const targetGroup = currentCatalog.find((g) => g.group === groupName || g.moduleRoute === moduleRoute);
+      const newKeyItem: PermissionKeyItem = {
+        key: keyTrimmed,
+        label: labelTrimmed,
+        desc,
+        moduleName: groupName.split(" ")[0].replace(/模块$/, ""),
+        level,
+      };
+
+      let updatedCatalog: PermissionGroupItem[];
+      if (targetGroup) {
+        updatedCatalog = currentCatalog.map((g) => {
+          if (g === targetGroup) {
+            return {
+              ...g,
+              keys: [...g.keys, newKeyItem],
+            };
+          }
+          return g;
+        });
+      } else {
+        updatedCatalog = [
+          ...currentCatalog,
+          {
+            group: groupName,
+            moduleRoute,
+            description,
+            keys: [newKeyItem],
+          },
+        ];
+      }
+
+      await savePermissionCatalogToDB(updatedCatalog);
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        { action: "ADD_CUSTOM_PERMISSION", key: keyTrimmed, label: labelTrimmed, group: groupName },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: `已成功在数据库中为【${groupName}】灵活补充权限：【${labelTrimmed}】！`,
+        catalog: updatedCatalog,
+      });
+    }
+
+    // 动作：编辑既有权限项（key 为唯一标识不可改，可修正名称/说明/风险等级/所属模块）
+    if (action === "edit_permission") {
+      const { originalKey, permission } = body;
+      if (!originalKey || !permission?.label) {
+        return NextResponse.json(
+          { error: "缺少待编辑的权限代号 (originalKey) 或权限名称 (label)" },
+          { status: 400 }
+        );
+      }
+
+      const originalKeyTrimmed = String(originalKey).trim();
+      const labelTrimmed = String(permission.label).trim();
+      const descTrimmed = String(permission.desc || labelTrimmed).trim();
+      const groupName = String(permission.group || "").trim();
+      const moduleRoute = String(permission.moduleRoute || "/admin").trim();
+      const groupDesc = String(permission.description || "").trim();
+      const level = resolveLevel(permission.level, await getPermissionLevelsFromDB());
+
+      const currentCatalog = await getPermissionCatalogFromDB();
+      const located = currentCatalog.find((g) =>
+        g.keys.some((k) => k.key === originalKeyTrimmed)
+      );
+      if (!located) {
+        return NextResponse.json(
+          { error: `权限代号【${originalKeyTrimmed}】不存在，无法编辑` },
+          { status: 404 }
+        );
+      }
+
+      const targetGroupName = groupName || located.group;
+      const updatedItem: PermissionKeyItem = {
+        key: originalKeyTrimmed,
+        label: labelTrimmed,
+        desc: descTrimmed,
+        moduleName: targetGroupName.split(" ")[0].replace(/模块$/, ""),
+        level,
+      };
+
+      // 先从原分组摘除，再并入目标分组（支持跨模块迁移）
+      const strippedCatalog = currentCatalog
+        .map((g) => ({ ...g, keys: g.keys.filter((k) => k.key !== originalKeyTrimmed) }))
+        .filter((g) => g.keys.length > 0);
+
+      let updatedCatalog: PermissionGroupItem[];
+      const targetGroup = strippedCatalog.find((g) => g.group === targetGroupName);
+      if (targetGroup) {
+        updatedCatalog = strippedCatalog.map((g) =>
+          g.group === targetGroupName ? { ...g, keys: [...g.keys, updatedItem] } : g
+        );
+      } else {
+        updatedCatalog = [
+          ...strippedCatalog,
+          {
+            group: targetGroupName,
+            moduleRoute,
+            description: groupDesc || located.description,
+            keys: [updatedItem],
+          },
+        ];
+      }
+
+      await savePermissionCatalogToDB(updatedCatalog);
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        {
+          action: "EDIT_CUSTOM_PERMISSION",
+          key: originalKeyTrimmed,
+          label: labelTrimmed,
+          group: targetGroupName,
+          level,
+        },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: `权限项【${labelTrimmed}】已更新并落库！`,
+        catalog: updatedCatalog,
+      });
+    }
+
+    // 动作：批量调整权限项（移动所属模块 / 统一风险等级）
+    // key 为唯一标识且保持不变，因此不会影响各管理员已勾选的授权关系
+    if (action === "batch_update_permissions") {
+      const { keys, targetGroup, level } = body;
+      const keySet = new Set(
+        (Array.isArray(keys) ? keys : []).map((k) => String(k).trim()).filter(Boolean)
+      );
+      if (keySet.size === 0) {
+        return NextResponse.json({ error: "请先勾选需要批量调整的权限项" }, { status: 400 });
+      }
+
+      const targetGroupName = targetGroup ? String(targetGroup).trim() : "";
+      const levelDict = await getPermissionLevelsFromDB();
+      const nextLevel: string | null = levelDict.some((l) => l.value === level)
+        ? String(level)
+        : null;
+      if (!targetGroupName && !nextLevel) {
+        return NextResponse.json(
+          { error: "请至少选择「移动到模块」或「设置风险等级」中的一项" },
+          { status: 400 }
+        );
+      }
+
+      const currentCatalog = await getPermissionCatalogFromDB();
+
+      // 仅统一等级：原地更新，不改变所属模块
+      if (!targetGroupName && nextLevel) {
+        const updatedCatalog = currentCatalog.map((g) => ({
+          ...g,
+          keys: g.keys.map((k) => (keySet.has(k.key) ? { ...k, level: nextLevel } : k)),
+        }));
+        await savePermissionCatalogToDB(updatedCatalog);
+        await writeAuditLog(
+          operatorId,
+          "system:settings",
+          { action: "BATCH_UPDATE_PERMISSION_LEVEL", keys: [...keySet], level: nextLevel },
+          null,
+          null,
+          request
+        );
+        return NextResponse.json({
+          success: true,
+          catalog: updatedCatalog,
+          message: `已将 ${keySet.size} 项权限的风险等级统一设为【${nextLevel}】！`,
+        });
+      }
+
+      // 移动分组（可同时统一等级）：先从原分组摘除，再并入目标分组
+      const moved: PermissionKeyItem[] = [];
+      const strippedCatalog = currentCatalog
+        .map((g) => {
+          const stay = g.keys.filter((k) => !keySet.has(k.key));
+          g.keys
+            .filter((k) => keySet.has(k.key))
+            .forEach((k) => moved.push(nextLevel ? { ...k, level: nextLevel } : { ...k }));
+          return { ...g, keys: stay };
+        })
+        .filter((g) => g.keys.length > 0);
+
+      let updatedCatalog: PermissionGroupItem[];
+      const target = strippedCatalog.find((g) => g.group === targetGroupName);
+      if (target) {
+        updatedCatalog = strippedCatalog.map((g) =>
+          g.group === targetGroupName ? { ...g, keys: [...g.keys, ...moved] } : g
+        );
+      } else {
+        updatedCatalog = [
+          ...strippedCatalog,
+          {
+            group: targetGroupName,
+            moduleRoute: "/admin",
+            description: "管理员自定义灵活补充的功能模块",
+            keys: moved,
+          },
+        ];
+      }
+
+      await savePermissionCatalogToDB(updatedCatalog);
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        {
+          action: "BATCH_MOVE_PERMISSIONS",
+          keys: [...keySet],
+          targetGroup: targetGroupName,
+          level: nextLevel,
+        },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        catalog: updatedCatalog,
+        message: `已将 ${moved.length} 项权限移动到【${targetGroupName}】${
+          nextLevel ? `，并统一风险等级为【${nextLevel}】` : ""
+        }！`,
+      });
+    }
+
+    // 动作：全系统功能智能差量扫描与合并补全（自动将全系统 24 大模块缺失项补入数据库，不覆盖已有自定义项）
+    if (action === "sync_system_catalog") {
+      const currentCatalog = await getPermissionCatalogFromDB();
+      const currentKeySet = new Set(currentCatalog.flatMap((g) => g.keys.map((k) => k.key)));
+      const currentGroupMap = new Map(currentCatalog.map((g) => [g.group, g]));
+
+      let addedKeysCount = 0;
+      let addedGroupsCount = 0;
+
+      const mergedCatalog = [...currentCatalog];
+
+      for (const officialGroup of INITIAL_PERMISSIONS_CATALOG) {
+        const existingGroup = currentGroupMap.get(officialGroup.group);
+        if (!existingGroup) {
+          // 全新模块直接追加
+          mergedCatalog.push(officialGroup);
+          addedGroupsCount += 1;
+          addedKeysCount += officialGroup.keys.length;
+          officialGroup.keys.forEach((k) => currentKeySet.add(k.key));
+        } else {
+          // 检查是否有新 key 缺失
+          const missingKeys = officialGroup.keys.filter((k) => !currentKeySet.has(k.key));
+          if (missingKeys.length > 0) {
+            const groupIdx = mergedCatalog.findIndex((g) => g.group === officialGroup.group);
+            if (groupIdx !== -1) {
+              mergedCatalog[groupIdx] = {
+                ...mergedCatalog[groupIdx],
+                keys: [...mergedCatalog[groupIdx].keys, ...missingKeys],
+              };
+              missingKeys.forEach((k) => currentKeySet.add(k.key));
+              addedKeysCount += missingKeys.length;
+            }
+          }
+        }
+      }
+
+      await savePermissionCatalogToDB(mergedCatalog);
+      await writeAuditLog(
+        operatorId,
+        "system:settings",
+        { action: "SYNC_ALL_SYSTEM_MODULE_PERMISSIONS", addedGroupsCount, addedKeysCount },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: `全系统功能对接完成！已智能补充 ${addedGroupsCount} 个新增管理模块，补齐 ${addedKeysCount} 项功能权限。`,
+        catalog: mergedCatalog,
+        stats: { addedGroupsCount, addedKeysCount, totalModules: mergedCatalog.length },
       });
     }
 
@@ -895,6 +1766,14 @@ export async function DELETE(request: NextRequest) {
     // 3. 将修改后的权限字典持久化写入数据库
     await savePermissionCatalogToDB(updatedCatalog);
 
+    // 3.1 同步剔除各管理员权限包中已失效的 key，避免残留脏权限
+    const removedKeys = new Set(
+      currentCatalog
+        .flatMap((g) => g.keys.map((k) => k.key))
+        .filter((k) => deleteKeySet.has(k))
+    );
+    const affectedAdmins = await purgeInvalidPermissionsFromAdmins(removedKeys);
+
     // 4. 记录审计日志
     await writeAuditLog(
       operatorId,
@@ -903,6 +1782,7 @@ export async function DELETE(request: NextRequest) {
         action: "DELETE_PERMISSIONS_FROM_DB",
         deletedKeys: keysToDelete,
         remainingGroups: updatedCatalog.length,
+        affectedAdmins,
       },
       null,
       null,
@@ -911,8 +1791,12 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `成功从数据库中移除 ${keysToDelete.length} 项功能权限！`,
+      message:
+        affectedAdmins > 0
+          ? `成功从数据库中移除 ${keysToDelete.length} 项功能权限，并回收 ${affectedAdmins} 位管理员的失效授权！`
+          : `成功从数据库中移除 ${keysToDelete.length} 项功能权限！`,
       catalog: updatedCatalog,
+      affectedAdmins,
     });
   } catch (error) {
     console.error("Delete permission items error:", error);

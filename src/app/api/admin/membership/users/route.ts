@@ -38,9 +38,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
-    const membershipLevel = searchParams.get("membershipLevel");
+    const membershipLevel =
+      searchParams.get("membership_level") ||
+      searchParams.get("membershipLevel") ||
+      "";
+    const search = searchParams.get("search")?.trim() || "";
 
-    console.log("查询参数:", { page, limit, membershipLevel });
+    console.log("查询参数:", { page, limit, membershipLevel, search });
 
     const skip = (page - 1) * limit;
 
@@ -74,6 +78,14 @@ export async function GET(request: NextRequest) {
       where.membershipLevel = membershipLevel;
     }
 
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { email: { contains: search } },
+        { phone: { contains: search } },
+      ];
+    }
+
     console.log("查询条件:", where);
 
     // 获取用户列表
@@ -92,6 +104,30 @@ export async function GET(request: NextRequest) {
           phone: true,
           membershipLevel: true,
           createdAt: true,
+          membershiporder: {
+            where: {
+              status: { in: ["SUCCESS", "PAID"] },
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
+            select: {
+              id: true,
+              startDate: true,
+              endDate: true,
+              createdAt: true,
+            },
+          },
+          membershipchangelog_membershipchangelog_userIdTouser: {
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
+            select: {
+              createdAt: true,
+            },
+          },
         },
       }),
       prisma.user.count({ where }),
@@ -110,10 +146,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        users: users.map((user) => ({
-          ...user,
-          membershipConfig: levelMap[user.membershipLevel] || null,
-        })),
+        users: users.map((user) => {
+          const latestOrder = user.membershiporder?.[0];
+          const latestChangeLog =
+            user.membershipchangelog_membershipchangelog_userIdTouser?.[0];
+          // 开通会员时间：优先取最新订单的 startDate 或 createdAt，其次取变更日志时间，最后以 user.createdAt 兜底
+          const membershipActivatedAt =
+            latestOrder?.startDate ||
+            latestOrder?.createdAt ||
+            latestChangeLog?.createdAt ||
+            user.createdAt;
+          const membershipExpireAt = latestOrder?.endDate || null;
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            membershipLevel: user.membershipLevel,
+            createdAt: user.createdAt,
+            membershipActivatedAt,
+            membershipExpireAt,
+            membershipConfig: levelMap[user.membershipLevel] || null,
+          };
+        }),
         pagination: {
           page,
           limit,

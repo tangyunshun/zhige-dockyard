@@ -87,12 +87,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 平台管理员权限包读取失败（如 systemconfig 列容量 P2000）不得阻断认证：
-    // 仅记录 warning 并按空权限包返回，绝不导致 /api/auth/me 失败。
+    // 平台管理员权限包与管理特权状态检测：
+    // 若管理员后台管理特权已被超级管理员临时停用，则冻结其后台权限包；其前台账号 (user.status) 依旧完全正常
     let permissions: string[] = [];
+    let adminStatus = "active";
     try {
-      const { getAdminPermissions } = require("@/lib/security");
-      permissions = await getAdminPermissions(user.id);
+      const { getAdminPermissions, getAdminStatus } = require("@/lib/security");
+      adminStatus = await getAdminStatus(user.id);
+      if (adminStatus === "inactive") {
+        permissions = [];
+      } else {
+        permissions = await getAdminPermissions(user.id);
+      }
     } catch (permError) {
       console.warn("[权限] /api/auth/me 读取管理员权限包失败，按空权限包返回:", permError);
     }
@@ -122,6 +128,7 @@ export async function GET(request: NextRequest) {
         role: user.role,
         avatar: user.avatar,
         status: user.status,
+        adminStatus, // 管理员后台管理特权生效状态 (active | inactive)
         membershipLevel: user.membershipLevel,
         deletionDaysRemaining,
         deletionCooldownDays,

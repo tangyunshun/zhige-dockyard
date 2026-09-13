@@ -34,8 +34,12 @@ export default function UserProfilePage() {
   const [showCheckModal, setShowCheckModal] = useState(false);
   const [checkComplete, setCheckComplete] = useState(false);
   const [showStepUpModal, setShowStepUpModal] = useState(false);
-  const [checkResults, setCheckResults] = useState<{ item: string; status: string }[]>([]);
+  const [checkResults, setCheckResults] = useState<{ item: string; status: string; detail: string }[]>([]);
+  const [pendingRecharge, setPendingRecharge] = useState(0);
   const [deletionCooldownDays, setDeletionCooldownDays] = useState(7);
+  const [deletionPending, setDeletionPending] = useState(false);
+  const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number | null>(null);
+  const [cancelDeletionLoading, setCancelDeletionLoading] = useState(false);
   const [originalPhone, setOriginalPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [sendingCode, setSendingCode] = useState(false);
@@ -100,6 +104,8 @@ export default function UserProfilePage() {
         const serverPhone = data.data.phone || "";
         setOriginalPhone(serverPhone);
         setDeletionCooldownDays(data.deletionCooldownDays || 7);
+        setDeletionPending(!!data?.user?.isPendingDeletion);
+        setDeletionDaysRemaining(data?.user?.daysRemaining ?? null);
         setFormData({
           name: data.data.name || "",
           email: data.data.email || "",
@@ -179,28 +185,71 @@ export default function UserProfilePage() {
   };
 
   const performAccountDeletionCheck = async () => {
-    const checkItems = [
-      { name: "检测个人信息...", item: "个人信息" },
-      { name: "检测工作空间...", item: "工作空间" },
-      { name: "检测组件资产...", item: "组件资产" },
-      { name: "检测活动记录...", item: "活动记录" },
-      { name: "检测会员与算力...", item: "会员与算力" },
-    ];
-
-    const results: { item: string; status: string }[] = [];
-
-    for (let i = 0; i < checkItems.length; i++) {
-      const check = checkItems[i];
-      setDeleteStep(check.name);
-      setDeleteProgress(Math.round(((i + 0.5) / checkItems.length) * 100));
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      results.push({ item: check.item, status: "pass" });
-      setCheckResults([...results]);
-      setDeleteProgress(Math.round(((i + 1) / checkItems.length) * 100));
+    const CHECK_LABELS: Record<string, string> = {
+      profile: "检测个人信息...",
+      workspaces: "检测工作空间...",
+      components: "检测组件资产...",
+      activities: "检测活动记录...",
+      membership: "检测会员与算力...",
+    };
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch("/api/user/delete-account/check", {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("检测失败");
+      const json = await res.json();
+      const checks: { key: string; label: string; count: number; blocking: boolean }[] =
+        json.data?.checks || [];
+      const results: { item: string; status: string; detail: string }[] = [];
+      for (let i = 0; i < checks.length; i++) {
+        const c = checks[i];
+        setDeleteStep(CHECK_LABELS[c.key] || `检测${c.label}...`);
+        setDeleteProgress(Math.round(((i + 0.5) / checks.length) * 100));
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const status = c.blocking ? "warn" : "pass";
+        const detail = c.count > 0 ? `${c.label} ${c.count} 项` : "无残留数据";
+        results.push({ item: c.label, status, detail });
+        setCheckResults([...results]);
+        setDeleteProgress(Math.round(((i + 1) / checks.length) * 100));
+      }
+      setPendingRecharge(json.data?.pendingRechargeOrders || 0);
+      setCheckComplete(true);
+      setDeleteStep("安全检测完成");
+    } catch (e) {
+      console.warn("Deletion check error:", e);
+      toast.error("安全检测失败，请稍后重试");
+      setCheckComplete(true);
+      setDeleteStep("安全检测失败");
     }
+  };
 
-    setCheckComplete(true);
-    setDeleteStep("安全检测完成");
+  const handleCancelDeletion = async () => {
+    if (!window.confirm("确认撤销账号注销申请？撤销后账号将恢复正常，所有数据资产完整留存。")) return;
+    try {
+      setCancelDeletionLoading(true);
+      const authToken = getAuthToken();
+      const res = await fetch("/api/user/cancel-deletion", {
+        method: "POST",
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || "注销申请已撤销，账号已恢复正常");
+        setDeletionPending(false);
+        setDeletionDaysRemaining(null);
+        loadUserInfo();
+      } else {
+        toast.error(data.error || data.message || "撤销注销失败");
+      }
+    } catch (error) {
+      console.warn("Cancel deletion error:", error);
+      toast.error("撤销注销失败，请稍后重试");
+    } finally {
+      setCancelDeletionLoading(false);
+    }
   };
 
   const handleSendSmsCode = async () => {
@@ -463,7 +512,14 @@ export default function UserProfilePage() {
               <div className="w-px h-6 bg-slate-100"></div>
               <div>
                 <div className="text-[11px] text-slate-400 font-medium">账号状态</div>
-                <div className="text-xs font-bold text-emerald-600 mt-0.5">正常使用</div>
+                {deletionPending ? (
+                  <div className="text-xs font-bold text-amber-600 mt-0.5 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    注销冷静期{deletionDaysRemaining != null ? `（剩 ${deletionDaysRemaining} 天）` : ""}
+                  </div>
+                ) : (
+                  <div className="text-xs font-bold text-emerald-600 mt-0.5">正常使用</div>
+                )}
               </div>
             </div>
 
@@ -855,22 +911,38 @@ export default function UserProfilePage() {
             </h2>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
               <div>
-                <p className="text-xs font-bold text-slate-700 mb-1">注销并抹除此账号</p>
+                <p className="text-xs font-bold text-slate-700 mb-1">
+                  {deletionPending ? "注销申请已提交，冷静期中" : "注销并抹除此账号"}
+                </p>
                 <p className="text-xs text-slate-400">
                   {isAdmin
                     ? "管理员账号受系统最高安全规则保护，不支持前端自主注销。"
+                    : deletionPending
+                    ? `你的账号已进入注销冷静期，冷静期内随时可撤销申请；期满后数据将彻底清空、不可恢复。`
                     : `注销后将进入 ${deletionCooldownDays} 天冷静期，冷静期内随时可恢复；期满后数据彻底清空不可逆。`}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowNoticeModal(true)}
-                disabled={isAdmin}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                申请注销
-              </button>
+              {deletionPending && !isAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleCancelDeletion}
+                  disabled={cancelDeletionLoading}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {cancelDeletionLoading ? "正在撤销..." : "撤销注销申请"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowNoticeModal(true)}
+                  disabled={isAdmin || deletionPending}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  申请注销
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -992,10 +1064,14 @@ export default function UserProfilePage() {
                       key={index}
                       className="flex items-center gap-2 text-sm"
                     >
-                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      {result.status === "warn" ? (
+                        <AlertCircle className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      )}
                       <span className="text-slate-600">{result.item}</span>
-                      <span className="text-emerald-500 text-xs ml-auto">
-                        检测通过
+                      <span className={`text-xs ml-auto ${result.status === "warn" ? "text-amber-600" : "text-emerald-500"}`}>
+                        {result.detail || (result.status === "warn" ? "需注意" : "检测通过")}
                       </span>
                     </div>
                   ))}
@@ -1029,12 +1105,16 @@ export default function UserProfilePage() {
                   {checkResults.map((result, index) => (
                     <div
                       key={index}
-                      className="flex items-center gap-2 text-sm bg-emerald-50 p-2 rounded-lg"
+                      className={`flex items-center gap-2 text-sm p-2 rounded-lg ${result.status === "warn" ? "bg-amber-50" : "bg-emerald-50"}`}
                     >
-                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      {result.status === "warn" ? (
+                        <AlertCircle className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      )}
                       <span className="text-slate-600">{result.item}</span>
-                      <span className="text-emerald-500 text-xs ml-auto">
-                        正常
+                      <span className={`text-xs ml-auto ${result.status === "warn" ? "text-amber-600" : "text-emerald-500"}`}>
+                        {result.detail || (result.status === "warn" ? "将一并清除" : "正常")}
                       </span>
                     </div>
                   ))}
@@ -1043,6 +1123,15 @@ export default function UserProfilePage() {
                 <p className="text-xs text-slate-500 text-center mb-4">
                   点击"确认注销"后，您的账号将进入冷静期
                 </p>
+
+                {pendingRecharge > 0 && (
+                  <div className="flex items-start gap-2 mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs leading-relaxed">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      您有 {pendingRecharge} 笔线下充值工单尚未结算入账，注销后将无法自动退款，请先到「计费中心」处理完毕再申请注销。
+                    </span>
+                  </div>
+                )}
 
                 {/* 底部取消与确认注销双操作区 */}
                 <div className="flex gap-3">

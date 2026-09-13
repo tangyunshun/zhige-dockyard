@@ -7,6 +7,7 @@ import {
   Briefcase,
   Building2,
   ShieldCheck,
+  Shield,
   X,
   ExternalLink,
   Edit2,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { PostIcon } from "./PostIcon";
 import { StatusBadge, ActionButton } from "@/components/common";
+import { WorkspacePermissionMatrixModal } from "./WorkspacePermissionMatrixModal";
 
 export interface UsedWorkspaceInfo {
   id: string;
@@ -200,6 +202,7 @@ export function StandardPostDetailModal({
   mode,
 }: StandardPostDetailModalProps) {
   const [mounted, setMounted] = useState(false);
+  const [viewingWorkspaceMatrix, setViewingWorkspaceMatrix] = useState<UsedWorkspaceInfo | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -218,7 +221,7 @@ export function StandardPostDetailModal({
 
   const modalContent = (
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in-50 duration-200"
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in-50 duration-200"
       onClick={onClose}
     >
       <div
@@ -441,14 +444,15 @@ export function StandardPostDetailModal({
                           {ws.memberCount} 位在编成员
                         </span>
                       </div>
-                      <Link
-                        href={`/admin/matrix/${ws.id}`}
-                        onClick={onClose}
-                        className="text-[11px] font-bold text-[#3182ce] hover:underline flex items-center gap-1 shrink-0 ml-2"
+                      <button
+                        type="button"
+                        onClick={() => setViewingWorkspaceMatrix(ws)}
+                        className="text-[11px] font-bold text-[#3182ce] hover:text-white hover:bg-[#3182ce] bg-white border border-blue-200/80 px-2 py-1 rounded-md transition-all flex items-center gap-1 shrink-0 ml-2 cursor-pointer shadow-2xs"
+                        title={`查看【${ws.name}】空间岗位权限矩阵`}
                       >
+                        <Shield className="w-3 h-3 text-[#3182ce]" />
                         <span>空间权限矩阵</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </Link>
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -548,6 +552,15 @@ export function StandardPostDetailModal({
           </div>
         </div>
       </div>
+
+      {/* 嵌套弹出的工作空间权限矩阵信息查看弹窗 */}
+      {viewingWorkspaceMatrix && (
+        <WorkspacePermissionMatrixModal
+          workspace={viewingWorkspaceMatrix}
+          initialPostName={post.name}
+          onClose={() => setViewingWorkspaceMatrix(null)}
+        />
+      )}
     </div>
   );
 

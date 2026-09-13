@@ -1,21 +1,14 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
+    // 严格校验批量工作空间状态更新权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "workspace:status_update");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const { workspaceIds, status } = await request.json();

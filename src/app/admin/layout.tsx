@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
+import { AdminPermissionProvider } from "@/contexts/AdminPermissionContext";
 import LoginNotificationPopup from "@/components/LoginNotificationPopup";
 
 interface AdminMenuItem {
@@ -222,6 +223,7 @@ export default function AdminLayout({
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isForbidden, setIsForbidden] = useState(false);
+  const [forbiddenReason, setForbiddenReason] = useState<string>("");
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -344,6 +346,14 @@ export default function AdminLayout({
       // 使用清洗后的标准角色进行验证
       const currentCleanRole = getCleanRole(data.user?.role);
       if (currentCleanRole !== "SUPER_ADMIN" && currentCleanRole !== "PLATFORM_ADMIN") {
+        setForbiddenReason("很抱歉，当前账户未被授予进入平台运营治理中心的权限。");
+        setIsForbidden(true);
+        return;
+      }
+
+      // 若平台运营管理员的后台管理特权已被停用，阻断其后台访问（其前台账号与空间功能不受任何影响）
+      if (currentCleanRole === "PLATFORM_ADMIN" && data.user?.adminStatus === "inactive") {
+        setForbiddenReason("您的管理员后台管理权限已被超级管理员临时停用（您的全站前台账号、企业空间创建与协作功能完全正常不受影响）。如需恢复后台管理请联系超级管理员。");
         setIsForbidden(true);
         return;
       }
@@ -401,8 +411,12 @@ export default function AdminLayout({
           <div className="space-y-2">
             <h2 className="text-xl font-bold text-slate-800">403 访问受限</h2>
             <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-              很抱歉，当前账户未被授予进入平台运营治理中心的权限。<br />
-              请使用平台管理员或超级管理员账号重新登录。
+              {forbiddenReason || (
+                <>
+                  很抱歉，当前账户未被授予进入平台运营治理中心的权限。<br />
+                  请使用平台管理员或超级管理员账号重新登录。
+                </>
+              )}
             </p>
           </div>
           <div className="pt-2">
@@ -840,7 +854,9 @@ export default function AdminLayout({
         </header>
 
         {/* 内容区 - 局部滚动 */}
-        <div className="flex-1 overflow-y-auto p-6 min-h-0">{children}</div>
+        <AdminPermissionProvider user={user} permissions={permissions} loading={loading}>
+          <div className="flex-1 overflow-y-auto p-6 min-h-0">{children}</div>
+        </AdminPermissionProvider>
       </main>
 
       {/* 退出登录二次确认弹窗 */}

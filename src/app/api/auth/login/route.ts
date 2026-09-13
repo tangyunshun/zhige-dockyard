@@ -12,6 +12,7 @@ import {
   ABSOLUTE_TIMEOUT_NO_REMEMBER_MS,
   MAX_LOGIN_ATTEMPTS,
   TEMP_BAN_DURATION_MS,
+  getDynamicSecurityConfig,
 } from "@/lib/session-constants";
 import {
   maybeFinalizeDeletionIfDue,
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { account, password, rememberMe } = await request.json();
+    const dynamicSecurity = await getDynamicSecurityConfig();
 
     // E-03 网关黑名单：IP 被拉黑时直接拒绝登录
     const clientIp = getClientIP(request);
@@ -204,10 +206,11 @@ export async function POST(request: NextRequest) {
     const isValid = await verifyPassword(password, user.password);
 
     if (!isValid) {
-      // 增加失败次数
+      // 增加失败次数，读取系统设置中动态配置的重试阈值
       const newAttempts = (user.loginAttempts || 0) + 1;
+      const effectiveMaxAttempts = dynamicSecurity.loginMaxFailures || MAX_LOGIN_ATTEMPTS;
 
-      if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
+      if (newAttempts >= effectiveMaxAttempts) {
         // 达到阈值：锁定 5 分钟
         const lockedUntil = new Date(Date.now() + TEMP_BAN_DURATION_MS);
         await prisma.user.update({
@@ -241,7 +244,7 @@ export async function POST(request: NextRequest) {
         {
           message: msg,
           accountExists: true,
-          remainingAttempts: MAX_LOGIN_ATTEMPTS - newAttempts,
+          remainingAttempts: Math.max(0, effectiveMaxAttempts - newAttempts),
         },
         { status: 401 },
       );
@@ -353,20 +356,20 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const clientIP = getClientIP(request);
 
-    // 检查密码是否过期（90天）- 在这里检查更合理
-    const PASSWORD_EXPIRY_DAYS = 90;
+    // 检查密码是否过期：读取系统设置中管理员动态配置的轮换周期（天），杜绝硬编码常量
+    const effectiveExpiryDays = dynamicSecurity.passwordExpireDays || 90;
     let passwordExpired = false;
     if (user.passwordChangedAt) {
       const passwordChangeTime = new Date(user.passwordChangedAt).getTime();
       const daysSinceChange = (Date.now() - passwordChangeTime) / (1000 * 60 * 60 * 24);
-      if (daysSinceChange > PASSWORD_EXPIRY_DAYS) {
+      if (daysSinceChange > effectiveExpiryDays) {
         passwordExpired = true;
       }
     } else {
       // 如果没有修改过密码记录，检查账号创建时间
       const accountCreateTime = new Date(user.createdAt).getTime();
       const daysSinceCreate = (Date.now() - accountCreateTime) / (1000 * 60 * 60 * 24);
-      if (daysSinceCreate > PASSWORD_EXPIRY_DAYS) {
+      if (daysSinceCreate > effectiveExpiryDays) {
         passwordExpired = true;
       }
     }
@@ -408,11 +411,12 @@ export async function POST(request: NextRequest) {
     await recordLoginIP(user.id, clientIP, request.headers.get("user-agent") || undefined);
 
     // 生成会话令牌（用于强制下线检查）
-    // PRD A-02/A-03：绝对硬超时——未勾选记住我 8 小时；勾选 7 天。不可滑动续期。
+    // 动态免活绝对超时：勾选记住我为 7 天；未勾选则严格由系统设置中的 sessionTimeoutHours 动态计算
+    const dynamicSessionTimeoutMs = (dynamicSecurity.sessionTimeoutHours || 24) * 60 * 60 * 1000;
     const sessionToken = crypto.randomUUID();
     const sessionExpiresAt = rememberMe
       ? new Date(now.getTime() + ABSOLUTE_TIMEOUT_REMEMBER_MS) // 7 天
-      : new Date(now.getTime() + ABSOLUTE_TIMEOUT_NO_REMEMBER_MS); // 8 小时
+      : new Date(now.getTime() + dynamicSessionTimeoutMs); // 系统设置动态时长
 
     // 检查是否存在旧会话且未过期（挤线检测）
     const hasExistingSession = user.sessionToken && user.sessionExpiresAt && new Date(user.sessionExpiresAt) > now;
@@ -449,10 +453,10 @@ export async function POST(request: NextRequest) {
     });
 
     const refreshToken = crypto.randomUUID();
-    // RT 有效期随绝对超时策略（A-02/A-03/E-06）：与绝对硬超时一致
+    // RT 有效期随绝对超时策略：与系统设置中的会话有效期一致
     const refreshTokenExpiresAt = rememberMe
       ? new Date(now.getTime() + ABSOLUTE_TIMEOUT_REMEMBER_MS) // 7 天
-      : new Date(now.getTime() + ABSOLUTE_TIMEOUT_NO_REMEMBER_MS); // 8 小时
+      : new Date(now.getTime() + dynamicSessionTimeoutMs); // 系统设置动态时长
 
     // 关键修复：确保 lastLoginAt 设置为当前时间，避免立即判定为超时
     await prisma.user.update({
@@ -750,18 +754,30 @@ export async function POST(request: NextRequest) {
         data: { isCurrent: false },
       });
 
-      // 查询现有设备，按最近访问时间（lastAccessTime）升序排列（B-04 剔除最老）
+      // 查询现有设备，按最近访问时间（lastAccessTime）升序排列
       const existingDevices = await prisma.userdevice.findMany({
         where: { userId: user.id },
         orderBy: { lastAccessTime: "asc" },
       });
 
-      // 若已达设备数上限，剔除最老的设备（并懒失效其会话）
+      // 关键优化：检查现有设备中是否有同一浏览器和系统的相同设备记录（同设备重新登录）
+      const currentDeviceName = `${browser} on ${os}`;
+      const sameDeviceIndex = existingDevices.findIndex(
+        (d) => d.browser === browser && d.deviceType === deviceType && d.deviceName === currentDeviceName
+      );
+
+      if (sameDeviceIndex !== -1) {
+        // 同一设备重复/重新登录：直接清理同设备旧会话，正常建立新连接，绝对不触发“设备被踢下线”误报
+        const matched = existingDevices.splice(sameDeviceIndex, 1)[0];
+        await prisma.userdevice.delete({ where: { id: matched.id } });
+      }
+
+      // 若剩余的其它异地/不同设备数仍达到或超出上限，按规则退出旧设备
       while (existingDevices.length >= maxDevices) {
         const oldestDevice = existingDevices.shift();
         if (!oldestDevice) break;
         await prisma.userdevice.delete({ where: { id: oldestDevice.id } });
-        // 被剔除设备推送"下线通知"（PRD B-04），以审计日志占位
+        // 记录通俗通顺的审计描述（大白话，不使用机器黑话）
         await prisma.operationlog.create({
           data: {
             id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
@@ -770,12 +786,13 @@ export async function POST(request: NextRequest) {
             resource: "auth/device",
             ipAddress: clientIP,
             details: {
-              message: "设备数超限，最老设备被强制下线",
+              type: "DEVICE_LIMIT_REPLACED",
+              message: `设备达到登录上限，旧设备(${oldestDevice.deviceName || "旧设备"})已自动退出登录`,
               deviceId: oldestDevice.id,
             },
           },
         });
-        console.log(`[设备超限] 用户 ${user.id} 设备数超过限制(${maxDevices}台)，已踢掉最老设备 ${oldestDevice.id}`);
+        console.log(`[设备登录流转] 用户 ${user.id} 在新设备登录，旧设备 ${oldestDevice.id} 已自动下线退出`);
       }
 
       // 创建新设备记录

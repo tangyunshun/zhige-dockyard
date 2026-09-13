@@ -96,6 +96,23 @@ function getConsumptionTypeIcon(type: string): React.ComponentType<any> {
   return CONSUMPTION_TYPE_ICONS[type] || Layers;
 }
 
+/** 账单状态展示元信息（与 billing_record.status 枚举保持一致，替代此前恒显"成功"的写死文案） */
+const BILLING_STATUS_META: Record<string, { label: string; badge: string }> = {
+  SUCCESS: { label: "成功", badge: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+  PENDING: { label: "处理中", badge: "bg-amber-50 text-amber-600 border-amber-200" },
+  FAILED: { label: "失败", badge: "bg-rose-50 text-rose-600 border-rose-200" },
+  REFUNDED: { label: "已退款", badge: "bg-slate-100 text-slate-500 border-slate-200" },
+};
+
+function getBillingStatusMeta(status: string): { label: string; badge: string } {
+  return (
+    BILLING_STATUS_META[status] || {
+      label: status || "未知",
+      badge: "bg-slate-50 text-slate-500 border-slate-200",
+    }
+  );
+}
+
 /** 字节格式化：自动转换为 GB（保留 1 位小数） */
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return "0 GB";
@@ -846,9 +863,9 @@ export default function BillingCenterPage() {
                               {rec.date}
                             </td>
                             <td className="py-3.5 px-4 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black border whitespace-nowrap ${getBillingStatusMeta(rec.status).badge}`}>
                                 <CheckCircle2 className="w-3 h-3 shrink-0" />
-                                成功
+                                {getBillingStatusMeta(rec.status).label}
                               </span>
                             </td>
                             <td className="py-3.5 px-4 text-right whitespace-nowrap">

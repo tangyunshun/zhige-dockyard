@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import { getActionLabel, getActionColor } from "@/lib/activity";
 
 interface UserDashboardData {
   userInfo: any;
@@ -42,6 +43,12 @@ export default function UserDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
+  const [systemStatus, setSystemStatus] = useState<{
+    apiOnline: boolean;
+    inMaintenance: boolean;
+    maintenanceMessage: string | null;
+    lastCheck: string | null;
+  }>({ apiOnline: false, inMaintenance: false, maintenanceMessage: null, lastCheck: null });
 
   const tokenBalanceValue =
     dashboardData?.stats?.tokenBalance ??
@@ -157,7 +164,7 @@ export default function UserDashboardPage() {
     try {
       const token = getAuthToken();
 
-      const [userRes, statsRes, activitiesRes] = await Promise.all([
+      const [userRes, statsRes, activitiesRes, healthRes, maintenanceRes] = await Promise.all([
         fetch("/api/user/profile", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         }),
@@ -167,6 +174,8 @@ export default function UserDashboardPage() {
         fetch("/api/user/activities?limit=10", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         }),
+        fetch("/api/health", { cache: "no-store" }).catch(() => null),
+        fetch("/api/system/check-maintenance", { cache: "no-store" }).catch(() => null),
       ]);
 
       let userData = null;
@@ -185,6 +194,26 @@ export default function UserDashboardPage() {
         const a = await activitiesRes.json();
         activitiesData = a.data;
       }
+
+      // 平台运行状态：读取公开健康检查与维护窗口，替代此前写死的静态文案
+      let apiOnline = false;
+      if (healthRes && healthRes.ok) {
+        const h = await healthRes.json().catch(() => null);
+        apiOnline = h?.status === "ok";
+      }
+      let inMaintenance = false;
+      let maintenanceMessage: string | null = null;
+      if (maintenanceRes && maintenanceRes.ok) {
+        const m = await maintenanceRes.json().catch(() => null);
+        inMaintenance = !!m?.inMaintenance;
+        maintenanceMessage = m?.message || null;
+      }
+      setSystemStatus({
+        apiOnline,
+        inMaintenance,
+        maintenanceMessage,
+        lastCheck: new Date().toISOString(),
+      });
 
       setDashboardData({
         userInfo: userData,
@@ -486,8 +515,14 @@ export default function UserDashboardPage() {
                               {badge.text}
                             </span>
                           </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">
-                            动作：<span className="font-mono">{activity.action || "AUDIT"}</span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getActionColor(
+                                activity.action,
+                              )}`}
+                            >
+                              {getActionLabel(activity.action)}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -528,51 +563,79 @@ export default function UserDashboardPage() {
                 <Server className="w-4 h-4 text-[#10b981]" />
                 平台运行状态
               </h2>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                全域运行正常
-              </span>
+              {systemStatus.inMaintenance ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                  维护中
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  运行正常
+                </span>
+              )}
             </div>
 
             <div className="space-y-2.5">
               <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60 flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-bold text-slate-700">云端协同运行时</div>
-                  <div className="text-[10.5px] text-slate-400">多节点集群负载正常</div>
-                </div>
-                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  正常
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60 flex items-center justify-between">
-                <div>
                   <div className="text-xs font-bold text-slate-700">开放 API 网关</div>
-                  <div className="text-[10.5px] text-slate-400">毫秒级低延迟调度</div>
+                  <div className="text-[10.5px] text-slate-400">健康检查实时探测</div>
                 </div>
-                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                {systemStatus.apiOnline ? (
+                  <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    在线
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-red-500 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    异常
+                  </span>
+                )}
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-700">系统维护状态</div>
+                  <div className="text-[10.5px] text-slate-400">
+                    {systemStatus.inMaintenance
+                      ? systemStatus.maintenanceMessage || "系统维护中"
+                      : "当前未处于维护窗口"}
+                  </div>
+                </div>
+                <span
+                  className={`text-xs font-bold flex items-center gap-1 ${
+                    systemStatus.inMaintenance ? "text-amber-600" : "text-emerald-600"
+                  }`}
+                >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  在线
+                  {systemStatus.inMaintenance ? "维护中" : "正常"}
                 </span>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60 flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-bold text-slate-700">组件分发 CDN</div>
-                  <div className="text-[10.5px] text-slate-400">全局缓存命中率 99.2%</div>
+                  <div className="text-xs font-bold text-slate-700">配额与算力服务</div>
+                  <div className="text-[10.5px] text-slate-400">
+                    剩余算力 {dashboardData?.stats?.tokenBalance ?? 0} 点 · 接口 {dashboardData?.stats?.apiCallsUsed ?? 0}/{dashboardData?.stats?.apiCallsLimit ?? 0}
+                  </div>
                 </div>
-                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                <span className={`text-xs font-bold flex items-center gap-1 ${systemStatus.inMaintenance ? "text-amber-600" : systemStatus.apiOnline ? "text-emerald-600" : "text-red-500"}`}>
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  畅通
+                  {systemStatus.inMaintenance ? "维护中" : systemStatus.apiOnline ? "畅通" : "异常"}
                 </span>
               </div>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-            <span>知阁安全防御体系</span>
-            <span className="text-slate-500 font-medium">高可用协同集群</span>
+            <span>状态检测时间</span>
+            <span className="text-slate-500 font-medium">
+              {systemStatus.lastCheck
+                ? new Date(systemStatus.lastCheck).toLocaleTimeString("zh-CN")
+                : "—"}
+            </span>
           </div>
         </div>
       </div>

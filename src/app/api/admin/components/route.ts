@@ -178,6 +178,23 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     if (!current) {
       return NextResponse.json({ error: "组件不存在" }, { status: 404 });
     }
+
+    // 强安全门禁：若试图将已上架组件下架，必须检测是否正被空间使用
+    if (isPublished === false && current.isPublished === true && !body.force) {
+      const usageCount = await prisma.componentusage.count({
+        where: { componentId, workspaceId: { not: null } },
+      });
+      if (usageCount > 0) {
+        return NextResponse.json(
+          {
+            error: `组件【${current.name}】当前正被工作空间装配使用中！禁止直接静默下架。请通过管理中枢确认强制下架并向受影响空间派发站内信通知。`,
+            needConfirmForce: true,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const currentConfig = (current.previewData as any) || {};
     component = await prisma.componentcatalog.update({
       where: { id: componentId },
@@ -291,10 +308,20 @@ export async function DELETE(request: NextRequest) {
 
     const current = await prisma.componentcatalog.findUnique({
       where: { id: componentId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isPublished: true },
     });
     if (!current) {
       return NextResponse.json({ error: "组件不存在" }, { status: 404 });
+    }
+
+    // 强安全门禁：已上架组件不可直接删除，必须下架后方可删除
+    if (current.isPublished) {
+      return NextResponse.json(
+        {
+          error: `组件【${current.name}】当前处于已上架状态，受系统保护不可直接删除！请先将其下架后再执行删除。`,
+        },
+        { status: 400 }
+      );
     }
 
     await prisma.componentcatalog.delete({

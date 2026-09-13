@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { validateUser } from "@/lib/auth";
+import { validateUser, isAdminRole } from "@/lib/auth";
 import { hasPermission, PermissionAction, ResourceType, EnterpriseRole } from "@/constants/roles";
 
 /**
@@ -37,9 +37,10 @@ export async function GET(request: NextRequest) {
     }
 
     const userRole = workspace.workspacemember[0]?.role || "MEMBER";
+    const isPlatformAdmin = isAdminRole(authResult.user.role);
     
-    // 验证权限
-    if (!hasPermission(userRole as string, ResourceType.WORKSPACE, PermissionAction.VIEW)) {
+    // 验证权限：平台管理员或企业空间内拥有查看权限的成员均可访问
+    if (!isPlatformAdmin && !hasPermission(userRole as string, ResourceType.WORKSPACE, PermissionAction.VIEW)) {
       return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 

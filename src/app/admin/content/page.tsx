@@ -28,7 +28,9 @@ import {
   ToggleLeft,
   ToggleRight,
   ShieldAlert,
+  Download,
 } from "lucide-react";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
 
 interface Stage {
   id: string;
@@ -91,6 +93,7 @@ export default function AdminStagesPage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [stages, setStages] = useState<Stage[]>([]);
   const [summary, setSummary] = useState<StageSummary>({
     totalStages: 0,
@@ -141,6 +144,94 @@ export default function AdminStagesPage() {
     errors: {},
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // 导出阶段分类 Excel 表格
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const authToken = getAuthToken();
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "5000",
+        ...(filters.search && { search: filters.search.trim() }),
+        ...(filters.status && { status: filters.status }),
+        ...(filters.createDateStart && { createDateStart: filters.createDateStart }),
+        ...(filters.createDateEnd && { createDateEnd: filters.createDateEnd }),
+      });
+
+      const res = await fetch(`/api/admin/stages?${params}`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        toast.error("获取阶段分类全量数据失败，请重试");
+        return;
+      }
+
+      const result = await res.json();
+      const allStages: Stage[] = result.data?.stages || [];
+
+      if (allStages.length === 0) {
+        toast.error("当前筛选条件下无阶段分类数据可导出");
+        return;
+      }
+
+      exportToExcel({
+        filename: "知阁组件阶段大纲",
+        sheetName: "阶段分类",
+        data: allStages,
+        columns: [
+          { header: "阶段标识/ID", key: "id", width: 22 },
+          { header: "阶段分类名称", key: "name", width: 20 },
+          {
+            header: "颜色标识",
+            key: "color",
+            width: 14,
+            formatter: (v: any) => v || "#3182ce",
+          },
+          {
+            header: "排序权重",
+            key: "sortOrder",
+            width: 12,
+            formatter: (v: any) => Number(v ?? 0),
+          },
+          {
+            header: "阶段状态",
+            key: "isActive",
+            width: 14,
+            formatter: (v: boolean) => (v ? "正常启用" : "已停用"),
+          },
+          {
+            header: "关联组件数量",
+            key: "componentCount",
+            width: 16,
+            formatter: (v: any) => Number(v ?? 0),
+          },
+          {
+            header: "创建时间",
+            key: "createdAt",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+          {
+            header: "更新时间",
+            key: "updatedAt",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+        ],
+      });
+
+      toast.success(`成功导出 ${allStages.length} 个阶段分类！`);
+    } catch (err) {
+      console.error("导出阶段 Excel 失败:", err);
+      toast.error("导出 Excel 异常，请检查控制台");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // 统一的高级业务操作弹窗状态（涵盖：禁用确认、启用确认、删除确认、安全阻断提示）
   const [actionModal, setActionModal] = useState<{
@@ -355,6 +446,14 @@ export default function AdminStagesPage() {
 
     if (Object.keys(newErrors).length > 0) {
       setFormData({ ...formData, errors: newErrors });
+      return;
+    }
+
+    // 核心安全红线：若阶段名下仍有组件，禁止将其更新为停用/禁用状态
+    if (editingStage && !formData.isActive && editingStage.componentCount > 0) {
+      toast.error(
+        `该阶段分类名下仍纳管 ${editingStage.componentCount} 个组件，无法直接禁用！请先卸载或迁移关联组件后再禁用。`
+      );
       return;
     }
 
@@ -647,6 +746,18 @@ export default function AdminStagesPage() {
                     <span>重置</span>
                   </button>
                 )}
+
+                {/* 导出 Excel 按钮 */}
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  disabled={exporting || loading}
+                  className="h-10 px-3.5 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-2xs border border-emerald-200/90 active:scale-95 disabled:opacity-50 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
+                  title="导出符合当前筛选条件的全部阶段分类为 Excel 表格"
+                >
+                  <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-bounce" : ""}`} />
+                  <span>{exporting ? "导出中..." : "导出 Excel"}</span>
+                </button>
               </div>
             </div>
 
@@ -1408,9 +1519,15 @@ export default function AdminStagesPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      setFormData({ ...formData, isActive: !formData.isActive })
-                    }
+                    onClick={() => {
+                      if (editingStage && formData.isActive && editingStage.componentCount > 0) {
+                        toast.error(
+                          `该阶段名下仍纳管 ${editingStage.componentCount} 个组件，无法设为停用！必须先卸载或迁移关联组件后再停用。`
+                        );
+                        return;
+                      }
+                      setFormData({ ...formData, isActive: !formData.isActive });
+                    }}
                     className={`w-full flex items-center justify-between px-3.5 h-11 rounded-xl border transition-all text-xs font-bold ${
                       formData.isActive
                         ? "bg-emerald-50 border-emerald-200 text-emerald-700"

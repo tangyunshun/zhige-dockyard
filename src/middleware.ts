@@ -15,6 +15,8 @@ const PUBLIC_PREFIXES = [
   "/api/auth",
   "/api/health",
   "/api/components",
+  // 开放接口：使用 API Key（而非会话 JWT）鉴权，由各路由自行完成鉴权
+  "/api/open",
   // 公共营销页面 - 未登录可查看（与客户端 AuthCheck / RouterGuards 保持一致）
   "/solutions",
   "/security",
@@ -29,6 +31,9 @@ const PUBLIC_PREFIXES = [
   "/api/account-appeal",
   "/api/system/public-config",
   "/api/system/maintenance",
+  "/api/system/check-maintenance",
+  "/maintenance",
+  "/releases",
   "/studio",
   "/_next",
   "/favicon",

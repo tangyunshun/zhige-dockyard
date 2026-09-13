@@ -37,6 +37,105 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
 let cache: { data: PricingConfig; at: number } | null = null;
 const CACHE_TTL_MS = 60 * 1000;
 
+/** 单价上限（元/百万 token），防止误填天文数字导致全站计费异常 */
+export const MAX_PRICE_PER_MILLION = 1_000_000;
+/** 加价系数上限 */
+export const MAX_MARKUP = 10;
+/** 模型名称最大长度 */
+export const MAX_MODEL_NAME_LENGTH = 60;
+
+export interface PricingValidationResult {
+  ok: boolean;
+  errors: string[];
+}
+
+/**
+ * 业务校验（落库前拦截）：
+ * 结构完整性 + 代号格式 + 重复检测 + 单价/系数值域，错误信息可直接展示给管理员。
+ */
+export function validatePricingConfig(input: any): PricingValidationResult {
+  const errors: string[] = [];
+
+  if (!input || typeof input !== "object") {
+    return { ok: false, errors: ["计价配置数据格式不合法"] };
+  }
+
+  const markup = Number(input.markup);
+  if (!Number.isFinite(markup)) {
+    errors.push("全局加价系数必须为有效数值");
+  } else if (markup < MIN_MARKUP || markup > MAX_MARKUP) {
+    errors.push(`全局加价系数需在 ${MIN_MARKUP} ~ ${MAX_MARKUP} 之间`);
+  }
+
+  const providers = Array.isArray(input.providers) ? input.providers : [];
+  if (providers.length === 0) {
+    errors.push("至少需要保留 1 个 AI 厂商平台");
+  }
+
+  const providerIds = new Set<string>();
+  providers.forEach((p: any, pi: number) => {
+    const pid = String(p?.id ?? "").trim();
+    const pname = String(p?.name ?? "").trim();
+    const label = pname || pid || `第 ${pi + 1} 个厂商`;
+
+    if (!pid) {
+      errors.push(`${label}：厂商代号不能为空`);
+    } else if (!/^[a-z0-9][a-z0-9_-]*$/i.test(pid)) {
+      errors.push(`${label}：厂商代号仅允许字母、数字、- 与 _，且需以字母或数字开头`);
+    } else if (providerIds.has(pid.toLowerCase())) {
+      errors.push(`${label}：厂商代号「${pid}」重复`);
+    } else {
+      providerIds.add(pid.toLowerCase());
+    }
+
+    if (!Array.isArray(p?.models) || p.models.length === 0) {
+      errors.push(`${label}：至少需要保留 1 个 AI 模型`);
+      return;
+    }
+
+    const modelIds = new Set<string>();
+    p.models.forEach((m: any, mi: number) => {
+      const mid = String(m?.id ?? "").trim();
+      const mname = String(m?.name ?? "").trim();
+      const mlabel = mid || `第 ${mi + 1} 个模型`;
+
+      if (!mid) {
+        errors.push(`${label}：存在模型代号为空的行`);
+      } else if (!/^[a-z0-9][a-z0-9_.:-]*$/i.test(mid)) {
+        errors.push(`${label} / ${mid}：模型代号仅允许字母、数字与 - _ . :，且需以字母或数字开头`);
+      } else if (modelIds.has(mid.toLowerCase())) {
+        errors.push(`${label} / ${mid}：同一厂商下模型代号重复`);
+      } else {
+        modelIds.add(mid.toLowerCase());
+      }
+
+      if (!mname) {
+        errors.push(`${label} / ${mlabel}：模型名称不能为空`);
+      } else if (mname.length > MAX_MODEL_NAME_LENGTH) {
+        errors.push(`${label} / ${mlabel}：模型名称不能超过 ${MAX_MODEL_NAME_LENGTH} 个字符`);
+      }
+
+      const priceChecks: Array<["inputPricePerMillion" | "outputPricePerMillion", string]> = [
+        ["inputPricePerMillion", "输入单价"],
+        ["outputPricePerMillion", "输出单价"],
+      ];
+      priceChecks.forEach(([key, cn]) => {
+        const v = Number(m?.[key]);
+        if (!Number.isFinite(v) || v < 0) {
+          errors.push(`${label} / ${mlabel}：${cn}必须为 ≥ 0 的有效数值`);
+        } else if (v > MAX_PRICE_PER_MILLION) {
+          errors.push(
+            `${label} / ${mlabel}：${cn}超出上限（≤ ${MAX_PRICE_PER_MILLION.toLocaleString()} 元/百万 Token）`
+          );
+        }
+      });
+    });
+  });
+
+  // 限制返回条数，避免错误提示刷屏
+  return { ok: errors.length === 0, errors: errors.slice(0, 20) };
+}
+
 /** 结构校验与清洗，避免脏数据导致计费异常 */
 function normalize(raw: any): PricingConfig {
   if (!raw || typeof raw !== "object") return DEFAULT_PRICING_CONFIG;
@@ -71,8 +170,8 @@ export async function loadPricingConfig(force: boolean = false): Promise<Pricing
   if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.data;
 
   try {
-    // 防御式访问：表未迁移或 Client 未重新生成时为 undefined
-    const model = (prisma as any).systemsetting;
+    // 访问系统配置表（systemconfig）
+    const model = (prisma as any).systemconfig;
     if (model?.findUnique) {
       const row = await model.findUnique({ where: { key: PRICING_CONFIG_KEY } });
       if (row?.value) {
@@ -93,16 +192,15 @@ export async function loadPricingConfig(force: boolean = false): Promise<Pricing
 /** 保存配置（管理员后台调用） */
 export async function savePricingConfig(config: PricingConfig): Promise<PricingConfig> {
   const clean = normalize(config);
-  const model = (prisma as any).systemsetting;
+  const model = (prisma as any).systemconfig;
   if (!model?.upsert) {
-    throw new Error("系统配置表尚未迁移，无法保存。请先执行数据库迁移。");
+    throw new Error("系统配置表尚未就绪，无法保存配置。");
   }
   await model.upsert({
     where: { key: PRICING_CONFIG_KEY },
     create: {
       key: PRICING_CONFIG_KEY,
       value: JSON.stringify(clean),
-      description: "AI 厂商价格表与加价系数（算力点折算）",
     },
     update: { value: JSON.stringify(clean) },
   });
@@ -113,7 +211,7 @@ export async function savePricingConfig(config: PricingConfig): Promise<PricingC
 /** 是否启用了数据库配置（false = 正在使用内置默认值） */
 export async function isPricingConfigPersisted(): Promise<boolean> {
   try {
-    const model = (prisma as any).systemsetting;
+    const model = (prisma as any).systemconfig;
     if (!model?.findUnique) return false;
     const row = await model.findUnique({ where: { key: PRICING_CONFIG_KEY } });
     return !!row?.value;

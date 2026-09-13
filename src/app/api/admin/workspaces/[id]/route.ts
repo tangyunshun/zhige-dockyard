@@ -1,24 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    // 严格校验工作空间详情查阅权限（workspace:detail 或 workspace:read）
+    const authCheck = await requirePlatformPermission(request, "workspace:detail", "workspace:read");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const { id: workspaceId } = await params;
@@ -57,47 +50,52 @@ export async function GET(
       },
     });
 
-    const members = workspace.workspacemember;
-    const memberIds = members.map((m) => m.userId);
-
-    const components = await prisma.componenttask.findMany({
-      where: { userId: { in: memberIds } },
-      select: {
-        id: true,
-        name: true,
-        icon: true,
-        type: true,
-        usageCount: true,
-      },
-      orderBy: { usageCount: "desc" },
+    // 查询该工作空间在 componentusage 中装配启用的真实组件资产
+    const usages = await prisma.componentusage.findMany({
+      where: { workspaceId: workspace.id },
+      select: { componentId: true, metadata: true },
     });
 
-    // 组件真实名称与图标以组件目录（componentcatalog）为权威来源：
-    // componenttask.name 是用户侧任务名（英文标识），componenttask.type 指向 componentcatalog.id
-    const catalogTypeIds = Array.from(new Set(components.map((c) => c.type).filter(Boolean)));
-    const catalogList = catalogTypeIds.length
-      ? await prisma.componentcatalog.findMany({
-          where: { id: { in: catalogTypeIds } },
-          select: { id: true, name: true, icon: true, category: true },
-        })
-      : [];
-    const catalogMap = new Map(catalogList.map((c) => [c.id, c]));
+    const boundComponentIdSet = new Set<string>();
+    usages.forEach((u) => {
+      if (!u.componentId) return;
+      let enabled = true;
+      if (u.metadata) {
+        try {
+          const meta = typeof u.metadata === "string" ? JSON.parse(u.metadata) : u.metadata;
+          if (meta && meta.enabled === false) enabled = false;
+        } catch {}
+      }
+      if (enabled) {
+        boundComponentIdSet.add(u.componentId);
+      }
+    });
 
-    const componentList = components.map((c) => {
-      const catalog = catalogMap.get(c.type);
-      return {
+    const boundComponentIds = Array.from(boundComponentIdSet);
+    let componentList: any[] = [];
+
+    if (boundComponentIds.length > 0) {
+      const [catalogs, categories] = await Promise.all([
+        prisma.componentcatalog.findMany({
+          where: { id: { in: boundComponentIds } },
+          select: { id: true, name: true, icon: true, category: true, usageCount: true },
+        }),
+        prisma.componentcategory.findMany({
+          select: { key: true, name: true },
+        }),
+      ]);
+      const catMap = new Map(categories.map((c) => [c.key, c.name]));
+      componentList = catalogs.map((c) => ({
         id: c.id,
-        // 优先使用组件目录中的中文名称，缺失时回退到任务名
-        name: catalog?.name || c.name,
-        // 优先使用组件目录中的图标 key，缺失时回退到任务自身字段
-        icon: catalog?.icon || c.icon || null,
-        catalogId: catalog?.id || null,
-        category: catalog?.category || null,
-        usageCount: c.usageCount,
-      };
-    });
+        name: c.name,
+        icon: c.icon || null,
+        catalogId: c.id,
+        category: catMap.get(c.category) || c.category || "通用算力",
+        usageCount: c.usageCount || 0,
+      }));
+    }
 
-    const componentCountValue = components.length;
+    const componentCountValue = componentList.length;
 
     const { workspacemember, ...workspaceBase } = workspace;
     const isEnterprise = workspace.type === "ENTERPRISE";
@@ -145,18 +143,10 @@ export async function GET(
 
 export async function PATCH(request: NextRequest) {
   try {
-    // 验证管理员权限
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-    const userId = auth.user.id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "无权访问" }, { status: 403 });
+    // 严格校验工作空间状态更新权限（无权直接阻断）
+    const authCheck = await requirePlatformPermission(request, "workspace:status_update");
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
     }
 
     const { searchParams } = new URL(request.url);

@@ -317,6 +317,19 @@ export async function PATCH(request: NextRequest) {
       if (!["active", "inactive", "banned", "deleted"].includes(status)) {
         return NextResponse.json({ error: "无效的状态值" }, { status: 400 });
       }
+
+      // 细粒度动作权限校验：封禁账号必须具备 user:ban 权限
+      if (status === "banned") {
+        const banAuth = await requirePlatformPermission(request, "user:ban");
+        if (!banAuth.authorized) return banAuth.errorResponse!;
+      }
+
+      // 细粒度动作权限校验：解封违规账号必须具备 user:unban 权限
+      if (targetUser.status === "banned" && status === "active") {
+        const unbanAuth = await requirePlatformPermission(request, "user:unban");
+        if (!unbanAuth.authorized) return unbanAuth.errorResponse!;
+      }
+
       updateData.status = status;
       if (status === "banned") {
         // 如果是封禁状态，更新解封时间与即时强制下线时间戳
@@ -330,6 +343,11 @@ export async function PATCH(request: NextRequest) {
         // 解封时清空封禁原因
         updateData.banReason = null;
       }
+    }
+    if (role !== undefined && role !== targetUser.role) {
+      // 细粒度动作权限校验：变更用户身份角色需具备 user:role_change 权限
+      const roleAuth = await requirePlatformPermission(request, "user:role_change");
+      if (!roleAuth.authorized) return roleAuth.errorResponse!;
     }
     if (role !== undefined) {
       if (role === "admin") {
@@ -398,6 +416,21 @@ export async function DELETE(request: NextRequest) {
 
     if (targetUserId === adminId) {
       return NextResponse.json({ error: "不能删除自己" }, { status: 403 });
+    }
+
+    // 核心安全红线拦截：只有处于已封禁(banned)状态的用户才允许删除
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, status: true, role: true },
+    });
+    if (!targetUser) {
+      return NextResponse.json({ error: "目标用户不存在" }, { status: 404 });
+    }
+    if (targetUser.status !== "banned") {
+      return NextResponse.json(
+        { error: "平台安全规则拦截：只有已被封禁的用户才允许被删除。请先封禁该用户后再执行删除" },
+        { status: 400 }
+      );
     }
 
     // 删除选项：情况 A 的移交 / 归档

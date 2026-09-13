@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
           changeType: "MEMBERSHIP_UPGRADE",
           oldValue: { level: current?.name || "FREE", nameZh: current?.nameZh || "免费版" },
           newValue: { level: target.name, nameZh: target.nameZh },
-          reason: billingCycle === "YEAR" ? "在线支付年费开通" : "在线支付月费开通",
+          reason: `在线支付${billingCycle === "YEAR" ? "年付" : "月付"}开通会员（${current?.nameZh || "免费版"} → ${target.nameZh}）`,
           createdAt: new Date(),
         },
       });

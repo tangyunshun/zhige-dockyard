@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 /**
  * 群组成员明细接口：供管理端「成员管理」弹窗展示与增删
@@ -10,23 +11,19 @@ import { isAdminRole, validateUser } from "@/lib/auth";
  *   excluded —— 被单独剔除的成员（可撤销剔除）
  */
 
-async function requireAdmin(request: NextRequest) {
-  const auth = await validateUser(request.headers.get("Authorization"), request);
-  if (!auth.valid || !auth.user) {
-    return { error: NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }) };
+async function requireAdmin(request: NextRequest, permissionKey: string = "announcement:read") {
+  const authCheck = await requirePlatformPermission(request, permissionKey);
+  if (!authCheck.authorized || !authCheck.user) {
+    return { error: authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 }) };
   }
-  const user = await prisma.user.findUnique({ where: { id: auth.user.id } });
-  if (!user || !isAdminRole(user.role)) {
-    return { error: NextResponse.json({ error: "权限不足" }, { status: 403 }) };
-  }
-  return { admin: user };
+  return { admin: authCheck.user };
 }
 
 const MAX_MEMBERS = 200;
 
 export async function GET(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request);
+    const guard = await requireAdmin(request, "announcement:read");
     if (guard.error) return guard.error;
 
     const groupId = new URL(request.url).searchParams.get("groupId");
@@ -105,14 +102,35 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
+    const roleNameMap: Record<string, string> = {
+      "super-admin": "超级管理员团队",
+      superadmin: "超级管理员团队",
+      super_admin: "超级管理员团队",
+      SUPER_ADMIN: "超级管理员团队",
+      admin: "平台管理员组",
+      ADMIN: "平台管理员组",
+      creator: "创作者与开发组",
+      CREATOR: "创作者与开发组",
+      user: "普通注册用户群",
+      USER: "普通注册用户群",
+    };
+
+    const isSystem = group.type === "system" && group.roleKey;
+    const displayName = isSystem ? (roleNameMap[group.roleKey!] || `${group.roleKey} 角色组`) : group.name;
+    const displayDesc = isSystem
+      ? (group.description && !group.description.includes(group.roleKey!)
+          ? group.description
+          : `系统内置角色群体（${displayName}）`)
+      : group.description || "自定义受众群组";
+
     return NextResponse.json({
       success: true,
       group: {
         id: group.id,
-        name: group.name,
+        name: displayName,
         type: group.type,
         roleKey: group.roleKey,
-        description: group.description,
+        description: displayDesc,
       },
       members,
       excluded,

@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdminRole } from "@/lib/auth";
 
@@ -41,7 +41,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (userId) {
-      where.userId = userId;
+      where.OR = [
+        { userId: { contains: userId } },
+        { id: { contains: userId } },
+        { user: { name: { contains: userId } } },
+      ];
     }
 
     if (levelId) {

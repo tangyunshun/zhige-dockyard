@@ -32,6 +32,7 @@ import {
   Code2,
   ShieldAlert,
   Hash,
+  CheckSquare,
 } from "lucide-react";
 import {
   PostIcon,
@@ -43,6 +44,7 @@ import { useToast } from "@/components/Toast";
 import Link from "next/link";
 import { StandardPostDetailModal } from "@/components/studio/StandardPostDetailModal";
 import { StatusBadge, ActionButton } from "@/components/common";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 
 interface UsedWorkspaceInfo {
   id: string;
@@ -53,6 +55,7 @@ interface UsedWorkspaceInfo {
 
 interface UsageRow {
   id: string;
+  postId?: string;
   postName: string;
   postCode: string;
   postColor: string;
@@ -122,6 +125,13 @@ function AdminPostsContent() {
   const searchParams = useSearchParams();
   const toast = useToast();
 
+  // 统一平台 RBAC 细粒度权限受控校验（无权直接隐藏，杜绝 403 页面）
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
+  const canCreate = isSuperAdmin || hasPermission("post:create");
+  const canUpdate = isSuperAdmin || hasPermission("post:update");
+  const canToggle = isSuperAdmin || hasPermission("post:toggle");
+  const canDelete = isSuperAdmin || hasPermission("post:delete");
+
   // 当前标签页: standard (平台标准岗位库) | workspace (企业空间岗位引用一览) | submissions (空间提报岗位审核)
   const [activeTab, setActiveTab] = useState<"standard" | "workspace" | "submissions">("standard");
 
@@ -187,12 +197,23 @@ function AdminPostsContent() {
   const [usageCurrentPage, setUsageCurrentPage] = useState<number>(1);
   const USAGE_PAGE_SIZE = 10;
 
+  // 企业空间岗位应用多选与删除确认模态框状态
+  const [selectedUsageIds, setSelectedUsageIds] = useState<string[]>([]);
+  const [confirmDeleteUsage, setConfirmDeleteUsage] = useState<{
+    kind: "single" | "batch";
+    items: UsageRow[];
+  } | null>(null);
+  const [usageDeleteSubmitting, setUsageDeleteSubmitting] = useState(false);
+
   // 删除确认弹窗
   const [deletingPost, setDeletingPost] = useState<StandardPost | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   // 停用确认弹窗（状态徽章只读，停用统一走操作列的动词按钮）
   const [togglingPost, setTogglingPost] = useState<StandardPost | null>(null);
+
+  // 岗位已被空间装配，无法直接停用的提示引导模态框
+  const [postBlockedModal, setPostBlockedModal] = useState<StandardPost | null>(null);
 
   // 工作空间列表（供辅助展示）
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
@@ -364,9 +385,16 @@ function AdminPostsContent() {
     }
   };
 
-  // 切换启用/禁用状态
+  // 切换启用/禁用状态（严格限制：已被企业空间运用的岗位禁止停用）
   const handleToggleStatus = async (post: StandardPost) => {
     const newStatus = post.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
+
+    // 停用前置强限制：被企业空间运用的岗位严禁停用
+    if (newStatus === "DISABLED" && (post.usageCount || 0) > 0) {
+      toast.error(`无法停用：岗位【${post.name}】已被 ${post.usageCount} 个企业空间运用，系统禁止停用！请先在【企业空间岗位应用一览】中解除相关引用。`);
+      return;
+    }
+
     try {
       const token = getAuthToken();
       const res = await fetch("/api/admin/posts/standard", {
@@ -406,12 +434,67 @@ function AdminPostsContent() {
     }
   };
 
+  // 请求停用岗位：若已被企业空间装配，弹出“空间已装配，请先卸载”模态框引导；若未被空间装配，进入常规二次确认停用模态框
+  const handleRequestDisable = (post: StandardPost) => {
+    if ((post.usageCount || 0) > 0) {
+      setPostBlockedModal(post);
+    } else {
+      setTogglingPost(post);
+    }
+  };
+
   // 停用：有分发影响，走二次确认；启用为可逆低风险操作，点击即生效
   const handleConfirmDisable = async () => {
     if (!togglingPost) return;
     const post = togglingPost;
     setTogglingPost(null);
+    if ((post.usageCount || 0) > 0) {
+      setPostBlockedModal(post);
+      return;
+    }
     await handleToggleStatus(post);
+  };
+
+  // 执行企业空间岗位应用删除（支持单个与批量）
+  const handleExecuteDeleteUsage = async () => {
+    if (!confirmDeleteUsage || confirmDeleteUsage.items.length === 0) return;
+    setUsageDeleteSubmitting(true);
+    try {
+      const token = getAuthToken();
+      const payload = {
+        items: confirmDeleteUsage.items.map((item) => ({
+          workspaceId: item.workspaceId,
+          postId: item.postId || (item.id.includes("_") ? item.id.split("_")[0] : undefined),
+          postName: item.postName,
+          postCode: item.postCode,
+        })),
+      };
+
+      const res = await fetch("/api/admin/posts/usages", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || "企业空间岗位应用已成功解除");
+        const removedIds = new Set(confirmDeleteUsage.items.map((i) => i.id));
+        setSelectedUsageIds((prev) => prev.filter((id) => !removedIds.has(id)));
+        setConfirmDeleteUsage(null);
+        loadStandardPosts();
+      } else {
+        toast.error(data.error || "移除企业空间岗位应用失败");
+      }
+    } catch (err) {
+      console.error("Delete usage error:", err);
+      toast.error("网络异常，移除失败");
+    } finally {
+      setUsageDeleteSubmitting(false);
+    }
   };
 
   // 确认删除标准岗位
@@ -565,10 +648,10 @@ function AdminPostsContent() {
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               <span>刷新数据</span>
             </button>
-            {activeTab === "standard" && (
+            {activeTab === "standard" && canCreate && (
               <button
                 onClick={handleOpenCreate}
-                className="px-4 py-2 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1.5"
+                className="px-4 py-2 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Plus className="w-4 h-4" />
                 <span>新建标准岗位</span>
@@ -875,74 +958,85 @@ function AdminPostsContent() {
                       </div>
                     </div>
 
-                    {/* 卡片底部操作栏：包含【详情】、【编辑】、【删除】三大完整闭环 */}
-                    <div className="px-5 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] text-slate-400 font-mono">
+                    {/* 卡片底部操作栏：包含【详情】、【编辑】、【停用/启用】、【删除】四大闭环，单行平整舒展绝对不折行、不超出 */}
+                    <div className="px-3 py-2 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-1">
+                      <span className="text-[11px] text-slate-400 font-mono shrink-0 whitespace-nowrap">
                         排序: {post.sortOrder || 1}
                       </span>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
                         {/* 查看详情按钮 */}
                         <button
                           type="button"
                           onClick={() => setViewingPost(post)}
-                          className="px-2.5 py-1 text-xs font-bold text-slate-700 hover:text-[#3182ce] hover:bg-blue-50/80 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          className="px-1.5 py-0.5 text-[11px] font-bold text-slate-700 hover:text-[#3182ce] bg-white hover:bg-blue-50 border border-slate-200/80 rounded-md transition-colors flex items-center gap-0.5 cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
                           title="查看岗位详情"
                         >
-                          <Eye className="w-3.5 h-3.5 text-[#3182ce]" />
-                          <span>详情</span>
+                          <Eye className="w-3 h-3 text-[#3182ce] shrink-0" />
+                          <span className="whitespace-nowrap">详情</span>
                         </button>
 
-                        {/* 编辑按钮：与套餐管理页一致，启用中的岗位不可编辑，需先停用 */}
-                        <ActionButton
-                          compact
-                          variant="primary"
-                          icon={<Edit2 className="w-3 h-3" />}
-                          disabledReason={
-                            isActive ? "启用中的岗位不可编辑，请先停用" : undefined
-                          }
-                          title="编辑该岗位"
-                          onClick={() => handleOpenEdit(post)}
-                        >
-                          编辑
-                        </ActionButton>
-
-                        {/* 停用/启用：与状态徽章解耦的动词按钮（停用需二次确认） */}
-                        {isActive ? (
+                        {/* 编辑按钮：受控于 canUpdate */}
+                        {canUpdate && (
                           <ActionButton
-                            compact
-                            variant="warn"
-                            icon={<Ban className="w-3 h-3" />}
-                            title="停用该岗位的分发"
-                            onClick={() => setTogglingPost(post)}
+                            size="xs"
+                            variant="primary"
+                            icon={<Edit2 className="w-3 h-3 shrink-0" />}
+                            disabledReason={
+                              isActive ? "启用中的岗位不可编辑，请先停用" : undefined
+                            }
+                            title="编辑该岗位"
+                            onClick={() => handleOpenEdit(post)}
                           >
-                            停用
-                          </ActionButton>
-                        ) : (
-                          <ActionButton
-                            compact
-                            variant="success"
-                            icon={<Power className="w-3 h-3" />}
-                            title="启用该岗位的分发"
-                            onClick={() => handleToggleStatus(post)}
-                          >
-                            启用
+                            编辑
                           </ActionButton>
                         )}
 
-                        {/* 删除按钮（不可逆，使用 danger 实心红）；启用中的岗位需先停用 */}
-                        <ActionButton
-                          compact
-                          variant="danger"
-                          icon={<Trash2 className="w-3 h-3" />}
-                          disabledReason={
-                            isActive ? "启用中的岗位不可删除，请先停用" : undefined
-                          }
-                          title="从官方标准库移除该岗位"
-                          onClick={() => setDeletingPost(post)}
-                        >
-                          删除
-                        </ActionButton>
+                        {/* 停用/启用：受控于 canToggle */}
+                        {canToggle && (
+                          isActive ? (
+                            <ActionButton
+                              size="xs"
+                              variant="warn"
+                              icon={<Ban className="w-3 h-3 shrink-0" />}
+                              title="停用该岗位的分发"
+                              onClick={() => handleRequestDisable(post)}
+                            >
+                              停用
+                            </ActionButton>
+                          ) : (
+                            <ActionButton
+                              size="xs"
+                              variant="success"
+                              icon={<Power className="w-3 h-3 shrink-0" />}
+                              title="启用该岗位的分发"
+                              onClick={() => handleToggleStatus(post)}
+                            >
+                              启用
+                            </ActionButton>
+                          )
+                        )}
+
+                        {/* 删除按钮：受控于 canDelete */}
+                        {canDelete && (
+                          <ActionButton
+                            size="xs"
+                            variant="danger"
+                            icon={<Trash2 className="w-3 h-3 shrink-0" />}
+                            disabledReason={
+                              isActive ? "启用中的岗位不可删除，请先停用" : undefined
+                            }
+                            title="从官方标准库移除该岗位"
+                            onClick={() => setDeletingPost(post)}
+                          >
+                            删除
+                          </ActionButton>
+                        )}
+
+                        {/* 若无任何写权限，展示只读标识 */}
+                        {!canUpdate && !canToggle && !canDelete && (
+                          <span className="text-[10px] text-slate-400 font-medium px-1">只读</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1031,7 +1125,7 @@ function AdminPostsContent() {
         </div>
       )}
 
-      {/* ======================= TAB 2: 企业空间岗位引用一览（极简纯粹透视） ======================= */}
+      {/* ======================= TAB 2: 企业空间岗位应用一览（支持单项与批量删除） ======================= */}
       {activeTab === "workspace" && (
         <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-2xs space-y-5 text-left">
           {/* 头部与检索工具条 */}
@@ -1039,10 +1133,10 @@ function AdminPostsContent() {
             <div>
               <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-[#3182ce]" />
-                <span>全平台企业空间岗位引用一览</span>
+                <span>全平台企业空间岗位应用一览</span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                透视全网企业空间（如西安云舜科技等）对官方标准岗位的装配采纳与成员在编现状（仅作数据呈现）
+                透视全网企业空间（如西安云舜科技等）对官方标准岗位的装配采纳与在编现状，支持空间岗位单项解除与批量安全清理
               </p>
             </div>
 
@@ -1081,6 +1175,40 @@ function AdminPostsContent() {
             </div>
           </div>
 
+          {/* 批量操作浮动条 */}
+          {selectedUsageIds.length > 0 && (
+            <div className="bg-[#3182ce]/5 border border-[#3182ce]/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3 animate-in fade-in-50 duration-200">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#2b6cb0]">
+                <CheckSquare className="w-4 h-4" />
+                已勾选 <span className="text-[#3182ce]">{selectedUsageIds.length}</span> 条企业空间岗位应用记录
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetItems = workspaceUsages.filter((u) => selectedUsageIds.includes(u.id));
+                    setConfirmDeleteUsage({
+                      kind: "batch",
+                      items: targetItems,
+                    });
+                  }}
+                  disabled={usageDeleteSubmitting}
+                  className="flex items-center gap-1.5 bg-red-600 border border-red-600 hover:bg-red-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>批量删除</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUsageIds([])}
+                  className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                >
+                  取消选择
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 引用清单表格 */}
           {loading ? (
             <div className="py-16 flex flex-col items-center justify-center">
@@ -1100,68 +1228,133 @@ function AdminPostsContent() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-black text-slate-500">
+                    <th className="py-3 px-4 w-10">
+                      <input
+                        type="checkbox"
+                        checked={
+                          paginatedUsages.length > 0 &&
+                          paginatedUsages.every((u) => selectedUsageIds.includes(u.id))
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const newIds = Array.from(
+                              new Set([...selectedUsageIds, ...paginatedUsages.map((u) => u.id)])
+                            );
+                            setSelectedUsageIds(newIds);
+                          } else {
+                            const pageIds = new Set(paginatedUsages.map((u) => u.id));
+                            setSelectedUsageIds((prev) => prev.filter((id) => !pageIds.has(id)));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/20 w-4 h-4 cursor-pointer"
+                        title="全选/取消全选当前页"
+                      />
+                    </th>
                     <th className="py-3 px-4">标准岗位</th>
                     <th className="py-3 px-4">岗位唯一代号</th>
                     <th className="py-3 px-4">引用的企业空间</th>
                     <th className="py-3 px-4">空间类型</th>
                     <th className="py-3 px-4 text-right">在编成员人数</th>
+                    <th className="py-3 px-4 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-medium">
-                  {paginatedUsages.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
-                      {/* 标准岗位 */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: u.postColor || "#3182ce" }}
+                  {paginatedUsages.map((u) => {
+                    const isSelected = selectedUsageIds.includes(u.id);
+                    return (
+                      <tr
+                        key={u.id}
+                        className={`transition-colors ${
+                          isSelected ? "bg-blue-50/50 hover:bg-blue-50/70" : "hover:bg-slate-50/60"
+                        }`}
+                      >
+                        {/* 勾选框 */}
+                        <td className="py-3 px-4">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedUsageIds((prev) => [...prev, u.id]);
+                              } else {
+                                setSelectedUsageIds((prev) => prev.filter((id) => id !== u.id));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/20 w-4 h-4 cursor-pointer"
                           />
-                          <span className="font-black text-slate-800">{u.postName}</span>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* 岗位代号 */}
-                      <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
-                        {u.postCode}
-                      </td>
-
-                      {/* 引用的企业空间 */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
-                          <div>
-                            <span className="font-black text-slate-800 block">
-                              {u.workspaceName}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              ID: {u.workspaceId.substring(0, 12)}...
-                            </span>
+                        {/* 标准岗位 */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: u.postColor || "#3182ce" }}
+                            />
+                            <span className="font-black text-slate-800">{u.postName}</span>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* 空间类型 */}
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                            u.workspaceType === "PERSONAL"
-                              ? "bg-slate-100 text-slate-500"
-                              : "bg-blue-50 text-[#3182ce] border border-blue-100"
-                          }`}
-                        >
-                          {u.workspaceType === "PERSONAL" ? "个人自主空间" : "企业协同空间"}
-                        </span>
-                      </td>
+                        {/* 岗位代号 */}
+                        <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
+                          {u.postCode}
+                        </td>
 
-                      {/* 在编成员人数 */}
-                      <td className="py-3 px-4 text-right">
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-bold text-xs">
-                          {u.memberCount} 位在编成员
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                        {/* 引用的企业空间 */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
+                            <div>
+                              <span className="font-black text-slate-800 block">
+                                {u.workspaceName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                ID: {u.workspaceId.substring(0, 12)}...
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 空间类型 */}
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                              u.workspaceType === "PERSONAL"
+                                ? "bg-slate-100 text-slate-500"
+                                : "bg-blue-50 text-[#3182ce] border border-blue-100"
+                            }`}
+                          >
+                            {u.workspaceType === "PERSONAL" ? "个人自主空间" : "企业协同空间"}
+                          </span>
+                        </td>
+
+                        {/* 在编成员人数 */}
+                        <td className="py-3 px-4 text-right">
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-bold text-xs">
+                            {u.memberCount} 位在编成员
+                          </span>
+                        </td>
+
+                        {/* 操作列：单个删除操作按钮（文字 + 图标，符合设计系统规范） */}
+                        <td className="py-3 px-4 text-right">
+                          <ActionButton
+                            compact
+                            variant="danger"
+                            icon={<Trash2 className="w-3.5 h-3.5" />}
+                            title={`从空间【${u.workspaceName}】中解除此岗位应用`}
+                            onClick={() =>
+                              setConfirmDeleteUsage({
+                                kind: "single",
+                                items: [u],
+                              })
+                            }
+                          >
+                            删除
+                          </ActionButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1535,8 +1728,8 @@ function AdminPostsContent() {
           onClose={() => setViewingPost(null)}
           onToggleStatus={(target) => {
             const p = target as any;
-            // 与卡片操作保持一致：停用走二次确认，启用即时生效
-            if (p.status === "ACTIVE") setTogglingPost(p);
+            // 与卡片操作保持一致：停用走前置装配检查与引导，启用即时生效
+            if (p.status === "ACTIVE") handleRequestDisable(p);
             else handleToggleStatus(p);
           }}
           onEdit={(target) => {
@@ -1548,7 +1741,7 @@ function AdminPostsContent() {
 
       {/* ======================= MODAL: 新建 / 编辑标准岗位 ======================= */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+        <div className="fixed inset-0 z-[1050] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             {/* 弹窗头部 */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
@@ -1757,7 +1950,7 @@ function AdminPostsContent() {
 
       {/* ======================= MODAL: 删除二次确认 ======================= */}
       {deletingPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
@@ -1803,9 +1996,91 @@ function AdminPostsContent() {
         </div>
       )}
 
+      {/* ======================= MODAL: 岗位已被空间装配，禁止停用并引导前往卸载 ======================= */}
+      {postBlockedModal && (
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-black text-slate-800">
+                  空间已装配此岗位，无法停用
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  岗位：<strong>{postBlockedModal.name}</strong>（代号：
+                  <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-700">
+                    {postBlockedModal.code}
+                  </code>
+                  ）
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPostBlockedModal(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 leading-relaxed bg-amber-50/60 p-3.5 rounded-xl border border-amber-200/70 space-y-2.5">
+              <p className="font-bold text-amber-900 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>该官方岗位当前正被 {postBlockedModal.usageCount || 0} 个企业空间装配运用：</span>
+              </p>
+              {postBlockedModal.usedWorkspaces && postBlockedModal.usedWorkspaces.length > 0 ? (
+                <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-white rounded-lg border border-amber-200/60 shadow-2xs">
+                  {postBlockedModal.usedWorkspaces.map((ws) => (
+                    <div key={ws.id} className="flex items-center justify-between text-[11px] text-slate-700 py-0.5">
+                      <span className="font-bold truncate max-w-[200px]">🏢 {ws.name}</span>
+                      <span className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded font-mono font-bold text-[10px] border border-amber-100">
+                        {ws.memberCount} 人在编
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-2 bg-white rounded-lg text-slate-500 text-[11px]">
+                  存在企业空间装配或关联记录
+                </div>
+              )}
+              <p className="text-[11px] text-slate-500">
+                为确保企业空间现存成员权限矩阵与协作业务稳定运行，请先在相关企业空间中卸载该岗位，然后再停用。
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setPostBlockedModal(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                我知道了
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetName = postBlockedModal.name;
+                  setPostBlockedModal(null);
+                  setViewingPost(null);
+                  setUsageSearchTerm(targetName);
+                  setActiveTab("workspace");
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>前往卸载/解除引用</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ======================= MODAL: 停用岗位二次确认 ======================= */}
       {togglingPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
@@ -1816,27 +2091,27 @@ function AdminPostsContent() {
                   确认停用岗位【{togglingPost.name}】？
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  当前已有 <strong className="text-amber-600">{togglingPost.usageCount || 0}</strong> 个企业空间装配该岗位
+                  当前暂无企业空间装配此岗位，停用不会影响任何现存业务
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-              停用后，新企业空间将无法一键导入该岗位；已装配该岗位的空间不受影响，仍可继续使用。如需恢复，可在卡片底部点击「启用」立即生效。
+              停用后，新企业空间将无法一键导入该岗位。如需恢复分发，可在卡片底部随时点击「启用」立即生效。
             </p>
 
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
                 onClick={() => setTogglingPost(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDisable}
-                className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Ban className="w-3.5 h-3.5" />
                 <span>确认停用</span>
@@ -1846,9 +2121,70 @@ function AdminPostsContent() {
         </div>
       )}
 
+      {/* ======================= MODAL: 企业空间岗位应用删除二次确认（单个 / 批量） ======================= */}
+      {confirmDeleteUsage && (
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-800">
+                  {confirmDeleteUsage.kind === "batch"
+                    ? `确认批量删除选中的 ${confirmDeleteUsage.items.length} 项企业空间岗位应用？`
+                    : `确认解除【${confirmDeleteUsage.items[0]?.workspaceName}】的岗位应用？`}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {confirmDeleteUsage.kind === "batch"
+                    ? `涉及 ${new Set(confirmDeleteUsage.items.map((i) => i.workspaceId)).size} 个企业空间的装配应用`
+                    : `岗位：${confirmDeleteUsage.items[0]?.postName}（代号：${confirmDeleteUsage.items[0]?.postCode}）`}
+                </p>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-100 space-y-2">
+              <p className="font-bold text-slate-700 flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-red-500" />
+                <span>解除空间岗位应用将执行以下安全清理：</span>
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-500 text-[11px]">
+                <li>目标企业空间中对应装配的该岗位及其权限矩阵配置将被物理移除；</li>
+                <li>已在空间内分配该岗位的成员将自动解除该岗位绑定并安全重置；</li>
+                <li>平台官方标准岗位库不受损，企业空间后续需要时可再次导入。</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={usageDeleteSubmitting}
+                onClick={() => setConfirmDeleteUsage(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={usageDeleteSubmitting}
+                onClick={handleExecuteDeleteUsage}
+                className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {usageDeleteSubmitting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                <span>{usageDeleteSubmitting ? "正在移除..." : "确认删除"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ======================= MODAL: 查看空间提报岗位全息详情 ======================= */}
       {viewingSubmission && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2.5">
@@ -1998,7 +2334,7 @@ function AdminPostsContent() {
 
       {/* ======================= MODAL: 审核操作二次确认（接收 / 不接收与审核意见反馈） ======================= */}
       {confirmReview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-6 text-left space-y-4 flex-1 min-h-0 overflow-y-auto">
               <div className="flex items-start gap-3.5">

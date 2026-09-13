@@ -20,8 +20,10 @@ import {
   CreditCard,
   Receipt,
   Sparkles,
+  Download,
 } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
 
 interface Order {
   id: string;
@@ -64,6 +66,7 @@ export default function AdminMembershipOrdersPage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -80,6 +83,140 @@ export default function AdminMembershipOrdersPage() {
   useEffect(() => {
     loadOrders();
   }, [pagination.page, filters]);
+
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const authToken = getAuthToken();
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "5000",
+        ...(filters.status && { status: filters.status }),
+        ...(filters.userId && { userId: filters.userId }),
+        ...(filters.levelId && { levelId: filters.levelId }),
+      });
+
+      const res = await fetch(`/api/admin/membership/orders?${params}`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        toast.error("获取订单全量数据失败，请重试");
+        return;
+      }
+
+      const result = await res.json();
+      const allOrders: Order[] = result.data?.orders || [];
+
+      if (allOrders.length === 0) {
+        toast.error("当前筛选条件下无订单数据可导出");
+        return;
+      }
+
+      const orderTypeMap: Record<string, string> = {
+        NEW: "新购",
+        RENEW: "续费",
+        UPGRADE: "升级",
+      };
+
+      const paymentMethodMap: Record<string, string> = {
+        WECHAT: "微信支付",
+        WECHAT_PAY: "微信支付",
+        ALIPAY: "支付宝",
+        BANK_TRANSFER: "对公转账",
+        SIMULATED: "模拟支付",
+      };
+
+      const statusMap: Record<string, string> = {
+        PENDING: "待支付",
+        PAID: "已支付",
+        SUCCESS: "交易成功",
+        REFUNDED: "已退款",
+        CANCELLED: "已取消",
+      };
+
+      exportToExcel({
+        filename: "知阁会员订单流水",
+        sheetName: "订单明细",
+        data: allOrders,
+        columns: [
+          { header: "订单编号", key: "id", width: 28 },
+          { header: "用户 ID", key: "userId", width: 26 },
+          { header: "用户姓名", key: "user.name", width: 14 },
+          { header: "用户邮箱", key: "user.email", width: 24 },
+          {
+            header: "用户手机号",
+            key: "user.phone",
+            width: 16,
+            formatter: (v: any) => v || "-",
+          },
+          {
+            header: "会员套餐等级",
+            key: "level.nameZh",
+            width: 14,
+            formatter: (v: any, row: Order) => v || row.levelId,
+          },
+          {
+            header: "订单类型",
+            key: "orderType",
+            width: 12,
+            formatter: (v: string) => orderTypeMap[v] || v || "未知",
+          },
+          {
+            header: "支付方式",
+            key: "paymentMethod",
+            width: 14,
+            formatter: (v: string) => paymentMethodMap[v] || v || "未知",
+          },
+          {
+            header: "订单金额(元)",
+            key: "amount",
+            width: 14,
+            formatter: (v: any) => (typeof v === "number" ? (v / 100).toFixed(2) : v ?? 0),
+          },
+          {
+            header: "币种",
+            key: "currency",
+            width: 10,
+            formatter: (v: any) => v || "CNY",
+          },
+          {
+            header: "订单状态",
+            key: "status",
+            width: 12,
+            formatter: (v: string) => statusMap[v] || v || "未知",
+          },
+          {
+            header: "有效期起始时间",
+            key: "startDate",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+          {
+            header: "有效期截止时间",
+            key: "endDate",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+          {
+            header: "订单创建时间",
+            key: "createdAt",
+            width: 22,
+            formatter: formatExcelDateTime,
+          },
+        ],
+      });
+
+      toast.success(`成功导出 ${allOrders.length} 笔会员订单！`);
+    } catch (err) {
+      console.error("导出会员订单 Excel 失败:", err);
+      toast.error("导出 Excel 异常，请检查控制台");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const loadOrders = async () => {
     try {
@@ -190,26 +327,28 @@ export default function AdminMembershipOrdersPage() {
         {/* 操作过滤栏 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/90 shadow-2xs p-4 mb-5 overflow-hidden">
           <div className="absolute -right-4 -top-4 w-40 h-40 rounded-full bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50 blur-3xl"></div>
-          <div className="relative flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3">
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 w-full">
-              <div className="relative w-full sm:w-auto">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 min-w-0">
+              <div className="relative w-full sm:w-80 md:w-96 shrink-0">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="搜索用户 ID..."
+                  placeholder="搜索用户 ID / 订单号..."
                   value={filters.userId}
-                  onChange={(e) =>
-                    setFilters({ ...filters, userId: e.target.value })
-                  }
-                  className="w-full pl-10 pr-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                  onChange={(e) => {
+                    setFilters({ ...filters, userId: e.target.value });
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  className="w-full pl-10 pr-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold transition-all bg-white placeholder:text-slate-400 text-slate-700"
                 />
               </div>
               <select
                 value={filters.status}
-                onChange={(e) =>
-                  setFilters({ ...filters, status: e.target.value })
-                }
-                className="w-full sm:w-auto px-4 h-11 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm font-medium transition-all"
+                onChange={(e) => {
+                  setFilters({ ...filters, status: e.target.value });
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+                className="w-full sm:w-36 h-10 px-3.5 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white cursor-pointer shrink-0 text-slate-700"
               >
                 <option value="">全部状态</option>
                 <option value="PENDING">待支付</option>
@@ -218,14 +357,32 @@ export default function AdminMembershipOrdersPage() {
                 <option value="REFUNDED">已退款</option>
                 <option value="CANCELLED">已取消</option>
               </select>
+              <button
+                type="button"
+                onClick={loadOrders}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-2xs border border-slate-200/80 active:scale-95 disabled:opacity-50 whitespace-nowrap shrink-0"
+              >
+                <RotateCw className={`w-3.5 h-3.5 text-[#3182ce] ${loading ? 'animate-spin' : ''}`} />
+                <span>刷新订单</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={exporting || loading}
+                className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 font-bold rounded-xl text-xs transition-all cursor-pointer shadow-2xs border border-emerald-200/90 active:scale-95 disabled:opacity-50 whitespace-nowrap shrink-0"
+                title="导出符合当前筛选条件的全部订单为 Excel 表格"
+              >
+                <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-bounce" : ""}`} />
+                <span>{exporting ? "导出中..." : "导出 Excel"}</span>
+              </button>
             </div>
-            <button
-              onClick={loadOrders}
-              className="shrink-0 px-5 h-11 bg-white border border-slate-200 text-slate-700 hover:text-[#3182ce] hover:border-[#3182ce]/30 rounded-xl font-bold text-sm hover:shadow-md transition-all duration-300 flex items-center gap-2"
-            >
-              <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              <span>刷新订单</span>
-            </button>
+
+            {/* 右侧：订单总数统计徽章 */}
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-100/90 px-3.5 py-2 rounded-xl border border-slate-200/70 shrink-0 self-start md:self-auto">
+              <Receipt className="w-4 h-4 text-[#3182ce]" />
+              <span>共 {pagination.total} 笔订单</span>
+            </div>
           </div>
         </div>
 

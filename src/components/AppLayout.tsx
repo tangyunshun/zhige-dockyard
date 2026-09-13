@@ -16,6 +16,9 @@ import { DeviceProvider } from "@/contexts/DeviceContext";
 import MobileBottomNav from "@/components/platform/MobileBottomNav";
 import GlobalFeedbackModal from "@/components/GlobalFeedbackModal";
 import OAuthProfilePrompt from "@/components/OAuthProfilePrompt";
+import MaintenanceUpcomingBanner from "@/components/MaintenanceUpcomingBanner";
+import WhatsNewModal from "@/components/WhatsNewModal";
+import PreferencesProvider from "@/components/PreferencesProvider";
 
 export default function AppLayout({
   children,
@@ -30,7 +33,8 @@ export default function AppLayout({
     pathname.startsWith("/admin") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/workspace/") ||
-    pathname.startsWith("/user/");
+    pathname.startsWith("/user/") ||
+    pathname.startsWith("/maintenance");
 
   // 仅在文档中心页显示全局“提交官方工单”悬浮入口（其余页面不显示）
   const shouldShowGlobalFeedback =
@@ -56,6 +60,8 @@ export default function AppLayout({
 
   return (
     <ResponsiveProvider>
+      {/* 全局外观偏好（主题 / 显示密度）应用器 */}
+      <PreferencesProvider />
       <DeviceProvider>
         <AppProvider>
           {/* 全局工作空间上下文：WorkspaceKickoutGuard 等组件依赖 useWorkspace，必须提供 Provider */}
@@ -82,6 +88,7 @@ export default function AppLayout({
                         }}
                       />
                       <div className="pt-[60px]">
+                        <MaintenanceUpcomingBanner />
                         {children}
                       </div>
                       {/* 全局悬浮回到顶部按钮 */}
@@ -107,6 +114,7 @@ export default function AppLayout({
               </AuthCheck>
                 <ActivityMonitor />
                 <OAuthProfilePrompt />
+                <WhatsNewModal />
                 {shouldShowGlobalFeedback && <GlobalFeedbackModal />}
               </GlobalConfirmProvider>
             </ToastProvider>

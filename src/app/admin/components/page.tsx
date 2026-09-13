@@ -40,8 +40,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Download,
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 
 interface Component {
   id: string;
@@ -318,6 +321,15 @@ export default function AdminComponentsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
+
+  // 统一平台 RBAC 细粒度权限受控校验（无权直接隐藏，杜绝 403 页面）
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
+  const canCreate = isSuperAdmin || hasPermission("component:create");
+  const canUpdate = isSuperAdmin || hasPermission("component:update");
+  const canPublish = isSuperAdmin || hasPermission("component:publish");
+  const canDelete = isSuperAdmin || hasPermission("component:delete");
+  const canBatchOperate = canPublish || canDelete;
+
   const [loading, setLoading] = useState(true);
   const [components, setComponents] = useState<Component[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -336,6 +348,7 @@ export default function AdminComponentsPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [exporting, setExporting] = useState(false);
   const [total, setTotal] = useState(0);
   const [types, setTypes] = useState<string[]>([]);
   const [categories, setCategories] = useState<
@@ -364,15 +377,21 @@ export default function AdminComponentsPage() {
   const [stats, setStats] = useState<{
     total: number;
     published: number;
+    unpublished?: number;
     stages: number;
     totalUsage: number;
     stageCounts?: Record<string, number>;
+    publishedStageCounts?: Record<string, number>;
+    unpublishedStageCounts?: Record<string, number>;
   }>({
     total: 0,
     published: 0,
+    unpublished: 0,
     stages: 0,
     totalUsage: 0,
     stageCounts: {},
+    publishedStageCounts: {},
+    unpublishedStageCounts: {},
   });
 
   // 快捷分类横向滚动容器与左右推进控制
@@ -417,6 +436,29 @@ export default function AdminComponentsPage() {
     message: "",
     type: "warning",
     onConfirm: () => {},
+  });
+
+  // 强制下架与空间通知模态框状态
+  const [forceUnpublishModal, setForceUnpublishModal] = useState<{
+    isOpen: boolean;
+    componentIds: string[];
+    components: Array<{ id: string; name: string }>;
+    loadedCount: number;
+    personalCount: number;
+    enterpriseCount: number;
+    workspaces: Array<{ id: string; name: string; type: string }>;
+    noticeReason: string;
+    submitting: boolean;
+  }>({
+    isOpen: false,
+    componentIds: [],
+    components: [],
+    loadedCount: 0,
+    personalCount: 0,
+    enterpriseCount: 0,
+    workspaces: [],
+    noticeReason: "因平台核心组件矩阵升级与维护规划调整，该组件即日起下架停用。请各空间及时调整业务工作流与组件装配。",
+    submitting: false,
   });
 
   // 渲染图标 Helper
@@ -473,6 +515,74 @@ export default function AdminComponentsPage() {
     }
   };
 
+  /** 导出当前筛选条件下的全量组件为 Excel 表格 */
+  const handleExportExcel = async () => {
+    if (exporting) return;
+    try {
+      setExporting(true);
+      const authToken = getAuthToken();
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "5000",
+        ...(filters.search && { search: filters.search }),
+        ...(filters.stage && { stage: filters.stage }),
+        ...(filters.published && { published: filters.published }),
+        ...(filters.startDate && { startDate: filters.startDate }),
+        ...(filters.endDate && { endDate: filters.endDate }),
+      });
+
+      const res = await fetch(`/api/admin/components?${params}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (!res.ok) {
+        throw new Error("拉取组件导出数据失败");
+      }
+
+      const data = await res.json();
+      const exportList: Component[] = data.components || [];
+
+      if (exportList.length === 0) {
+        toast.error("当前筛选条件下暂无组件数据可导出");
+        return;
+      }
+
+      exportToExcel({
+        filename: "知阁组件清单",
+        sheetName: "组件数据",
+        columns: [
+          { header: "组件ID", key: "id", width: 28 },
+          { header: "组件名称", key: "name", width: 24 },
+          {
+            header: "领域分类",
+            key: "category",
+            width: 18,
+            formatter: (val) => getCategoryName(val),
+          },
+          {
+            header: "发布状态",
+            key: "isPublished",
+            width: 12,
+            formatter: (val) => (val ? "已上架" : "已下架"),
+          },
+          { header: "累计调用", key: "usageCount", width: 12, formatter: (val) => val ?? 0 },
+          { header: "综合评分", key: "rating", width: 12, formatter: (val) => val ?? 5 },
+          { header: "排序权重", key: "sortOrder", width: 12, formatter: (val) => val ?? 0 },
+          { header: "组件简介", key: "description", width: 36, formatter: (val) => val || "-" },
+          { header: "创建时间", key: "createdAt", width: 20, formatter: formatExcelDateTime },
+        ],
+        data: exportList,
+      });
+
+      toast.success(`已成功导出 ${exportList.length} 个组件数据为 Excel 表格！`);
+    } catch (e: any) {
+      console.error("Export components error:", e);
+      toast.error(e.message || "导出组件数据失败");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // 新建阶段分类（用于表单下拉中直接新增）
   const createCategory = async (name: string) => {
     const authToken = getAuthToken();
@@ -525,12 +635,45 @@ export default function AdminComponentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, filters]);
 
-  // 上架 / 下架 状态切换处理
+  // 上架 / 下架 状态切换处理（下架前必须检测是否被空间载入）
   const handleTogglePublished = async (
     id: string,
     currentPublished: boolean,
   ) => {
     const actionText = currentPublished ? "下架" : "上架";
+
+    // 若当前为上架状态，正在尝试执行【下架】，必须前置检测该组件是否被空间（个人空间或企业空间）载入
+    if (currentPublished) {
+      try {
+        const authToken = getAuthToken();
+        const checkRes = await fetch(`/api/admin/components/unpublish-check?id=${id}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          // 若已被空间载入，常规下架必须拦截，弹出强制下架与空间通知模态框
+          if (checkData.totalLoadedCount > 0) {
+            const targetComp = components.find((c) => c.id === id);
+            setForceUnpublishModal({
+              isOpen: true,
+              componentIds: [id],
+              components: targetComp ? [{ id: targetComp.id, name: targetComp.name }] : [],
+              loadedCount: checkData.totalLoadedCount,
+              personalCount: checkData.personalCount,
+              enterpriseCount: checkData.enterpriseCount,
+              workspaces: checkData.workspaces || [],
+              noticeReason: "因平台核心组件矩阵升级与维护规划调整，该组件即日起下架停用。请各空间及时调整业务工作流与组件装配。",
+              submitting: false,
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("检测组件载入状态异常", e);
+      }
+    }
+
+    // 未被空间载入，或执行上架操作：走常规确认弹窗
     setConfirmDialog({
       isOpen: true,
       title: `${actionText}组件确认`,
@@ -564,8 +707,51 @@ export default function AdminComponentsPage() {
     });
   };
 
-  // 物理删除组件处理
+  // 执行强制下架并向受影响空间分发通知
+  const handleExecuteForceUnpublish = async () => {
+    if (forceUnpublishModal.componentIds.length === 0) return;
+    setForceUnpublishModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/components/unpublish-check", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          ids: forceUnpublishModal.componentIds,
+          force: true,
+          noticeReason: forceUnpublishModal.noticeReason.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || "组件已强制下架并已分发空间通知");
+        setForceUnpublishModal((prev) => ({ ...prev, isOpen: false }));
+        clearSelection();
+        loadComponents();
+        loadStats();
+      } else {
+        toast.error(data.error || "强制下架失败");
+      }
+    } catch (err) {
+      console.error("Force unpublish error:", err);
+      toast.error("网络异常，强制下架失败");
+    } finally {
+      setForceUnpublishModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
+  // 物理删除组件处理（已上架组件严禁删除，必须下架后方可删除）
   const handleDelete = async (id: string) => {
+    const comp = components.find((c) => c.id === id);
+    if (comp?.isPublished) {
+      toast.warning(`组件【${comp.name}】当前处于已上架状态，系统严格保护不可直接删除！请先将其【下架】，再进行删除。`);
+      return;
+    }
+
     setConfirmDialog({
       isOpen: true,
       title: "物理删除组件",
@@ -587,7 +773,7 @@ export default function AdminComponentsPage() {
             loadStats();
           } else {
             const error = await res.json();
-            toast.error(error.message || "删除失败");
+            toast.error(error.error || error.message || "删除失败");
           }
         } catch (error) {
           console.error("Delete component error:", error);
@@ -753,7 +939,7 @@ export default function AdminComponentsPage() {
     }
   };
 
-  const handleBatchAction = (
+  const handleBatchAction = async (
     endpoint: "batch-publish" | "batch-unpublish" | "batch-delete",
     label: string,
     needsConfirm: boolean,
@@ -763,6 +949,52 @@ export default function AdminComponentsPage() {
       toast.error("请先勾选要操作的组件");
       return;
     }
+
+    // 1. 批量删除强拦截：已上架组件严禁直接删除，必须先下架
+    if (endpoint === "batch-delete") {
+      const selectedComponents = components.filter((c) => selectedIds.has(c.id));
+      const publishedComps = selectedComponents.filter((c) => c.isPublished);
+      if (publishedComps.length > 0) {
+        const names = publishedComps.map((c) => `【${c.name}】`).slice(0, 3).join("、");
+        const more = publishedComps.length > 3 ? ` 等共 ${publishedComps.length} 个组件` : "";
+        toast.warning(
+          `选中的组件中包含已上架组件（${names}${more}），系统禁止直接删除！请先下架后再执行批量删除。`
+        );
+        return;
+      }
+    }
+
+    // 2. 批量下架前置空间载入检测与强制下架空间通知
+    if (endpoint === "batch-unpublish") {
+      try {
+        const authToken = getAuthToken();
+        const checkRes = await fetch(`/api/admin/components/unpublish-check?ids=${ids.join(",")}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData.totalLoadedCount > 0) {
+            const selectedComponents = components.filter((c) => selectedIds.has(c.id));
+            setForceUnpublishModal({
+              isOpen: true,
+              componentIds: ids,
+              components: selectedComponents.map((c) => ({ id: c.id, name: c.name })),
+              loadedCount: checkData.totalLoadedCount,
+              personalCount: checkData.personalCount,
+              enterpriseCount: checkData.enterpriseCount,
+              workspaces: checkData.workspaces || [],
+              noticeReason:
+                "因平台核心组件矩阵升级与维护规划调整，所涉及组件即日起下架停用。请各空间及时调整业务工作流与组件装配。",
+              submitting: false,
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("批量检测组件空间载入异常", e);
+      }
+    }
+
     if (needsConfirm) {
       setConfirmDialog({
         isOpen: true,
@@ -815,10 +1047,17 @@ export default function AdminComponentsPage() {
       <main className="py-8">
         {/* 真实统计卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div
+            onClick={() => {
+              setFilters((prev) => ({ ...prev, published: "", stage: "", search: "" }));
+              setCurrentPage(1);
+            }}
+            className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden cursor-pointer group"
+            title="点击查看全库所有状态组件"
+          >
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider group-hover:text-[#3182ce] transition-colors">
                   全库组件总数
                 </div>
                 <PackageIcon className="w-6 h-6 text-[#3182ce]" />
@@ -829,7 +1068,9 @@ export default function AdminComponentsPage() {
             </div>
           </div>
 
-          <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+          <div
+            className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+          >
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -837,8 +1078,30 @@ export default function AdminComponentsPage() {
                 </div>
                 <Eye className="w-6 h-6 text-[#10b981]" />
               </div>
-              <div className="text-3xl font-black text-slate-800 tracking-tight">
-                {stats.published} <span className="text-xs font-normal text-slate-400">个</span>
+              <div className="flex items-baseline justify-between gap-2">
+                <div
+                  onClick={() => {
+                    setFilters((prev) => ({ ...prev, published: "true" }));
+                    setCurrentPage(1);
+                  }}
+                  className="text-3xl font-black text-slate-800 tracking-tight cursor-pointer hover:text-emerald-600 transition-colors"
+                  title="点击仅查看已上架发布组件"
+                >
+                  {stats.published} <span className="text-xs font-normal text-slate-400">个</span>
+                </div>
+                {/* 快捷呈现并筛选已下架组件 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters((prev) => ({ ...prev, published: "false", stage: "" }));
+                    setCurrentPage(1);
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-xs font-black bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 border border-slate-200 transition-colors cursor-pointer shadow-2xs flex items-center gap-1 active:scale-95"
+                  title="点击直达查看所有已下架组件"
+                >
+                  <EyeOff className="w-3 h-3 text-amber-600" />
+                  <span>已下架 {stats.unpublished ?? Math.max(0, stats.total - stats.published)}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -882,9 +1145,10 @@ export default function AdminComponentsPage() {
                     type="text"
                     placeholder="搜索组件名称或功能描述..."
                     value={filters.search}
-                    onChange={(e) =>
-                      setFilters({ ...filters, search: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setFilters((prev) => ({ ...prev, search: e.target.value }));
+                      setCurrentPage(1);
+                    }}
                     className="w-full pl-10 pr-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all bg-white/80"
                   />
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -892,14 +1156,27 @@ export default function AdminComponentsPage() {
 
                 <select
                   value={filters.published}
-                  onChange={(e) =>
-                    setFilters({ ...filters, published: e.target.value })
-                  }
-                  className="w-full sm:w-auto px-3 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white/80 whitespace-nowrap"
+                  onChange={(e) => {
+                    const newPublished = e.target.value;
+                    setFilters((prev) => {
+                      // 若切换为“已下架”且当前阶段分类下并无下架组件，则自动切回“全部阶段”，避免页面无结果
+                      const shouldResetStage =
+                        newPublished === "false" &&
+                        Boolean(prev.stage) &&
+                        (stats.unpublishedStageCounts?.[prev.stage] ?? 0) === 0;
+                      return {
+                        ...prev,
+                        published: newPublished,
+                        ...(shouldResetStage ? { stage: "" } : {}),
+                      };
+                    });
+                    setCurrentPage(1);
+                  }}
+                  className="w-full sm:w-auto px-3 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white/80 whitespace-nowrap cursor-pointer"
                 >
-                  <option value="">全部状态</option>
-                  <option value="true">🟢 已上架</option>
-                  <option value="false">⚪ 已下架</option>
+                  <option value="">全部状态 ({stats.total})</option>
+                  <option value="true">🟢 已上架 ({stats.published})</option>
+                  <option value="false">⚪ 已下架 ({stats.unpublished ?? Math.max(0, stats.total - stats.published)})</option>
                 </select>
               </div>
 
@@ -918,17 +1195,31 @@ export default function AdminComponentsPage() {
                   刷新数据
                 </button>
 
+                {/* 导出 Excel 表格 */}
                 <button
-                  onClick={openCreateModal}
-                  className="inline-flex items-center gap-1.5 px-5 h-10 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-bold rounded-xl text-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap cursor-pointer"
+                  type="button"
+                  onClick={handleExportExcel}
+                  disabled={exporting}
+                  className="inline-flex items-center gap-1.5 px-4 h-10 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl text-xs transition-all duration-200 cursor-pointer shadow-2xs border border-emerald-200/80 active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                  title="导出当前筛选条件下的全量组件为 Excel 表格 (.xlsx)"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>新增组件</span>
+                  <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-spin" : ""}`} />
+                  <span>导出 Excel</span>
                 </button>
+
+                {canCreate && (
+                  <button
+                    onClick={openCreateModal}
+                    className="inline-flex items-center gap-1.5 px-5 h-10 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-bold rounded-xl text-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap cursor-pointer active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>新增组件</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* 快捷领域分类标签栏（左右平滑推拉 + 各分类真实数量统计） */}
+            {/* 快捷领域分类标签栏（左右平滑推拉 + 当前状态下各分类真实数量动态联动） */}
             <div className="flex items-center gap-2 pt-2.5 border-t border-slate-100 text-xs min-w-0">
               <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap shrink-0">快捷分类:</span>
 
@@ -954,40 +1245,66 @@ export default function AdminComponentsPage() {
                 className="flex items-center gap-1.5 overflow-x-auto py-0.5 min-w-0 flex-1 scroll-smooth"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFilters({ ...filters, stage: "" });
-                    setCurrentPage(1);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                    filters.stage === ""
-                      ? "bg-[#3182ce] text-white shadow-xs"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  全部阶段 ({stats.total || 0})
-                </button>
-                {types.map((stage) => {
-                  const stageCount = stats.stageCounts?.[stage] ?? 0;
+                {(() => {
+                  const currentTotalCount =
+                    filters.published === "true"
+                      ? stats.published
+                      : filters.published === "false"
+                      ? stats.unpublished ?? Math.max(0, stats.total - stats.published)
+                      : stats.total;
+
+                  const getStageCount = (stageKey: string) => {
+                    if (filters.published === "true") {
+                      return stats.publishedStageCounts?.[stageKey] ?? 0;
+                    }
+                    if (filters.published === "false") {
+                      return stats.unpublishedStageCounts?.[stageKey] ?? 0;
+                    }
+                    return stats.stageCounts?.[stageKey] ?? 0;
+                  };
+
                   return (
-                    <button
-                      key={stage}
-                      type="button"
-                      onClick={() => {
-                        setFilters({ ...filters, stage });
-                        setCurrentPage(1);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                        filters.stage === stage
-                          ? "bg-[#3182ce] text-white shadow-xs"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {getCategoryName(stage)} ({stageCount})
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilters((prev) => ({ ...prev, stage: "" }));
+                          setCurrentPage(1);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                          filters.stage === ""
+                            ? "bg-[#3182ce] text-white shadow-xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        全部阶段 ({currentTotalCount})
+                      </button>
+                      {types.map((stage) => {
+                        const stageCount = getStageCount(stage);
+                        const isZeroUnderFilter = filters.published !== "" && stageCount === 0;
+                        return (
+                          <button
+                            key={stage}
+                            type="button"
+                            onClick={() => {
+                              setFilters((prev) => ({ ...prev, stage }));
+                              setCurrentPage(1);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                              filters.stage === stage
+                                ? "bg-[#3182ce] text-white shadow-xs"
+                                : isZeroUnderFilter
+                                ? "bg-slate-50 text-slate-400 hover:bg-slate-100"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            {getCategoryName(stage)} ({stageCount})
+                          </button>
+                        );
+                      })}
+                    </>
                   );
-                })}
+                })()}
               </div>
 
               {/* 右翻页推拉按钮 */}
@@ -1017,16 +1334,51 @@ export default function AdminComponentsPage() {
             </div>
           </div>
         ) : components.length === 0 ? (
-          <div className="text-center py-16 bg-white/80 rounded-2xl border border-slate-200/60">
-            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+          <div className="text-center py-16 bg-white/80 rounded-2xl border border-slate-200/60 p-6 space-y-3">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-1">
               <PackageIcon className="w-6 h-6 text-slate-400" />
             </div>
-            <p className="text-xs text-slate-500 font-bold">暂无匹配的数据库组件记录</p>
+            <h3 className="text-sm font-black text-slate-700">暂无匹配的数据库组件记录</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+              {filters.stage && filters.published === "false"
+                ? `当前阶段【${getCategoryName(filters.stage)}】下暂无已下架组件，下架组件可能分布在其他阶段分类中。`
+                : filters.stage
+                ? `当前阶段【${getCategoryName(filters.stage)}】下暂无符合条件的组件。`
+                : filters.published === "false"
+                ? "全库当前暂无已下架的组件记录，所有组件均处于正常上架分发状态。"
+                : "当前筛选条件下暂无组件记录，您可以尝试更换关键词或清除筛选条件。"}
+            </p>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              {filters.stage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters((prev) => ({ ...prev, stage: "" }));
+                    setCurrentPage(1);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#3182ce] text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                >
+                  查看全部阶段下的组件
+                </button>
+              )}
+              {(filters.search || filters.published || filters.stage) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters({ search: "", stage: "", status: "", published: "", startDate: "", endDate: "" });
+                    setCurrentPage(1);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  重置所有筛选
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* 批量操作浮动工具栏：仅当选中项 > 0 时显示 */}
-            {selectedIds.size > 0 && (() => {
+            {/* 批量操作浮动工具栏：仅当有批量权限且选中项 > 0 时显示 */}
+            {canBatchOperate && selectedIds.size > 0 && (() => {
               const selectedComponents = components.filter((c) => selectedIds.has(c.id));
               const hasPublished = selectedComponents.some((c) => c.isPublished);
               const hasUnpublished = selectedComponents.some((c) => !c.isPublished);
@@ -1039,40 +1391,52 @@ export default function AdminComponentsPage() {
                   <span>已选中 {selectedIds.size} 个组件</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {hasUnpublished && (
+                  {canPublish && hasUnpublished && (
                     <button
                       type="button"
                       onClick={() =>
                         handleBatchAction("batch-publish", "上架", false)
                       }
                       disabled={batchLoading}
-                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" /> 批量上架
                     </button>
                   )}
-                  {hasPublished && (
+                  {canPublish && hasPublished && (
                     <button
                       type="button"
                       onClick={() =>
                         handleBatchAction("batch-unpublish", "下架", false)
                       }
                       disabled={batchLoading}
-                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
+                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
                     >
                       <EyeOff className="w-3.5 h-3.5" /> 批量下架
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleBatchAction("batch-delete", "删除", true)
-                    }
-                    disabled={batchLoading}
-                    className="px-3 py-1.5 bg-red-600 border border-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> 批量删除
-                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleBatchAction("batch-delete", "删除", true)
+                      }
+                      disabled={batchLoading || hasPublished}
+                      title={
+                        hasPublished
+                          ? "选中的组件中包含已上架组件，已上架组件不可删除，请先将其【下架】"
+                          : "批量删除选中的未上架组件"
+                      }
+                      style={hasPublished ? { cursor: "not-allowed" } : undefined}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors shadow-2xs ${
+                        hasPublished
+                          ? "bg-red-100/60 border border-red-200 text-red-300"
+                          : "bg-red-600 border border-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      }`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> 批量删除
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={clearSelection}
@@ -1090,18 +1454,20 @@ export default function AdminComponentsPage() {
                 <table className="w-full text-xs text-left border-collapse">
                   <thead className="bg-slate-50/90 border-b border-slate-200 font-black text-slate-700">
                     <tr>
-                      <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[40px]">
-                        <input
-                          type="checkbox"
-                          checked={
-                            components.length > 0 &&
-                            components.every((c) => selectedIds.has(c.id))
-                          }
-                          onChange={toggleSelectAll}
-                          className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
-                          title="全选/取消全选"
-                        />
-                      </th>
+                      {canBatchOperate && (
+                        <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[40px]">
+                          <input
+                            type="checkbox"
+                            checked={
+                              components.length > 0 &&
+                              components.every((c) => selectedIds.has(c.id))
+                            }
+                            onChange={toggleSelectAll}
+                            className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
+                            title="全选/取消全选"
+                          />
+                        </th>
+                      )}
                       <th className="py-3.5 px-4 whitespace-nowrap font-extrabold w-[25%]">组件名称与标识代码</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[14%]">领域分类</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[14%]">所需算力点数</th>
@@ -1125,14 +1491,16 @@ export default function AdminComponentsPage() {
                               : ""
                           }`}
                         >
-                          <td className="py-3.5 px-3 w-[40px]">
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(component.id)}
-                              onChange={() => toggleSelectOne(component.id)}
-                              className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
-                            />
-                          </td>
+                          {canBatchOperate && (
+                            <td className="py-3.5 px-3 w-[40px]">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(component.id)}
+                                onChange={() => toggleSelectOne(component.id)}
+                                className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
+                              />
+                            </td>
+                          )}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-xs">
@@ -1188,68 +1556,85 @@ export default function AdminComponentsPage() {
                           </td>
 
                           <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 py-3.5 px-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {/* 查看详情 👁️ (与其他页面统一) */}
-                              <button
-                                type="button"
-                                onClick={() => setDetailComp(component)}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1"
-                                title="查看组件契约说明与结构化参数"
-                              >
-                                <Eye className="w-3 h-3 text-slate-500" />
-                                <span>详情</span>
-                              </button>
+                            {(() => {
+                              const hasPublish = canPublish;
+                              const hasEdit = !isPub && canUpdate;
+                              const hasDelete = !isPub && canDelete;
+                              const hasAnyAction = hasPublish || hasEdit || hasDelete;
 
-                              {/* 已上架状态：仅允许【下架】！严格禁止上架状态直接编辑 */}
-                              {isPub ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleTogglePublished(component.id, true)}
-                                  className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white"
-                                  title="下架该组件（下架后解除保护，方可重新编辑）"
-                                >
-                                  <EyeOff className="w-3 h-3" />
-                                  <span>下架</span>
-                                </button>
-                              ) : (
-                                <>
-                                  {/* 未上架状态：允许【上架】、【编辑】与【删除】 */}
+                              return (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {/* 查看详情 👁️ (与其他页面统一) */}
                                   <button
                                     type="button"
-                                    onClick={() => handleTogglePublished(component.id, false)}
-                                    className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white"
-                                    title="上架发布该组件"
+                                    onClick={() => setDetailComp(component)}
+                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1"
+                                    title="查看组件契约说明与结构化参数"
                                   >
-                                    <Eye className="w-3 h-3" />
-                                    <span>上架</span>
+                                    <Eye className="w-3 h-3 text-slate-500" />
+                                    <span>详情</span>
                                   </button>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditModal(component)}
-                                    className="px-2.5 py-1 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1"
-                                    title="修改组件配置与算力点"
-                                  >
-                                    <Edit className="w-3 h-3" />
-                                    <span>编辑</span>
-                                  </button>
+                                  {/* 已上架状态：仅允许【下架】！严格禁止上架状态直接编辑 */}
+                                  {isPub ? (
+                                    canPublish && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTogglePublished(component.id, true)}
+                                        className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white"
+                                        title="下架该组件（下架后解除保护，方可重新编辑）"
+                                      >
+                                        <EyeOff className="w-3 h-3" />
+                                        <span>下架</span>
+                                      </button>
+                                    )
+                                  ) : (
+                                    <>
+                                      {/* 未上架状态：允许【上架】、【编辑】与【删除】 */}
+                                      {canPublish && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleTogglePublished(component.id, false)}
+                                          className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white"
+                                          title="上架发布该组件"
+                                        >
+                                          <Eye className="w-3 h-3" />
+                                          <span>上架</span>
+                                        </button>
+                                      )}
 
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(component.id)}
-                                    className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 ${
-                                      selectedIds.has(component.id)
-                                        ? "bg-red-600 border border-red-600 text-white hover:bg-red-700"
-                                        : "bg-red-100/40 border border-red-200 text-red-300 hover:bg-red-100/70"
-                                    }`}
-                                    title="物理删除"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                    <span>删除</span>
-                                  </button>
-                                </>
-                              )}
-                            </div>
+                                      {canUpdate && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditModal(component)}
+                                          className="px-2.5 py-1 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1"
+                                          title="修改组件配置与算力点"
+                                        >
+                                          <Edit className="w-3 h-3" />
+                                          <span>编辑</span>
+                                        </button>
+                                      )}
+
+                                      {canDelete && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDelete(component.id)}
+                                          className="px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white border border-red-600 shadow-xs hover:shadow active:scale-95"
+                                          title="物理删除该未上架组件"
+                                        >
+                                          <Trash2 className="w-3 h-3 text-white" />
+                                          <span>删除</span>
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+
+                                  {!hasAnyAction && (
+                                    <span className="text-[10px] text-slate-400 font-medium px-1">只读</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
                         </tr>
                       );
@@ -1660,6 +2045,200 @@ export default function AdminComponentsPage() {
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 )}
                 <span>{editingComponent ? "保存配置更新" : "确认创建组件"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 强制下架与空间通知模态框（当组件已被空间载入时弹出，严格遵循知阁设计系统） */}
+      {forceUnpublishModal.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-white/90 shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 text-left font-sans">
+            {/* 弹窗头部 */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <span>组件下架安全拦截与空间站内信闭环</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200/80">
+                      装配强保护
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    目标组件当前正被 <strong className="text-amber-600 font-mono font-bold">{forceUnpublishModal.loadedCount}</strong> 个空间（含 {forceUnpublishModal.enterpriseCount} 个企业空间、{forceUnpublishModal.personalCount} 个个人空间）载入装配中
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={forceUnpublishModal.submitting}
+                onClick={() => setForceUnpublishModal((prev) => ({ ...prev, isOpen: false }))}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-400 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 弹窗主滚动内容区（防截断） */}
+            <div className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
+              {/* 安全拦截提示横幅 */}
+              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-900 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  <span>平台运行安全准则：禁止静默下架已装配使用的业务组件</span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  检测到目标组件已被相关工作空间装配在业务流中。常规下架已被系统自动阻断！如必须执行下架，管理员必须填写下架说明，系统将自动向所有受影响空间的所有者（Owner）及装配使用用户推送<strong>高优先级系统站内信通知</strong>（设置登录弹窗强提醒），引导其调整业务流水线。
+                </p>
+              </div>
+
+              {/* 涉及下架组件标签 */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-600 block">
+                  待下架组件（共 {forceUnpublishModal.components.length || forceUnpublishModal.componentIds.length} 个）：
+                </span>
+                <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-100">
+                  {forceUnpublishModal.components.map((c) => (
+                    <span
+                      key={c.id}
+                      className="px-2.5 py-1 rounded-lg text-xs font-black bg-white text-slate-800 border border-slate-200/80 shadow-2xs flex items-center gap-1.5"
+                    >
+                      <PackageIcon className="w-3.5 h-3.5 text-[#3182ce]" />
+                      <span>{c.name}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 涉及装配载入的工作空间列表 */}
+              {forceUnpublishModal.workspaces.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-600">
+                      受影响工作空间明细清单（共 {forceUnpublishModal.workspaces.length} 个）：
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      下架通知将直达各空间管理者与所有者
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 bg-slate-50/80 rounded-xl border border-slate-100">
+                    {forceUnpublishModal.workspaces.map((ws) => (
+                      <div
+                        key={ws.id}
+                        className="px-3 py-2 rounded-xl bg-white text-slate-700 border border-slate-200/80 shadow-2xs flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-extrabold text-xs text-slate-800 truncate" title={ws.name}>
+                            {ws.name}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono truncate">
+                            ID: {ws.id}
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-black shrink-0 ${
+                            ws.type === "PERSONAL"
+                              ? "bg-blue-50 text-blue-700 border border-blue-100"
+                              : "bg-purple-50 text-purple-700 border border-purple-100"
+                          }`}
+                        >
+                          {ws.type === "PERSONAL" ? "个人自主空间" : "企业协同空间"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 下架通知站内信配置 */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    站内信通知说明 <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400">
+                    将以系统站内信推送给受影响空间的所有者与管理者
+                  </span>
+                </div>
+
+                {/* 快捷理由预设胶囊 */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-slate-400">快捷理由预设:</span>
+                  {[
+                    "核心算法矩阵升级整合，组件下架维护",
+                    "业务流水线重构，该组件即日起下架停用",
+                    "安全合规策略例行调整，组件进入归档状态",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() =>
+                        setForceUnpublishModal((prev) => ({
+                          ...prev,
+                          noticeReason: preset,
+                        }))
+                      }
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-[#3182ce] rounded-lg text-[10px] font-bold transition-all border border-slate-200/60 cursor-pointer active:scale-95"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  rows={3}
+                  required
+                  value={forceUnpublishModal.noticeReason}
+                  onChange={(e) =>
+                    setForceUnpublishModal((prev) => ({
+                      ...prev,
+                      noticeReason: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3.5 py-2.5 text-xs font-medium border border-slate-200 rounded-xl focus:outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 resize-none transition-all placeholder:text-slate-400 bg-slate-50/50 focus:bg-white leading-relaxed"
+                  placeholder="请输入下架说明，告知各空间管理者下架原因及后续操作建议..."
+                />
+              </div>
+
+              {/* 派发结果预览提示 */}
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 flex items-center gap-2 text-[11px] text-[#2b6cb0]">
+                <ShieldCheck className="w-4 h-4 text-[#3182ce] shrink-0" />
+                <span>
+                  确认后，系统将把组件状态变更为【已下架】，并自动向受影响用户派发登录强提醒弹窗站内信。
+                </span>
+              </div>
+            </div>
+
+            {/* 弹窗底部操作条 */}
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={forceUnpublishModal.submitting}
+                onClick={() => setForceUnpublishModal((prev) => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                取消操作
+              </button>
+              <button
+                type="button"
+                disabled={forceUnpublishModal.submitting || !forceUnpublishModal.noticeReason.trim()}
+                onClick={handleExecuteForceUnpublish}
+                className="px-6 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                {forceUnpublishModal.submitting ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <EyeOff className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {forceUnpublishModal.submitting
+                    ? "正在强制下架并分发通知..."
+                    : "确认强制下架并向空间发送通知"}
+                </span>
               </button>
             </div>
           </div>

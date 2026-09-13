@@ -5,6 +5,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
 import { getAuthToken } from "@/utils/auth";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 import {
   FileText,
   Search,
@@ -27,6 +28,7 @@ import {
   Building2,
   Download,
   Trash2,
+  Archive,
 } from "lucide-react";
 
 interface Appeal {
@@ -40,7 +42,7 @@ interface Appeal {
   appealReason: string;
   appealEvidence?: string;
   contactInfo?: string;
-  status: "pending" | "approved" | "rejected" | "ban_recorded" | "canceled";
+  status: "pending" | "approved" | "rejected" | "ban_recorded" | "canceled" | "archived" | string;
   businessType?: string;
   user?: { status?: string; banReason?: string | null; avatar?: string | null; phone?: string | null; email?: string | null };
   userAvatar?: string | null;
@@ -66,6 +68,11 @@ const PAGE_SIZE = 10;
 
 export default function AdminAccountAppealsPage() {
   const toast = useToast();
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
+  const canAudit = hasPermission("appeal:audit");
+  const canApprove = hasPermission("appeal:approve");
+  const canReject = hasPermission("appeal:reject");
+
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [appealData, setAppealData] = useState<AppealData | null>(null);
@@ -560,7 +567,17 @@ export default function AdminAccountAppealsPage() {
     });
   };
 
-  // 状态 Badge（直白自然的中文）
+  // 状态字典映射（杜绝任何直接裸出英文的情况）
+  const STATUS_NAME_MAP: Record<string, string> = {
+    pending: "待处理",
+    approved: "已解封",
+    rejected: "已驳回",
+    ban_recorded: "封禁记录",
+    archived: "历史归档",
+    canceled: "用户已撤销",
+  };
+
+  // 状态 Badge（直白自然的中文，符合知阁设计规范）
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending":
@@ -591,6 +608,13 @@ export default function AdminAccountAppealsPage() {
             封禁记录
           </span>
         );
+      case "archived":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200 shadow-2xs">
+            <Archive className="w-3.5 h-3.5 text-slate-500" />
+            历史归档
+          </span>
+        );
       case "canceled":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-500 rounded-lg text-xs font-bold border border-slate-200 shadow-2xs">
@@ -600,8 +624,9 @@ export default function AdminAccountAppealsPage() {
         );
       default:
         return (
-          <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">
-            {status}
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200 shadow-2xs">
+            <Shield className="w-3.5 h-3.5 text-slate-400" />
+            {STATUS_NAME_MAP[status] || "未知状态"}
           </span>
         );
     }
@@ -613,9 +638,10 @@ export default function AdminAccountAppealsPage() {
         pending: appealData.appeals.filter((a) => a.status === "pending").length,
         approved: appealData.appeals.filter((a) => a.status === "approved").length,
         rejected: appealData.appeals.filter((a) => a.status === "rejected").length,
+        archived: appealData.appeals.filter((a) => a.status === "archived").length,
         canceled: appealData.appeals.filter((a) => a.status === "canceled").length,
       }
-    : { total: 0, pending: 0, approved: 0, rejected: 0, canceled: 0 };
+    : { total: 0, pending: 0, approved: 0, rejected: 0, archived: 0, canceled: 0 };
 
   const formatDateTime = (s: string) => {
     try {
@@ -684,6 +710,10 @@ export default function AdminAccountAppealsPage() {
             <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">已撤销</div>
             <div className="text-lg font-black text-slate-600 mt-0.5 font-mono">{stats.canceled}</div>
           </div>
+          <div className="bg-slate-50/80 px-3.5 py-2 rounded-xl border border-slate-200 text-center min-w-[76px] shadow-2xs">
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">历史归档</div>
+            <div className="text-lg font-black text-slate-500 mt-0.5 font-mono">{stats.archived}</div>
+          </div>
         </div>
       </div>
 
@@ -709,6 +739,8 @@ export default function AdminAccountAppealsPage() {
                 <option value="pending">⏳ 待处理</option>
                 <option value="approved">✓ 已解封</option>
                 <option value="rejected">✕ 已驳回</option>
+                <option value="ban_recorded">🛡️ 封禁记录</option>
+                <option value="archived">📁 历史归档</option>
                 <option value="canceled">↩ 用户已撤销</option>
               </select>
             </div>
@@ -864,52 +896,58 @@ export default function AdminAccountAppealsPage() {
               >
                 取消选择
               </button>
-              <button
-                type="button"
-                onClick={() => openBatchProcessModal("approved")}
-                disabled={batchProcessing || selectedPendingAppeals.length === 0}
-                title={
-                  selectedPendingAppeals.length === 0
-                    ? "所选工单中没有待处理项，仅「待处理」工单可审批"
-                    : `将同意解封 ${selectedPendingAppeals.length} 条待处理工单`
-                }
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                {batchProcessing ? "处理中..." : "批量同意解封"}
-              </button>
-              <button
-                type="button"
-                onClick={() => openBatchProcessModal("rejected")}
-                disabled={batchProcessing || selectedPendingAppeals.length === 0}
-                title={
-                  selectedPendingAppeals.length === 0
-                    ? "所选工单中没有待处理项，仅「待处理」工单可审批"
-                    : `将驳回 ${selectedPendingAppeals.length} 条待处理工单`
-                }
-                className="px-4 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl text-xs font-bold border border-red-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                批量驳回
-              </button>
-              <button
-                type="button"
-                onClick={openBatchDeleteModal}
-                disabled={batchProcessing || selectedDeletableAppeals.length === 0}
-                title={
-                  selectedDeletableAppeals.length === 0
-                    ? "所选工单中没有可删除项，待处理工单需先完成审批"
-                    : `将删除 ${selectedDeletableAppeals.length} 条已处理工单`
-                }
-                className={`px-4 py-1.5 rounded-xl text-xs font-black shadow-2xs transition-all flex items-center gap-1.5 ${
-                  batchProcessing || selectedDeletableAppeals.length === 0
-                    ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed"
-                    : "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
-                }`}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                批量删除
-              </button>
+              {canApprove && (
+                <button
+                  type="button"
+                  onClick={() => openBatchProcessModal("approved")}
+                  disabled={batchProcessing || selectedPendingAppeals.length === 0}
+                  title={
+                    selectedPendingAppeals.length === 0
+                      ? "所选工单中没有待处理项，仅「待处理」工单可审批"
+                      : `将同意解封 ${selectedPendingAppeals.length} 条待处理工单`
+                  }
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-2xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {batchProcessing ? "处理中..." : "批量同意解封"}
+                </button>
+              )}
+              {canReject && (
+                <button
+                  type="button"
+                  onClick={() => openBatchProcessModal("rejected")}
+                  disabled={batchProcessing || selectedPendingAppeals.length === 0}
+                  title={
+                    selectedPendingAppeals.length === 0
+                      ? "所选工单中没有待处理项，仅「待处理」工单可审批"
+                      : `将驳回 ${selectedPendingAppeals.length} 条待处理工单`
+                  }
+                  className="px-4 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl text-xs font-bold border border-red-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  批量驳回
+                </button>
+              )}
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={openBatchDeleteModal}
+                  disabled={batchProcessing || selectedDeletableAppeals.length === 0}
+                  title={
+                    selectedDeletableAppeals.length === 0
+                      ? "所选工单中没有可删除项，待处理工单需先完成审批"
+                      : `将删除 ${selectedDeletableAppeals.length} 条已处理工单`
+                  }
+                  className={`px-4 py-1.5 rounded-xl text-xs font-black shadow-2xs transition-all flex items-center gap-1.5 ${
+                    batchProcessing || selectedDeletableAppeals.length === 0
+                      ? "bg-red-100/40 border border-red-200 text-red-300 cursor-not-allowed"
+                      : "bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  批量删除
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1133,55 +1171,70 @@ export default function AdminAccountAppealsPage() {
                       {/* 操作 */}
                       <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 px-4.5 py-3.5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openDetailModal(appeal)}
-                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-[#3182ce]" />
-                            查看详情
-                          </button>
+                          {/* 查看详情 - 受控于 appeal:audit */}
+                          {canAudit && (
+                            <button
+                              type="button"
+                              onClick={() => openDetailModal(appeal)}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-[#3182ce]" />
+                              查看详情
+                            </button>
+                          )}
 
                           {appeal.status === "pending" && (
                             <>
-                              <button
-                                type="button"
-                                onClick={() => openProcessModal(appeal, "approved")}
-                                disabled={processing === appeal.id}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                              >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                同意解封
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openProcessModal(appeal, "rejected")}
-                                disabled={processing === appeal.id}
-                                className="px-3 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white font-bold rounded-xl text-xs border border-red-200 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                                驳回
-                              </button>
+                              {/* 同意解封 - 受控于 appeal:approve */}
+                              {canApprove && (
+                                <button
+                                  type="button"
+                                  onClick={() => openProcessModal(appeal, "approved")}
+                                  disabled={processing === appeal.id}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  同意解封
+                                </button>
+                              )}
+                              {/* 驳回申诉 - 受控于 appeal:reject */}
+                              {canReject && (
+                                <button
+                                  type="button"
+                                  onClick={() => openProcessModal(appeal, "rejected")}
+                                  disabled={processing === appeal.id}
+                                  className="px-3 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white font-bold rounded-xl text-xs border border-red-200 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  驳回
+                                </button>
+                              )}
                             </>
                           )}
 
-                          {/* 删除工单：仅「已处理」工单可删除（待处理必须先完成审批）；选中态鲜红、未选中态灰红 */}
-                          {isAppealDeletable(appeal) && (
+                          {/* 删除工单 - 仅超级管理员可删除已处理工单 */}
+                          {isSuperAdmin && isAppealDeletable(appeal) && (
                             <button
                               type="button"
                               onClick={() => openDeleteAppealModal(appeal)}
                               disabled={batchProcessing}
                               title="删除该申诉工单（操作将写入审计日志）"
-                              className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-2xs transition-all inline-flex items-center gap-1 ${
-                                selectedAppealIds.has(appeal.id)
-                                  ? "bg-red-600 border border-red-600 hover:bg-red-700 text-white cursor-pointer"
-                                  : "bg-red-100/40 border border-red-200 text-red-300 cursor-pointer hover:bg-red-100/70 hover:ring-2 hover:ring-red-300/40"
-                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white font-bold rounded-xl text-xs border border-red-200 transition-all inline-flex items-center gap-1 cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               删除
                             </button>
                           )}
+
+                          {/* 若没有任何操作权限，展示纯文本只读 */}
+                          {!canAudit &&
+                            (!canApprove || appeal.status !== "pending") &&
+                            (!canReject || appeal.status !== "pending") &&
+                            (!isSuperAdmin || !isAppealDeletable(appeal)) && (
+                              <span className="text-xs text-slate-400 font-medium px-2 py-1 select-none">
+                                只读
+                              </span>
+                            )}
                         </div>
                       </td>
                     </tr>
@@ -1234,7 +1287,7 @@ export default function AdminAccountAppealsPage() {
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2.5 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-bold">申诉用户:</span>
-                <span className="font-black text-slate-900 font-mono flex items-center gap-2">
+                <span className="font-black text-slate-900 flex items-center gap-2">
                   {detailModalAppeal.userAvatar ? (
                     <img
                       src={detailModalAppeal.userAvatar}
@@ -1242,34 +1295,72 @@ export default function AdminAccountAppealsPage() {
                       className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0"
                     />
                   ) : null}
-                  {detailModalAppeal.userName || detailModalAppeal.userAccount}
-                  {detailModalAppeal.userAccount &&
-                    detailModalAppeal.userAccount !== detailModalAppeal.userName &&
-                    !detailModalAppeal.userAccount.includes("@") && (
-                      <span className="text-slate-500 font-normal">({detailModalAppeal.userAccount})</span>
-                    )}
+                  <span>{detailModalAppeal.userName || detailModalAppeal.userAccount || "未知用户"}</span>
+                  <button
+                    type="button"
+                    onClick={() => copyAccount(detailModalAppeal.userName || detailModalAppeal.userAccount)}
+                    className="text-slate-400 hover:text-[#3182ce] transition-colors cursor-pointer"
+                    title="复制用户名/账号"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-bold">联系方式:</span>
-                <span className="font-mono text-slate-800 font-bold flex items-center gap-1.5">
-                  {(detailModalAppeal.userPhone || detailModalAppeal.user?.phone) ? (
-                    <span className="flex items-center gap-1">
-                      <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      {detailModalAppeal.userPhone || detailModalAppeal.user?.phone}
+
+              {/* 联系方式：手机号优先，其次邮箱 */}
+              {(() => {
+                const phone =
+                  detailModalAppeal.userPhone ||
+                  detailModalAppeal.user?.phone ||
+                  (/^1[3-9]\d{9}$/.test(detailModalAppeal.userAccount || "") ? detailModalAppeal.userAccount : null);
+                const email =
+                  detailModalAppeal.userEmail ||
+                  detailModalAppeal.user?.email ||
+                  (detailModalAppeal.userAccount?.includes("@") ? detailModalAppeal.userAccount : null);
+
+                return (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-bold">联系方式:</span>
+                    <span className="font-mono text-slate-800 font-bold flex items-center gap-2">
+                      {phone ? (
+                        <>
+                          <span className="flex items-center gap-1.5 text-slate-800">
+                            <Phone className="w-3.5 h-3.5 text-slate-400" />
+                            {phone}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => copyAccount(phone)}
+                            className="text-slate-400 hover:text-[#3182ce] transition-colors cursor-pointer"
+                            title="复制手机号"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : email ? (
+                        <>
+                          <span className="flex items-center gap-1.5 text-slate-800">
+                            <Mail className="w-3.5 h-3.5 text-slate-400" />
+                            {email}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => copyAccount(email)}
+                            className="text-slate-400 hover:text-[#3182ce] transition-colors cursor-pointer"
+                            title="复制邮箱"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : detailModalAppeal.contactInfo ? (
+                        <span className="text-slate-700">{detailModalAppeal.contactInfo}</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">暂无联系方式</span>
+                      )}
                     </span>
-                  ) : (detailModalAppeal.userEmail || detailModalAppeal.user?.email) ? (
-                    <span className="flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5 text-slate-400" />
-                      {detailModalAppeal.userEmail || detailModalAppeal.user?.email}
-                    </span>
-                  ) : detailModalAppeal.contactInfo ? (
-                    detailModalAppeal.contactInfo
-                  ) : (
-                    <span className="text-slate-400 font-normal italic">未登记联系方式</span>
-                  )}
-                </span>
-              </div>
+                  </div>
+                );
+              })()}
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-bold">审核业务类型:</span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md text-[10px] font-black border border-blue-200">
@@ -1280,6 +1371,10 @@ export default function AdminAccountAppealsPage() {
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-bold">提交时间:</span>
                 <span className="font-mono font-bold text-slate-700">{formatDateTime(detailModalAppeal.createdAt)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-bold">工单处理状态:</span>
+                <div>{getStatusBadge(detailModalAppeal.status)}</div>
               </div>
             </div>
 
@@ -1576,20 +1671,24 @@ export default function AdminAccountAppealsPage() {
                 </button>
                 {detailModalAppeal.status === "pending" && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => openProcessModal(detailModalAppeal, "rejected")}
-                      className="px-4 py-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl font-bold text-xs border border-red-200 transition-all cursor-pointer"
-                    >
-                      驳回申诉
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openProcessModal(detailModalAppeal, "approved")}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-all shadow-2xs cursor-pointer"
-                    >
-                      同意解封
-                    </button>
+                    {canReject && (
+                      <button
+                        type="button"
+                        onClick={() => openProcessModal(detailModalAppeal, "rejected")}
+                        className="px-4 py-2 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-xl font-bold text-xs border border-red-200 transition-all cursor-pointer"
+                      >
+                        驳回申诉
+                      </button>
+                    )}
+                    {canApprove && (
+                      <button
+                        type="button"
+                        onClick={() => openProcessModal(detailModalAppeal, "approved")}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs transition-all shadow-2xs cursor-pointer"
+                      >
+                        同意解封
+                      </button>
+                    )}
                   </>
                 )}
               </div>
