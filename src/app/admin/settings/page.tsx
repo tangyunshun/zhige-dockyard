@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
+import SiteRoutePicker from "@/components/admin/SiteRoutePicker";
 
 export interface NavLinkItem {
   label: string;
@@ -343,16 +344,19 @@ export default function AdminSettingsPage() {
   const handleSelectPresetRoute = (
     colIndex: number,
     linkIndex: number,
-    targetUrl: string
+    targetUrl: string,
+    customLabel?: string
   ) => {
     if (!targetUrl) return;
-    // 从路由字典中查找匹配项
-    let matchedLabel = "";
-    for (const group of SYSTEM_SITE_ROUTE_GROUPS) {
-      const found = group.routes.find((r) => r.url === targetUrl);
-      if (found) {
-        matchedLabel = found.label;
-        break;
+    // 优先使用直接传入的标签，其次从路由字典中查找匹配项
+    let matchedLabel = customLabel || "";
+    if (!matchedLabel) {
+      for (const group of SYSTEM_SITE_ROUTE_GROUPS) {
+        const found = group.routes.find((r) => r.url === targetUrl);
+        if (found) {
+          matchedLabel = found.label;
+          break;
+        }
       }
     }
     if (!matchedLabel) {
@@ -2860,34 +2864,14 @@ export default function AdminSettingsPage() {
                                             </button>
                                           )}
                                         </div>
-                                        {/* 智能站内路由下拉选取工具条 */}
-                                        <div className="mt-1.5 flex items-center gap-1.5">
-                                          <Compass className="w-3 h-3 text-[#3182ce] shrink-0" />
-                                          <select
-                                            value={
-                                              SYSTEM_SITE_ROUTE_GROUPS.flatMap((g) => g.routes).some(
-                                                (r) => r.url === link.url
-                                              )
-                                                ? link.url
-                                                : ""
+                                        {/* 智能站内路由快捷选取组件：知阁风格，支持动态感知、搜索过滤、绝不溢出 */}
+                                        <div className="mt-1.5 w-full">
+                                          <SiteRoutePicker
+                                            currentUrl={link.url}
+                                            onSelect={(targetUrl, targetLabel) =>
+                                              handleSelectPresetRoute(currentIdx, linkIdx, targetUrl, targetLabel)
                                             }
-                                            onChange={(e) =>
-                                              handleSelectPresetRoute(currentIdx, linkIdx, e.target.value)
-                                            }
-                                            className="w-full px-2 py-1 text-[11px] font-medium bg-blue-50/50 hover:bg-blue-50 border border-blue-200/80 text-[#2b6cb0] rounded-md outline-none focus:ring-1 focus:ring-[#3182ce] cursor-pointer transition-colors"
-                                            title="从系统站内所有功能页面中快速选择，自动智能填入路径与建议名称"
-                                          >
-                                            <option value="">✨ 快捷选取站内页面 (不知道填什么请点此)...</option>
-                                            {SYSTEM_SITE_ROUTE_GROUPS.map((group, gIdx) => (
-                                              <optgroup key={gIdx} label={group.category}>
-                                                {group.routes.map((r, rIdx) => (
-                                                  <option key={rIdx} value={r.url}>
-                                                    {r.label} ({r.url}) - {r.description}
-                                                  </option>
-                                                ))}
-                                              </optgroup>
-                                            ))}
-                                          </select>
+                                          />
                                         </div>
                                       </div>
 

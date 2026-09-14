@@ -30,6 +30,7 @@ const PUBLIC_PREFIXES = [
   "/api/system-documents",
   "/api/account-appeal",
   "/api/system/public-config",
+  "/api/system/site-routes",
   "/api/system/maintenance",
   "/api/system/check-maintenance",
   "/maintenance",
