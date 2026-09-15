@@ -13,7 +13,7 @@
     "cron:zombie-scan": "tsx --tsconfig tsconfig.json scripts/zombie-scan-cron.ts"
   },
   "prisma": {
-    "seed": "npx tsx prisma/seed-components.ts && npx tsx prisma/seed-membership.ts && npx tsx prisma/seed-positions.ts && npx tsx prisma/seed-system-documents.ts && npx tsx prisma/seed-test-data.ts"
+    "seed": "npx tsx prisma/seed-components.ts && npx tsx prisma/seed-membership.ts && npx tsx prisma/seed-positions.ts && npx tsx prisma/seed-system-documents.ts && npx tsx prisma/seed-audit-dict.ts && npx tsx prisma/seed-test-data.ts"
   },
   "keywords": [],
   "author": "",

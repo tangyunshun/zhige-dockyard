@@ -444,79 +444,125 @@ export default function AdminLayout({
           isCollapsed ? "w-20" : "w-64"
         } shrink-0 bg-white border-r border-slate-200 flex-col transition-all duration-300 ease-in-out`}
       >
-        {/* 返回首页 + 折叠按钮 */}
-        <div className="h-16 flex items-center px-4 border-b border-slate-200 shrink-0 gap-2">
+        {/* 侧边栏头部：品牌身份与快捷导航一体化设计，消除生硬割裂感 */}
+        <div className="border-b border-slate-200/80 shrink-0 bg-white">
           {isCollapsed ? (
-            <button
-              onClick={() => router.push("/")}
-              className="flex-1 flex items-center justify-center p-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all"
-              title="返回首页"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          ) : (
-            <button
-              onClick={() => router.push("/")}
-              className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="font-bold text-sm">返回首页</span>
-            </button>
-          )}
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
-            title={isCollapsed ? "展开菜单" : "收起菜单"}
-          >
-            {isCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </button>
-        </div>
+            /* 折叠态：居中精致徽章 + 返回首页 + 展开按钮 */
+            <div className="flex flex-col items-center py-3.5 gap-3">
+              {/* 身份微徽章 */}
+              <div
+                className="relative group cursor-default"
+                title={isSuperAdmin ? "超级管理员后台" : "平台管理员后台"}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-xs border transition-all ${
+                    isSuperAdmin
+                      ? "bg-gradient-to-br from-amber-50 to-amber-100/90 border-amber-200/90 text-amber-600"
+                      : "bg-gradient-to-br from-blue-50 to-blue-100/90 border-blue-200/90 text-[#3182ce]"
+                  }`}
+                >
+                  {isSuperAdmin ? (
+                    <Crown className="w-5 h-5 text-amber-500 animate-pulse" />
+                  ) : (
+                    <Shield className="w-5 h-5 text-[#3182ce]" />
+                  )}
+                </div>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity font-bold">
+                  {isSuperAdmin ? "超级管理员后台" : "平台管理员后台"}
+                </div>
+              </div>
 
-        {/* 管理员标识 */}
-        <div className="px-4 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
-          <div className="flex items-center justify-center gap-2 relative group">
-            {isSuperAdmin ? (
-              <>
-                <Crown
-                  className={`w-5 h-5 text-amber-500 animate-pulse ${
-                    isCollapsed ? "mx-auto" : ""
-                  }`}
-                />
-                {!isCollapsed && (
-                  <span className="font-extrabold text-sm text-slate-800">
-                    超级管理员后台
-                  </span>
-                )}
-                {isCollapsed && (
-                  <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
-                    超级管理员后台
+              {/* 返回首页按钮 */}
+              <div className="relative group">
+                <button
+                  type="button"
+                  onClick={() => router.push("/")}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center bg-slate-50 hover:bg-blue-50 text-slate-500 hover:text-[#3182ce] border border-slate-200/80 hover:border-blue-200 transition-all cursor-pointer shadow-2xs"
+                  title="返回站点首页"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1 bg-slate-800 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity font-medium">
+                  返回站点首页
+                </div>
+              </div>
+
+              {/* 展开侧边栏按钮 */}
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+                title="展开菜单"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            /* 展开态：品牌身份主行 + 下嵌轻质感返回首页胶囊 */
+            <div className="p-3.5 space-y-3">
+              {/* 顶行：身份标识与折叠操作 */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  {/* 身份徽标盒 */}
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-xs border shrink-0 ${
+                      isSuperAdmin
+                        ? "bg-gradient-to-br from-amber-50 to-amber-100/80 border-amber-200/80 text-amber-600"
+                        : "bg-gradient-to-br from-blue-50 to-blue-100/80 border-blue-200/80 text-[#3182ce]"
+                    }`}
+                  >
+                    {isSuperAdmin ? (
+                      <Crown className="w-5 h-5 text-amber-500 animate-pulse" />
+                    ) : (
+                      <Shield className="w-5 h-5 text-[#3182ce]" />
+                    )}
                   </div>
-                )}
-              </>
-            ) : (
-              <>
-                <Shield
-                  className={`w-5 h-5 text-[#3182ce] ${
-                    isCollapsed ? "mx-auto" : ""
-                  }`}
-                />
-                {!isCollapsed && (
-                  <span className="font-extrabold text-sm text-slate-800">
-                    平台管理员后台
-                  </span>
-                )}
-                {isCollapsed && (
-                  <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
-                    平台管理员后台
+
+                  {/* 标题与副标 */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold text-sm text-slate-800 truncate">
+                        {isSuperAdmin ? "超级管理员" : "平台管理员"}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded text-[9px] font-black shrink-0 ${
+                          isSuperAdmin
+                            ? "bg-amber-50 text-amber-600 border border-amber-200/80"
+                            : "bg-blue-50 text-blue-600 border border-blue-200/80"
+                        }`}
+                      >
+                        {isSuperAdmin ? "超管" : "管理员"}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono tracking-wider truncate mt-0.5">
+                      ZhiGe Dockyard OS
+                    </div>
                   </div>
-                )}
-              </>
-            )}
-          </div>
+                </div>
+
+                {/* 收起菜单按钮 */}
+                <button
+                  type="button"
+                  onClick={() => setIsCollapsed(true)}
+                  className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+                  title="收起菜单"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* 底行：返回首页宽裕按钮，移除 Portal 标签，区域更加宽阔舒适 */}
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="w-full flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-lg bg-slate-50/90 hover:bg-blue-50/80 border border-slate-200/80 hover:border-blue-200 text-slate-700 hover:text-[#3182ce] transition-all group cursor-pointer shadow-2xs"
+                title="返回知阁·舟坊前台首页"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:-translate-x-1 transition-transform shrink-0" />
+                <span className="text-[13px] font-bold tracking-wide">返回门户首页</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 导航菜单 */}
@@ -721,30 +767,55 @@ export default function AdminLayout({
             onClick={() => setShowMobileMenu(false)}
           />
           <aside className="lg:hidden fixed left-0 top-0 bottom-0 w-72 bg-white z-50 shadow-2xl flex flex-col">
-            <div className="h-16 flex items-center px-6 border-b border-slate-200 shrink-0">
-              <button
-                onClick={() => router.push("/")}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-[#3182ce]/10 to-[#2b6cb0]/10 text-[#3182ce] hover:bg-gradient-to-r hover:from-[#3182ce]/20 hover:to-[#2b6cb0]/20 transition-all w-full"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="font-bold text-sm">返回首页</span>
-              </button>
-            </div>
-
-            <div className="px-6 py-4 bg-gradient-to-br from-[#3182ce]/5 to-[#2b6cb0]/5 border-b border-slate-200 shrink-0">
-              <div className="flex items-center gap-2">
-                {isSuperAdmin ? (
-                  <>
-                    <Crown className="w-5 h-5 text-amber-500" />
-                    <span className="font-extrabold text-sm text-slate-800">超级管理员后台</span>
-                  </>
-                ) : (
-                  <>
+            {/* 移动端侧边栏头部：一体化品牌与返回首页 */}
+            <div className="p-4 border-b border-slate-200/80 shrink-0 bg-white space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-xs border shrink-0 ${
+                    isSuperAdmin
+                      ? "bg-gradient-to-br from-amber-50 to-amber-100/80 border-amber-200/80 text-amber-600"
+                      : "bg-gradient-to-br from-blue-50 to-blue-100/80 border-blue-200/80 text-[#3182ce]"
+                  }`}
+                >
+                  {isSuperAdmin ? (
+                    <Crown className="w-5 h-5 text-amber-500 animate-pulse" />
+                  ) : (
                     <Shield className="w-5 h-5 text-[#3182ce]" />
-                    <span className="font-extrabold text-sm text-slate-800">平台管理员后台</span>
-                  </>
-                )}
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-sm text-slate-800 truncate">
+                      {isSuperAdmin ? "超级管理员" : "平台管理员"}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-black shrink-0 ${
+                        isSuperAdmin
+                          ? "bg-amber-50 text-amber-600 border border-amber-200/80"
+                          : "bg-blue-50 text-blue-600 border border-blue-200/80"
+                      }`}
+                    >
+                      {isSuperAdmin ? "超管" : "管理员"}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono tracking-wider truncate mt-0.5">
+                    ZhiGe Dockyard OS
+                  </div>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  router.push("/");
+                }}
+                className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-lg bg-slate-50 hover:bg-blue-50/80 border border-slate-200/80 hover:border-blue-200 text-slate-700 hover:text-[#3182ce] transition-all group cursor-pointer shadow-2xs"
+                title="返回知阁·舟坊前台首页"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:-translate-x-1 transition-transform shrink-0" />
+                <span className="text-[13px] font-bold tracking-wide">返回门户首页</span>
+              </button>
             </div>
 
             <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">

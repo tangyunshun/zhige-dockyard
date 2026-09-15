@@ -19,7 +19,7 @@ import {
   Clock,
   CreditCard,
   Receipt,
-  Sparkles,
+  CheckCircle2,
   Download,
 } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
@@ -299,7 +299,7 @@ export default function AdminMembershipOrdersPage() {
       WECHAT_PAY: CreditCard,
       ALIPAY: CreditCard,
       BANK_TRANSFER: Building2,
-      SIMULATED: Sparkles,
+      SIMULATED: CheckCircle2,
     };
     const Icon = icons[method] || Receipt;
     return <Icon className="w-4 h-4" />;

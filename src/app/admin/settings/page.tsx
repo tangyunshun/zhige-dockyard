@@ -53,10 +53,12 @@ import {
   Compass,
   LayoutGrid,
   HelpCircle,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import SiteRoutePicker from "@/components/admin/SiteRoutePicker";
+import { EmailInput } from "@/components/EmailInput";
 
 export interface NavLinkItem {
   label: string;
@@ -164,7 +166,38 @@ export default function AdminSettingsPage() {
   // 邮件测试模态框状态
   const [showEmailTestModal, setShowEmailTestModal] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [testEmailAddressError, setTestEmailAddressError] = useState("");
+  const [testEmailAddressTouched, setTestEmailAddressTouched] = useState(false);
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
+
+  // 邮箱地址实时校验方法（返回细粒度错误提示语，合法时返回空字符串）
+  const validateTestEmailAddress = (email: string): string => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      return "测试收件邮箱不能为空，请输入可接收邮件的管理员邮箱";
+    }
+    if (!trimmed.includes("@")) {
+      return "邮箱格式不正确，缺少 '@' 符号";
+    }
+    const parts = trimmed.split("@");
+    if (parts.length > 2) {
+      return "邮箱格式不正确，不能包含多个 '@' 符号";
+    }
+    const [localPart, domainPart] = parts;
+    if (!localPart) {
+      return "请输入 '@' 前面的邮箱账号名称";
+    }
+    if (!domainPart) {
+      return "请输入 '@' 后面的邮箱域名后缀（例如：qq.com 或 163.com）";
+    }
+    if (!domainPart.includes(".")) {
+      return "邮箱域名后缀格式不完整，需包含顶级域名（例如：.com 或 .cn）";
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return "请输入合法的测试收件人邮箱地址（例如：admin@163.com）";
+    }
+    return "";
+  };
   const [testEmailResult, setTestEmailResult] = useState<{
     success: boolean;
     message: string;
@@ -176,7 +209,27 @@ export default function AdminSettingsPage() {
   // 短信测试模态框状态
   const [showSmsTestModal, setShowSmsTestModal] = useState(false);
   const [testSmsPhone, setTestSmsPhone] = useState("");
+  const [testSmsPhoneError, setTestSmsPhoneError] = useState("");
+  const [testSmsPhoneTouched, setTestSmsPhoneTouched] = useState(false);
   const [sendingTestSms, setSendingTestSms] = useState(false);
+
+  // 手机号实时校验方法（返回错误提示语，合法时返回空字符串）
+  const validateTestSmsPhone = (phone: string): string => {
+    const trimmed = phone.trim();
+    if (!trimmed) {
+      return "测试接收手机号不能为空，请输入 11 位手机号码";
+    }
+    if (!/^1\d*$/.test(trimmed)) {
+      return "手机号码必须以数字 1 开头且仅包含纯数字";
+    }
+    if (trimmed.length < 11) {
+      return `已输入 ${trimmed.length} 位，手机号码必须为 11 位数字（还差 ${11 - trimmed.length} 位）`;
+    }
+    if (!/^1[3-9]\d{9}$/.test(trimmed)) {
+      return "手机号码格式不正确，第二位必须是 3-9 之间的有效运营商号段";
+    }
+    return "";
+  };
   const [testSmsResult, setTestSmsResult] = useState<{
     success: boolean;
     message: string;
@@ -969,10 +1022,13 @@ export default function AdminSettingsPage() {
 
   // 发送测试邮件
   const handleSendTestEmail = async () => {
-    if (!testEmailAddress || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmailAddress)) {
-      toast.warning("请输入合法的测试收件人邮箱地址");
+    setTestEmailAddressTouched(true);
+    const err = validateTestEmailAddress(testEmailAddress);
+    if (err) {
+      setTestEmailAddressError(err);
       return;
     }
+    setTestEmailAddressError("");
     setSendingTestEmail(true);
     setTestEmailResult(null);
     try {
@@ -1028,10 +1084,13 @@ export default function AdminSettingsPage() {
 
   // 发送测试短信
   const handleSendTestSms = async () => {
-    if (!testSmsPhone || !/^1[3-9]\d{9}$/.test(testSmsPhone)) {
-      toast.warning("请输入合法的 11 位国内手机号码");
+    setTestSmsPhoneTouched(true);
+    const err = validateTestSmsPhone(testSmsPhone);
+    if (err) {
+      setTestSmsPhoneError(err);
       return;
     }
+    setTestSmsPhoneError("");
     setSendingTestSms(true);
     setTestSmsResult(null);
     try {
@@ -1285,7 +1344,7 @@ export default function AdminSettingsPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-black text-slate-800 tracking-tight">系统设置中心</h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-[#3182ce] border border-blue-200 whitespace-nowrap">
-                  数据库统一驱动
+                  全局统一生效
                 </span>
                 {isDirty && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
@@ -1611,15 +1670,12 @@ export default function AdminSettingsPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                        <span>发件人展示邮箱</span>
-                        <span className="text-rose-500 font-bold">*</span>
-                      </label>
-                      <input
-                        type="email"
+                      <EmailInput
+                        label={<span>发件人展示邮箱</span>}
+                        required
+                        size="sm"
                         value={configs.senderEmail || ""}
-                        onChange={(e) => handleConfigChange("senderEmail", e.target.value)}
-                        className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                        onChange={(val) => handleConfigChange("senderEmail", val)}
                         placeholder="noreply@zhige.com"
                       />
                     </div>
@@ -1656,6 +1712,8 @@ export default function AdminSettingsPage() {
                       onClick={() => {
                         setShowEmailTestModal(true);
                         setTestEmailResult(null);
+                        setTestEmailAddressError("");
+                        setTestEmailAddressTouched(false);
                       }}
                       className="h-10 px-5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 text-xs font-bold rounded-[4px] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
                     >
@@ -1816,6 +1874,8 @@ export default function AdminSettingsPage() {
                       onClick={() => {
                         setShowSmsTestModal(true);
                         setTestSmsResult(null);
+                        setTestSmsPhoneError("");
+                        setTestSmsPhoneTouched(false);
                       }}
                       className="h-10 px-5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 text-xs font-bold rounded-[4px] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
                     >
@@ -2251,7 +2311,7 @@ export default function AdminSettingsPage() {
                       <h3 className="text-sm font-black text-slate-800">前台全站页脚与导航中枢</h3>
                     </div>
                     <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      管理全站底部定位标语、社交媒体二维码、公安网安备案以及 4 大分类导航链接。所有配置均由数据库 systemconfig 真实驱动。
+                      管理全站底部定位标语、社交媒体二维码、公安网安备案以及 4 大分类导航链接。所有配置修改并保存后即时在全站生效。
                     </p>
                   </div>
 
@@ -2286,7 +2346,7 @@ export default function AdminSettingsPage() {
                   <div className="p-5 rounded-2xl border border-slate-200/80 bg-slate-50/50 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-xs font-bold text-slate-800">2. 社交平台交互二维码（支持真实上传与外链）</h4>
+                        <h4 className="text-xs font-bold text-slate-800">2. 社交平台交互二维码（支持图片上传与外链）</h4>
                         <p className="text-[11px] text-slate-400 mt-0.5">
                           支持直接从本地选择二维码图片上传至服务器媒体库，前台页脚悬浮图标时将实时渲染该二维码。
                         </p>
@@ -2965,7 +3025,7 @@ export default function AdminSettingsPage() {
                         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                           <div className="flex items-center gap-1.5 text-xs font-black text-slate-800">
                             <LayoutGrid className="w-4 h-4 text-[#3182ce]" />
-                            <span>前台全站页脚真实渲染效果实时预览（所见即所得）</span>
+                            <span>前台全站页脚效果实时预览（所见即所得）</span>
                           </div>
                           <span className="text-[10px] text-slate-400 font-medium">
                             前台效果实时预览
@@ -3310,9 +3370,9 @@ export default function AdminSettingsPage() {
                   {/* 核心业务表记录体量 */}
                   <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black text-slate-700">核心业务表真实记录量统计</h4>
+                      <h4 className="text-xs font-black text-slate-700">核心业务表存量统计</h4>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        实时从数据库 COUNT 查询统计
+                        系统实时汇总统计
                       </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -3386,19 +3446,34 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="space-y-3.5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                    <span>测试收件邮箱地址</span>
-                    <span className="text-rose-500 font-bold">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={testEmailAddress}
-                    onChange={(e) => setTestEmailAddress(e.target.value)}
-                    placeholder="请输入可接收邮件的管理员邮箱"
-                    className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
-                  />
-                </div>
+                <EmailInput
+                  label={<span>测试收件邮箱地址</span>}
+                  required
+                  size="sm"
+                  value={testEmailAddress}
+                  onChange={(val) => {
+                    setTestEmailAddress(val);
+                    if (testEmailAddressTouched || (val.includes("@") && val.includes("."))) {
+                      setTestEmailAddressTouched(true);
+                      setTestEmailAddressError(validateTestEmailAddress(val));
+                    } else if (testEmailAddressError) {
+                      setTestEmailAddressError(validateTestEmailAddress(val));
+                    }
+                  }}
+                  onBlur={() => {
+                    setTestEmailAddressTouched(true);
+                    setTestEmailAddressError(validateTestEmailAddress(testEmailAddress));
+                  }}
+                  error={testEmailAddressError}
+                  placeholder="请输入可接收邮件的管理员邮箱"
+                  autoFocus
+                />
+                {testEmailAddress && !testEmailAddressError && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmailAddress) ? (
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-600 font-medium animate-in fade-in duration-150">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                    <span>测试收件邮箱格式校验通过</span>
+                  </div>
+                ) : null}
 
                 <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[11px] text-slate-500">
                   <div className="flex justify-between">
@@ -3524,10 +3599,38 @@ export default function AdminSettingsPage() {
                     type="tel"
                     maxLength={11}
                     value={testSmsPhone}
-                    onChange={(e) => setTestSmsPhone(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "").slice(0, 11);
+                      setTestSmsPhone(val);
+                      if (testSmsPhoneTouched || val.length === 11) {
+                        setTestSmsPhoneTouched(true);
+                        setTestSmsPhoneError(validateTestSmsPhone(val));
+                      } else if (testSmsPhoneError) {
+                        setTestSmsPhoneError(validateTestSmsPhone(val));
+                      }
+                    }}
+                    onBlur={() => {
+                      setTestSmsPhoneTouched(true);
+                      setTestSmsPhoneError(validateTestSmsPhone(testSmsPhone));
+                    }}
                     placeholder="请输入 11 位国内手机号码"
-                    className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                    className={`w-full px-3.5 h-10 border rounded-xl outline-none text-xs font-medium transition-all ${
+                      testSmsPhoneError
+                        ? "border-rose-400 bg-rose-50/20 text-rose-900 focus:border-rose-500 focus:ring-2 focus:ring-rose-400/20"
+                        : "border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20"
+                    }`}
                   />
+                  {testSmsPhoneError ? (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-rose-600 font-medium animate-in fade-in slide-in-from-top-1 duration-150">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                      <span>{testSmsPhoneError}</span>
+                    </div>
+                  ) : testSmsPhone && !testSmsPhoneError && /^1[3-9]\d{9}$/.test(testSmsPhone) ? (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-600 font-medium animate-in fade-in duration-150">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                      <span>手机号码格式校验通过</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[11px] text-slate-500">

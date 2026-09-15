@@ -43,6 +43,24 @@ interface SiteRoutePickerProps {
   disabled?: boolean;
 }
 
+// 向上寻找最近的纵向可滚动父容器（如后台管理系统的 main overflow-y-auto 容器）
+function findScrollParent(node: HTMLElement | null): HTMLElement | null {
+  if (typeof window === "undefined") return null;
+  let current = node?.parentElement;
+  while (current && current !== document.body && current !== document.documentElement) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY;
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      current.scrollHeight > current.clientHeight
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
 export default function SiteRoutePicker({
   currentUrl,
   onSelect,
@@ -56,10 +74,16 @@ export default function SiteRoutePicker({
   const [totalCount, setTotalCount] = useState<number>(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // 弹窗弹出方位（下方空间不足时智能转为向上弹出）
+  const [placement, setPlacement] = useState<"bottom" | "top">("bottom");
+  // 动态自适应最大高度
+  const [dropdownMaxHeight, setDropdownMaxHeight] = useState<number>(390);
 
   // 检测分类栏横向滚动位置，控制《》左右推动按钮的显隐与禁用态
   const updateScrollButtons = useCallback(() => {
@@ -81,33 +105,117 @@ export default function SiteRoutePicker({
     setTimeout(updateScrollButtons, 300);
   };
 
-  // 点击展开下拉菜单时，自动将整体页面往上推至居中，让下拉菜单能在视口中 100% 完整显示
+  /**
+   * 智能方向判断与自动向上推页面：
+   * 1. 展开前先检测下方可用空间。若下方空间不足以展示舒适列表且上方更宽裕，则自动采用向上展开 (Dropup)；
+   * 2. 若向下展开，检测下拉框底部是否探出视口或滚动父容器；若探出，自动将页面精准向上推移，
+   *    确保下拉菜单底部的每一像素（包含分组、卡片、快捷键提示条）完整露出，彻底告别手动滚动！
+   */
+  const handleToggleOpen = () => {
+    if (isOpen) {
+      setIsOpen(false);
+      return;
+    }
+
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const scrollParent = findScrollParent(containerRef.current);
+      const boundaryBottom = scrollParent
+        ? Math.min(window.innerHeight, scrollParent.getBoundingClientRect().bottom)
+        : window.innerHeight;
+      const boundaryTop = scrollParent
+        ? Math.max(0, scrollParent.getBoundingClientRect().top)
+        : 0;
+
+      const spaceBelow = boundaryBottom - rect.bottom;
+      const spaceAbove = rect.top - boundaryTop;
+
+      // 如果下方空间严重不足（< 320px）且上方空间更宽敞，优先向上弹出
+      if (spaceBelow < 320 && spaceAbove > spaceBelow) {
+        setPlacement("top");
+        setDropdownMaxHeight(Math.min(390, Math.max(260, spaceAbove - 24)));
+      } else {
+        setPlacement("bottom");
+        setDropdownMaxHeight(Math.min(390, Math.max(260, spaceBelow - 24)));
+      }
+    }
+
+    setIsOpen(true);
+  };
+
+  // 展开后自动将页面整体向上推，保证下拉面板 100% 完整呈现在视口内
   useEffect(() => {
-    if (isOpen && containerRef.current) {
-      // 执行平滑居中滚动，确保无论下方还是上方均留出充裕的视口空间
-      try {
-        containerRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      } catch {
-        // 兼容旧浏览器回退
+    if (!isOpen) return;
+
+    let timer1: ReturnType<typeof setTimeout>;
+    let timer2: ReturnType<typeof setTimeout>;
+
+    const adjustScrollPosition = () => {
+      if (!dropdownRef.current || !containerRef.current) return;
+
+      const dropdownEl = dropdownRef.current;
+      const scrollParent = findScrollParent(containerRef.current);
+      const dropdownRect = dropdownEl.getBoundingClientRect();
+
+      if (placement === "bottom") {
+        // 向下展开时：同时检测 window 视口与父容器底界的溢出情况
+        const winOverflow = dropdownRect.bottom - (window.innerHeight - 28);
+        const parentOverflow = scrollParent
+          ? dropdownRect.bottom - (scrollParent.getBoundingClientRect().bottom - 28)
+          : 0;
+        const maxOverflow = Math.max(winOverflow, parentOverflow);
+
+        if (maxOverflow > 0) {
+          if (scrollParent && parentOverflow > 0) {
+            scrollParent.scrollBy({ top: maxOverflow, behavior: "smooth" });
+          }
+          if (winOverflow > 0) {
+            window.scrollBy({ top: winOverflow, behavior: "smooth" });
+          }
+        }
+
+        try {
+          dropdownEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch {
+          // 优雅降级
+        }
+      } else {
+        // 向上展开时：同时检测 window 视口与父容器顶界的溢出情况
+        const winOverflowTop = 24 - dropdownRect.top;
+        const parentOverflowTop = scrollParent
+          ? (scrollParent.getBoundingClientRect().top + 24) - dropdownRect.top
+          : 0;
+        const maxOverflowTop = Math.max(winOverflowTop, parentOverflowTop);
+
+        if (maxOverflowTop > 0) {
+          if (scrollParent && parentOverflowTop > 0) {
+            scrollParent.scrollBy({ top: -maxOverflowTop, behavior: "smooth" });
+          }
+          if (winOverflowTop > 0) {
+            window.scrollBy({ top: -winOverflowTop, behavior: "smooth" });
+          }
+        }
+
+        try {
+          dropdownEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch {
+          // 优雅降级
+        }
       }
 
-      // 适度延迟等待 DOM 与布局展开稳定后，计算并初始化分类栏左右推动按钮《》
-      const timer = setTimeout(() => {
-        updateScrollButtons();
-      }, 80);
-      const timer2 = setTimeout(() => {
-        updateScrollButtons();
-      }, 350);
+      updateScrollButtons();
+    };
 
-      return () => {
-        clearTimeout(timer);
-        clearTimeout(timer2);
-      };
-    }
-  }, [isOpen, updateScrollButtons]);
+    // DOM 挂载初次调整
+    timer1 = setTimeout(adjustScrollPosition, 60);
+    // 动画完成与数据渲染后二次复核，确保无论如何都不受内容高度延迟影响
+    timer2 = setTimeout(adjustScrollPosition, 200);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [isOpen, placement, updateScrollButtons]);
 
   // 加载系统路由元数据（包含物理自动扫描与数据库组件）
   const fetchRoutes = async (isManualRefresh = false) => {
@@ -228,7 +336,7 @@ export default function SiteRoutePicker({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggleOpen}
         className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all border outline-none text-left cursor-pointer ${
           isOpen
             ? "bg-blue-50/90 border-[#3182ce] text-[#2b6cb0] ring-1 ring-[#3182ce]/30 shadow-sm"
@@ -265,11 +373,14 @@ export default function SiteRoutePicker({
         />
       </button>
 
-      {/* 弹层选择面板：限制绝对高度，带分类过滤与搜索，杜绝溢出 */}
+      {/* 弹层选择面板：自适应上下方位与最大高度，带分类过滤与搜索，杜绝截断 */}
       {isOpen && (
         <div
-          className="absolute left-0 top-full mt-1.5 w-full md:w-[480px] max-w-[95vw] bg-white rounded-xl border border-slate-200/90 shadow-2xl z-50 overflow-hidden flex flex-col transition-all animate-in fade-in zoom-in-95 duration-150"
-          style={{ maxHeight: "390px" }}
+          ref={dropdownRef}
+          className={`absolute left-0 w-full md:w-[480px] max-w-[95vw] bg-white rounded-xl border border-slate-200/90 shadow-2xl z-50 overflow-hidden flex flex-col transition-all animate-in fade-in zoom-in-95 duration-150 ${
+            placement === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
+          }`}
+          style={{ maxHeight: `${dropdownMaxHeight}px` }}
         >
           {/* 顶栏：搜索过滤与动态同步刷新 */}
           <div className="p-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2 shrink-0">

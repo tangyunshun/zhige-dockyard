@@ -19,16 +19,35 @@ export async function GET(request: NextRequest) {
 
     const model = (prisma as any).billing_record || (prisma as any).billingrecord;
     let records: any[] = [];
+    let stats = {
+      totalRevenue: 0,
+      totalOrders: 0,
+      tokenRechargeCount: 0,
+      planUpgradeCount: 0,
+      availableTypes: [] as string[],
+      availableChannels: [] as string[],
+    };
+
     if (model && typeof model.findMany === "function") {
-      records = await model
-        .findMany({
-          orderBy: { createdAt: "desc" },
-          take: 100,
-        })
-        .catch((dbErr: any) => {
-          console.warn("查询 billing_record 订单表异常，返回空数组:", dbErr);
-          return [];
-        });
+      const [fetchedRecords, totalCount, rechargeCount, upgradeCount, aggRevenue, distinctTypes, distinctChannels] = await Promise.all([
+        model.findMany({ orderBy: { createdAt: "desc" }, take: 100 }).catch(() => []),
+        model.count().catch(() => 0),
+        model.count({ where: { type: "TOKEN_RECHARGE" } }).catch(() => 0),
+        model.count({ where: { type: "PLAN_UPGRADE" } }).catch(() => 0),
+        model.aggregate({ _sum: { amount: true }, where: { status: "SUCCESS" } }).catch(() => ({ _sum: { amount: 0 } })),
+        model.findMany({ select: { type: true }, distinct: ["type"] }).catch(() => []),
+        model.findMany({ select: { channel: true }, distinct: ["channel"] }).catch(() => []),
+      ]);
+
+      records = fetchedRecords;
+      stats = {
+        totalRevenue: Number(aggRevenue?._sum?.amount || 0),
+        totalOrders: totalCount,
+        tokenRechargeCount: rechargeCount,
+        planUpgradeCount: upgradeCount,
+        availableTypes: Array.from(new Set(distinctTypes.map((t: any) => t.type).filter(Boolean))),
+        availableChannels: Array.from(new Set(distinctChannels.map((c: any) => c.channel).filter(Boolean))),
+      };
     }
 
     let enrichedRecords = records;
@@ -91,7 +110,7 @@ export async function GET(request: NextRequest) {
       }));
     }
 
-    return NextResponse.json({ records: enrichedRecords || [] });
+    return NextResponse.json({ records: enrichedRecords || [], stats });
   } catch (error: any) {
     console.error("获取全平台交易订单失败:", error);
     return NextResponse.json(

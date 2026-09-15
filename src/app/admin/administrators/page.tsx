@@ -560,7 +560,7 @@ export default function AdministratorsPage() {
                       {admin.status === "inactive" ? (
                         <span 
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-700 font-bold rounded-full text-[11px]"
-                          title="该管理员已临时停用后台管理特权，但系统已完整保留其权限配置；其全站前台账号、工作空间创建与协作功能100%正常不受影响"
+                          title="该管理员已临时停用后台管理特权，已保留其权限配置；前台账号、工作空间创建与协作功能均正常可用"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                           已停用特权 (保留权限·前台正常)

@@ -22,7 +22,7 @@ import {
   RotateCcw,
   Trash2,
   X,
-  Sparkles,
+  Layers,
   AlertCircle,
   Plus,
 } from "lucide-react";
@@ -154,57 +154,35 @@ export default function AdminAiPricingPage() {
   // 是否存在未保存的改动
   const [isDirty, setIsDirty] = useState(false);
 
-  // 热门模型快捷预置基准（帮助管理员秒级填入，免去查阅繁琐代码）
-  const popularTemplates = useMemo(
-    () => [
-      {
-        label: "DeepSeek-R1",
-        providerId: "deepseek",
-        modelId: "deepseek-reasoner",
-        modelName: "DeepSeek-R1 深度推理",
-        inputPrice: 4,
-        outputPrice: 16,
-        note: "长思维链 / 代码与数学推理",
-      },
-      {
-        label: "DeepSeek-V3",
-        providerId: "deepseek",
-        modelId: "deepseek-chat",
-        modelName: "DeepSeek-V3 全能主力",
-        inputPrice: 1,
-        outputPrice: 2,
-        note: "高性价比日常通用对话",
-      },
-      {
-        label: "Claude 3.5 Sonnet",
-        providerId: "anthropic",
-        modelId: "claude-3-5-sonnet-20241022",
-        modelName: "Claude 3.5 Sonnet",
-        inputPrice: 21.6,
-        outputPrice: 108,
-        note: "代码重构与大上下文交互",
-      },
-      {
-        label: "GPT-4o",
-        providerId: "openai",
-        modelId: "gpt-4o",
-        modelName: "GPT-4o 全模态旗舰",
-        inputPrice: 18,
-        outputPrice: 72,
-        note: "综合基准全能模型",
-      },
-      {
-        label: "Moonshot-v1",
-        providerId: "moonshot",
-        modelId: "moonshot-v1-128k",
-        modelName: "Moonshot-v1 128K",
-        inputPrice: 12,
-        outputPrice: 12,
-        note: "长文档与专业资料阅读",
-      },
-    ],
-    []
-  );
+  // 模型快捷参考基准：从数据库当前厂商配置中动态派生，零静态硬编码
+  const popularTemplates = useMemo(() => {
+    if (!config?.providers) return [];
+    const tpls: {
+      label: string;
+      providerId: string;
+      modelId: string;
+      modelName: string;
+      inputPrice: number;
+      outputPrice: number;
+      note: string;
+    }[] = [];
+
+    config.providers.forEach((p) => {
+      p.models.slice(0, 2).forEach((m) => {
+        tpls.push({
+          label: m.name,
+          providerId: p.id,
+          modelId: `${m.id}-copy`,
+          modelName: `${m.name} (自建)`,
+          inputPrice: m.inputPrice,
+          outputPrice: m.outputPrice,
+          note: m.note || `${p.name} 旗下一键基准`,
+        });
+      });
+    });
+
+    return tpls.slice(0, 6);
+  }, [config?.providers]);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -942,10 +920,10 @@ export default function AdminAiPricingPage() {
           <div>
             <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-500" />
-              四、会员等级与空间套餐盈利能力体检（数据库驱动）
+              四、会员等级与空间套餐盈利能力体检
             </h2>
             <p className="text-[11px] font-bold text-slate-400 mt-1">
-              按「数据库各套餐赠送配额 × 实耗率 × 采购成本」精算；数据 100% 动态读取自 membershiplevel 与 workspaceplan 表
+              按各套餐赠送配额、预估实耗率与基础采购成本进行测算，评估空间服务定价的毛利空间
             </p>
           </div>
 
@@ -1240,14 +1218,14 @@ export default function AdminAiPricingPage() {
             <div className="flex items-center justify-between gap-3 px-6 py-4 bg-gradient-to-r from-blue-50/70 via-white to-white border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-[#3182ce] text-white flex items-center justify-center shadow-md shadow-[#3182ce]/20 shrink-0">
-                  <Sparkles className="w-5 h-5" />
+                  <Layers className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
                   <h3
                     id="ai-pricing-add-model-title"
                     className="text-base font-black text-slate-800 tracking-tight"
                   >
-                    扩充新 AI 模型至计价表
+                    扩充新模型至计价表
                   </h3>
                   <p className="text-[11px] text-slate-400 font-medium mt-0.5">
                     录入官方单价后系统将依据加价规则自动折算算力扣减点数；标
@@ -1268,31 +1246,33 @@ export default function AdminAiPricingPage() {
 
             {/* 表单主体：内部安全滚动 (flex-1 min-h-0 overflow-y-auto scrollbar-thin 彻底根治截断) */}
             <div className="px-6 py-4 space-y-3.5 overflow-y-auto flex-1 min-h-0 scrollbar-thin text-left">
-              {/* 快捷预置模板 */}
-              <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-3.5 py-2.5">
-                <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-[#3182ce]" />
-                    <span className="text-[11px] font-black text-slate-700">
-                      一键快速预填官方基准：
-                    </span>
+              {/* 快捷预置模板（由数据库当前配置动态派生） */}
+              {popularTemplates.length > 0 && (
+                <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-3.5 py-2.5">
+                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-[#3182ce]" />
+                      <span className="text-[11px] font-black text-slate-700">
+                        一键快速预填基准参数：
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-medium">点击即可自动填充标准参数</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-medium">点击即可自动填充标准参数</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {popularTemplates.map((tpl) => (
+                      <button
+                        key={tpl.label}
+                        type="button"
+                        onClick={() => handleApplyTemplate(tpl)}
+                        title={tpl.note}
+                        className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 transition-all cursor-pointer active:scale-95 shadow-2xs"
+                      >
+                        + {tpl.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {popularTemplates.map((tpl) => (
-                    <button
-                      key={tpl.label}
-                      type="button"
-                      onClick={() => handleApplyTemplate(tpl)}
-                      title={tpl.note}
-                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-[#3182ce] hover:text-[#3182ce] text-[11px] font-bold text-slate-600 transition-all cursor-pointer active:scale-95 shadow-2xs"
-                    >
-                      + {tpl.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              )}
 
               {/* 双列紧凑表单栅格 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">

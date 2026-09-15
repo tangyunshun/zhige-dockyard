@@ -819,17 +819,7 @@ export async function getPermissionCatalogFromDB(): Promise<PermissionGroupItem[
     if (record && record.value) {
       const parsed = JSON.parse(record.value);
       if (Array.isArray(parsed)) {
-        // 核心扩展：通过数据库驱动规则引擎执行无损自愈检测（绝不覆盖管理员自定义权限）
-        const healingResult = await autoHealPermissionsByDBRules(parsed);
-        if (healingResult.addedModulesCount > 0 || healingResult.addedKeysCount > 0) {
-          await savePermissionCatalogToDB(healingResult.healedCatalog);
-          const rules = await getPermissionRulesFromDB();
-          await autoGrantNewFeatureRulesToAdmins(healingResult.newlyDiscoveredKeys, rules);
-          console.log(
-            `[权限自愈引擎] 数据库自动感知并对齐：新增 ${healingResult.addedModulesCount} 个功能模块，补齐 ${healingResult.addedKeysCount} 项细粒度权限`
-          );
-        }
-        return healingResult.healedCatalog;
+        return parsed;
       }
     }
 
@@ -1072,16 +1062,32 @@ export async function POST(request: NextRequest) {
         : ["read", "create", "update", "delete"];
 
       const existingModules = await getFeatureModulesFromDB();
-      if (
-        existingModules.some(
-          (m) =>
-            m.id === cleanId ||
-            m.route === cleanRoute ||
-            m.resourceKey === cleanResourceKey
-        )
-      ) {
+      const conflictByRoute = existingModules.find((m) => m.route === cleanRoute);
+      if (conflictByRoute) {
         return NextResponse.json(
-          { error: `功能模块代号【${cleanId}】、路由【${cleanRoute}】或资源前缀【${cleanResourceKey}】在数据库中已存在，请勿重复注册！` },
+          {
+            error: `前端路由【${cleanRoute}】已被现有模块【${conflictByRoute.name}】占用，请更换其他路由（例如 ${cleanRoute}-test）！`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const conflictByKey = existingModules.find((m) => m.resourceKey === cleanResourceKey);
+      if (conflictByKey) {
+        return NextResponse.json(
+          {
+            error: `资源前缀【${cleanResourceKey}】已被现有模块【${conflictByKey.name}】占用，请更换前缀（例如 ${cleanResourceKey}_test）！`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const conflictById = existingModules.find((m) => m.id === cleanId);
+      if (conflictById) {
+        return NextResponse.json(
+          {
+            error: `模块代号【${cleanId}】与现有模块【${conflictById.name}】重复，请更换代号！`,
+          },
           { status: 400 }
         );
       }
@@ -1773,6 +1779,20 @@ export async function DELETE(request: NextRequest) {
         .filter((k) => deleteKeySet.has(k))
     );
     const affectedAdmins = await purgeInvalidPermissionsFromAdmins(removedKeys);
+
+    // 3.2 同步更新 feature_modules 模块登记记录（剔除已删除的 action，注销无权限的模块）
+    const existingModules = await getFeatureModulesFromDB();
+    const survivingKeys = new Set(updatedCatalog.flatMap((g) => g.keys.map((k) => k.key)));
+    const survivingModules = existingModules
+      .map((m) => ({
+        ...m,
+        supportedActions: m.supportedActions.filter((action) =>
+          survivingKeys.has(`${m.resourceKey}:${action}`)
+        ),
+      }))
+      .filter((m) => m.supportedActions.length > 0);
+
+    await saveFeatureModulesToDB(survivingModules);
 
     // 4. 记录审计日志
     await writeAuditLog(

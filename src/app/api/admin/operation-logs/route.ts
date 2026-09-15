@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission } from "@/lib/security";
+import {
+  getAuditDictionariesFromDb,
+  translateAction,
+  translateResource,
+  normalizeIpAddress,
+} from "@/lib/audit-dict";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,6 +15,9 @@ export async function GET(request: NextRequest) {
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
+
+    // 从数据库 system_config 获取最新审计字典（若无自动插入标准初始种子）
+    const { actionDict, resourceDict, actionOptions } = await getAuditDictionariesFromDb();
 
     const { searchParams } = new URL(request.url);
     const detailId = searchParams.get("id");
@@ -99,19 +108,17 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // 清洗 IP
-      let cleanIp = log.ipAddress || "";
-      if (!cleanIp || cleanIp === "::1" || cleanIp === "127.0.0.1" || cleanIp.includes("127.0.0.1")) {
-        cleanIp = "127.0.0.1 (本地局域网)";
-      } else if (cleanIp.startsWith("::ffff:")) {
-        const v4 = cleanIp.replace("::ffff:", "");
-        cleanIp = v4 === "127.0.0.1" ? "127.0.0.1 (本地局域网)" : v4;
-      }
+      const actMeta = translateAction(log.action, actionDict);
+      const resZh = translateResource(log.resource, resourceDict);
+      const cleanIp = normalizeIpAddress(log.ipAddress);
 
       return NextResponse.json({
         success: true,
         data: {
           ...log,
+          actionZh: actMeta.label,
+          actionBadge: actMeta,
+          resourceZh: resZh,
           ipAddress: cleanIp,
           workspace,
           targetUser,
@@ -204,11 +211,25 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // 高危操作数（删除类 / 封禁类）
+      // 高危操作数（注销删除 / 移出成员 / 封禁 / 异地挤线 / 超时登出 / 设备踢出 / 强制下线等）
       prisma.operationlog.count({
         where: {
           ...where,
-          action: { in: ["user:delete", "component:delete", "workspace:delete", "user:ban"] },
+          action: {
+            in: [
+              "ACCOUNT_DELETED",
+              "WORKSPACE_KICK",
+              "SESSION_CONFLICT_LOGOUT",
+              "SESSION_TIMEOUT_LOGOUT",
+              "DEVICE_KICKED_OFFLINE",
+              "user:ban",
+              "user:delete",
+              "user:reset_session",
+              "workspace:delete",
+              "component:delete",
+              "component:ban",
+            ],
+          },
         },
       }),
     ]);
@@ -253,15 +274,11 @@ export async function GET(request: NextRequest) {
     const userMap = new Map(targetUsers.map((u) => [u.id, u]));
     const compMap = new Map(targetComponents.map((c) => [c.id, c]));
 
-    // 清洗 IP 地址并挂载关联实体
+    // 清洗 IP 地址、翻译纯中文字典并挂载关联实体
     const enrichedLogs = logs.map((log) => {
-      let cleanIp = log.ipAddress || "";
-      if (!cleanIp || cleanIp === "::1" || cleanIp === "127.0.0.1" || cleanIp.includes("127.0.0.1")) {
-        cleanIp = "127.0.0.1 (本地局域网)";
-      } else if (cleanIp.startsWith("::ffff:")) {
-        const v4 = cleanIp.replace("::ffff:", "");
-        cleanIp = v4 === "127.0.0.1" ? "127.0.0.1 (本地局域网)" : v4;
-      }
+      const cleanIp = normalizeIpAddress(log.ipAddress);
+      const actMeta = translateAction(log.action, actionDict);
+      const resZh = translateResource(log.resource, resourceDict);
 
       let d: any = log.details;
       if (typeof d === "string") {
@@ -276,7 +293,11 @@ export async function GET(request: NextRequest) {
 
       return {
         ...log,
+        actionZh: actMeta.label,
+        actionBadge: actMeta,
+        resourceZh: resZh,
         ipAddress: cleanIp,
+        parsedDetails: d,
         targetUser: targetUserId ? userMap.get(targetUserId) || null : null,
         targetComponent: componentId ? compMap.get(componentId) || null : null,
       };
@@ -289,6 +310,11 @@ export async function GET(request: NextRequest) {
         total,
         page,
         totalPages: Math.ceil(total / limit),
+        actionOptions,
+        auditDicts: {
+          actions: actionDict,
+          resources: resourceDict,
+        },
         stats: {
           total,
           today: todayCount,

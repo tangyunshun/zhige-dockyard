@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 
+import {
+  getAuditDictionariesFromDb,
+  translateAction,
+  translateResource,
+  normalizeIpAddress,
+} from "@/lib/audit-dict";
+
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -34,6 +41,9 @@ export async function GET(request: NextRequest) {
       componentTaskByType,
       activeApiKeys,
       systemServices,
+      recentAuditLogs,
+      bannedUsers,
+      todayOperations,
     ] = await Promise.all([
       // 1. 用户总数
       prisma.user.count(),
@@ -198,6 +208,37 @@ export async function GET(request: NextRequest) {
           { key: "notification", name: "消息通知通道 (Notification)", ...notification },
         ];
       })(),
+
+      // 15. 平台最近敏感操作与安全审计日志（前 6 条）
+      prisma.operationlog.findMany({
+        take: 6,
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar: true,
+              role: true,
+            },
+          },
+        },
+      }),
+
+      // 16. 安全管制/封禁账号数
+      prisma.user.count({
+        where: { status: "banned" },
+      }),
+
+      // 17. 今日安全审计操作总次数
+      prisma.operationlog.count({
+        where: {
+          createdAt: {
+            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+          },
+        },
+      }),
     ]);
 
     // ===== 把 componenttask.type 聚合成 componentcategory（按分类维度展示） =====
@@ -266,6 +307,8 @@ export async function GET(request: NextRequest) {
       0,
     );
 
+    const { actionDict, resourceDict } = await getAuditDictionariesFromDb();
+
     return NextResponse.json({
       success: true,
       data: {
@@ -299,15 +342,41 @@ export async function GET(request: NextRequest) {
           createdAt: u.createdAt,
         })),
 
-        recentWorkspaces: recentWorkspaces.map((ws: any) => ({
-          id: ws.id,
-          name: ws.name,
-          type: ws.type,
-          createdAt: ws.createdAt,
-          members: ws.workspacemember.map((m: any) => ({
-            user: m.user,
-          })),
-        })),
+        // 批量查询最近工作空间的所有者头像（确保空间头像 100% 真实可靠）
+        recentWorkspaces: await (async () => {
+          const recentWsOwnerIds = Array.from(
+            new Set(recentWorkspaces.map((w: any) => w.ownerId).filter(Boolean)),
+          );
+          const recentOwners =
+            recentWsOwnerIds.length > 0
+              ? await prisma.user.findMany({
+                  where: { id: { in: recentWsOwnerIds } },
+                  select: { id: true, avatar: true },
+                })
+              : [];
+          const recentOwnerAvatarMap = new Map(recentOwners.map((o) => [o.id, o.avatar]));
+
+          return recentWorkspaces.map((ws: any) => {
+            const ownerAvatar =
+              recentOwnerAvatarMap.get(ws.ownerId) ||
+              ws.workspacemember?.find((m: any) => m.user?.avatar)?.user?.avatar ||
+              ws.workspacemember?.[0]?.user?.avatar ||
+              null;
+            const realAvatar = ws.logo || ownerAvatar || null;
+
+            return {
+              id: ws.id,
+              name: ws.name,
+              type: ws.type,
+              logo: ws.logo,
+              avatar: realAvatar,
+              createdAt: ws.createdAt,
+              members: ws.workspacemember.map((m: any) => ({
+                user: m.user,
+              })),
+            };
+          });
+        })(),
 
         componentCategories: componentCategories.map((c: any) => ({
           key: c.key,
@@ -315,6 +384,54 @@ export async function GET(request: NextRequest) {
           color: c.color,
           count: c.count,
         })),
+
+        // 平台最新敏感操作审计日志（映射自数据库 system_config 字典，IP标准化）
+        recentAuditLogs: recentAuditLogs.map((log: any) => {
+          const actMeta = translateAction(log.action, actionDict);
+          const resZh = translateResource(log.resource, resourceDict);
+
+          return {
+            id: log.id,
+            action: log.action,
+            actionZh: actMeta.label,
+            actionBadge: actMeta,
+            resource: log.resource,
+            resourceZh: resZh,
+            details: log.details,
+            ipAddress: log.ipAddress,
+            formattedIp: normalizeIpAddress(log.ipAddress),
+            createdAt: log.createdAt,
+            user: log.user
+              ? {
+                  id: log.user.id,
+                  name: log.user.name,
+                  email: log.user.email,
+                  avatar: log.user.avatar,
+                  role: log.user.role,
+                }
+              : null,
+          };
+        }),
+
+        // 平台全域风控态势汇总
+        securitySummary: {
+          pendingAppeals: upgradeApplications,
+          bannedUsers,
+          todayOperations,
+          todayLogins: await prisma.loginhistory.count({
+            where: {
+              loginAt: {
+                gte: new Date(new Date().setHours(0, 0, 0, 0)),
+              },
+            },
+          }),
+        },
+
+        // 系统字典：提供给前端或需要处使用（来源于数据库 system_config 表）
+        auditDicts: {
+          actions: actionDict,
+          resources: resourceDict,
+        },
       },
     });
   } catch (error) {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 表单验证工具函数
  * 提供手机号、邮箱、用户名等验证规则
  */
@@ -65,14 +65,14 @@ export const COMMON_EMAIL_DOMAINS = [
   "163.com",
   "126.com",
   "gmail.com",
-  "hotmail.com",
   "outlook.com",
+  "foxmail.com",
+  "aliyun.com",
+  "hotmail.com",
   "sina.com",
   "sohu.com",
-  "yahoo.com.cn",
   "icloud.com",
   "me.com",
-  "foxmail.com",
 ] as const;
 
 /**

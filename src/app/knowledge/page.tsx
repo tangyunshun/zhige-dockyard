@@ -85,7 +85,7 @@ export default function KnowledgeLibraryPage() {
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<KnowledgeRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // 新建知识 Modal
+  // 新建资料 Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createWorkspaceId, setCreateWorkspaceId] = useState("");
   const [createCategory, setCreateCategory] = useState<string>("");
@@ -117,7 +117,7 @@ export default function KnowledgeLibraryPage() {
     }
   };
 
-  // 2. 直查数据库全量知识库
+  // 2. 直查数据库全量资料库
   const fetchKnowledges = async () => {
     setLoading(true);
     setLoadError(null);
@@ -149,7 +149,7 @@ export default function KnowledgeLibraryPage() {
 
       const myUserId = getCurrentUserId();
 
-      // 并行从 /api/studio?action=knowledges&workspaceId=xxx 直查数据库真实知识
+      // 并行从 /api/studio?action=knowledges&workspaceId=xxx 直查数据库真实资料
       const results = await Promise.allSettled(
         wsList.map(async (ws) => {
           const res = await fetch(`/api/studio?action=knowledges&workspaceId=${ws.id}`, {
@@ -162,7 +162,7 @@ export default function KnowledgeLibraryPage() {
           return list.map((doc: any) => {
             const contentText = doc.content || "";
             let extractedFile: { name?: string; size?: string } = {};
-            const fileMatch = contentText.match(/\[附件知识文件\]:\s*([^\n(]+)\s*\(([^)]+)\)/);
+            const fileMatch = contentText.match(/\[附件(知识|资料)文件\]:\s*([^\n(]+)\s*\(([^)]+)\)/);
             if (fileMatch) {
               extractedFile = { name: fileMatch[1].trim(), size: fileMatch[2].trim() };
             } else if (doc.sourceTaskId || doc.title.endsWith(".md") || doc.title.endsWith(".pdf") || doc.title.endsWith(".json")) {
@@ -173,7 +173,7 @@ export default function KnowledgeLibraryPage() {
 
             return {
               id: doc.id,
-              title: doc.title || "未命名知识",
+              title: doc.title || "未命名资料",
               content: contentText,
               category: doc.componentCategory || doc.category || "",
               sourceTaskId: doc.sourceTaskId || null,
@@ -203,7 +203,7 @@ export default function KnowledgeLibraryPage() {
       aggregated.sort((a, b) => b.createdAt - a.createdAt);
       setKnowledges(aggregated);
     } catch (e: any) {
-      setLoadError(e.message || "拉取知识数据失败");
+      setLoadError(e.message || "拉取资料数据失败");
     } finally {
       setLoading(false);
     }
@@ -294,14 +294,14 @@ export default function KnowledgeLibraryPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        toast.success(`知识【${deleteConfirmItem.title}】已成功删除`);
+        toast.success(`资料【${deleteConfirmItem.title}】已成功删除`);
         setKnowledges((prev) => prev.filter((k) => k.id !== deleteConfirmItem.id));
         setDeleteConfirmItem(null);
       } else {
-        toast.error("删除知识失败");
+        toast.error("删除资料失败");
       }
     } catch {
-      toast.error("网络异常，无法删除知识");
+      toast.error("网络异常，无法删除资料");
     } finally {
       setIsDeleting(false);
     }
@@ -311,15 +311,15 @@ export default function KnowledgeLibraryPage() {
   const handleCopyContent = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    toast.success("知识正文已成功复制到剪贴板！");
+    toast.success("资料正文已成功复制到剪贴板！");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 新建知识提交
+  // 新建资料提交
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createTitle.trim()) {
-      toast.error("请输入知识标题");
+      toast.error("请输入资料标题");
       return;
     }
     if (!createWorkspaceId) {
@@ -333,7 +333,7 @@ export default function KnowledgeLibraryPage() {
 
       let finalContent = createContent.trim();
       if (selectedFile) {
-        const fileTag = `[附件知识文件]: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)`;
+        const fileTag = `[附件资料文件]: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)`;
         finalContent = finalContent ? `${finalContent}\n\n${fileTag}` : fileTag;
       }
 
@@ -353,9 +353,9 @@ export default function KnowledgeLibraryPage() {
       });
 
       const data = await res.json();
-      if (!res.ok && !data.success) throw new Error(data.error || "创建知识失败");
+      if (!res.ok && !data.success) throw new Error(data.error || "创建资料失败");
 
-      toast.success("知识新建成功，已即刻保存生效！");
+      toast.success("资料新建成功，已即刻保存生效！");
 
       setShowCreateModal(false);
       setCreateTitle("");
@@ -424,10 +424,10 @@ export default function KnowledgeLibraryPage() {
                 <span>知阁舟坊 · 团队研发资产沉淀中心</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight text-slate-800">
-                知识库中心 <span className="text-xs font-bold text-[#3182ce] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100 ml-2">研发资产归档与知识复用</span>
+                资料库中心 <span className="text-xs font-bold text-[#3182ce] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100 ml-2">研发资产归档与资料复用</span>
               </h2>
               <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                集中沉淀与管理全团队在各个工作空间产生的研发知识、架构方案与技术文档。支持按所有者/协同成员视角归档查阅，支持列表与卡片多维度视图切换与动态分页。
+                集中沉淀与管理全团队在各个工作空间产生的研发资料、架构方案与技术文档。支持按所有者/协同成员视角归档查阅，支持列表与卡片多维度视图切换与动态分页。
               </p>
             </div>
 
@@ -437,7 +437,7 @@ export default function KnowledgeLibraryPage() {
                 className="h-10 px-5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#4299e1] hover:to-[#2b6cb0] text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 border border-blue-400/30"
               >
                 <PlusIcon className="w-4 h-4 stroke-[3]" />
-                <span>新增知识</span>
+                <span>新增资料</span>
               </button>
             </div>
           </div>
@@ -453,8 +453,8 @@ export default function KnowledgeLibraryPage() {
                   <LandmarkIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className="text-base font-black text-slate-900 tracking-tight leading-tight">知识库房</h1>
-                  <p className="text-[10px] font-semibold text-slate-400 mt-0.5">团队知识 · 经验沉淀</p>
+                  <h1 className="text-base font-black text-slate-900 tracking-tight leading-tight">资料库房</h1>
+                  <p className="text-[10px] font-semibold text-slate-400 mt-0.5">团队资料 · 经验沉淀</p>
                 </div>
               </div>
 
@@ -462,7 +462,7 @@ export default function KnowledgeLibraryPage() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3.5 py-2.5 border border-slate-100">
                   <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                    <BoxesIcon className="w-4 h-4 text-slate-400" /> 知识总数
+                    <BoxesIcon className="w-4 h-4 text-slate-400" /> 资料总数
                   </span>
                   <span className="text-base font-black font-mono text-slate-900">{loading ? "···" : totalCount}</span>
                 </div>
@@ -482,7 +482,7 @@ export default function KnowledgeLibraryPage() {
 
               <div className="pt-2.5 border-t border-slate-100">
                 <p className="text-[10px] font-medium text-slate-400 leading-relaxed">
-                  各工作空间知识沉淀后立即可用，全团队协同查阅复用。
+                  各工作空间资料沉淀后立即可用，全团队协同查阅复用。
                 </p>
               </div>
             </div>
@@ -490,7 +490,7 @@ export default function KnowledgeLibraryPage() {
             {/* 空间筛选 */}
             <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 shadow-xs p-4 space-y-1.5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 pb-1 flex items-center gap-1.5">
-                <FolderIcon className="w-3.5 h-3.5" /> 按空间筛选知识
+                <FolderIcon className="w-3.5 h-3.5" /> 按空间筛选资料
               </p>
 
               <button
@@ -543,7 +543,7 @@ export default function KnowledgeLibraryPage() {
             </div>
           </aside>
 
-          {/* ================= 右侧：知识文档流 ================= */}
+          {/* ================= 右侧：资料文档流 ================= */}
           <div className="flex-1 min-w-0 space-y-4">
             {/* 顶部控制条：搜索 + 所有者/成员所属筛选 + 卡片/列表视图切换 + 动态分类 Tab */}
             <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 p-4 rounded-2xl shadow-xs space-y-3">
@@ -552,7 +552,7 @@ export default function KnowledgeLibraryPage() {
                   <SearchIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="搜索知识名称、文件、内容或空间..."
+                    placeholder="搜索资料名称、文件、内容或空间..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-9 pr-3 h-9 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all placeholder:text-slate-400"
@@ -560,7 +560,7 @@ export default function KnowledgeLibraryPage() {
                 </div>
 
                 <div className="flex items-center gap-2.5 flex-wrap self-end lg:self-auto">
-                  {/* 1. 按空间所有者 / 空间成员 知识所属筛选 */}
+                  {/* 1. 按空间所有者 / 空间成员 资料所属筛选 */}
                   <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-xs font-bold border border-slate-200/60">
                     {OWNER_ROLE_FILTERS.map((filter) => {
                       const Icon = filter.icon;
@@ -613,7 +613,7 @@ export default function KnowledgeLibraryPage() {
                   <button
                     onClick={fetchKnowledges}
                     className="p-2 text-slate-500 hover:text-[#3182ce] rounded-xl hover:bg-slate-100 transition-all cursor-pointer border border-slate-200/60 bg-white"
-                    title="刷新知识库"
+                    title="刷新资料库"
                   >
                     <RefreshIcon className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                   </button>
@@ -669,27 +669,27 @@ export default function KnowledgeLibraryPage() {
                 <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
                   <BookIcon className="w-7 h-7 text-[#3182ce]" />
                 </div>
-                <p className="text-sm font-black text-slate-800">知识库房暂无沉淀的团队知识</p>
+                <p className="text-sm font-black text-slate-800">资料库房暂无沉淀的团队资料</p>
                 <p className="text-xs text-slate-400 font-medium max-w-sm mx-auto leading-relaxed">
-                  你可以手动录入或上传本地文件知识，沉淀下来的经验与知识全团队随时可查、可复用。
+                  你可以手动录入或上传本地文件资料，沉淀下来的经验与资料全团队随时可查、可复用。
                 </p>
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="mt-2 px-5 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#4299e1] hover:to-[#2b6cb0] text-white text-xs font-black rounded-xl shadow-md cursor-pointer inline-flex items-center gap-1.5"
                 >
-                  <PlusIcon className="w-4 h-4" /> 录入第一条知识
+                  <PlusIcon className="w-4 h-4" /> 录入第一条资料
                 </button>
               </div>
             )}
 
-            {/* 知识文档列表/卡片流 */}
+            {/* 资料文档列表/卡片流 */}
             {!loading && totalCount > 0 && (
               <div className="space-y-4">
                 {filtered.length === 0 ? (
                   <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 shadow-xs py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <SearchIcon className="w-7 h-7 text-slate-300" />
-                      <p className="text-xs font-bold text-slate-400">未找到符合条件的知识记录</p>
+                      <p className="text-xs font-bold text-slate-400">未找到符合条件的资料记录</p>
                     </div>
                   </div>
                 ) : (
@@ -697,7 +697,7 @@ export default function KnowledgeLibraryPage() {
                     <div className="flex items-center justify-between px-1 pb-1">
                       <p className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
                         <ArchiveIcon className="w-3.5 h-3.5" />
-                        当前视角下共 {filtered.length} 篇知识文档 (当前页展示 {paginatedItems.length} 项)
+                        当前视角下共 {filtered.length} 篇资料文档 (当前页展示 {paginatedItems.length} 项)
                       </p>
                     </div>
 
@@ -705,7 +705,7 @@ export default function KnowledgeLibraryPage() {
                     {viewMode === "grid" && (
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         {paginatedItems.map((item) => {
-                          const displayCatName = categoryMap.get(item.category || "") || item.category || "研发知识";
+                          const displayCatName = categoryMap.get(item.category || "") || item.category || "研发资料";
                           return (
                             <article
                               key={item.id}
@@ -730,7 +730,7 @@ export default function KnowledgeLibraryPage() {
                                 </div>
 
                                 <p className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-2 min-h-[2.5rem]">
-                                  {item.content || "该知识暂无正文内容。"}
+                                  {item.content || "该资料暂无正文内容。"}
                                 </p>
 
                                 {/* 上传的文件附件信息 */}
@@ -778,7 +778,7 @@ export default function KnowledgeLibraryPage() {
                                       type="button"
                                       onClick={() => handleCopyContent(item.content || item.title)}
                                       className="p-1 text-slate-400 hover:text-[#3182ce] rounded-lg transition-colors cursor-pointer"
-                                      title="复制知识正文"
+                                      title="复制资料正文"
                                     >
                                       <CopyIcon className="w-3.5 h-3.5" />
                                     </button>
@@ -787,7 +787,7 @@ export default function KnowledgeLibraryPage() {
                                       type="button"
                                       onClick={() => handleDeleteKnowledge(item)}
                                       className="p-1 text-slate-400 hover:text-red-500 rounded-lg transition-colors cursor-pointer"
-                                      title="删除知识"
+                                      title="删除资料"
                                     >
                                       <TrashIcon className="w-3.5 h-3.5" />
                                     </button>
@@ -815,8 +815,8 @@ export default function KnowledgeLibraryPage() {
                           <table className="w-full text-left border-collapse min-w-[760px]">
                             <thead>
                               <tr className="bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider h-11">
-                                <th className="py-3 pl-5 pr-3 whitespace-nowrap min-w-[180px]">知识标题</th>
-                                <th className="py-3 px-3 whitespace-nowrap min-w-[110px]">知识所属</th>
+                                <th className="py-3 pl-5 pr-3 whitespace-nowrap min-w-[180px]">资料标题</th>
+                                <th className="py-3 px-3 whitespace-nowrap min-w-[110px]">资料所属</th>
                                 <th className="py-3 px-3 whitespace-nowrap min-w-[130px]">所属空间</th>
                                 <th className="py-3 px-3 whitespace-nowrap min-w-[140px]">关联文件附件</th>
                                 <th className="py-3 px-3 whitespace-nowrap min-w-[110px]">分类</th>
@@ -826,7 +826,7 @@ export default function KnowledgeLibraryPage() {
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                               {paginatedItems.map((item) => {
-                                const displayCatName = categoryMap.get(item.category || "") || item.category || "研发知识";
+                                const displayCatName = categoryMap.get(item.category || "") || item.category || "研发资料";
                                 return (
                                   <tr key={item.id} className="hover:bg-blue-50/40 transition-colors h-14">
                                     <td className="py-3 pl-5 pr-3 font-extrabold text-slate-900 whitespace-nowrap">
@@ -887,7 +887,7 @@ export default function KnowledgeLibraryPage() {
                                           type="button"
                                           onClick={() => handleDeleteKnowledge(item)}
                                           className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                          title="删除知识"
+                                          title="删除资料"
                                         >
                                           <TrashIcon className="w-4 h-4" />
                                         </button>
@@ -916,7 +916,7 @@ export default function KnowledgeLibraryPage() {
                         totalItems={filtered.length}
                         pageSize={pageSize}
                         onPageChange={(page) => setCurrentPage(page)}
-                        itemLabel="条知识"
+                        itemLabel="条资料"
                       />
                     )}
                   </>
@@ -952,13 +952,13 @@ export default function KnowledgeLibraryPage() {
                 <TrashIcon className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900">确认删除知识</h3>
-                <p className="text-xs text-slate-400 font-medium">此操作将永久移除该条团队沉淀知识，不可恢复。</p>
+                <h3 className="text-base font-black text-slate-900">确认删除资料</h3>
+                <p className="text-xs text-slate-400 font-medium">此操作将永久移除该条团队沉淀资料，不可恢复。</p>
               </div>
             </div>
 
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-xs text-slate-700 font-medium">
-              确定要删除知识 <span className="font-extrabold text-slate-900">【{deleteConfirmItem.title}】</span> 吗？
+              确定要删除资料 <span className="font-extrabold text-slate-900">【{deleteConfirmItem.title}】</span> 吗？
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
@@ -989,14 +989,14 @@ export default function KnowledgeLibraryPage() {
         </div>
       )}
 
-      {/* 新建知识 Modal */}
+      {/* 新建资料 Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in">
           <form onSubmit={handleCreate} className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 text-left space-y-4 relative max-h-[90vh] overflow-y-auto no-scrollbar flex flex-col justify-between">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
                 <BookIcon className="w-5 h-5 text-[#3182ce]" />
-                <h3 className="text-base font-black text-slate-900">新增知识</h3>
+                <h3 className="text-base font-black text-slate-900">新增资料</h3>
               </div>
               <button
                 type="button"
@@ -1025,7 +1025,7 @@ export default function KnowledgeLibraryPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-700 mb-1">知识分类 <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">资料分类 <span className="text-red-500">*</span></label>
                   <select
                     value={createCategory || (dbCategories[0]?.key || "")}
                     onChange={(e) => setCreateCategory(e.target.value)}
@@ -1040,7 +1040,7 @@ export default function KnowledgeLibraryPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-700 mb-1">知识标题 <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1">资料标题 <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={createTitle}
@@ -1051,10 +1051,10 @@ export default function KnowledgeLibraryPage() {
                 </div>
               </div>
 
-              {/* 上传知识文件组件区域 */}
+              {/* 上传资料文件组件区域 */}
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                  上传知识附件文档 (可选，自动提取内容)
+                  上传资料附件文档 (可选，自动提取内容)
                 </label>
                 {selectedFile ? (
                   <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in">
@@ -1112,11 +1112,11 @@ export default function KnowledgeLibraryPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1">知识正文 (支持 Markdown)</label>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">资料正文 (支持 Markdown)</label>
                 <textarea
                   value={createContent}
                   onChange={(e) => setCreateContent(e.target.value)}
-                  placeholder="填写知识正文，可以是经验总结、架构方案或技术文档。"
+                  placeholder="填写资料正文，可以是经验总结、架构方案或技术文档。"
                   className="w-full h-32 p-2.5 text-xs font-mono font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400 resize-none leading-relaxed"
                 />
               </div>
@@ -1140,7 +1140,7 @@ export default function KnowledgeLibraryPage() {
                     <LoaderIcon className="w-3.5 h-3.5 animate-spin" /> 保存中...
                   </span>
                 ) : (
-                  "保存知识"
+                  "保存资料"
                 )}
               </button>
             </div>
@@ -1192,7 +1192,7 @@ export default function KnowledgeLibraryPage() {
             )}
 
             <div className="bg-slate-50 p-4 rounded-xl text-xs font-mono leading-relaxed text-slate-700 max-h-96 overflow-y-auto border border-slate-200/70 whitespace-pre-wrap">
-              {previewItem.content || "该知识暂无正文内容。"}
+              {previewItem.content || "该资料暂无正文内容。"}
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
@@ -1201,7 +1201,7 @@ export default function KnowledgeLibraryPage() {
                 className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#3182ce] text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
               >
                 {copied ? <CheckmarkIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
-                <span>{copied ? "已复制正文" : "复制知识正文"}</span>
+                <span>{copied ? "已复制正文" : "复制资料正文"}</span>
               </button>
               <button
                 onClick={() => setShowPreviewModal(false)}

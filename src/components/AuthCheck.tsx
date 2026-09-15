@@ -30,6 +30,9 @@ const PUBLIC_PATHS = [
   "/init",
   "/maintenance",
   "/releases",
+  "/privacy-policy",
+  "/terms-of-service",
+  "/help",
 ];
 
 export default function AuthCheck({ children }: { children: React.ReactNode }) {

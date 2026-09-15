@@ -92,7 +92,10 @@ export async function POST(request: NextRequest) {
         userId,
         action: "Password:Change",
         resource: "Password",
-        details: JSON.stringify({ reason: "user initiated password change" }),
+        details: JSON.stringify({
+          message: "用户主动修改登录密码，旧密码已即时失效",
+          reason: "用户主动发起密码修改",
+        }),
         createdAt: new Date(),
       },
     });

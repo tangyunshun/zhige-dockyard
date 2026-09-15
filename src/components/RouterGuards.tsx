@@ -28,7 +28,7 @@ async function queryMaintenanceMode(): Promise<boolean> {
   return false;
 }
 
-// 公共营销页面 - 所有人都能访问（包括未登录用户）
+// 公共营销与合规协议页面 - 所有人都能访问（包括未登录用户）
 const PUBLIC_ROUTES = [
   "/",
   "/studio",
@@ -37,6 +37,10 @@ const PUBLIC_ROUTES = [
   "/pricing",
   "/developers",
   "/docs",
+  "/privacy-policy",
+  "/terms-of-service",
+  "/releases",
+  "/help",
 ];
 
 // 认证页面 - 主要供未登录用户访问

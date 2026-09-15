@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
@@ -27,7 +27,6 @@ import {
   FileCode,
   RotateCcw,
   Calendar,
-  Sparkles,
   AlertTriangle,
   Copy,
   Check,
@@ -244,6 +243,28 @@ export default function AdminDocumentsPage() {
     errors: {},
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // 动态融合数据库中真实存在的分类项，保证零静态写死，数据库增改分类前台自动同步
+  const availableCategories = useMemo(() => {
+    const list: { key: string; label: string; count?: number }[] = STANDARD_CATEGORIES.map((cat) => ({
+      key: cat.key,
+      label: cat.label,
+      count: summary?.categoryCounts?.[cat.key] || 0,
+    }));
+
+    if (summary?.categoryCounts) {
+      Object.keys(summary.categoryCounts).forEach((k) => {
+        if (!list.some((item) => item.key === k)) {
+          list.push({
+            key: k,
+            label: getCategoryLabel(k),
+            count: summary.categoryCounts[k] || 0,
+          });
+        }
+      });
+    }
+    return list;
+  }, [summary?.categoryCounts]);
 
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -938,8 +959,8 @@ export default function AdminDocumentsPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               </div>
 
-              {/* 分类筛选 */}
-              <div className="w-full sm:w-36 sm:shrink-0">
+              {/* 分类筛选（动态从数据库分类统计聚合，包含真实文档篇数） */}
+              <div className="w-full sm:w-44 sm:shrink-0">
                 <select
                   value={filterCategory}
                   onChange={(e) => {
@@ -949,15 +970,11 @@ export default function AdminDocumentsPage() {
                   className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                 >
                   <option value="">全部分类</option>
-                  <option value="user-guide">用户指南·快速入门</option>
-                  <option value="api-doc">接口开发与接入文档</option>
-                  <option value="workspace">工作空间治理与权限说明</option>
-                  <option value="system-doc">企业部署与系统运行手册</option>
-                  <option value="knowledge">知识库与组件规范指南</option>
-                  <option value="faq">常见问题与故障排查</option>
-                  <option value="announcement">平台官方更新公告</option>
-                  <option value="privacy-policy">平台用户隐私保护协议</option>
-                  <option value="terms-of-service">平台用户服务条款协议</option>
+                  {availableCategories.map((cat) => (
+                    <option key={cat.key} value={cat.key}>
+                      {cat.label} {cat.count ? `(${cat.count})` : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1478,15 +1495,12 @@ export default function AdminDocumentsPage() {
                       }
                       className="w-full px-3 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
-                      <option value="user-guide">📘 用户指南·快速入门</option>
-                      <option value="api-doc">💻 接口开发与接入文档</option>
-                      <option value="workspace">🏢 工作空间治理与权限说明</option>
-                      <option value="system-doc">⚙️ 企业部署与系统运行手册</option>
-                      <option value="knowledge">📚 知识库与组件规范指南</option>
-                      <option value="faq">❓ 常见问题与故障排查</option>
-                      <option value="announcement">📢 平台官方更新公告</option>
-                      <option value="privacy-policy">🛡️ 平台用户隐私保护协议</option>
-                      <option value="terms-of-service">📜 平台用户服务条款协议</option>
+                      <option value="">-- 请选择归属业务分类 --</option>
+                      {availableCategories.map((cat) => (
+                        <option key={cat.key} value={cat.key}>
+                          {cat.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

@@ -3732,7 +3732,7 @@ export default function AdminUsersPage() {
                       type="text"
                       value={loginHistoryKeyword}
                       onChange={(e) => setLoginHistoryKeyword(e.target.value)}
-                      placeholder="搜索真实 IP、归属专网或设备型号..."
+                      placeholder="搜索登录 IP、归属地点或设备型号..."
                       className="w-full h-7 pl-7 pr-6 text-xs bg-white border border-slate-200/90 rounded-md outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 transition-all font-mono"
                     />
                     {loginHistoryKeyword && (

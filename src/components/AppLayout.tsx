@@ -91,11 +91,11 @@ export default function AppLayout({
                         <MaintenanceUpcomingBanner />
                         {children}
                       </div>
-                      {/* 全局悬浮回到顶部按钮 */}
+                      {/* 全局悬浮回到顶部按钮：提升至 bottom-20/24，彻底避开页脚底栏按钮遮挡 */}
                       <button
                         onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
                         aria-label="回到顶部"
-                        className={`fixed bottom-6 right-6 md:bottom-10 md:right-10 z-[90] w-12 h-12 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center cursor-pointer border border-white/30 hover:scale-110 active:scale-95 ${
+                        className={`fixed bottom-20 right-6 md:bottom-24 md:right-8 z-[90] w-11 h-11 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center cursor-pointer border border-white/30 hover:scale-110 active:scale-95 ${
                           scrollProgress > 5
                             ? "opacity-100 translate-y-0"
                             : "opacity-0 translate-y-4 pointer-events-none"

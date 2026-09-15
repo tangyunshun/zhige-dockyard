@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { OperationLogDetails } from "@/app/admin/components/OperationLogDetails";
 import Pagination from "@/components/Pagination";
 import {
   Search,
@@ -24,7 +25,10 @@ interface OperationLog {
   userId: string;
   workspaceId?: string | null;
   action: string;
+  actionZh?: string;
+  actionBadge?: { label: string; bg: string; text: string; border: string };
   resource?: string | null;
+  resourceZh?: string;
   details?: any;
   ipAddress?: string | null;
   createdAt: string;
@@ -60,6 +64,7 @@ interface LogData {
   total: number;
   page: number;
   totalPages: number;
+  actionOptions?: Array<{ value: string; label: string }>;
   stats?: {
     total: number;
     today: number;
@@ -67,203 +72,36 @@ interface LogData {
   };
 }
 
-// 单词字典：用于智能分词翻译未被完全枚举的英文组合
-const WORD_DICT: Record<string, string> = {
-  device: "终端设备",
-  kicked: "强制",
-  offline: "下线",
-  session: "登录会话",
-  conflict: "异地冲突",
-  logout: "安全登出",
-  login: "账号登录",
-  auth: "认证授权",
-  token: "令牌",
-  recharge: "充值入账",
-  plan: "空间套餐",
-  upgrade: "升级变更",
-  user: "用户账号",
-  create: "新建创建",
-  update: "配置更新",
-  delete: "下架删除",
-  ban: "账号封禁",
-  unban: "账号解封",
-  workspace: "工作空间",
-  member: "空间成员",
-  invite: "邀请加入",
-  remove: "移除退出",
-  component: "功能组件",
-  task: "执行任务",
-  execute: "调度执行",
-  bind: "装配启用",
-  unbind: "解除装配",
-  asset: "知识资料",
-  document: "知识文档",
-  approve: "审核通过",
-  reject: "审核驳回",
-  restore: "恢复数据",
-  system: "系统配置",
-  permission: "角色权限",
-  quota: "资源配额",
-};
-
-// 精确操作类型字典
-const ACTION_ZH_EXACT: Record<string, { label: string; bg: string; text: string; border: string }> = {
-  // 设备互踢与会话管理
-  "DEVICE KICKED OFFLINE": { label: "设备强制下线", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  "DEVICE_KICKED_OFFLINE": { label: "设备强制下线", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  "SESSION CONFLICT LOGOUT": { label: "异地登录互踢", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-  "SESSION_CONFLICT_LOGOUT": { label: "异地登录互踢", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-  "USER_RESET_SESSION": { label: "重置会话下线", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  "user:reset_session": { label: "重置会话下线", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-
-  // 用户生命周期
-  "user:create": { label: "创建用户账号", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "user:update": { label: "更新用户信息", bg: "bg-blue-50", text: "text-[#2b6cb0]", border: "border-blue-200" },
-  "user:delete": { label: "删除用户账号", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-  "user:ban": { label: "封禁违规用户", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-  "user:unban": { label: "解封用户账号", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-
-  // 认证维度
-  "auth:login": { label: "账号成功登录", bg: "bg-purple-50", text: "text-[#6b46c1]", border: "border-purple-200" },
-  "auth:logout": { label: "用户主动登出", bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200" },
-  "LOGIN": { label: "账号成功登录", bg: "bg-purple-50", text: "text-[#6b46c1]", border: "border-purple-200" },
-  "LOGOUT": { label: "用户主动登出", bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200" },
-
-  // 工作空间
-  "workspace:create": { label: "创建工作空间", bg: "bg-blue-50", text: "text-[#2b6cb0]", border: "border-blue-200" },
-  "workspace:update": { label: "修改空间配置", bg: "bg-blue-50", text: "text-[#2b6cb0]", border: "border-blue-200" },
-  "workspace:delete": { label: "解散工作空间", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-  "CREATE_WORKSPACE": { label: "创建个人空间", bg: "bg-blue-50", text: "text-[#2b6cb0]", border: "border-blue-200" },
-  "CREATE_ENTERPRISE_WORKSPACE": { label: "创建企业空间", bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
-  "JOIN_WORKSPACE": { label: "加入协作空间", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "LEAVE_WORKSPACE": { label: "退出协作空间", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  "INVITE_MEMBER": { label: "邀请空间成员", bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200" },
-  "REMOVE_MEMBER": { label: "移除空间成员", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-
-  // 组件装配与任务执行
-  "component:create": { label: "新建功能组件", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "component:update": { label: "更新组件属性", bg: "bg-blue-50", text: "text-[#2b6cb0]", border: "border-blue-200" },
-  "component:delete": { label: "下架功能组件", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-  "component:execute": { label: "执行组件任务", bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
-  "BIND_COMPONENT": { label: "装配工作流组件", bg: "bg-cyan-50", text: "text-cyan-700", border: "border-cyan-200" },
-  "UNBIND_COMPONENT": { label: "卸载空间组件", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-
-  // 知识资料管理
-  "asset:upload": { label: "上传知识资料", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "asset:remove": { label: "移除公开资料", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-  "asset:approve": { label: "审核通过资料", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "asset:reject": { label: "审核驳回资料", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  "asset:restore": { label: "恢复已删除资料", bg: "bg-blue-50", text: "text-[#2b6cb0]", border: "border-blue-200" },
-
-  // 基础动作
-  "CREATE": { label: "新建业务记录", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "UPDATE": { label: "更新业务配置", bg: "bg-blue-50", text: "text-[#2b6cb0]", border: "border-blue-200" },
-  "DELETE": { label: "删除业务数据", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
-};
-
-// 资源精确映射字典
-const RESOURCE_ZH_EXACT: Record<string, string> = {
-  "auth/device": "认证鉴权 / 终端设备",
-  "auth/session": "认证鉴权 / 登录会话",
-  "auth/token": "认证鉴权 / 访问令牌",
-  "auth/login": "认证鉴权 / 登录安全",
-  "workspace/member": "工作空间 / 成员岗位",
-  "workspace/quota": "工作空间 / 算力配额",
-  "workspace/component": "工作空间 / 装配组件",
-  "component/task": "功能组件 / 执行任务",
-  "document/file": "知识资料 / 文档存储",
-  "user": "用户账号",
-  "workspace": "工作空间",
-  "component": "功能组件",
-  "componenttask": "自动化任务",
-  "document": "知识资料",
-  "asset": "知识资料",
-  "billing": "计费与订单",
-  "order": "支付订单",
-  "system": "系统安全配置",
-};
-
 export default function AdminLogsPage() {
-  const [logData, setLogData] = useState<LogData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterAction, setFilterAction] = useState<string>("all");
-  const [currentPage, setCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState<"operation" | "login">("operation");
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [logData, setLogData] = useState<LogData | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterAction, setFilterAction] = useState("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // 100% 汉化操作类型
-  const renderActionBadge = (action: string) => {
-    if (!action) return <span className="text-slate-400 text-xs">未知操作</span>;
-    
-    // 1. 先查精确字典
-    if (ACTION_ZH_EXACT[action]) {
-      const meta = ACTION_ZH_EXACT[action];
-      return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border shadow-xs whitespace-nowrap select-none ${meta.bg} ${meta.text} ${meta.border}`}>
-          {meta.label}
-        </span>
-      );
-    }
-
-    // 2. 查带前缀或下划线的模糊匹配
-    const norm = action.trim().toUpperCase();
-    if (ACTION_ZH_EXACT[norm]) {
-      const meta = ACTION_ZH_EXACT[norm];
-      return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border shadow-xs whitespace-nowrap select-none ${meta.bg} ${meta.text} ${meta.border}`}>
-          {meta.label}
-        </span>
-      );
-    }
-
-    // 3. 智能分词翻译（分割空格、下划线、冒号）
-    const tokens = action.split(/[\s_:]+/);
-    const translatedTokens = tokens.map(t => WORD_DICT[t.toLowerCase()] || t);
-    const label = translatedTokens.join(" ");
-
+  // 纯中文操作类型徽章（完全由数据库驱动）
+  const renderActionBadge = (log: OperationLog) => {
+    const badge = log.actionBadge || {
+      label: log.actionZh || log.action || "系统操作",
+      bg: "bg-slate-50",
+      text: "text-slate-700",
+      border: "border-slate-200",
+    };
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border border-slate-200 bg-slate-50 text-slate-700 shadow-xs whitespace-nowrap select-none">
-        {label}
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border shadow-xs whitespace-nowrap select-none ${badge.bg} ${badge.text} ${badge.border}`}
+      >
+        {badge.label}
       </span>
     );
   };
 
-  // 100% 汉化涉及业务资源
-  const renderResourceName = (resource?: string | null) => {
-    if (!resource || resource === "-") {
-      return <span className="text-slate-400 font-medium text-xs whitespace-nowrap">系统默认资源</span>;
-    }
-
-    const cleanRes = resource.trim();
-
-    // 1. 精确匹配（如 auth/device）
-    if (RESOURCE_ZH_EXACT[cleanRes]) {
-      return <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{RESOURCE_ZH_EXACT[cleanRes]}</span>;
-    }
-
-    // 2. 斜杠路径分解翻译（如 a/b）
-    if (cleanRes.includes("/")) {
-      const parts = cleanRes.split("/");
-      const zhParts = parts.map(p => RESOURCE_ZH_EXACT[p.toLowerCase()] || WORD_DICT[p.toLowerCase()] || p);
-      return <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{zhParts.join(" / ")}</span>;
-    }
-
-    // 3. 冒号前缀结构（如 workspace:ws-xxx）
-    if (cleanRes.includes(":")) {
-      const [type, id] = cleanRes.split(":");
-      const typeZh = RESOURCE_ZH_EXACT[type.toLowerCase()] || WORD_DICT[type.toLowerCase()] || type;
-      return (
-        <div className="flex items-center gap-1.5 text-xs whitespace-nowrap">
-          <span className="font-bold text-slate-800">{typeZh}</span>
-          <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded" title={id}>
-            {id.length > 18 ? `${id.slice(0, 8)}...${id.slice(-6)}` : id}
-          </span>
-        </div>
-      );
-    }
-
-    const zh = RESOURCE_ZH_EXACT[cleanRes.toLowerCase()] || WORD_DICT[cleanRes.toLowerCase()] || cleanRes;
+  // 纯中文涉及业务资源（完全由数据库驱动）
+  const renderResourceName = (log: OperationLog) => {
+    const zh = log.resourceZh || log.resource || "系统默认资源";
     return <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{zh}</span>;
   };
 
@@ -511,16 +349,11 @@ export default function AdminLogsPage() {
                 className="w-full sm:w-auto h-8.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 shadow-2xs cursor-pointer transition-all"
               >
                 <option value="all">全部操作类型</option>
-                <option value="DEVICE KICKED OFFLINE">设备强制下线</option>
-                <option value="SESSION CONFLICT LOGOUT">异地登录互踢</option>
-                <option value="user:create">创建用户</option>
-                <option value="user:update">更新用户</option>
-                <option value="user:delete">删除用户</option>
-                <option value="workspace:create">创建空间</option>
-                <option value="workspace:delete">删除空间</option>
-                <option value="component:execute">执行组件任务</option>
-                <option value="auth:login">账号登录</option>
-                <option value="auth:logout">安全登出</option>
+                {logData?.actionOptions?.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             )}
 
@@ -573,7 +406,11 @@ export default function AdminLogsPage() {
                   </tr>
                 ) : (
                   logData.logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50/60 transition-colors">
+                    <Fragment key={log.id}>
+                    <tr
+                      onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
+                      className="hover:bg-slate-50/60 transition-colors cursor-pointer"
+                    >
                       {/* 操作人 */}
                       <td className="py-2.5 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2.5">
@@ -599,14 +436,14 @@ export default function AdminLogsPage() {
                         </div>
                       </td>
 
-                      {/* 操作类型（100% 中文） */}
+                      {/* 操作类型（数据库字典驱动，100% 中文） */}
                       <td className="py-2.5 px-4 whitespace-nowrap">
-                        {renderActionBadge(log.action)}
+                        {renderActionBadge(log)}
                       </td>
 
-                      {/* 涉及业务资源（100% 中文） */}
+                      {/* 涉及业务资源（数据库字典驱动，100% 中文） */}
                       <td className="py-2.5 px-4 whitespace-nowrap">
-                        {renderResourceName(log.resource)}
+                        {renderResourceName(log)}
                       </td>
 
                       {/* 客户端 IP（告别 ::1，单行） */}
@@ -619,7 +456,15 @@ export default function AdminLogsPage() {
                         {renderDualLineTime(log.createdAt)}
                       </td>
                     </tr>
-                  ))
+                    {expandedId === log.id && (
+                      <tr className="bg-slate-50/40">
+                        <td colSpan={5} className="p-0">
+                          <OperationLogDetails log={log} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))
                 )}
               </tbody>
             </table>

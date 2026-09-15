@@ -49,6 +49,8 @@ interface PointsLedgerTabProps {
   onOpenRecycle?: () => void;
   /** 充值成功信号：数值变化后自动刷新流水 */
   refreshSignal?: number;
+  /** 普通成员视图：仅展示自身算力点、自身使用记录与所有者/管理员对其算力点的操作记录 */
+  isMemberView?: boolean;
 }
 
 const TYPE_TABS = [
@@ -89,6 +91,7 @@ export default function PointsLedgerTab({
   onOpenRecharge,
   onOpenRecycle,
   refreshSignal = 0,
+  isMemberView = false,
 }: PointsLedgerTabProps) {
   const toast = useToast();
 
@@ -180,12 +183,14 @@ export default function PointsLedgerTab({
 
   const statCards = [
     {
-      label: "本空间可用算力点",
+      label: isMemberView ? "我的算力点" : "本空间可用算力点",
       value: balance,
       icon: <Zap className="w-5 h-5" />,
       tone: "text-[#3182ce]",
       bg: "bg-blue-50 text-[#3182ce]",
-      hint: `钱包 ${walletBalance.toLocaleString()} + 空间池 ${workspaceBalance.toLocaleString()}`,
+      hint: isMemberView
+        ? "由空间管理员分配的独立额度，仅可消费您自身的算力点"
+        : `钱包 ${walletBalance.toLocaleString()} + 空间池 ${workspaceBalance.toLocaleString()}`,
     },
     {
       label: "累计充值 / 线下入账",
@@ -224,7 +229,9 @@ export default function PointsLedgerTab({
           <div>
             <h3 className="text-sm font-black text-slate-800">算力点</h3>
             <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-              统一管理本空间算力点的充值、入账与出账流水
+              {isMemberView
+                ? "查看我的算力点余额、使用记录与空间管理员对其算力点的操作记录"
+                : "统一管理本空间算力点的充值、入账与出账流水"}
             </p>
           </div>
         </div>
@@ -306,30 +313,44 @@ export default function PointsLedgerTab({
       </div>
 
       {/* 账户结构说明 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {isMemberView ? (
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0">
-            <Wallet className="w-4 h-4" />
+          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <Coins className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-xs font-black text-slate-800">个人钱包（跨空间通用）</div>
+            <div className="text-xs font-black text-slate-800">我的独立算力点余额</div>
             <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-              {walletBalance.toLocaleString()} 算力点 · 充值所得，个人空间与企业空间均可使用，永不过期
+              {balance.toLocaleString()} 算力点 · 由空间管理员从共享池分配，仅您本人可消费；余额不足请向管理员申请分配
             </div>
           </div>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0">
-            <Building2 className="w-4 h-4" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-black text-slate-800">个人钱包（跨空间通用）</div>
+              <div className="text-[11px] font-bold text-slate-500 mt-0.5">
+                {walletBalance.toLocaleString()} 算力点 · 充值所得，个人空间与企业空间均可使用，永不过期
+              </div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <div className="text-xs font-black text-slate-800">本空间算力池</div>
-            <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-              {workspaceBalance.toLocaleString()} 算力点 · 含注册福利（前 3 个月每月 100，当月有效）与充值/购买共享额度
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-black text-slate-800">本空间算力池</div>
+              <div className="text-[11px] font-bold text-slate-500 mt-0.5">
+                {workspaceBalance.toLocaleString()} 算力点 · 含注册福利（前 3 个月每月 100，当月有效）与充值/购买共享额度
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 流水明细 */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">

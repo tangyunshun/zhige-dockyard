@@ -36,6 +36,7 @@ import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
 import ConfirmModal from "@/components/ConfirmModal";
 import * as XLSX from "xlsx";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 
 /**
  * 将系统角色代码转译为标准商务简体中文，杜绝英文暴露

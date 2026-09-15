@@ -54,9 +54,8 @@ export default function UserGreeting({
           {getVipBadge()}
         </div>
         
-        {/* 纯净宣言 (拿掉“效能宣言”这四个字，仅输出话语) */}
         <p className="text-xs text-slate-500 font-semibold leading-relaxed max-w-3xl">
-          每一次组件构建，都是对软件开发工程边界的一次大胆拓荒。工作空间已成功就绪，祝您今天工作愉快！
+          您的工作空间已准备就绪，可以开始创建、管理和运行您的组件。祝您今天工作顺利！
         </p>
       </div>
     </div>

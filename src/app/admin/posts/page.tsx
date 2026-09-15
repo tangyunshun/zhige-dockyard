@@ -26,7 +26,6 @@ import {
   Power,
   Ban,
   ExternalLink,
-  Sparkles,
   Eye,
   Calendar,
   Code2,
@@ -714,7 +713,7 @@ function AdminPostsContent() {
                 : "bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Building2 className="w-3.5 h-3.5" />
             <span>企业空间提报岗位审核</span>
             {submissions.length > 0 && (
               <span
@@ -1511,7 +1510,7 @@ function AdminPostsContent() {
           ).length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200/80 p-16 text-center shadow-2xs">
               <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#3182ce] flex items-center justify-center mx-auto mb-3">
-                <Sparkles className="w-6 h-6" />
+                <Building2 className="w-6 h-6" />
               </div>
               <h3 className="text-sm font-bold text-slate-700">
                 暂无符合筛选条件的企业空间提报岗位

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Hexagon } from "lucide-react";
+import { Hexagon, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { triggerCheckUpdate } from "@/components/WhatsNewModal";
+import { triggerCheckUpdate, CHECK_UPDATE_EVENT } from "@/components/WhatsNewModal";
+import LegalDocumentModal from "@/components/LegalDocumentModal";
 
 interface NavLinkItem {
   label: string;
@@ -15,7 +16,44 @@ interface NavColumnItem {
   links: NavLinkItem[];
 }
 
+interface SystemRealStatus {
+  status: "OPERATIONAL" | "MAINTENANCE" | "DEGRADED";
+  statusText: string;
+  latencyMs: number;
+}
+
 export default function Footer() {
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [legalCategory, setLegalCategory] = useState<"privacy-policy" | "terms-of-service" | null>(null);
+  const [systemRealStatus, setSystemRealStatus] = useState<SystemRealStatus>({
+    status: "OPERATIONAL",
+    statusText: "系统运行正常",
+    latencyMs: 0,
+  });
+
+  /**
+   * 真实检查更新：真实发起 HTTP 请求到 /api/system/check-update
+   * 等待后端真实查询数据库版本与真实探测延迟，彻底告别前端 setTimeout 模拟
+   */
+  const handleRealCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const res = await fetch(`/api/system/check-update?t=${Date.now()}`, { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(CHECK_UPDATE_EVENT, { detail: data }));
+        }
+      } else {
+        triggerCheckUpdate();
+      }
+    } catch {
+      triggerCheckUpdate();
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
   // 保持用户现有的内容数据作为标准初始状态与默认底态
   const [footerData, setFooterData] = useState({
     siteName: "知阁·舟坊",
@@ -96,6 +134,36 @@ export default function Footer() {
       .catch((err) => {
         console.warn("获取页脚配置失败，使用既有配置:", err);
       });
+  }, []);
+
+  // 实时探测系统真实运行状态（无跳转、无弹窗，真实后端探测）
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSystemRealStatus = async () => {
+      try {
+        const res = await fetch(`/api/system/status?t=${Date.now()}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && isMounted) {
+            setSystemRealStatus({
+              status: data.status || "OPERATIONAL",
+              statusText: data.statusText || "系统运行正常",
+              latencyMs: typeof data.latencyMs === "number" ? data.latencyMs : 0,
+            });
+          }
+        }
+      } catch {
+        // 网络抖动容错，保持稳定
+      }
+    };
+
+    fetchSystemRealStatus();
+    // 60秒轻量轮询，保证前台停留时实时同步最新系统健康态
+    const intervalTimer = setInterval(fetchSystemRealStatus, 60000);
+    return () => {
+      isMounted = false;
+      clearInterval(intervalTimer);
+    };
   }, []);
 
   return (
@@ -246,41 +314,100 @@ export default function Footer() {
             <div key={colIdx} className="space-y-4">
               <h4 className="font-bold text-sm text-white">{col.title}</h4>
               <ul className="text-sm text-blue-100 space-y-2">
-                {col.links?.map((link, linkIdx) => (
-                  <li key={linkIdx}>
-                    <Link
-                      href={link.url || "#/"}
-                      className="hover:text-white transition-colors duration-200"
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
+                {col.links?.map((link, linkIdx) => {
+                  const isPrivacyLink =
+                    link.url === "/privacy-policy" ||
+                    link.label === "隐私条款" ||
+                    link.label === "隐私政策";
+                  const isTermsLink =
+                    link.url === "/terms-of-service" ||
+                    link.label === "服务条款";
+
+                  if (isPrivacyLink) {
+                    return (
+                      <li key={linkIdx}>
+                        <button
+                          type="button"
+                          onClick={() => setLegalCategory("privacy-policy")}
+                          className="hover:text-white transition-colors duration-200 cursor-pointer text-left"
+                        >
+                          {link.label}
+                        </button>
+                      </li>
+                    );
+                  }
+                  if (isTermsLink) {
+                    return (
+                      <li key={linkIdx}>
+                        <button
+                          type="button"
+                          onClick={() => setLegalCategory("terms-of-service")}
+                          className="hover:text-white transition-colors duration-200 cursor-pointer text-left"
+                        >
+                          {link.label}
+                        </button>
+                      </li>
+                    );
+                  }
+                  return (
+                    <li key={linkIdx}>
+                      <Link
+                        href={link.url || "#/"}
+                        className="hover:text-white transition-colors duration-200"
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}
         </div>
 
-        {/* 底部版权与备案资质行 */}
-        <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
+        {/* 底部版权与备案资质行（右侧预留安全边距，彻底避免与回到顶部悬浮球重合） */}
+        <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 md:pr-16">
           <div className="text-[13px] text-blue-200 text-center md:text-left">
             © 2026 ZhiGe OS · {footerData.siteName} · {footerData.icpNumber} · {footerData.policeIcp}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-            <Link href="/privacy-policy" className="text-[13px] text-blue-200 hover:text-white transition-colors">
-              隐私政策
-            </Link>
-            <Link href="/terms-of-service" className="text-[13px] text-blue-200 hover:text-white transition-colors">
-              服务条款
-            </Link>
-            <Link
-              href="/releases"
-              className="flex items-center gap-1.5 text-[13px] text-emerald-300 hover:text-emerald-200 transition-colors"
-              title="查看系统运行状态与维护排期"
+            <button
+              type="button"
+              onClick={() => setLegalCategory("privacy-policy")}
+              className="text-[13px] text-blue-200 hover:text-white transition-colors cursor-pointer hover:underline"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.6)] animate-pulse"></span>
-              系统运行正常
-            </Link>
+              隐私政策
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalCategory("terms-of-service")}
+              className="text-[13px] text-blue-200 hover:text-white transition-colors cursor-pointer hover:underline"
+            >
+              服务条款
+            </button>
+            <span
+              className={`flex items-center gap-1.5 text-[13px] select-none ${
+                systemRealStatus.status === "OPERATIONAL"
+                  ? "text-emerald-300"
+                  : systemRealStatus.status === "MAINTENANCE"
+                  ? "text-amber-300"
+                  : "text-red-300"
+              }`}
+              title={`知阁·舟坊平台实时健康状态：${systemRealStatus.statusText}${
+                systemRealStatus.latencyMs > 0 ? ` (响应时延 ${systemRealStatus.latencyMs}ms)` : ""
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full animate-pulse ${
+                  systemRealStatus.status === "OPERATIONAL"
+                    ? "bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.6)]"
+                    : systemRealStatus.status === "MAINTENANCE"
+                    ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]"
+                    : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.6)]"
+                }`}
+              />
+              <span>{systemRealStatus.statusText}</span>
+            </span>
             <Link
               href="/releases?tab=releases"
               className="px-2 py-0.5 rounded-[4px] bg-white/10 hover:bg-white/20 text-blue-100 hover:text-white text-xs font-mono font-bold transition-colors"
@@ -290,14 +417,24 @@ export default function Footer() {
             </Link>
             <button
               type="button"
-              onClick={triggerCheckUpdate}
-              className="text-[13px] text-blue-200 hover:text-white transition-colors cursor-pointer hover:underline"
+              disabled={isCheckingUpdate}
+              onClick={handleRealCheckUpdate}
+              className="inline-flex items-center gap-1 text-[13px] text-blue-200 hover:text-white transition-colors cursor-pointer hover:underline disabled:opacity-75"
+              title="检查知阁·舟坊系统版本与最新发版公告"
             >
-              检查更新
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? "animate-spin text-white" : ""}`} />
+              <span>{isCheckingUpdate ? "正在检查..." : "检查更新"}</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* 隐私政策与服务条款已开发页面弹窗视窗 */}
+      <LegalDocumentModal
+        isOpen={Boolean(legalCategory)}
+        category={legalCategory}
+        onClose={() => setLegalCategory(null)}
+      />
     </footer>
   );
 }

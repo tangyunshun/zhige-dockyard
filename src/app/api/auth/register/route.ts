@@ -13,39 +13,38 @@ const JWT_SECRET = new TextEncoder().encode(
 );
 
 /**
- * P2-2 优化：注册成功后自动签发会话，免去用户二次登录
- * 复用登录接口的会话签发模式（sessionToken + JWT + Cookie）
+ * 注册成功处理：向审计日志表写入新用户注册记录，不预设会话字段（保持纯净未登录态，交由登录中心签发真实会话）
  */
-async function issueSessionAndRespond(userId: string, email?: string | null, role = "user") {
-  const now = new Date();
-  const sessionToken = crypto.randomUUID();
-  const sessionExpiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000); // 8 小时
-  const refreshToken = crypto.randomUUID();
-  const refreshTokenExpiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-
-  // 更新会话字段
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      sessionToken,
-      sessionExpiresAt,
-      refreshToken,
-      lastLoginAt: now,
-      lastActivityAt: now,
-    },
-  });
-
-  // 签发 JWT（8 小时）
-  const token = await new SignJWT({
-    userId,
-    email: email || undefined,
-    role,
-    sessionToken,
-    issuedAt: now.toISOString(),
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("8h")
-    .sign(JWT_SECRET);
+async function respondRegistrationSuccess(
+  userId: string,
+  userName?: string | null,
+  phone?: string | null,
+  email?: string | null,
+  accountType?: string,
+  role = "user",
+  clientIp = "127.0.0.1"
+) {
+  // 记录新用户注册审计日志
+  try {
+    await prisma.operationlog.create({
+      data: {
+        id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+        userId,
+        action: "USER_REGISTER",
+        resource: "user",
+        ipAddress: clientIp,
+        details: JSON.stringify({
+          accountType: accountType || "standard",
+          userName: userName || "新用户",
+          phone: phone || undefined,
+          email: email || undefined,
+          message: "新用户自主注册成功，已自动开通默认个人工作空间",
+        }),
+      },
+    });
+  } catch (logErr) {
+    console.warn("[register] 写入注册审计日志非致命异常:", logErr);
+  }
 
   const response = NextResponse.json({
     success: true,
@@ -59,6 +58,11 @@ async function issueSessionAndRespond(userId: string, email?: string | null, rol
 
 export async function POST(request: NextRequest) {
   try {
+    const clientIp =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip") ||
+      "127.0.0.1";
+
     const { phone, username, email, smsCode, password, accountType } =
       await request.json();
 
@@ -138,8 +142,16 @@ export async function POST(request: NextRequest) {
       // 删除验证码
       deleteSmsCode(phone);
 
-      // P2-2 优化：注册成功后自动签发会话，免去二次登录
-      return await issueSessionAndRespond(user.id, user.email, user.role);
+      // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
+      return await respondRegistrationSuccess(
+        user.id,
+        user.name,
+        user.phone,
+        user.email,
+        "phone",
+        user.role,
+        clientIp
+      );
     } else if (accountType === "username") {
       // 用户名注册
       if (!username || !/^[a-zA-Z0-9_@#\-]{3,20}$/.test(username)) {
@@ -235,8 +247,16 @@ export async function POST(request: NextRequest) {
       // 删除验证码
       deleteSmsCode(phone);
 
-      // P2-2 优化：注册成功后自动签发会话，免去二次登录
-      return await issueSessionAndRespond(user.id, user.email, user.role);
+      // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
+      return await respondRegistrationSuccess(
+        user.id,
+        user.name,
+        user.phone,
+        user.email,
+        "username",
+        user.role,
+        clientIp
+      );
     } else if (accountType === "email") {
       // 邮箱注册
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -327,8 +347,16 @@ export async function POST(request: NextRequest) {
       // 删除验证码
       deleteSmsCode(phone);
 
-      // P2-2 优化：注册成功后自动签发会话，免去二次登录
-      return await issueSessionAndRespond(user.id, user.email, user.role);
+      // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
+      return await respondRegistrationSuccess(
+        user.id,
+        user.name,
+        user.phone,
+        user.email,
+        "email",
+        user.role,
+        clientIp
+      );
     } else {
       return NextResponse.json(
         { message: "不支持的注册方式" },

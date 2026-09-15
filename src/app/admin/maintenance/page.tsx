@@ -889,7 +889,7 @@ export default function MaintenancePage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">
-              管理系统停机维护开关、排期维护任务与发布版本更新说明。数据 100% 保存在数据库中，重启后依然生效。
+              管理系统停机维护开关、排期维护任务与版本更新说明，保障系统运维与升级平稳过渡。
             </p>
           </div>
 

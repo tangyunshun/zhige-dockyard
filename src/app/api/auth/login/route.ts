@@ -419,7 +419,13 @@ export async function POST(request: NextRequest) {
       : new Date(now.getTime() + dynamicSessionTimeoutMs); // 系统设置动态时长
 
     // 检查是否存在旧会话且未过期（挤线检测）
-    const hasExistingSession = user.sessionToken && user.sessionExpiresAt && new Date(user.sessionExpiresAt) > now;
+    // 关键防御：只有当用户拥有真实历史登录记录且具备未过期有效 sessionToken 时，才属于真实的多端挤线互踢
+    const hasExistingSession = Boolean(
+      user.lastLoginAt &&
+      user.sessionToken &&
+      user.sessionExpiresAt &&
+      new Date(user.sessionExpiresAt) > now
+    );
 
     // 记录审计日志
     if (hasExistingSession) {

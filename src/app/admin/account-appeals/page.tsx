@@ -56,6 +56,7 @@ interface Appeal {
 
 interface AppealData {
   appeals: Appeal[];
+  businessTypes?: string[];
   pagination: {
     total: number;
     page: number;
@@ -793,8 +794,15 @@ export default function AdminAccountAppealsPage() {
                 className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
               >
                 <option value="all">全部业务类型</option>
-                <option value="账号解封申诉">🔓 账号解封申诉</option>
-                <option value="空间解封申诉">🏢 空间解封申诉</option>
+                {(appealData?.businessTypes && appealData.businessTypes.length > 0
+                  ? appealData.businessTypes
+                  : ["账号解封申诉", "空间解封申诉"]
+                ).map((bt) => (
+                  <option key={bt} value={bt}>
+                    {bt.includes("账号") ? "🔓 " : bt.includes("空间") ? "🏢 " : "📋 "}
+                    {bt}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

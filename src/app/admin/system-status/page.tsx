@@ -26,6 +26,10 @@ import {
   Play,
   Loader2,
   AlertCircle,
+  CreditCard,
+  Coins,
+  Key,
+  BookOpen,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -81,12 +85,21 @@ interface SystemStatusData {
     activeWorkspaceCount?: number;
     disabledWorkspaceCount?: number;
     componentCount: number;
+    publishedComponentCount?: number;
+    componentTaskCount?: number;
     logCount: number;
     todayLogCount?: number;
     docCount: number;
+    publishedDocCount?: number;
     notificationCount: number;
     totalAppealCount?: number;
+    pendingAppealCount?: number;
     configCount?: number;
+    rechargeOrderCount?: number;
+    pointsLedgerCount?: number;
+    membershipLevelCount?: number;
+    workspacePlanCount?: number;
+    permissionCount?: number;
   };
   services: ServiceItem[];
   inspectionReport?: InspectionReport;
@@ -184,12 +197,12 @@ export default function SystemStatusPage() {
     }
   };
 
-  // 2. 一键全量系统健康真实深度巡检（真实触发后端全量深度检测，彻底拔除假动画延时）
+  // 2. 一键全量系统健康深度巡检
   const handleRunFullInspection = async () => {
     if (isInspectingAll) return;
+    toast.dismissAll();
     setIsInspectingAll(true);
     setInspectionProgress(25);
-    toast.info("正在执行全量系统健康深度诊断...");
 
     try {
       const authToken = getAuthToken();
@@ -210,20 +223,21 @@ export default function SystemStatusPage() {
         setInspectionProgress(100);
         setData(result.data);
         setLastReportData(result.data);
-        setTimeout(() => {
-          setIsInspectingAll(false);
-          setInspectionProgress(0);
-          setInspectionReportModal(true);
-          toast.success(result.message || "全系统健康巡检已顺利完成！已生成体检报告");
-        }, 200);
+        setIsInspectingAll(false);
+        setInspectionProgress(0);
+        toast.dismissAll();
+        setInspectionReportModal(true);
+        toast.success(result.message || "全系统健康巡检已顺利完成！已生成体检报告");
       } else {
         setIsInspectingAll(false);
         setInspectionProgress(0);
+        toast.dismissAll();
         toast.error(result.error || "巡检请求未正常响应");
       }
     } catch {
       setIsInspectingAll(false);
       setInspectionProgress(0);
+      toast.dismissAll();
       toast.error("巡检过程发生网络中断");
     }
   };
@@ -269,14 +283,16 @@ export default function SystemStatusPage() {
 
       // 核心业务数据真实存量表
       const statsRows = [
-        ["业务实体类型", "真实数据库存量", "细分指标与说明"],
+        ["业务实体类型", "当前存量统计", "细分指标与说明"],
         ["注册用户总量", data.stats.userCount, `近24小时活跃: ${data.stats.active24hCount || 0} 人，违规封禁: ${data.stats.bannedUserCount || 0} 人`],
         ["工作空间节点", data.stats.workspaceCount, `正常活跃: ${data.stats.activeWorkspaceCount || 0} 个，风控停用管控: ${data.stats.disabledWorkspaceCount || 0} 个`],
-        ["全流程研发组件", data.stats.componentCount, "组件库已纳管的组件与任务原型"],
+        ["全流程功能组件", data.stats.componentCount, `组件库已收录: ${data.stats.componentCount} 项，已上架开放: ${data.stats.publishedComponentCount || 0} 项，调度流水: ${data.stats.componentTaskCount || 0} 次`],
         ["操作审计流水日志", data.stats.logCount, `近24小时产生: ${data.stats.todayLogCount || 0} 条，异常拦截: ${data.recentAlertCount} 项`],
         ["风控申诉工单", data.stats.totalAppealCount || 0, `待审核工单: ${data.pendingAppealCount || 0} 项`],
-        ["知识库技术文档", data.stats.docCount, "系统文档与使用指南"],
-        ["系统配置持久化参数", data.stats.configCount || 0, "system_config 表中加载的全局运行参数项"],
+        ["知识库技术文档", data.stats.docCount, `文档总篇数: ${data.stats.docCount} 篇，已发布上线: ${data.stats.publishedDocCount || 0} 篇`],
+        ["充值工单与算力流水", (data.stats.rechargeOrderCount || 0) + (data.stats.pointsLedgerCount || 0), `充值工单: ${data.stats.rechargeOrderCount || 0} 笔，算力记账流水: ${data.stats.pointsLedgerCount || 0} 条`],
+        ["会员等级与空间套餐", (data.stats.membershipLevelCount || 0) + (data.stats.workspacePlanCount || 0), `个人会员等级: ${data.stats.membershipLevelCount || 0} 档，空间团队套餐: ${data.stats.workspacePlanCount || 0} 档`],
+        ["系统配置持久化参数", data.stats.configCount || 0, `全局持久化参数: ${data.stats.configCount || 0} 项，系统权限规则: ${data.stats.permissionCount || 0} 条`],
         ["系统通知广播记录", data.stats.notificationCount, "系统下发通知与广播公告记录"],
       ];
 
@@ -428,7 +444,7 @@ export default function SystemStatusPage() {
                 <span className="text-xs font-normal text-slate-400">毫秒</span>
               </div>
               <div className="text-[11px] text-slate-400 font-medium mt-1 truncate max-w-[200px]" title={`引擎: ${data?.dbVersion || "MySQL"} · 活跃并发: ${data?.dbThreadsConnected || 1} · 物理空间: ${data?.dbTotalMB || 0} MB`}>
-                {data?.dbVersion ? `${data.dbVersion} · 容积 ${data?.dbTotalMB || 0}MB` : "MySQL 数据库直连实测"}
+                {data?.dbVersion ? `${data.dbVersion} · 容积 ${data?.dbTotalMB || 0}MB` : "MySQL 数据库正常连通"}
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
@@ -529,7 +545,7 @@ export default function SystemStatusPage() {
                   <th className="py-3 px-5 whitespace-nowrap">服务名称</th>
                   <th className="py-3 px-5 whitespace-nowrap">所属分类</th>
                   <th className="py-3 px-5 whitespace-nowrap">运行状态</th>
-                  <th className="py-3 px-5 whitespace-nowrap">实测响应耗时</th>
+                  <th className="py-3 px-5 whitespace-nowrap">响应延迟</th>
                   <th className="py-3 px-5 whitespace-nowrap">运行状态说明</th>
                   <th className="py-3 px-5 whitespace-nowrap">健康评级</th>
                   <th className="py-3 px-5 whitespace-nowrap text-right">运维操作</th>
@@ -607,7 +623,7 @@ export default function SystemStatusPage() {
                           onClick={() => handleTestSingleService(srv.id)}
                           disabled={isTestingThis}
                           className="px-2.5 py-1 text-xs font-bold text-[#3182ce] hover:bg-blue-50 rounded-lg border border-blue-200/80 transition-all cursor-pointer inline-flex items-center gap-1 active:scale-95 disabled:opacity-50"
-                          title="对该服务发起一次真实独立的连通性探针"
+                          title="对该服务发起连通性检测"
                         >
                           {isTestingThis ? (
                             <Loader2 className="w-3 h-3 animate-spin" />
@@ -636,7 +652,7 @@ export default function SystemStatusPage() {
                   平台核心业务数据统计
                 </h4>
               </div>
-              <span className="text-[11px] text-slate-400 font-medium">来自真实数据库实时查询</span>
+              <span className="text-[11px] text-slate-400 font-medium">平台业务指标汇总</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
@@ -668,12 +684,12 @@ export default function SystemStatusPage() {
 
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold">全流程组件</div>
+                  <div className="text-[11px] text-slate-400 font-bold">功能组件矩阵</div>
                   <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
                     {data?.stats?.componentCount || 0}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    组件库纳管原型
+                    已上架: {data?.stats?.publishedComponentCount || 0} · 任务: {data?.stats?.componentTaskCount || 0}
                   </div>
                 </div>
                 <Box className="w-5 h-5 text-emerald-600 opacity-70 shrink-0 ml-2" />
@@ -698,8 +714,8 @@ export default function SystemStatusPage() {
                   <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
                     {data?.stats?.totalAppealCount || 0}
                   </div>
-                  <div className={`text-[10px] font-bold mt-0.5 ${((data?.pendingAppealCount || 0) > 0) ? "text-amber-600" : "text-slate-500"}`}>
-                    待审核: {data?.pendingAppealCount || 0} 项
+                  <div className={`text-[10px] font-bold mt-0.5 ${((data?.stats?.pendingAppealCount || 0) > 0) ? "text-amber-600" : "text-slate-500"}`}>
+                    待审核: {data?.stats?.pendingAppealCount || 0} 项
                   </div>
                 </div>
                 <Radio className="w-5 h-5 text-red-500 opacity-70 shrink-0 ml-2" />
@@ -707,15 +723,54 @@ export default function SystemStatusPage() {
 
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold">知识文档与配置</div>
+                  <div className="text-[11px] text-slate-400 font-bold">知识技术文档</div>
                   <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
                     {data?.stats?.docCount || 0}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    文档: {data?.stats?.docCount || 0} · 配置: {data?.stats?.configCount || 0}
+                    已发布上线: {data?.stats?.publishedDocCount || 0} 篇
                   </div>
                 </div>
-                <FileText className="w-5 h-5 text-blue-600 opacity-70 shrink-0 ml-2" />
+                <BookOpen className="w-5 h-5 text-blue-600 opacity-70 shrink-0 ml-2" />
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold">算力流水与订单</div>
+                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
+                    {data?.stats?.pointsLedgerCount || 0}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    充值工单: {data?.stats?.rechargeOrderCount || 0} 笔
+                  </div>
+                </div>
+                <Coins className="w-5 h-5 text-amber-500 opacity-70 shrink-0 ml-2" />
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold">套餐与会员体系</div>
+                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
+                    {(data?.stats?.workspacePlanCount || 0) + (data?.stats?.membershipLevelCount || 0)}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    空间套餐: {data?.stats?.workspacePlanCount || 0} · 会员: {data?.stats?.membershipLevelCount || 0}
+                  </div>
+                </div>
+                <CreditCard className="w-5 h-5 text-indigo-500 opacity-70 shrink-0 ml-2" />
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold">系统配置与权限</div>
+                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
+                    {data?.stats?.configCount || 0}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    参数项: {data?.stats?.configCount || 0} · 权限: {data?.stats?.permissionCount || 0}
+                  </div>
+                </div>
+                <Key className="w-5 h-5 text-teal-600 opacity-70 shrink-0 ml-2" />
               </div>
             </div>
           </div>
@@ -729,7 +784,7 @@ export default function SystemStatusPage() {
                   系统软件与运行环境
                 </h4>
               </div>
-              <span className="text-[11px] text-slate-400 font-medium">真实探针探测</span>
+              <span className="text-[11px] text-slate-400 font-medium">实时采集</span>
             </div>
 
             <div className="space-y-2.5 text-xs">
@@ -782,7 +837,7 @@ export default function SystemStatusPage() {
                     系统健康全量体检报告
                   </h3>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
-                    真实实测巡检已完成，综合评分：{lastReportData.healthScore} 分 (满分 100)
+                    深度健康巡检已完成，综合评分：{lastReportData.healthScore} 分 (满分 100)
                   </p>
                 </div>
               </div>
@@ -798,14 +853,14 @@ export default function SystemStatusPage() {
             <div className="p-6 space-y-4 text-left max-h-[70vh] overflow-y-auto">
               {/* 动态诊断结论 */}
               <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-emerald-800 leading-relaxed font-medium">
-                ✅ <strong>实测诊断结论：</strong>
+                ✅ <strong>巡检诊断结论：</strong>
                 {lastReportData.inspectionReport?.conclusion ||
-                  `系统当前状态为「${lastReportData.overallStatus}」，综合健康评分 ${lastReportData.healthScore} 分，数据库直连实测往返延迟 ${lastReportData.dbLatency} ms。`}
+                  `系统当前状态为「${lastReportData.overallStatus}」，综合健康评分 ${lastReportData.healthScore} 分，数据库往返延迟 ${lastReportData.dbLatency} ms。`}
               </div>
 
               {/* 各服务真实探测清单 */}
               <div className="space-y-2">
-                <span className="text-xs font-bold text-slate-700 block">各核心子系统真实探测实测耗时：</span>
+                <span className="text-xs font-bold text-slate-700 block">各核心服务响应延迟：</span>
                 <div className="space-y-1.5">
                   {lastReportData.services.map((s) => (
                     <div

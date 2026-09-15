@@ -937,14 +937,14 @@ export default function WorkspacePlansAdminPage() {
                     特性说明（前端卡片展示）
                   </h4>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#2b6cb0] border border-blue-100">
-                    4 项核心指标由数据库字段动态驱动
+                    包含 4 项核心配额规格指标
                   </span>
                 </div>
 
                 {/* 1. 动态基准特性：由上方配额字段实时联动生成，禁止且无需手动写死 */}
                 <div className="space-y-1.5">
                   <span className="text-[11px] font-bold text-slate-500 block">
-                    系统基准指标（实时联动上方数据库字段，无需手动写死）：
+                    套餐基准规格指标（与上方配额设置自动联动）：
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {generateCoreQuotaFeatures(form).map((item) => {
@@ -1006,7 +1006,7 @@ export default function WorkspacePlansAdminPage() {
 
                   {(form.features || []).length === 0 && (
                     <p className="text-[11px] text-slate-400 font-medium py-1">
-                      暂无自定义扩展特性，前端卡片将默认展示上述 4 项数据库基准指标。
+                      暂无自定义扩展特性，前端卡片将默认展示上述 4 项基准规格指标。
                     </p>
                   )}
                 </div>

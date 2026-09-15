@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
+import { addNotification } from "@/lib/notifications-store";
 
 /**
  * 算力点统一账务服务（全系统唯一入口）
@@ -350,6 +351,84 @@ export async function consumePoints(params: ConsumeParams): Promise<ConsumeResul
         details: [],
         balanceAfter: Number.MAX_SAFE_INTEGER,
       };
+    }
+
+    // 2.5 企业空间普通成员：仅从其独立余额（workspacemember.tokenBalance）扣减，不消耗共享池
+    if (params.workspaceType === "ENTERPRISE") {
+      const member = await tx.workspacemember.findUnique({
+        where: { userId_workspaceId: { userId: params.userId, workspaceId: params.workspaceId } },
+      });
+      if (member && member.role === "MEMBER") {
+        const memberBalance = Number(member.tokenBalance);
+        if (memberBalance < need) {
+          throw new InsufficientPointsError(memberBalance, need);
+        }
+        const updatedMember = await tx.workspacemember.update({
+          where: { id: member.id },
+          data: {
+            tokenBalance: { decrement: BigInt(need) },
+            monthlyTokenUsed: { increment: BigInt(need) },
+            updatedAt: now,
+          },
+        });
+        const balanceAfterMember = updatedMember
+          ? Number(updatedMember.tokenBalance)
+          : memberBalance - need;
+        const ledger = await tx.pointledger.create({
+          data: {
+            id: crypto.randomUUID(),
+            direction: "OUT",
+            type: "CONSUME",
+            scope: "WORKSPACE",
+            userId: params.userId,
+            userEmail: params.userEmail ?? null,
+            workspaceId: params.workspaceId,
+            workspaceType: "ENTERPRISE",
+            workspaceName: params.workspaceName ?? null,
+            operatorId: params.userId,
+            points: BigInt(need),
+            balanceAfter: BigInt(balanceAfterMember),
+            componentId: params.componentId ?? null,
+            componentName: params.componentName ?? null,
+            taskId: params.taskId ?? null,
+            title: params.componentName
+              ? `组件消耗：${params.componentName}`
+              : "组件算力消耗",
+            remark: params.remark ?? "成员独立余额扣减",
+            idempotencyKey: params.idempotencyKey ? `${params.idempotencyKey}#1` : null,
+          },
+        });
+        // 成员独立余额刚好耗尽（=0）→ 提醒空间所有者/管理员及时分配算力
+        if (balanceAfterMember === 0) {
+          try {
+            const admins = await tx.workspacemember.findMany({
+              where: { workspaceId: params.workspaceId, role: { in: ["OWNER", "ADMIN"] } },
+              select: { userId: true },
+            });
+            const memberName = params.userEmail ?? params.userId;
+            const link = `/workspace/${params.workspaceId}/members`;
+            for (const a of admins) {
+              await addNotification(
+                a.userId,
+                "成员算力余额已耗尽",
+                `成员「${memberName}」的独立算力点已用尽（剩余 0 点），将无法继续执行组件任务。请前往「成员」页为其分配算力。`,
+                "workspace",
+                link
+              );
+            }
+          } catch (notifyErr) {
+            console.warn("[credit] 成员余额耗尽通知发送失败:", notifyErr);
+          }
+        }
+        return {
+          skipped: false,
+          unlimited: false,
+          consumed: need,
+          ledgerIds: [ledger.id],
+          details: [{ grantId: "", scope: "WORKSPACE", sourceType: "MEMBER", points: need }],
+          balanceAfter: balanceAfterMember,
+        };
+      }
     }
 
     // 3. 取当前上下文可用的分桶：用户钱包（跨空间）+ 当前空间共享池/专属赠送
@@ -750,6 +829,7 @@ export interface BalanceSummary {
 export async function getBalanceSummary(
   userId: string,
   workspaceId?: string | null,
+  opts?: { memberTokenBalance?: number | null },
 ): Promise<BalanceSummary> {
   await expireExpiredGrants({ userId, workspaceId: workspaceId ?? null });
 
@@ -764,6 +844,12 @@ export async function getBalanceSummary(
       unlimited = quota.tokenBalance === BigInt(UNLIMITED_BALANCE);
       workspaceBalance = Number(quota.tokenBalance);
     }
+  }
+
+  // 普通成员视图：可用余额为其在本空间的独立余额，不并入共享池
+  if (typeof opts?.memberTokenBalance === "number") {
+    workspaceBalance = opts.memberTokenBalance;
+    unlimited = false;
   }
 
   const soon = new Date(Date.now() + EXPIRE_REMIND_DAYS * 24 * 60 * 60 * 1000);
@@ -788,7 +874,11 @@ export async function getBalanceSummary(
   return {
     walletBalance,
     workspaceBalance,
-    available: unlimited ? null : walletBalance + workspaceBalance,
+    available: unlimited
+      ? null
+      : typeof opts?.memberTokenBalance === "number"
+      ? workspaceBalance
+      : walletBalance + workspaceBalance,
     unlimited,
     expiringPoints,
     expiringAt,

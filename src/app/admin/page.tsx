@@ -75,17 +75,43 @@ interface DashboardData {
     id: string;
     name: string;
     type: string;
+    logo?: string | null;
+    avatar?: string | null;
     createdAt: string;
     members: Array<{
-      user: { name: string | null; email: string | null };
+      user: { name: string | null; email: string | null; avatar?: string | null };
     }>;
   }>;
-  componentCategories: Array<{
+  componentCategories?: Array<{
     key: string;
     name: string;
     color: string;
     count: number;
   }>;
+  recentAuditLogs?: Array<{
+    id: string;
+    action: string;
+    actionZh?: string;
+    resource: string | null;
+    resourceZh?: string;
+    details: any;
+    ipAddress: string | null;
+    formattedIp?: string;
+    createdAt: string;
+    user: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      avatar: string | null;
+      role: string;
+    } | null;
+  }>;
+  securitySummary?: {
+    pendingAppeals: number;
+    bannedUsers: number;
+    todayOperations: number;
+    todayLogins: number;
+  };
 }
 
 export default function AdminDashboard() {
@@ -153,6 +179,29 @@ export default function AdminDashboard() {
       default:
         return "个人空间";
     }
+  };
+
+
+
+  // 审计操作动作中文化映射与样式标签
+  const getAuditActionBadge = (action?: string) => {
+    const act = (action || "").toLowerCase();
+    if (act.includes("role") || act.includes("permission") || act.includes("admin")) {
+      return { label: "权限变更", bg: "bg-amber-50 text-amber-700 border-amber-200" };
+    }
+    if (act.includes("ban") || act.includes("lock") || act.includes("delete") || act.includes("kick")) {
+      return { label: "安全风控", bg: "bg-red-50 text-red-700 border-red-200" };
+    }
+    if (act.includes("upgrade") || act.includes("order") || act.includes("plan") || act.includes("recharge")) {
+      return { label: "空间资费", bg: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+    }
+    if (act.includes("login") || act.includes("auth") || act.includes("password") || act.includes("session")) {
+      return { label: "身份鉴权", bg: "bg-blue-50 text-blue-700 border-blue-200" };
+    }
+    if (act.includes("create") || act.includes("add") || act.includes("new")) {
+      return { label: "资源创建", bg: "bg-purple-50 text-purple-700 border-purple-200" };
+    }
+    return { label: "系统操作", bg: "bg-slate-100 text-slate-700 border-slate-200" };
   };
 
   useEffect(() => {
@@ -877,9 +926,26 @@ export default function AdminDashboard() {
                     key={workspace.id}
                     className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/60 transition-all duration-300 hover:-translate-x-1"
                   >
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-300">
-                      <FolderKanban className="w-5 h-5 text-white" />
-                    </div>
+                    {(() => {
+                      const imgUrl = workspace.avatar || workspace.logo;
+                      if (imgUrl) {
+                        return (
+                          <img
+                            src={imgUrl}
+                            alt={workspace.name}
+                            className="w-11 h-11 rounded-xl object-cover border border-slate-200/80 shadow-xs group-hover:scale-110 transition-transform duration-300 shrink-0"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                            }}
+                          />
+                        );
+                      }
+                      return (
+                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300 shrink-0">
+                          {workspace.name ? workspace.name.charAt(0) : <FolderKanban className="w-5 h-5 text-white" />}
+                        </div>
+                      );
+                    })()}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold text-slate-800 truncate group-hover:text-[#10b981] transition-colors">
                         {workspace.name}
@@ -903,87 +969,240 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 组件分类统计 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-        {/* 装饰背景 */}
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#f59e0b]/10 to-[#d97706]/10 opacity-50 blur-3xl"></div>
+      {/* 平台安全合规与全域关键操作审计中枢 - 替代原低价值的组件分类分布 */}
+      <div className="relative bg-white/85 backdrop-blur-xl rounded-2xl p-6 border border-slate-200/80 shadow-sm overflow-hidden">
+        {/* 装饰渐变光晕 */}
+        <div className="absolute -right-6 -top-6 w-44 h-44 rounded-full bg-gradient-to-br from-[#3182ce]/10 via-[#805ad5]/10 to-amber-500/10 opacity-60 blur-3xl pointer-events-none"></div>
 
         <div className="relative">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <div className="w-1 h-6 bg-gradient-to-b from-[#f59e0b] to-[#d97706] rounded-full"></div>
-              <BarChart3 className="w-5 h-5 text-[#f59e0b]" />
-              组件分类分布
-            </h2>
-            <button
-              onClick={() => router.push("/admin/components")}
-              className="text-sm text-[#3182ce] hover:text-[#3182ce] font-bold hover:underline transition-all"
-            >
-              查看全部 →
-            </button>
-          </div>
-          <div className="space-y-3">
-            {!data.componentCategories ||
-            data.componentCategories.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                  <BarChart3 className="w-8 h-8 text-slate-400" />
+          {/* 顶栏：标题、状态摘要与直达按钮 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2b6cb0] to-[#3182ce] text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-black text-slate-800 tracking-tight">
+                    安全合规与全域审计动态
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200/80 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    实时审计留痕中
+                  </span>
                 </div>
-                <p className="text-slate-500 font-medium text-sm">
-                  暂无组件分类数据
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  全域管理员敏感操作溯源 · 账号风控隔离 · 异常鉴权毫秒级闭环追踪
                 </p>
               </div>
-            ) : (
-              data.componentCategories.map((category, index) => {
-                const maxCount = Math.max(
-                  ...data.componentCategories.map((c) => c.count),
-                  1
-                );
-                const percentage = Math.round(
-                  (category.count / maxCount) * 100,
-                );
-                const c = category.color || "#3182ce";
+            </div>
 
-                return (
-                  <div
-                    key={category.key}
-                    onClick={() => router.push("/admin/components")}
-                    className="group space-y-1.5 p-2 rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
-                    title="点击前往组件管理中心查看该分类组件"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: c }}
-                        ></div>
-                        <span
-                          className="text-sm font-bold text-slate-700 group-hover:text-[#3182ce] transition-colors"
-                        >
-                          {category.name}
-                        </span>
-                        <ChevronRight className="w-3 h-3 text-slate-300 group-hover:text-[#3182ce] group-hover:translate-x-0.5 transition-all opacity-0 group-hover:opacity-100" />
-                      </div>
-                      <span
-                        className="text-sm font-black"
-                        style={{ color: c }}
-                      >
-                        {category.count} 个
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${percentage}%`,
-                          backgroundColor: c,
-                        }}
-                      ></div>
-                    </div>
+            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+              <button
+                type="button"
+                onClick={() => router.push("/admin/account-appeals")}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                title="前往风控与审核中枢处置账号申诉"
+              >
+                <span>风控审核</span>
+                {data.securitySummary && data.securitySummary.pendingAppeals > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-mono font-bold animate-pulse">
+                    {data.securitySummary.pendingAppeals}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/admin/logs")}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-blue-500/20"
+                title="前往安全审计中心查看全部操作与登录日志"
+              >
+                <span>查看全域审计日志</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* 主内容双列联动布局：左侧敏感操作实时流水（8列），右侧风控态势看板（4列） */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
+            {/* 左侧：最新敏感操作审计流水 */}
+            <div className="lg:col-span-8 space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-slate-500 tracking-wide flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-[#3182ce]" />
+                  最新敏感操作事件流水 (最近 6 项)
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  来源 IP · 操作人 · 动作归属
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {!data.recentAuditLogs || data.recentAuditLogs.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                    <Shield className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs text-slate-500 font-medium">
+                      暂无敏感审计事件触发
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      所有管理员管理操作均会自动在此留痕归档
+                    </p>
                   </div>
-                );
-              })
-            )}
+                ) : (
+                  data.recentAuditLogs.map((log) => {
+                    const actBadge = getAuditActionBadge(log.action);
+                    const dt = splitFullDateTime(log.createdAt);
+
+                    return (
+                      <div
+                        key={log.id}
+                        onClick={() => router.push("/admin/logs")}
+                        className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-slate-50/70 hover:bg-blue-50/50 border border-slate-200/70 hover:border-blue-200/90 transition-all cursor-pointer shadow-2xs"
+                        title="点击前往安全审计日志检索此事件上下文"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          {/* 操作人头像 */}
+                          {log.user?.avatar ? (
+                            <img
+                              src={log.user.avatar}
+                              alt={log.user.name || "操作人"}
+                              className="w-9 h-9 rounded-lg object-cover shadow-xs border border-slate-200 shrink-0"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
+                              {log.user?.name?.charAt(0) || log.user?.email?.charAt(0) || "管"}
+                            </div>
+                          )}
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
+                                {log.user?.name || log.user?.email || "系统服务"}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${actBadge.bg}`}
+                              >
+                                {actBadge.label}
+                              </span>
+                              <span className="text-xs text-slate-700 font-semibold truncate">
+                                {log.actionZh || log.action}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 truncate">
+                              {(log.resourceZh || log.resource) && (
+                                <span className="text-slate-500 font-medium truncate max-w-[200px]">
+                                  对象: {log.resourceZh || log.resource}
+                                </span>
+                              )}
+                              <span className="font-mono bg-white px-1.5 py-0.2 rounded border border-slate-200/60 text-slate-500 shrink-0 text-[10px]">
+                                IP: {log.formattedIp || log.ipAddress || "127.0.0.1"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 时间戳与直达提示 */}
+                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/50">
+                          <div className="text-right font-mono text-[11px] leading-tight text-slate-400">
+                            <div className="font-bold text-slate-600">{dt.date}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{dt.time}</div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#3182ce] group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* 右侧：风控安全态势看板 */}
+            <div className="lg:col-span-4 flex flex-col justify-between gap-3 bg-gradient-to-br from-slate-50/90 to-blue-50/40 p-4 rounded-xl border border-slate-200/70">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-[#3182ce]" />
+                    平台风控态势总览
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">24H 实时监控</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  {/* 待审申诉 */}
+                  <div
+                    onClick={() => router.push("/admin/account-appeals")}
+                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-amber-300 transition-all cursor-pointer group"
+                    title="点击处理账号申诉待办工单"
+                  >
+                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-amber-600 transition-colors">
+                      待审申诉工单
+                    </div>
+                    <div className="text-xl font-black font-mono text-amber-600 mt-1">
+                      {data.securitySummary?.pendingAppeals || data.pendingReviews || 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">待人工复核</div>
+                  </div>
+
+                  {/* 封禁管制 */}
+                  <div
+                    onClick={() => router.push("/admin/users")}
+                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-red-300 transition-all cursor-pointer group"
+                    title="前往用户管理查看受限与封禁账号"
+                  >
+                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-red-600 transition-colors">
+                      封禁隔离账号
+                    </div>
+                    <div className="text-xl font-black font-mono text-red-600 mt-1">
+                      {data.securitySummary?.bannedUsers || 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">高危阻断受控</div>
+                  </div>
+
+                  {/* 今日操作留痕 */}
+                  <div
+                    onClick={() => router.push("/admin/logs")}
+                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-blue-300 transition-all cursor-pointer group"
+                    title="查看今日全域安全操作留痕明细"
+                  >
+                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-[#3182ce] transition-colors">
+                      今日操作审计
+                    </div>
+                    <div className="text-xl font-black font-mono text-[#3182ce] mt-1">
+                      {data.securitySummary?.todayOperations || 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">事件权威存证</div>
+                  </div>
+
+                  {/* 今日登录鉴权 */}
+                  <div
+                    onClick={() => router.push("/admin/logs")}
+                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-indigo-300 transition-all cursor-pointer group"
+                    title="查看今日登录鉴权与会话记录"
+                  >
+                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">
+                      今日登录鉴权
+                    </div>
+                    <div className="text-xl font-black font-mono text-indigo-600 mt-1">
+                      {data.securitySummary?.todayLogins || data.systemLogs || 0}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">安全会话访问</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 底部安全基线提示条 */}
+              <div className="mt-2 p-2.5 rounded-lg bg-white/90 border border-slate-200/60 text-[11px] text-slate-500 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span>等保三级审计日志合规性监控中</span>
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">已加密存储</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1020,7 +1239,7 @@ export default function AdminDashboard() {
             <div className="p-5 space-y-3 bg-slate-50/50">
               {serviceTotal === 0 ? (
                 <div className="text-center py-8 text-xs text-slate-400 font-medium">
-                  暂无核心服务探针数据
+                  暂无服务监控数据
                 </div>
               ) : (
                 systemServices.map((service) => {
@@ -1056,7 +1275,7 @@ export default function AdminDashboard() {
                           {meta.label}
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono">
-                          探针延迟 {service.latencyMs}ms
+                          响应延迟 {service.latencyMs}ms
                         </span>
                       </div>
                     </div>

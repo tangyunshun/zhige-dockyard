@@ -646,6 +646,9 @@ model workspacemember {
   monthlyTokenLimit BigInt?
   /// 空间当月已消耗算力点（旧称 monthlyTokenUsed）
   monthlyTokenUsed  BigInt               @default(0)
+  /// 成员在本企业空间内的独立算力点余额：由空间所有者/管理员「配置算力」时从共享池分配，
+  /// 成员执行组件任务时仅从此余额扣减（独立记账，不污染空间共享池）
+  tokenBalance      BigInt               @default(0)
   quotaResetAt      DateTime?
   joinedAt          DateTime             @default(now())
   user              user                 @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")

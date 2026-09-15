@@ -72,8 +72,8 @@ export async function GET(request: NextRequest) {
       console.warn("自动清理超过3年的历史申诉记录失败:", e);
     }
 
-    // 查询申诉列表
-    const [appeals, total] = await Promise.all([
+    // 查询申诉列表与数据库实际包含的全部申诉业务类型（从数据库实时聚合，杜绝代码写死）
+    const [appeals, total, distinctTypes] = await Promise.all([
       prisma.accountappeal.findMany({
         where,
         skip,
@@ -94,7 +94,20 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.accountappeal.count({ where }),
+      prisma.accountappeal.findMany({
+        select: { businessType: true },
+        distinct: ["businessType"],
+      }).catch(() => []),
     ]);
+
+    const businessTypes = Array.from(
+      new Set(
+        distinctTypes
+          .map((t: any) => t.businessType)
+          .filter(Boolean)
+          .concat(["账号解封申诉", "空间解封申诉"])
+      )
+    );
 
     return NextResponse.json({
       success: true,
@@ -106,6 +119,7 @@ export async function GET(request: NextRequest) {
         userAvatar: a.user?.avatar || null,
         businessType: a.businessType || "账号解封申诉",
       })),
+      businessTypes,
       pagination: {
         total,
         page,

@@ -8,8 +8,9 @@ export async function GET(request: NextRequest) {
     // 严格校验工作空间读取权限（无权直接阻断）
     const authCheck = await requirePlatformPermission(request, "workspace:read");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      return authCheck.errorResponse || NextResponse.json({ error: "无权访问工作空间管理" }, { status: 403 });
     }
+    const currentAdminId = authCheck.user?.id || "";
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
         workspacemember: {
           include: {
             user: {
-              select: { name: true, email: true },
+              select: { name: true, email: true, avatar: true },
             },
           },
         },
@@ -79,9 +80,12 @@ export async function GET(request: NextRequest) {
       const componentCountValue = allWsCompMap.get(workspace.id)?.size || 0;
       // 剔除原始 workspacemember（含 BigInt 字段），避免序列化报错
       const { workspacemember, ...workspaceBase } = workspace;
+      const ownerAvatar = workspacemember?.[0]?.user?.avatar || null;
       return {
         ...workspaceBase,
         componentCount: componentCountValue,
+        logo: workspace.logo,
+        avatar: workspace.logo || ownerAvatar || null,
         members: workspacemember,
       };
     });
@@ -97,7 +101,7 @@ export async function GET(request: NextRequest) {
           workspacemember: {
             include: {
               user: {
-                select: { name: true, email: true },
+                select: { name: true, email: true, avatar: true },
               },
             },
           },
@@ -109,11 +113,11 @@ export async function GET(request: NextRequest) {
       prisma.workspace.count({ where }),
     ]);
 
-    // 批量查询所有工作空间的所有者（Owner）角色与信息，用于安全保护判断
+    // 批量查询所有工作空间的所有者（Owner）角色与信息，用于安全保护判断与真实空间头像继承
     const ownerIds = Array.from(new Set(workspaces.map((w) => w.ownerId).filter(Boolean)));
     const owners = await prisma.user.findMany({
       where: { id: { in: ownerIds } },
-      select: { id: true, name: true, email: true, role: true },
+      select: { id: true, name: true, email: true, role: true, avatar: true },
     });
     const ownerMap = new Map(owners.map((o) => [o.id, o]));
 
@@ -255,15 +259,23 @@ export async function GET(request: NextRequest) {
         const owner = ownerMap.get(workspace.ownerId) || null;
         const isProtected = Boolean(
           (owner && (owner.role === "SUPER_ADMIN" || owner.role === "ADMIN")) ||
-          workspace.ownerId === userId
+          (currentAdminId && workspace.ownerId === currentAdminId)
         );
 
         // 剔除原始 workspacemember（含 BigInt 字段），避免 JSON 序列化报错
         const { workspacemember, ...workspaceBase } = workspace;
         const memberCount = workspace._count?.workspacemember ?? workspacemember.length ?? 0;
         const isEnterprise = workspace.type === "ENTERPRISE";
+        const realAvatar =
+          workspace.logo ||
+          owner?.avatar ||
+          workspacemember?.find((m: any) => m.user?.avatar)?.user?.avatar ||
+          null;
+
         return {
           ...workspaceBase,
+          logo: workspace.logo,
+          avatar: realAvatar,
           status: currentStatus,
           disabledUntil,
           disabledReason,
@@ -273,7 +285,7 @@ export async function GET(request: NextRequest) {
           componentCount: componentCountValue,
           memberCount,
           owner: owner
-            ? { id: owner.id, name: owner.name, email: owner.email, role: owner.role }
+            ? { id: owner.id, name: owner.name, email: owner.email, role: owner.role, avatar: owner.avatar }
             : null,
           isProtected,
           _count: {
@@ -359,9 +371,11 @@ export async function DELETE(request: NextRequest) {
     // 严格校验超级管理员权限（工作空间解散与销毁为高危动作，仅限超级管理员）
     const authCheck = await requirePlatformPermission(request, "workspace:status_update");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
-    if (!authCheck.isSuperAdmin) {
+    const roleUpper = String(authCheck.user?.role || "").toUpperCase();
+    const isSuperAdmin = roleUpper === "SUPER_ADMIN" || roleUpper === "SUPERADMIN" || roleUpper === "SUPER";
+    if (!isSuperAdmin) {
       return NextResponse.json({ error: "工作空间彻底解散仅限超级管理员执行" }, { status: 403 });
     }
 

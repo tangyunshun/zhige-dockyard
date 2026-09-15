@@ -26,7 +26,6 @@ import {
   Mail,
   Phone,
   Calendar,
-  Sparkles,
   Layers,
   Crown,
   Award,
@@ -76,6 +75,14 @@ export default function OrdersPage() {
 
   const [records, setRecords] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [serverStats, setServerStats] = useState<{
+    totalRevenue: number;
+    totalOrders: number;
+    tokenRechargeCount: number;
+    planUpgradeCount: number;
+    availableTypes: string[];
+    availableChannels: string[];
+  } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -109,6 +116,9 @@ export default function OrdersPage() {
       if (res.ok) {
         const data = await res.json();
         setRecords(data.records || []);
+        if (data.stats) {
+          setServerStats(data.stats);
+        }
       } else {
         const err = await res.json().catch(() => null);
         toast.error(err?.error || "拉取交易账单失败");
@@ -121,9 +131,11 @@ export default function OrdersPage() {
     }
   };
 
-  const totalRevenue = records.reduce((sum, r) => sum + (r.amount || 0), 0);
-  const tokenRechargeCount = records.filter((r) => r.type === "TOKEN_RECHARGE").length;
-  const planUpgradeCount = records.filter((r) => r.type === "PLAN_UPGRADE").length;
+  // 全库真实统计指标（数据库驱动聚合，不受分页 100 条限制）
+  const totalRevenue = serverStats ? serverStats.totalRevenue : records.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalOrdersCount = serverStats ? serverStats.totalOrders : records.length;
+  const tokenRechargeCount = serverStats ? serverStats.tokenRechargeCount : records.filter((r) => r.type === "TOKEN_RECHARGE").length;
+  const planUpgradeCount = serverStats ? serverStats.planUpgradeCount : records.filter((r) => r.type === "PLAN_UPGRADE").length;
 
   const filteredRecords = records.filter((r) => {
     const query = searchTerm.toLowerCase().trim();
@@ -248,7 +260,7 @@ export default function OrdersPage() {
     if (ch.includes("MANUAL") || ch.includes("SYSTEM") || ch.includes("ADMIN")) {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-          <Sparkles className="w-3 h-3" />
+          <CheckCircle2 className="w-3 h-3" />
           系统调账入账
         </span>
       );
@@ -355,7 +367,7 @@ export default function OrdersPage() {
           <div>
             <div className="text-xs text-slate-500 font-bold mb-1">有效交易笔数</div>
             <div className="text-2xl font-black font-mono text-slate-900">
-              {records.length} <span className="text-xs font-normal text-slate-400">单</span>
+              {totalOrdersCount} <span className="text-xs font-normal text-slate-400">单</span>
             </div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
@@ -406,7 +418,6 @@ export default function OrdersPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* 交易类型筛选 */}
-          {/* 交易类型筛选 */}
           <select
             value={typeFilter}
             onChange={(e) => {
@@ -419,6 +430,13 @@ export default function OrdersPage() {
             <option value="TOKEN_RECHARGE">算力加油包充值</option>
             <option value="PLAN_UPGRADE">空间套餐升级</option>
             <option value="MEMBERSHIP">会员级别订阅</option>
+            {serverStats?.availableTypes
+              ?.filter((t) => !["TOKEN_RECHARGE", "PLAN_UPGRADE", "MEMBERSHIP"].includes(t))
+              .map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
           </select>
 
           {/* 支付状态筛选 */}
@@ -558,7 +576,7 @@ export default function OrdersPage() {
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-purple-50 text-purple-700 border border-purple-200">
-                            <Sparkles className="w-3 h-3" />
+                            <Crown className="w-3 h-3 text-purple-600" />
                             会员订阅
                           </span>
                         )}

@@ -96,7 +96,13 @@ export async function POST(request: NextRequest) {
             userId,
             action: "SECURITY_DIAGNOSIS",
             resource: "Security",
-            details: `Calculated safety score: ${score} (scale=${envScale}, isolation=${isolationLevel}, compliance=${complianceType})`,
+            details: {
+              message: `完成账户安全体检诊断，综合安全评分 ${score} 分（满分 100）`,
+              safetyScore: score,
+              environmentScale: envScale,
+              isolationLevel: isolationLevel,
+              complianceType: complianceType,
+            },
           },
         });
       } catch (logError) {

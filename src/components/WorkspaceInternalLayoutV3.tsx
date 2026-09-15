@@ -10,7 +10,7 @@ import {
   CheckCircle2, Play, Users, BarChart2, ShieldAlert, FileDown, Clipboard, Trash2, Edit2, HelpCircle, Info,
   Upload, Save, AlertTriangle, Copy, KeyRound, ExternalLink, Share2, Ban, Clock, History, Zap, PenLine, Eye,
   Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock, Sparkles,
-  SlidersHorizontal, Briefcase, Crown
+  SlidersHorizontal, Briefcase, Crown, Loader2
 } from "lucide-react";
 import AvatarDropdown from "@/components/AvatarDropdown";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
@@ -71,6 +71,17 @@ interface ZhiGeComponent {
   icon: string;
   isPremium?: boolean;
 }
+
+// 上传文件队列项（支持一次最多上传 MAX_UPLOAD_FILES 个文件，逐个解析并展示状态）
+type UploadedFileItem = {
+  id: string;
+  name: string;
+  size: string;
+  sizeBytes: number;
+  status: "queued" | "parsing" | "done" | "error";
+  text?: string;
+  error?: string;
+};
 
 // 标准化与格式化时间字符串 (展现为标准 YYYY-MM-DD HH:mm:ss)
 function formatTaskTime(rawTime?: string): string {  if (!rawTime) return "近期";
@@ -344,6 +355,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [quickResultHistoryOpen, setQuickResultHistoryOpen] = useState(false);
   const [materialInputMode, setMaterialInputMode] = useState<"text" | "file" | "asset">("text");
   const [uploadedFileMeta, setUploadedFileMeta] = useState<{ name: string; size: string; sizeBytes?: number } | null>(null);
+  // 文件上传队列（支持一次最多上传多个文件，每个文件独立解析并显示状态）
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
+  // 服务端解析文件中（含图片 OCR），用于持续显示解析进度提示
+  const [extractingText, setExtractingText] = useState(false);
+  // 一次最多上传文件数 / 同时解析并发数
+  const MAX_UPLOAD_FILES = 5;
+  const PARSE_CONCURRENCY = 3;
   const [selectedAsset, setSelectedAsset] = useState<{ id: string; title: string } | null>(null);
   const [showFullMaterialModal, setShowFullMaterialModal] = useState<boolean>(false);
   const [showRechargeModal, setShowRechargeModal] = useState<boolean>(false);
@@ -365,6 +383,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   // 自动匹配面板的文件上传（仅支持纯文本）
   const [aiMatchFileMeta, setAiMatchFileMeta] = useState<{ name: string; size: string; sizeBytes?: number } | null>(null);
   const [aiMatchFileText, setAiMatchFileText] = useState<string>("");
+  // 自动匹配面板的多文件上传队列
+  const [aiMatchFiles, setAiMatchFiles] = useState<UploadedFileItem[]>([]);
   const aiMatchFileInputRef = useRef<HTMLInputElement>(null);
   // 自动匹配结果详情弹窗
   const [aiMatchDetailModal, setAiMatchDetailModal] = useState<ComponentDefinition | null>(null);
@@ -417,9 +437,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     const binaryExts = [
       ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"
     ];
+    // 图片由服务端 tesseract.js OCR 识别文字
+    const imageExts = [
+      ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"
+    ];
     const nameLower = (fileName || "").toLowerCase();
     const typeLower = (mimeType || "").toLowerCase();
     if (binaryExts.some(ext => nameLower.endsWith(ext))) return true;
+    if (imageExts.some(ext => nameLower.endsWith(ext))) return true;
     if (
       typeLower.includes("pdf") ||
       typeLower.includes("word") ||
@@ -428,146 +453,185 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       typeLower.includes("presentation") ||
       typeLower.includes("powerpoint")
     ) return true;
+    if (typeLower.startsWith("image/")) return true;
     return false;
   }
 
-  const handleFileUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const sizeStr = file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : `${Math.round(file.size / 1024)} KB`;
-    setUploadedFileMeta({ name: file.name, size: sizeStr, sizeBytes: file.size });
-
-    // 1. 纯文本文件：本地 readAsText
-    if (isAllowedTextFile(file.name, file.type || "")) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        if (typeof content !== "string") {
-          toast.error("读取文件失败，内容格式异常");
-          return;
-        }
-        // 二次校验：若 readAsText 后出现二进制特征（如 PDF 魔数、空字节、替换字符），拒绝入库
-        if (isProbablyBinaryContent(content)) {
-          toast.error(
-            `「${file.name}」读取后出现乱码特征（可能是二进制文件伪造成文本扩展名）。请使用真正的纯文本文件，或先提取文本后粘贴。`
-          );
-          setUploadedFileMeta(null);
-          setQuickInputMaterial("");
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          return;
-        }
-        const sensitivity = scanSensitiveWords(content);
-        if (sensitivity.hasSensitive) {
-          toast.warning(`🛡️ 文件安全合规提示：文件「${safeTruncateFileName(file.name)}」中检测到敏感字词 [${sensitivity.foundWords.join(", ")}]，系统已自动模糊打码遮罩 (***)，请检查或修改后重新提交。`, 6000);
-          setQuickInputMaterial(sensitivity.sanitizedText);
-        } else {
-          setQuickInputMaterial(content);
-          toast.success(`文件 [${safeTruncateFileName(file.name)}] 已成功加载到系统！`);
-        }
-      };
-      reader.onerror = () => {
-        toast.error("读取文件失败，请重试");
-      };
-      reader.readAsText(file);
-      return;
-    }
-
-    // 2. PDF / Word / Excel / CSV 等可解析二进制文件：上传到服务端提取文本
-    if (isExtractableFile(file.name, file.type || "")) {
-      try {
-        toast.info("正在上传并解析文件，请稍候...", 1500);
-        const { text, hasSensitive, foundWords } = await uploadAndExtractText(file);
-        if (hasSensitive && foundWords) {
-          toast.warning(`🛡️ 文件安全合规提示：解析文件「${safeTruncateFileName(file.name)}」中检测到敏感词汇 [${foundWords.join(", ")}]，已自动模糊打码遮罩 (***)，请核对修改。`, 6000);
-        } else {
-          toast.success(`文件 [${safeTruncateFileName(file.name)}] 已解析并加载成功！`);
-        }
-        setQuickInputMaterial(text);
-      } catch (err: any) {
-        toast.error(err.message || "文件解析失败，请重试");
-        setUploadedFileMeta(null);
-        setQuickInputMaterial("");
-        if (fileInputRef.current) fileInputRef.current.value = "";
+  // 单文件解析（文本本地读取 / 二进制与图片走服务端 OCR），返回提取文本或错误，不直接改动 UI
+  const parseSingleFile = (file: File): Promise<{ text?: string; error?: string }> => {
+    return new Promise((resolve) => {
+      if (isAllowedTextFile(file.name, file.type || "")) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const content = event.target?.result as string;
+          if (typeof content !== "string") return resolve({ error: "读取文件失败，内容格式异常" });
+          if (isProbablyBinaryContent(content)) {
+            return resolve({ error: `「${safeTruncateFileName(file.name)}」读取后出现乱码特征，请使用真正的纯文本文件。` });
+          }
+          const sensitivity = scanSensitiveWords(content);
+          resolve({ text: sensitivity.sanitizedText });
+        };
+        reader.onerror = () => resolve({ error: "读取文件失败，请重试" });
+        reader.readAsText(file);
+        return;
       }
+      if (isExtractableFile(file.name, file.type || "")) {
+        uploadAndExtractText(file)
+          .then(({ text }) => resolve({ text }))
+          .catch((err) => resolve({ error: err.message || "文件解析失败，请重试" }));
+        return;
+      }
+      resolve({ error: `「${safeTruncateFileName(file.name)}」属于不支持解析的文件类型，无法提取文本内容。` });
+    });
+  };
+
+  // 有界并发解析文件队列：逐个展示 排队/解析中/成功/失败 状态，全部完成后回调合并文本
+  // currentQueue 为调用时刻已有队列，新文件追加其后（绝不覆盖历史文件）；onComplete 返回合并后的完整队列
+  const runFileQueue = async (
+    files: File[],
+    currentQueue: UploadedFileItem[],
+    setQueue: React.Dispatch<React.SetStateAction<UploadedFileItem[]>>,
+    onComplete: (mergedText: string, combined: UploadedFileItem[]) => void
+  ) => {
+    const fmt = (bytes: number) =>
+      bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(2)} MB` : `${Math.round(bytes / 1024)} KB`;
+    const newItems: UploadedFileItem[] = files.map((f, i) => ({
+      id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+      name: f.name,
+      size: fmt(f.size),
+      sizeBytes: f.size,
+      status: "queued",
+    }));
+    // 合并历史文件 + 新文件，保证追加而非覆盖
+    const combined: UploadedFileItem[] = [...currentQueue, ...newItems];
+    setQueue(combined);
+    setExtractingText(true);
+    const startIdx = currentQueue.length;
+    let next = 0;
+    const worker = async () => {
+      while (true) {
+        const i = next++;
+        if (i >= newItems.length) return;
+        const gi = startIdx + i;
+        combined[gi] = { ...combined[gi], status: "parsing" };
+        setQueue([...combined]);
+        const res = await parseSingleFile(files[i]);
+        combined[gi] = {
+          ...combined[gi],
+          status: res.error ? "error" : "done",
+          text: res.text,
+          error: res.error,
+        };
+        setQueue([...combined]);
+      }
+    };
+    const poolSize = Math.min(PARSE_CONCURRENCY, files.length);
+    await Promise.all(Array.from({ length: poolSize }, () => worker()));
+    setExtractingText(false);
+    const mergedText = combined
+      .filter((r) => r.status === "done" && r.text)
+      .map((r) => `【${r.name}】\n${r.text}`)
+      .join("\n\n");
+    onComplete(mergedText, combined);
+  };
+
+  // 路径 A：上传本地文件作为快速任务主材料（支持一次最多 MAX_UPLOAD_FILES 个文件）
+  const handleFileUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    let pending = Array.from(fileList);
+    const remainingSlots = Math.max(0, MAX_UPLOAD_FILES - uploadedFiles.length);
+    if (pending.length > remainingSlots) {
+      toast.error(`最多可同时保留 ${MAX_UPLOAD_FILES} 个文件，当前还可添加 ${remainingSlots} 个，超出部分已忽略`);
+      pending = pending.slice(0, remainingSlots);
+    }
+    const oversized = pending.filter((f) => f.size > 20 * 1024 * 1024);
+    if (oversized.length > 0) {
+      toast.error(`「${safeTruncateFileName(oversized[0].name)}」等 ${oversized.length} 个文件超过 20MB 上限，请压缩后重试`);
+      pending = pending.filter((f) => f.size <= 20 * 1024 * 1024);
+    }
+    if (pending.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
-    // 3. 可执行文件与音视频等无文本内容的文件
-    toast.error(
-      `「${safeTruncateFileName(file.name)}」属于可执行文件或音视频文件，无法提取文本内容。`
-    );
-    setUploadedFileMeta(null);
+    await runFileQueue(pending, uploadedFiles, setUploadedFiles, (mergedText, combined) => {
+      setQuickInputMaterial(mergedText);
+      const done = combined.filter((r) => r.status === "done");
+      const fail = combined.filter((r) => r.status === "error");
+      const successCount = done.length;
+      const failCount = fail.length;
+      const totalBytes = combined.reduce((s, x) => s + (x.sizeBytes || 0), 0);
+      if (successCount > 0) {
+        setUploadedFileMeta({
+          name: successCount === 1 ? done[0].name : `${successCount} 个文件`,
+          size: formatFileSize(totalBytes),
+          sizeBytes: totalBytes,
+        });
+      } else {
+        setUploadedFileMeta(null);
+      }
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`已成功解析 ${successCount} 个文件并加载到系统！`);
+      } else if (successCount > 0 && failCount > 0) {
+        toast.warning(`成功解析 ${successCount} 个文件，${failCount} 个文件解析失败（详见下方列表）`, 6000);
+      } else {
+        toast.error("所有文件均未能提取到有效文本，请检查文件内容后重试", 8000);
+        setUploadedFileMeta(null);
+      }
+    });
+
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // 自动匹配面板：上传纯文本或 PDF/Word/Excel 等可解析文件，作为匹配诉求
+  // 路径 B：自动匹配面板上传文件作为匹配诉求（支持一次最多 MAX_UPLOAD_FILES 个文件）
   const handleAiMatchFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
 
-    const sizeStr = file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : `${Math.round(file.size / 1024)} KB`;
-    setAiMatchFileMeta({ name: file.name, size: sizeStr, sizeBytes: file.size });
-
-    // 1. 纯文本文件：本地 readAsText
-    if (isAllowedTextFile(file.name, file.type || "")) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        if (typeof content !== "string") {
-          toast.error("读取文件失败，内容格式异常");
-          return;
-        }
-        if (isProbablyBinaryContent(content)) {
-          toast.error(
-            `「${safeTruncateFileName(file.name)}」读取后出现乱码特征。请使用真正的纯文本文件，或先提取文本后粘贴。`
-          );
-          setAiMatchFileMeta(null);
-          setAiMatchFileText("");
-          if (aiMatchFileInputRef.current) aiMatchFileInputRef.current.value = "";
-          return;
-        }
-        const sensitivity = scanSensitiveWords(content);
-        if (sensitivity.hasSensitive) {
-          toast.warning(`🛡️ 安全合规提示：匹配文件「${safeTruncateFileName(file.name)}」中检测到敏感字词 [${sensitivity.foundWords.join(", ")}]，已自动模糊遮罩 (***)。`, 6000);
-          setAiMatchFileText(sensitivity.sanitizedText);
-        } else {
-          setAiMatchFileText(content);
-          toast.success(`文件 [${safeTruncateFileName(file.name)}] 已读取，可用于自动匹配`);
-        }
-      };
-      reader.onerror = () => {
-        toast.error("读取文件失败，请重试");
-      };
-      reader.readAsText(file);
+    let pending = Array.from(fileList);
+    const remainingSlots = Math.max(0, MAX_UPLOAD_FILES - aiMatchFiles.length);
+    if (pending.length > remainingSlots) {
+      toast.error(`最多可同时保留 ${MAX_UPLOAD_FILES} 个文件，当前还可添加 ${remainingSlots} 个，超出部分已忽略`);
+      pending = pending.slice(0, remainingSlots);
+    }
+    const oversized = pending.filter((f) => f.size > 20 * 1024 * 1024);
+    if (oversized.length > 0) {
+      toast.error(`「${safeTruncateFileName(oversized[0].name)}」等 ${oversized.length} 个文件超过 20MB 上限，请压缩后重试`);
+      pending = pending.filter((f) => f.size <= 20 * 1024 * 1024);
+    }
+    if (pending.length === 0) {
+      if (aiMatchFileInputRef.current) aiMatchFileInputRef.current.value = "";
       return;
     }
 
-    // 2. PDF / Word / Excel / CSV 等可解析二进制文件：上传到服务端提取文本
-    if (isExtractableFile(file.name, file.type || "")) {
-      try {
-        toast.info("正在上传并解析文件，请稍候...", 1500);
-        const { text, hasSensitive, foundWords } = await uploadAndExtractText(file);
-        if (hasSensitive && foundWords) {
-          toast.warning(`🛡️ 安全合规提示：解析文件「${safeTruncateFileName(file.name)}」中包含敏感字词 [${foundWords.join(", ")}]，已自动打码处理 (***)。`, 6000);
-        } else {
-          toast.success(`文件 [${safeTruncateFileName(file.name)}] 已解析成功，可用于自动匹配`);
-        }
-        setAiMatchFileText(text);
-      } catch (err: any) {
-        toast.error(err.message || "文件解析失败，请重试");
+    await runFileQueue(pending, aiMatchFiles, setAiMatchFiles, (mergedText, combined) => {
+      setAiMatchFileText(mergedText);
+      const done = combined.filter((r) => r.status === "done");
+      const fail = combined.filter((r) => r.status === "error");
+      const successCount = done.length;
+      const failCount = fail.length;
+      const totalBytes = combined.reduce((s, x) => s + (x.sizeBytes || 0), 0);
+      if (successCount > 0) {
+        setAiMatchFileMeta({
+          name: successCount === 1 ? done[0].name : `${successCount} 个文件`,
+          size: formatFileSize(totalBytes),
+          sizeBytes: totalBytes,
+        });
+      } else {
         setAiMatchFileMeta(null);
-        setAiMatchFileText("");
-        if (aiMatchFileInputRef.current) aiMatchFileInputRef.current.value = "";
       }
-      return;
-    }
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`已成功解析 ${successCount} 个文件，可用于自动匹配`);
+      } else if (successCount > 0 && failCount > 0) {
+        toast.warning(`成功解析 ${successCount} 个文件，${failCount} 个解析失败（详见下方列表）`, 6000);
+      } else {
+        toast.error("所有文件均未能提取到有效文本，请检查文件内容后重试", 8000);
+        setAiMatchFileMeta(null);
+      }
+    });
 
-    // 3. 可执行文件与音视频等无文本内容的文件
-    toast.error(
-      `「${file.name}」属于可执行文件或音视频文件，无法提取文本内容。`
-    );
-    setAiMatchFileMeta(null);
     if (aiMatchFileInputRef.current) aiMatchFileInputRef.current.value = "";
   };
 
@@ -858,6 +922,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  // 空间 Logo 上传错误提示（显示在设置页签的 Logo 卡片内）
+  const [logoUploadError, setLogoUploadError] = useState("");
   const [settingsErrors, setSettingsErrors] = useState<any>({
     name: false,
     contactEmail: false,
@@ -964,6 +1030,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     totalAllocatedToMembers: 0,
     unallocatedBalance: 0,
   });
+
+  // 普通成员视图：企业空间内非所有者/管理员的协同成员，仅可见自身算力点，不可见空间共享池
+  const isMemberView = currentMemberRole === "MEMBER" && workspaceType === "ENTERPRISE";
+  // 当前用户视角下可用于执行组件的算力点：成员用自身独立余额，所有者/管理员用空间共享池
+  const availableTokenForUser = isMemberView ? workspaceQuotaInfo.tokenBalance : workspaceToken;
 
   const [editingQuotaMember, setEditingQuotaMember] = useState<any | null>(null);
   const [inputQuotaValue, setInputQuotaValue] = useState<string>("");
@@ -1328,6 +1399,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               ...m,
               monthlyTokenLimit: q ? q.monthlyTokenLimit : null,
               monthlyTokenUsed: q ? q.monthlyTokenUsed : 0,
+              tokenBalance: q ? q.tokenBalance : 0,
               quotaResetAt: q ? q.quotaResetAt : null,
             };
           });
@@ -1674,13 +1746,15 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setLogoUploadError("");
+
     if (!file.type.startsWith("image/")) {
-      toast.error("只能上传图片文件");
+      setLogoUploadError("只能上传图片文件");
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("图片大小不能超过 2MB");
+      setLogoUploadError("图片大小不能超过 2MB");
       return;
     }
 
@@ -1702,6 +1776,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         const data = await res.json();
         if (data.success && data.iconUrl) {
           setWorkspaceInfo((prev: any) => ({ ...prev, logo: data.iconUrl }));
+          setLogoUploadError("");
           toast.success("空间图标上传成功，请点击下方 “保存空间修改” 按钮生效");
         }
       } else {
@@ -1710,7 +1785,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       }
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "上传图标失败，请重试");
+      setLogoUploadError(err.message || "上传图标失败，请重试");
     } finally {
       setLogoUploading(false);
     }
@@ -2369,9 +2444,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       setQuickInputMaterial("");
       setSelectedAsset(null);
       setUploadedFileMeta(null);
+      setUploadedFiles([]);
       setAiQuery("");
       setAiMatchFileText("");
       setAiMatchFileMeta(null);
+      setAiMatchFiles([]);
       toast.info("已成功清空未提交材料并加载新组件");
     } else if (actionType === "keep") {
       toast.success(`已成功将已有材料草稿与新组件 [${comp.name}] 绑定并载入！`);
@@ -2477,8 +2554,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       toast.error("执行拦截：当前用户岗位受矩阵规则限制，无法执行该受限组件！");
       return;
     }
-    if (workspaceType === "ENTERPRISE" && workspaceToken !== -1 && workspaceToken < estimatedCost) {
-      toast.error(`执行拦截：当前空间剩余服务调用额度不足（需要 ${estimatedCost} 算力点），请联系空间管理员！`);
+    if (workspaceType === "ENTERPRISE" && availableTokenForUser !== -1 && availableTokenForUser < estimatedCost) {
+      toast.error(
+        isMemberView
+          ? `执行拦截：您的独立算力点不足（需要 ${estimatedCost} 点，当前 ${availableTokenForUser} 点），请向空间管理员申请分配！`
+          : `执行拦截：当前空间剩余服务调用额度不足（需要 ${estimatedCost} 算力点），请联系空间管理员！`,
+      );
       return;
     }
     setIsExecutingTask(true);
@@ -2541,6 +2622,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       // 执行成功后清空输入来源状态，避免下次任务串数据（单一主材料）
       setQuickInputMaterial("");
       setUploadedFileMeta(null);
+      setUploadedFiles([]);
       setSelectedAsset(null);
       setMaterialInputMode("text");
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -2715,6 +2797,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const handleDeleteAsset = async (assetId: string) => {
     if (assetId === "active-upload-file") {
       setUploadedFileMeta(null);
+      setUploadedFiles([]);
       setQuickInputMaterial("");
       toast.success("已移除当前在用资料");
       return;
@@ -3076,6 +3159,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     setAiQuery("");
     setAiMatchFileText("");
     setAiMatchFileMeta(null);
+    setAiMatchFiles([]);
     if (aiMatchFileInputRef.current) aiMatchFileInputRef.current.value = "";
     setAiMatchedComponent(null);
   };
@@ -3096,13 +3180,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-500 font-bold">当前可用点数</span>
                   <span className="text-slate-900 font-mono font-black">
-                    {isUnlimitedToken(workspaceToken) ? "无限" : `${workspaceToken.toLocaleString()} 算力点`}
+                    {isUnlimitedToken(availableTokenForUser) ? "无限" : `${availableTokenForUser.toLocaleString()} 算力点`}
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-gradient-to-r from-[#3182ce] to-[#10b981] h-full transition-all duration-500" style={{ width: `${isUnlimitedToken(workspaceToken) ? 100 : Math.min(100, (workspaceToken / (workspaceType === "PERSONAL" ? 100 : 20000)) * 100)}%` }} />
+                  <div className="bg-gradient-to-r from-[#3182ce] to-[#10b981] h-full transition-all duration-500" style={{ width: `${isUnlimitedToken(availableTokenForUser) ? 100 : Math.min(100, (availableTokenForUser / (workspaceType === "PERSONAL" ? 100 : 20000)) * 100)}%` }} />
                 </div>
-                {workspaceToken !== -1 && workspaceToken < (workspaceType === "PERSONAL" ? 10 : 1000) && (
+                {availableTokenForUser !== -1 && availableTokenForUser < (workspaceType === "PERSONAL" ? 10 : 1000) && (
                   <p className="text-[11px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">⚠️ 可用额度不足，请及时补充</p>
                 )}
               </div>
@@ -3422,7 +3506,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               return (
                 <OverviewTab
                   workspaceId={workspaceId}
-                  workspaceToken={workspaceToken}
+                  workspaceToken={availableTokenForUser}
                   setShowRechargeModal={setShowRechargeModal}
                   boundComponentIds={effectiveBoundComponentIds}
                   recentTasks={recentTasks}
@@ -3670,6 +3754,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     setMaterialInputMode(mode.key as any);
                                     // 切换输入方式时清理其它方式的残留状态，保证单一主材料
                                     setUploadedFileMeta(null);
+                                    setUploadedFiles([]);
                                     setSelectedAsset(null);
                                     setQuickInputMaterial("");
                                     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -3757,6 +3842,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 type="file"
                                 ref={fileInputRef}
                                 onChange={handleFileUploadChange}
+                                multiple
                                 className="hidden"
                               />
                               <div
@@ -3767,22 +3853,97 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 <p className="text-xs font-black text-slate-700 group-hover:text-[#3182ce]">点击或拖拽上传本地文件</p>
                                 <p className="text-[10px] text-slate-400 font-semibold mt-0.5">支持 Word / Excel / PPT / PDF / 图片 / 压缩包 / 代码 / 文本 等绝大多数格式</p>
                               </div>
-                              {uploadedFileMeta && (
-                                <div className="p-2 bg-blue-50/70 border border-blue-100 rounded-lg flex items-center justify-between text-xs">
-                                  <span className="font-bold text-[#3182ce] truncate text-[11px]">
-                                    📄 挂载：{uploadedFileMeta.name}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setUploadedFileMeta(null);
-                                      setQuickInputMaterial("");
-                                      if (fileInputRef.current) fileInputRef.current.value = "";
-                                    }}
-                                    className="text-[11px] text-red-500 hover:underline font-bold cursor-pointer shrink-0 ml-1"
-                                  >
-                                    移除
-                                  </button>
+                              {uploadedFiles.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between px-0.5">
+                                    <span className="text-[11px] font-bold text-slate-600">
+                                      已选 <strong className="text-[#3182ce] font-black">{uploadedFiles.length}</strong> / {MAX_UPLOAD_FILES} 个文件
+                                      <span className="text-slate-400 font-medium ml-1">共 {formatFileSize(uploadedFiles.reduce((s, x) => s + (x.sizeBytes || 0), 0))}</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUploadedFiles([]);
+                                        setUploadedFileMeta(null);
+                                        setQuickInputMaterial("");
+                                        if (fileInputRef.current) fileInputRef.current.value = "";
+                                        toast.info("已清空全部待上传文件");
+                                      }}
+                                      className="text-[11px] font-bold text-slate-400 hover:text-red-500 cursor-pointer"
+                                    >
+                                      清空全部
+                                    </button>
+                                  </div>
+                                  {uploadedFiles.map((f) => (
+                                    <div
+                                      key={f.id}
+                                      className={`p-2 rounded-lg border flex items-center gap-2 text-[11px] font-medium ${
+                                        f.status === "error"
+                                          ? "bg-red-50 border-red-200"
+                                          : f.status === "done"
+                                          ? "bg-blue-50/70 border-blue-100"
+                                          : "bg-slate-50 border-slate-200"
+                                      }`}
+                                    >
+                                      <span className="shrink-0">
+                                        {f.status === "parsing" ? (
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3182ce]" />
+                                        ) : f.status === "done" ? (
+                                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                        ) : f.status === "error" ? (
+                                          <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                        ) : (
+                                          <FileText className="w-3.5 h-3.5 text-slate-400" />
+                                        )}
+                                      </span>
+                                      <span className="min-w-0 flex-1 truncate font-bold text-slate-700">{f.name}</span>
+                                      <span className="shrink-0 text-slate-400">{f.size}</span>
+                                      <span className={`shrink-0 px-1 rounded text-[10px] font-black ${
+                                        f.status === "done" ? "bg-emerald-100 text-emerald-700"
+                                          : f.status === "error" ? "bg-red-100 text-red-700"
+                                          : f.status === "parsing" ? "bg-blue-100 text-blue-700"
+                                          : "bg-slate-100 text-slate-500"
+                                      }`}>
+                                        {f.status === "done" ? "已解析" : f.status === "error" ? "解析失败" : f.status === "parsing" ? "解析中" : "排队中"}
+                                      </span>
+                                      {f.status === "error" && f.error && (
+                                        <span className="shrink-0 text-red-500 truncate max-w-[180px]" title={f.error}>
+                                          {f.error}
+                                        </span>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const remaining = uploadedFiles.filter((x) => x.id !== f.id);
+                                          setUploadedFiles(remaining);
+                                          const merged = remaining
+                                            .filter((r) => r.status === "done" && r.text)
+                                            .map((r) => `【${r.name}】\n${r.text}`)
+                                            .join("\n\n");
+                                          setQuickInputMaterial(merged);
+                                          setUploadedFileMeta(
+                                            remaining.length
+                                              ? {
+                                                  name: remaining.length === 1 ? remaining[0].name : `${remaining.length} 个文件`,
+                                                  size: formatFileSize(remaining.reduce((s, x) => s + x.sizeBytes, 0)),
+                                                  sizeBytes: remaining.reduce((s, x) => s + x.sizeBytes, 0),
+                                                }
+                                              : null
+                                          );
+                                          toast.info(`已移除文件：[${f.name}]`);
+                                        }}
+                                        className="text-[11px] text-red-500 hover:underline font-bold cursor-pointer shrink-0"
+                                      >
+                                        移除
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {extractingText && (
+                                <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-[11px] font-bold text-amber-700">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                  <span>正在上传并解析文件内容（{uploadedFiles.filter((f) => f.status === "parsing").length}/{uploadedFiles.length} 进行中），图片 OCR 可能需要数十秒，请耐心等候...</span>
                                 </div>
                               )}
                             </div>
@@ -3833,7 +3994,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         {(() => {
                           let disableReason = "";
                           const hasSelectedComp = !!quickSelectedCompId;
-                          const isShortOnTokens = hasSelectedComp && workspaceToken !== -1 && (workspaceToken < estimatedCost);
+                          const isShortOnTokens = hasSelectedComp && availableTokenForUser !== -1 && (availableTokenForUser < estimatedCost);
 
                           if (!hasSelectedComp) {
                             disableReason = "请先选择需要执行的效能组件";
@@ -3863,8 +4024,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 <div className="flex items-center justify-between text-slate-500 font-semibold">
                                   <span>当前空间剩余算力:</span>
                                   <span className={`font-mono font-black ${isShortOnTokens ? "text-red-600" : "text-emerald-600 font-bold"}`}>
-                                    {isUnlimitedToken(workspaceToken) ? "无限" : `${workspaceToken.toLocaleString()} 算力点`}
-                                    {!isUnlimitedToken(workspaceToken) && <span className="text-[10px] opacity-80 font-bold"> ({formatYuanFromPoints(workspaceToken)})</span>}
+                                    {isUnlimitedToken(availableTokenForUser) ? "无限" : `${availableTokenForUser.toLocaleString()} 算力点`}
+                                    {!isUnlimitedToken(availableTokenForUser) && <span className="text-[10px] opacity-80 font-bold"> ({formatYuanFromPoints(availableTokenForUser)})</span>}
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-between text-slate-500 font-semibold">
@@ -3882,7 +4043,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                   <div className="flex items-center justify-between border-t border-red-200/60 pt-1.5 text-red-600 font-bold text-[11px]">
                                     <span>算力额度缺口:</span>
                                     <span className="font-mono font-black text-red-600">
-                                      -{estimatedCost - workspaceToken} 算力点
+                                      -{estimatedCost - availableTokenForUser} 算力点
                                     </span>
                                   </div>
                                 )}
@@ -3897,13 +4058,15 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                   {isShortOnTokens && (
                                     <div className="pt-1 border-t border-red-200/60 flex items-center justify-between">
                                       <span className="text-[10px] text-red-500">可联系企业管理员分配算力包</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => setShowRechargeModal(true)}
-                                        className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-black rounded-lg text-[10px] shadow-2xs transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                                      >
-                                        <span>⚡ 充值/升级算力点</span>
-                                      </button>
+                                      {!isMemberView && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowRechargeModal(true)}
+                                          className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-black rounded-lg text-[10px] shadow-2xs transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                                        >
+                                          <span>⚡ 充值/升级算力点</span>
+                                        </button>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -3911,7 +4074,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
                               <button
                                 onClick={handleQuickStartSubmit}
-                                disabled={!!disableReason || isExecutingTask}
+                                disabled={!!disableReason || isExecutingTask || uploadedFiles.some((f) => f.status === "queued" || f.status === "parsing")}
                                 className="w-full h-10 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:bg-slate-100 text-white disabled:text-slate-400 text-xs font-bold rounded-xl shadow-xs hover:shadow-md disabled:shadow-none cursor-pointer transition-all flex items-center justify-center gap-1.5"
                               >
                                 {isExecutingTask && (
@@ -3999,6 +4162,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             type="file"
                             ref={aiMatchFileInputRef}
                             onChange={handleAiMatchFileUpload}
+                            multiple
                             className="hidden"
                           />
                           <button
@@ -4009,20 +4173,69 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             <span>上传文件匹配</span>
                           </button>
                         </div>
-                        {aiMatchFileMeta && (
-                          <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
-                            <FileText className="w-3.5 h-3.5 text-[#3182ce]" />
-                            <span className="truncate">已读入：{aiMatchFileMeta.name}（{aiMatchFileMeta.size}）</span>
-                            <button
-                              onClick={() => {
-                                setAiMatchFileMeta(null);
-                                setAiMatchFileText("");
-                                if (aiMatchFileInputRef.current) aiMatchFileInputRef.current.value = "";
-                              }}
-                              className="text-red-500 hover:text-red-600 font-bold ml-auto cursor-pointer"
-                            >
-                              清除
-                            </button>
+                        {aiMatchFiles.length > 0 && (
+                          <div className="space-y-1.5">
+                            {aiMatchFiles.map((f) => (
+                              <div
+                                key={f.id}
+                                className={`p-2 rounded-lg border flex items-center gap-2 text-[11px] font-medium ${
+                                  f.status === "error"
+                                    ? "bg-red-50 border-red-200"
+                                    : f.status === "done"
+                                    ? "bg-blue-50/70 border-blue-100"
+                                    : "bg-slate-50 border-slate-200"
+                                }`}
+                              >
+                                <span className="shrink-0">
+                                  {f.status === "parsing" ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3182ce]" />
+                                  ) : f.status === "done" ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                  ) : f.status === "error" ? (
+                                    <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                  ) : (
+                                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                                  )}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate font-bold text-slate-700">{f.name}</span>
+                                <span className="shrink-0 text-slate-400">{f.size}</span>
+                                {f.status === "error" && f.error && (
+                                  <span className="shrink-0 text-red-500 truncate max-w-[180px]" title={f.error}>
+                                    {f.error}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const remaining = aiMatchFiles.filter((x) => x.id !== f.id);
+                                    setAiMatchFiles(remaining);
+                                    const merged = remaining
+                                      .filter((r) => r.status === "done" && r.text)
+                                      .map((r) => `【${r.name}】\n${r.text}`)
+                                      .join("\n\n");
+                                    setAiMatchFileText(merged);
+                                    setAiMatchFileMeta(
+                                      remaining.length
+                                        ? {
+                                            name: remaining.length === 1 ? remaining[0].name : `${remaining.length} 个文件`,
+                                            size: formatFileSize(remaining.reduce((s, x) => s + x.sizeBytes, 0)),
+                                            sizeBytes: remaining.reduce((s, x) => s + x.sizeBytes, 0),
+                                          }
+                                        : null
+                                    );
+                                  }}
+                                  className="text-red-500 hover:text-red-600 font-bold cursor-pointer whitespace-nowrap shrink-0"
+                                >
+                                  移除
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {extractingText && (
+                          <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-[11px] font-bold text-amber-700">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                            <span>正在上传并解析文件内容（{aiMatchFiles.filter((f) => f.status === "parsing").length}/{aiMatchFiles.length} 进行中），图片 OCR 可能需要数十秒，请耐心等候...</span>
                           </div>
                         )}
                         {aiMatchedComponent && (
@@ -4050,7 +4263,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 return (
                                   <button
                                     onClick={() => handleRunMatchedComponent(aiMatchedComponent)}
-                                    disabled={isExecutingTask}
+                                    disabled={isExecutingTask || aiMatchFiles.some((f) => f.status === "queued" || f.status === "parsing")}
                                     className={`flex-1 py-1.5 text-white font-bold rounded-lg cursor-pointer text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 ${isBound ? "bg-[#3182ce] hover:bg-[#2b6cb0]" : "bg-emerald-600 hover:bg-emerald-700"}`}
                                   >
                                     {isExecutingTask && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
@@ -4412,6 +4625,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               setSelectedAsset({ id: asset.id, title: asset.title });
               // 清理其它输入方式残留，保证单一主材料来源
               setUploadedFileMeta(null);
+              setUploadedFiles([]);
               if (fileInputRef.current) fileInputRef.current.value = "";
               setActiveTab("quick");
               toast.success(`已将资料「${asset.title}」带入快速任务，请挑选能力组件运行！`);
@@ -4454,6 +4668,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         const isTabOwner = currentMemberRole === "OWNER" || currentMemberRole === "Owner";
         const isTabAdmin = currentMemberRole === "ADMIN" || currentMemberRole === "Admin";
         const canTabManage = isTabOwner || isTabAdmin;
+        // 成员余额预警阈值（可调：普通成员独立余额低于此值视为「偏低」，等于 0 为「告急」）
+        const MEMBER_LOW_BALANCE_THRESHOLD = 50;
 
         // 本地计算邀请码到期剩余时间的优雅函数
         const getRemainingTimeStr = (expiresAtStr: string) => {
@@ -4631,6 +4847,23 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               </div>
             </div>
 
+            {/* 全局提醒：余额偏低/告急的成员数量（仅管理员/所有者视图） */}
+            {(() => {
+              const lowMemberCount = (membersList || []).filter((mm: any) => {
+                const r = mm.role;
+                if (r === "OWNER" || r === "Owner" || r === "ADMIN" || r === "Admin") return false;
+                const b = Number(mm.tokenBalance || 0);
+                return b <= 0 || b < MEMBER_LOW_BALANCE_THRESHOLD;
+              }).length;
+              if (lowMemberCount <= 0 || isMemberView) return null;
+              return (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-orange-300 bg-orange-50 text-orange-700 text-xs font-bold">
+                  <span className="text-sm">⚠</span>
+                  <span>当前有 <strong className="font-black">{lowMemberCount}</strong> 名协同成员算力点余额偏低或已耗尽，请前往「成员」页及时分配。</span>
+                </div>
+              );
+            })()}
+
             {/* 1.1 空间算力点全局池概览横幅 (商业与运营全闭环) */}
             <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-4.5 rounded-2xl text-white shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border border-blue-800/60 text-left">
               <div className="flex items-center gap-3">
@@ -4638,18 +4871,37 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   <Zap className="w-5 h-5 fill-amber-300" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-white">当前工作空间算力池</span>
-                    <span className="px-2 py-0.5 text-[10px] font-black bg-amber-400 text-slate-950 rounded-md">
-                      {workspaceQuotaInfo.levelName}
-                    </span>
-                  </div>
+                  {isMemberView ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-white">我的算力点</span>
+                      <span className="px-2 py-0.5 text-[10px] font-black bg-amber-400 text-slate-950 rounded-md">
+                        协同成员
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-white">当前工作空间算力池</span>
+                      <span className="px-2 py-0.5 text-[10px] font-black bg-amber-400 text-slate-950 rounded-md">
+                        {workspaceQuotaInfo.levelName}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-4 text-xs text-blue-200 mt-1 font-medium flex-wrap">
-                    <span>可用总额：<strong className="text-amber-300 font-mono text-sm">{formatTokenBalance(workspaceQuotaInfo.tokenBalance)}</strong> 算力点 {!isUnlimitedToken(workspaceQuotaInfo.tokenBalance) && <span className="text-amber-200/80 font-mono">({formatYuanFromPoints(workspaceQuotaInfo.tokenBalance)})</span>}</span>
-                    <span className="hidden sm:inline">|</span>
-                    <span className="hidden sm:inline">已分配成员：<strong className="text-blue-100 font-mono">{workspaceQuotaInfo.totalAllocatedToMembers}</strong> 点</span>
-                    <span className="hidden sm:inline">|</span>
-                    <span className="hidden sm:inline">未锁定池：<strong className="text-emerald-300 font-mono">{workspaceQuotaInfo.unallocatedBalance}</strong> 点</span>
+                    {isMemberView ? (
+                      <>
+                        <span>可用余额：<strong className="text-amber-300 font-mono text-sm">{formatTokenBalance(workspaceQuotaInfo.tokenBalance)}</strong> 算力点 {!isUnlimitedToken(workspaceQuotaInfo.tokenBalance) && <span className="text-amber-200/80 font-mono">({formatYuanFromPoints(workspaceQuotaInfo.tokenBalance)})</span>}</span>
+                        <span className="hidden sm:inline">|</span>
+                        <span className="hidden sm:inline text-blue-200/80">仅可见您本人的独立算力额度</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>可用总额：<strong className="text-amber-300 font-mono text-sm">{formatTokenBalance(workspaceQuotaInfo.tokenBalance)}</strong> 算力点 {!isUnlimitedToken(workspaceQuotaInfo.tokenBalance) && <span className="text-amber-200/80 font-mono">({formatYuanFromPoints(workspaceQuotaInfo.tokenBalance)})</span>}</span>
+                        <span className="hidden sm:inline">|</span>
+                        <span className="hidden sm:inline">已分配成员：<strong className="text-blue-100 font-mono">{workspaceQuotaInfo.totalAllocatedToMembers}</strong> 点</span>
+                        <span className="hidden sm:inline">|</span>
+                        <span className="hidden sm:inline">未锁定池：<strong className="text-emerald-300 font-mono">{workspaceQuotaInfo.unallocatedBalance}</strong> 点</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -4822,9 +5074,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     filteredMembers.map((m) => {
                       const isTargetOwner = m.role === "OWNER" || m.role === "Owner";
                       const isTargetAdmin = m.role === "ADMIN" || m.role === "Admin";
+                      const mTokenBalance = Number(m.tokenBalance || 0);
+                      const isBalanceCritical = mTokenBalance <= 0;
+                      const isBalanceLow = !isBalanceCritical && mTokenBalance < MEMBER_LOW_BALANCE_THRESHOLD;
                       
-                      // 只有 OWNER 可以调整别人角色
-                      const canChangeTargetRole = isTabOwner && !isTargetOwner;
+                      // 只有 OWNER 可以调整别人角色（空间所有者与空间管理员均不支持调整）
+                      const canChangeTargetRole = isTabOwner && !isTargetOwner && !isTargetAdmin;
                       
                       // 控制删除按钮的启用
                       const myUserId = getCurrentUserId();
@@ -4871,9 +5126,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 {isSelf && (
                                   <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-emerald-50 text-emerald-600 border border-emerald-100">我</span>
                                 )}
-                                <span className={`px-1.5 py-0.2 text-[9px] rounded font-bold border ${roleBadgeCls}`}>
-                                  {isTargetOwner ? "所有者" : isTargetAdmin ? "管理员" : "协同成员"}
-                                </span>
+                                {(isTargetOwner || isTargetAdmin) && (
+                                  <span className={`px-1.5 py-0.2 text-[9px] rounded font-bold border ${roleBadgeCls}`}>
+                                    {isTargetOwner ? "所有者" : "管理员"}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[10px] text-slate-400 mt-0.5 truncate">{m.email || "未绑定邮箱"}</p>
                             </div>
@@ -4894,22 +5151,46 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     <span>{m.monthlyTokenLimit} 算力点 (<span className="text-blue-600">{m.monthlyTokenUsed || 0}</span> 已用)</span>
                                   )}
                                 </span>
+                                {!isTargetOwner && !isTargetAdmin && (
+                                  <span className="font-mono text-[10px] font-bold leading-tight mt-0.5 flex items-center gap-1">
+                                    <span className={isBalanceCritical ? "text-red-600" : isBalanceLow ? "text-orange-500" : "text-amber-600"}>
+                                      独立余额 {mTokenBalance.toLocaleString()} 点
+                                    </span>
+                                    {isBalanceCritical && (
+                                      <span className="px-1 py-0.5 rounded bg-red-100 text-red-600 text-[9px] font-black">余额告急</span>
+                                    )}
+                                    {isBalanceLow && (
+                                      <span className="px-1 py-0.5 rounded bg-orange-100 text-orange-600 text-[9px] font-black">余额偏低</span>
+                                    )}
+                                  </span>
+                                )}
                               </div>
 
-                              {canTabManage && !isTargetOwner && !isTargetAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingQuotaMember(m);
-                                    setInputQuotaValue(m.monthlyTokenLimit !== null && m.monthlyTokenLimit !== undefined ? String(m.monthlyTokenLimit) : "");
-                                  }}
-                                  className="px-2.5 py-1 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white text-[10px] font-black rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95 whitespace-nowrap ml-1"
-                                  title="设置或分配该成员的月度算力上限"
-                                >
-                                  <Zap className="w-2.5 h-2.5 text-amber-300 fill-amber-300 shrink-0" />
-                                  <span>配置算力</span>
-                                </button>
-                              )}
+                              {canTabManage && !isTargetOwner && !isTargetAdmin && (() => {
+                                const quickAllocate = isBalanceCritical || isBalanceLow;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingQuotaMember(m);
+                                      const suggestion =
+                                        m.monthlyTokenLimit !== null && m.monthlyTokenLimit !== undefined
+                                          ? String(m.monthlyTokenLimit)
+                                          : quickAllocate ? "500" : "";
+                                      setInputQuotaValue(suggestion);
+                                    }}
+                                    className={isBalanceCritical
+                                      ? "px-2.5 py-1 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white text-[10px] font-black rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95 whitespace-nowrap ml-1 animate-pulse"
+                                      : isBalanceLow
+                                        ? "px-2.5 py-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[10px] font-black rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95 whitespace-nowrap ml-1"
+                                        : "px-2.5 py-1 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white text-[10px] font-black rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95 whitespace-nowrap ml-1"}
+                                    title={quickAllocate ? "该成员余额偏低，点击快速分配算力" : "设置或分配该成员的月度算力上限"}
+                                  >
+                                    <Zap className="w-2.5 h-2.5 text-amber-300 fill-amber-300 shrink-0" />
+                                    <span>{isBalanceCritical ? "立即分配" : isBalanceLow ? "补充算力" : "配置算力"}</span>
+                                  </button>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -4993,15 +5274,15 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                       return (
                                         <span
                                           key={code}
-                                          className="text-xs px-2.5 py-1 rounded-lg font-bold select-none border border-blue-200/90 bg-blue-50/90 text-[#2b6cb0] shadow-2xs whitespace-nowrap flex items-center gap-1.5"
+                                          className="text-xs font-semibold select-none text-slate-500 whitespace-nowrap flex items-center gap-1"
                                         >
-                                          <PostIcon iconKey={meta.icon} className="w-3.5 h-3.5 text-[#2b6cb0] shrink-0" />
+                                          <PostIcon iconKey={meta.icon} className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                           <span>{meta.name}</span>
                                         </span>
                                       );
                                     })}
                                     {memberRolesList.length === 0 && (
-                                      <span className="text-xs px-2.5 py-1 rounded-lg font-bold select-none border border-slate-200 bg-slate-50 text-slate-600 shadow-2xs whitespace-nowrap flex items-center gap-1.5">
+                                      <span className="text-xs font-semibold select-none text-slate-500 whitespace-nowrap flex items-center gap-1">
                                         <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                         <span>协同成员</span>
                                       </span>
@@ -5282,7 +5563,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         return (
           <UsageStatsTab
             workspaceId={workspaceId}
-            workspaceToken={workspaceToken}
+            workspaceToken={availableTokenForUser}
             recentTasks={recentTasks}
             effectiveBoundComponentIds={effectiveBoundComponentIds}
             componentCatalog={componentCatalog}
@@ -5395,6 +5676,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   <p className="text-xs text-slate-400 font-semibold leading-relaxed">
                     支持 JPG、PNG 格式，大小不能超过 2MB。上传新图标或重置后，点击下方 “保存修改” 按钮在全局生效。
                   </p>
+                  {logoUploadError && (
+                    <div className="text-xs text-red-600 font-extrabold mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>{logoUploadError}</span>
+                    </div>
+                  )}
                   {logoUploading && (
                     <div className="text-xs text-[#3182ce] font-extrabold animate-pulse mt-1">
                       正在上传图片...
@@ -5604,6 +5891,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           <PointsLedgerTab
             workspaceId={workspaceId || ""}
             canRecharge={true}
+            isMemberView={isMemberView}
             onOpenRecharge={() => setShowRechargeModal(true)}
             onOpenRecycle={
               workspaceType === "ENTERPRISE" &&
@@ -7089,11 +7377,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 <div className="flex items-center gap-1.5">
                   <span>⚡ 当前算力账户配额:</span>
                   <span className="font-mono text-amber-950 font-black">
-                    {formatTokenBalance(isUnlimitedToken(workspaceQuotaInfo.tokenBalance) ? -1 : (workspaceQuotaInfo.tokenBalance ?? workspaceToken ?? 0))} 算力点
+                    {formatTokenBalance(isUnlimitedToken(workspaceQuotaInfo.tokenBalance) ? -1 : (workspaceQuotaInfo.tokenBalance ?? availableTokenForUser ?? 0))} 算力点
                   </span>
                 </div>
                 <span className="font-mono text-amber-800 text-xs font-bold bg-amber-100/80 px-2 py-0.5 rounded-md shrink-0 whitespace-nowrap">
-                  {!isUnlimitedToken(workspaceQuotaInfo.tokenBalance) && `折合 ${formatYuanFromPoints(workspaceQuotaInfo.tokenBalance ?? workspaceToken ?? 0)}`}
+                  {!isUnlimitedToken(workspaceQuotaInfo.tokenBalance) && `折合 ${formatYuanFromPoints(workspaceQuotaInfo.tokenBalance ?? availableTokenForUser ?? 0)}`}
                 </span>
               </div>
 
@@ -7367,16 +7655,16 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               </div>
               {(() => {
                 // 限制提示（按钮后给出红字）：企业池为 0 或 输入金额超过可用余额时拦截
-                const unlimited = workspaceToken === -1;
+                const unlimited = availableTokenForUser === -1;
                 const inputAmount = Math.floor(Number(recyclePoints));
-                const noBalance = !unlimited && workspaceToken === 0;
-                const overBalance = !unlimited && Number.isFinite(inputAmount) && inputAmount > 0 && inputAmount > workspaceToken;
+                const noBalance = !unlimited && availableTokenForUser === 0;
+                const overBalance = !unlimited && Number.isFinite(inputAmount) && inputAmount > 0 && inputAmount > availableTokenForUser;
                 if (!noBalance && !overBalance) return null;
                 return (
                   <div className="text-[11px] text-red-500 font-bold flex items-center justify-end gap-1.5">
                     ⚠️ {noBalance
                       ? "当前企业池余额为 0，暂无可回收算力点"
-                      : `回收金额 ${inputAmount.toLocaleString()} 点超过当前企业池可用余额 ${workspaceToken.toLocaleString()} 点`}
+                      : `回收金额 ${inputAmount.toLocaleString()} 点超过当前企业池可用余额 ${availableTokenForUser.toLocaleString()} 点`}
                   </div>
                 );
               })()}
@@ -7393,10 +7681,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   onClick={handleExecuteRecycle}
                   disabled={
                     recycling ||
-                    (workspaceToken !== -1 &&
-                      (workspaceToken === 0 ||
+                    (availableTokenForUser !== -1 &&
+                      (availableTokenForUser === 0 ||
                         (Math.floor(Number(recyclePoints)) > 0 &&
-                          Math.floor(Number(recyclePoints)) > workspaceToken)))
+                          Math.floor(Number(recyclePoints)) > availableTokenForUser)))
                   }
                   className="px-5 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -7420,7 +7708,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </div>
                 <div>
                   <h3 className="font-black text-sm">配置成员个人月度算力额度</h3>
-                  <p className="text-[11px] text-blue-100">设定协同成员当月允许消费的空间算力点上限</p>
+                  <p className="text-[11px] text-blue-100">将该成员独立算力余额对齐到所设上限（差额从空间共享池分配/回收）</p>
                 </div>
               </div>
               <button
@@ -7438,8 +7726,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   <span>目标成员: <strong className="text-slate-900">{editingQuotaMember.name || editingQuotaMember.userName || "协同成员"}</strong></span>
                   <span className="text-[11px] text-slate-500 font-mono">ID: {(editingQuotaMember.userId || "").slice(0, 8)}...</span>
                 </div>
-                <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-600 flex items-center justify-between font-medium">
+                <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-600 flex items-center justify-between gap-2 font-medium flex-wrap">
                   <span>⚡ 空间可用算力池：<strong className="text-amber-600 font-bold font-mono">{isUnlimitedToken(workspaceQuotaInfo.tokenBalance) ? "无限" : `${workspaceQuotaInfo.tokenBalance} 算力点`}</strong></span>
+                  <span>👤 该成员独立余额：<strong className="text-amber-600 font-bold font-mono">{Number(editingQuotaMember.tokenBalance || 0).toLocaleString()} 算力点</strong></span>
                   <span>📊 未锁定余量：<strong className="text-emerald-600 font-bold font-mono">{formatTokenBalance(workspaceQuotaInfo.unallocatedBalance)} 算力点</strong></span>
                 </div>
               </div>
@@ -7453,13 +7742,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     type="number"
                     value={inputQuotaValue}
                     onChange={(e) => setInputQuotaValue(e.target.value)}
-                    placeholder="留空表示不限额 (使用空间全局余额)"
+                    placeholder="留空/0 表示清空该成员独立余额（回收至共享池）"
                     className="w-full h-11 px-3.5 border border-slate-300 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                   />
                   <span className="absolute right-3 top-3 text-xs font-bold text-slate-400">算力点</span>
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium">
-                  💡 提示：留空或设为 0 表示不设置个人独立限制，直接共享空间公共算力池。设置具体数值后，当月该成员消耗超过额度时将被系统自动阻断。自然月首日重置已用点数。
+                  💡 提示：设置的具体数值即该成员的「独立算力余额」。保存时与当前余额的差额会从空间共享池自动转出（分配）或转回（回收），并写入归属该成员的流水。成员执行组件任务时仅消耗自身独立余额，不足时由系统提示其向管理员申请分配。自然月首日重置「已用点数」。
                 </p>
               </div>
 
@@ -7554,8 +7843,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             {/* Posts Multi-select Cards List (100% 来源于数据库当前空间真实装配岗位，杜绝假数据) */}
             <div className="p-4 overflow-y-auto space-y-2 flex-1 divide-y divide-slate-50">
               {(() => {
-                // 仅读取数据库当前空间真实装配引入的岗位
-                const allAvailablePosts = workspaceInstalledPosts || [];
+                // 仅读取数据库当前空间真实装配引入的岗位（空间所有者为系统内置管理角色，不支持分配调整，予以剔除）
+                const allAvailablePosts = (workspaceInstalledPosts || []).filter(p => {
+                  const upperCode = (p.code || "").toUpperCase();
+                  return p.name !== "空间所有者" && upperCode !== "OWNER";
+                });
                 const filteredPosts = allAvailablePosts.filter(p => {
                   if (!roleSearchQuery) return true;
                   const q = roleSearchQuery.toLowerCase();

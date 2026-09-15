@@ -7,7 +7,7 @@ import { useToast } from "@/components/Toast";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, isPriceMatchingRule } from "@/lib/point-rate";
-import { Zap, Plus, Edit2, Trash2, ShieldAlert, Sparkles, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList, Eye, EyeOff, Ban, Power } from "lucide-react";
+import { Zap, Plus, Edit2, Trash2, ShieldAlert, Flame, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList, Eye, EyeOff, Ban, Power } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 import { StatusBadge, ActionButton } from "@/components/common";
 
@@ -264,7 +264,7 @@ export default function AdminTokenPacksPage() {
             <div className="text-2xl font-black font-mono text-amber-600">{packs.filter((p) => p.isPopular).length} <span className="text-xs font-normal text-slate-400">个推荐</span></div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-            <Sparkles className="w-5 h-5" />
+            <Flame className="w-5 h-5" />
           </div>
         </div>
 
@@ -315,7 +315,7 @@ export default function AdminTokenPacksPage() {
             >
               {pack.isPopular && (
                 <div className="absolute top-0 right-0 bg-gradient-to-l from-amber-500 to-amber-400 text-slate-950 font-black text-[10px] px-3 py-1 rounded-bl-xl shadow-xs flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 fill-slate-950" />
+                  <Flame className="w-3 h-3 fill-slate-950" />
                   <span>热销推荐</span>
                 </div>
               )}

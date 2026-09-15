@@ -564,6 +564,10 @@ const FIELD_LABEL_MAP: Record<string, string> = {
   category: "所属类别",
   version: "组件版本号",
   description: "组件描述",
+  oldSessionToken: "原会话凭据 (已踢下线)",
+  newSessionToken: "新会话凭据 (当前有效)",
+  sessionToken: "会话认证凭证",
+  refreshToken: "刷新会话令牌",
 };
 
 // 智能键名通用转译器：若在静态字典中查不到，基于驼峰及下划线分词并匹配通用词根库，彻底杜绝任何英文键名裸露，杜绝硬编码
@@ -689,14 +693,21 @@ function translateFieldKeyToChinese(rawKey: string): string {
     to: "变更后",
     old: "原",
     new: "新",
+    session: "会话",
     provider: "登录源",
     scope: "执行范围",
     filter: "筛选条件",
   };
 
+  const hasSessionWord = words.includes("session");
   const translatedParts: string[] = [];
   for (const w of words) {
     if (w === "id") continue; // 忽略末尾单纯的技术 ID 词根
+    // 若属于会话上下文，token 翻译为"凭证/令牌"，绝不误译为算力点
+    if (hasSessionWord && (w === "token" || w === "tokens")) {
+      translatedParts.push("凭据");
+      continue;
+    }
     if (WORD_MAP[w]) {
       translatedParts.push(WORD_MAP[w]);
     }

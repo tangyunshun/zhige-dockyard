@@ -65,12 +65,13 @@ interface Workspace {
   plan?: string;
   description: string | null;
   logo: string | null;
+  avatar?: string | null;
   status: "ACTIVE" | "DISABLED";
   createdAt: string;
   componentCount: number;
   memberCount?: number;
   isProtected?: boolean;
-  owner?: { id: string; name: string; email?: string; role?: string } | null;
+  owner?: { id: string; name: string; email?: string; role?: string; avatar?: string | null } | null;
   disabledUntil?: string | null;
   disabledReason?: string | null;
   disabledDuration?: string | null;
@@ -1172,9 +1173,26 @@ export default function AdminWorkspacesPage() {
                         )}
                         <td className="px-4.5 py-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white shadow-2xs">
-                              <Building2 className="w-4.5 h-4.5" />
-                            </div>
+                            {(() => {
+                              const avatarUrl = workspace.avatar || workspace.logo || workspace.owner?.avatar;
+                              if (avatarUrl) {
+                                return (
+                                  <img
+                                    src={avatarUrl}
+                                    alt={workspace.name}
+                                    className="w-9 h-9 shrink-0 rounded-xl object-cover border border-slate-200/80 shadow-2xs"
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = "none";
+                                    }}
+                                  />
+                                );
+                              }
+                              return (
+                                <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white font-bold text-xs shadow-2xs">
+                                  {workspace.name ? workspace.name.charAt(0) : <Building2 className="w-4.5 h-4.5" />}
+                                </div>
+                              );
+                            })()}
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span
@@ -1390,7 +1408,32 @@ export default function AdminWorkspacesPage() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl">
-              <h2 className="text-xl font-bold text-slate-800">工作空间详情</h2>
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const modalAvatar = viewingWorkspace.avatar || viewingWorkspace.logo || viewingWorkspace.owner?.avatar;
+                  if (modalAvatar) {
+                    return (
+                      <img
+                        src={modalAvatar}
+                        alt={viewingWorkspace.name}
+                        className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-xs shrink-0"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
+                      />
+                    );
+                  }
+                  return (
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white font-bold shrink-0">
+                      {viewingWorkspace.name ? viewingWorkspace.name.charAt(0) : <Building2 className="w-5 h-5" />}
+                    </div>
+                  );
+                })()}
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800">{viewingWorkspace.name}</h2>
+                  <p className="text-xs text-slate-400 font-mono">空间 ID: {viewingWorkspace.id}</p>
+                </div>
+              </div>
               <button
                 onClick={() => setViewingWorkspace(null)}
                 className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
@@ -1477,7 +1520,7 @@ export default function AdminWorkspacesPage() {
               <div>
                 <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
                   <span>空间资源配额与水位监控</span>
-                  <span className="text-[10px] font-bold text-slate-400">实时数据库聚合</span>
+                  <span className="text-[10px] font-bold text-slate-400">资源实时统计</span>
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
@@ -1712,7 +1755,7 @@ export default function AdminWorkspacesPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
-                    穿透检测协同成员与装配组件依赖 · 严格遵循安全隔离规范
+                    核验协同成员与装配组件依赖 · 严格遵循安全隔离规范
                   </p>
                 </div>
               </div>
@@ -1767,7 +1810,7 @@ export default function AdminWorkspacesPage() {
                   {checkingDisable ? (
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600">
                       <RotateCcw className="w-3 h-3 animate-spin text-amber-600" />
-                      正在穿透数据库核验资源...
+                      正在核验关联资源依赖...
                     </span>
                   ) : disableCheckResult ? (
                     <span className={`inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-full border ${
@@ -2028,7 +2071,7 @@ export default function AdminWorkspacesPage() {
                 {checkingDisable ? (
                   <span className="text-blue-600 font-bold flex items-center gap-1">
                     <RotateCcw className="w-3.5 h-3.5 animate-spin" />
-                    正在穿透核验空间资源...
+                    正在核验空间关联资源...
                   </span>
                 ) : !disableCheckResult ? (
                   <span className="text-amber-700 font-bold flex items-center gap-1">

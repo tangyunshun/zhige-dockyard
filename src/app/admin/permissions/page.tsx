@@ -26,10 +26,11 @@ import {
   Plus,
   Search,
   Pencil,
-  Sparkles,
+  FolderPlus,
+  FilePlus,
   BookOpen,
-  Wand2,
   Cpu,
+  HelpCircle,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -186,8 +187,6 @@ function PermissionsContent() {
   const [batchSelectedKeys, setBatchSelectedKeys] = useState<string[]>([]);
   const [batchDeleting, setBatchDeleting] = useState(false);
 
-  // 单个删除确认弹窗
-  const [deletingKeyItem, setDeletingKeyItem] = useState<PermissionKeyItem | null>(null);
 
   // 模块卡片展开/折叠状态（key: group 名称, value: true 代表收起）
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -381,15 +380,15 @@ function PermissionsContent() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(data.message || "规则自愈完成！");
+        toast.success(data.message || "权限规则校准同步完成！");
         await loadData(true);
       } else {
         await loadData(true);
-        toast.success("动态监测完成：已从数据库实时拉取最新权限矩阵！");
+        toast.success("权限状态监测完成：已同步最新权限矩阵！");
       }
     } catch {
       await loadData(true);
-      toast.error("规则自愈请求异常，已从数据库重新加载");
+      toast.error("权限规则校验异常，已重新拉取");
     } finally {
       setIsCheckingSync(false);
     }
@@ -536,29 +535,76 @@ function PermissionsContent() {
     }
   };
 
-  // 单个从数据库删除权限项
-  const handleConfirmDeleteSingle = async () => {
-    if (!deletingKeyItem) return;
+  // 单个从数据库删除权限项（触发系统标准二次确认弹窗）
+  const handleDeleteSingle = async (perm: PermissionKeyItem) => {
+    if (!perm) return;
+    const ok = await confirm({
+      title: `确认从数据库删除权限【${perm.label}】？`,
+      message: `权限代号【${perm.key}】将被彻底从数据库权限目录中永久移除，已分配该权限的管理员将同步自动回收该项授权。删除后若是官方标准项可通过【恢复官方标准】补回，自定义权限项将不可恢复。确定要删除吗？`,
+      type: "danger",
+      confirmText: "确认删除",
+      cancelText: "取消",
+    });
+    if (!ok) return;
+
     try {
       const authToken = getAuthToken();
       const res = await fetch(
-        `/api/admin/permissions?key=${encodeURIComponent(deletingKeyItem.key)}`,
+        `/api/admin/permissions?key=${encodeURIComponent(perm.key)}`,
         {
           method: "DELETE",
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
         }
       );
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(`已从数据库中成功移除权限：【${deletingKeyItem.label}】`);
+        toast.success(data.message || `已从数据库中成功移除权限：【${perm.label}】`);
         if (Array.isArray(data.catalog)) {
           setPermissionCatalog(data.catalog);
         }
-        setDeletingKeyItem(null);
-        // 各管理员权限包中的失效授权已在服务端回收，重新拉取保持一致
         await loadData(true);
       } else {
         toast.error(data.error || "删除失败");
+      }
+    } catch {
+      toast.error("网络异常，删除失败");
+    }
+  };
+
+  // 删除整个功能模块及其全部权限
+  const handleDeleteGroup = async (group: PermissionGroupItem) => {
+    if (!group || group.keys.length === 0) return;
+    const ok = await confirm({
+      title: `确认删除模块【${group.group}】及其全部权限？`,
+      message: `将从数据库中移除该模块下的全部 ${group.keys.length} 项权限，已获授权的管理员将同步被回收对应权限。确定要删除该模块吗？`,
+      type: "danger",
+      confirmText: "确认删除该模块",
+      cancelText: "取消",
+    });
+    if (!ok) return;
+
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/permissions", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ keys: group.keys.map((k) => k.key) }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || `已成功从数据库中移除模块【${group.group}】！`);
+        if (Array.isArray(data.catalog)) {
+          setPermissionCatalog(data.catalog);
+        }
+        await loadData(true);
+      } else {
+        toast.error(data.error || "删除模块失败");
       }
     } catch {
       toast.error("网络异常，删除失败");
@@ -907,7 +953,7 @@ function PermissionsContent() {
             管理员模块授权配置中心
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            覆盖后台 {permissionCatalog.length} 个核心管理模块、共计 {allAvailableKeys.length} 项标准功能权限，数据 100% 源自数据库动态查询与维护
+            覆盖后台 {permissionCatalog.length} 个核心管理模块、共计 {allAvailableKeys.length} 项标准功能权限，统一集中管控与安全审计
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -928,17 +974,17 @@ function PermissionsContent() {
         </div>
       </div>
 
-      {/* 后台功能动态监测态势感知条（实时从数据库查询同步） */}
-      <div className="bg-white rounded-xl border border-slate-200/80 px-4 py-3 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
-            <Database className="w-3.5 h-3.5" />
+      {/* 后台功能动态监测态势感知条（实时从数据库查询同步，自适应流式排版杜绝遮挡） */}
+      <div className="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1 basis-[320px]">
+          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+            <Database className="w-4 h-4" />
           </div>
-          <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
-            <span className="text-xs font-bold text-slate-800 whitespace-nowrap shrink-0">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <span className="text-xs font-bold text-slate-800 shrink-0">
               系统权限实时监测中
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span>已接入 {permissionCatalog.length} 个功能模块 · {allAvailableKeys.length} 项标准权限</span>
             </span>
@@ -946,57 +992,62 @@ function PermissionsContent() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap shrink-0">
-          {/* 纯数据库驱动：注册新功能模块 */}
+          {/* 注册新功能模块 */}
           <button
             type="button"
             onClick={() => setShowRegisterModuleModal(true)}
-            className="px-3 py-1.5 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-[4px] shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
-            title="纯数据库驱动：新增后台功能模块，自动根据数据库规则派生生成权限并入库"
+            className="group px-3 py-1.5 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-[4px] shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+            title="当系统开发了新的功能页面时，点击登记新模块并批量生成配套的标准操作权限"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+            <FolderPlus className="w-3.5 h-3.5 text-white" />
             <span>注册新功能模块</span>
+            <HelpCircle className="w-3.5 h-3.5 opacity-75 group-hover:opacity-100 transition-opacity" />
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenAddModal()}
-            className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-[4px] shadow-2xs hover:shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
-            title="为现有模块灵活补充细粒度操作权限"
+            className="group px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-[4px] shadow-2xs hover:shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 whitespace-nowrap shrink-0"
+            title="在现有模块下单独添加一项特殊的细分操作权限（如特殊审核、强制下线等）"
           >
             <Plus className="w-3.5 h-3.5 text-slate-500" />
             <span>灵活补充权限</span>
+            <HelpCircle className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
           </button>
 
           <button
             type="button"
             onClick={handleCheckSync}
             disabled={isCheckingSync}
-            className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-[4px] transition-all flex items-center gap-1.5 border border-emerald-200/80 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
-            title="根据数据库中的模块注册表与派生规则，执行一次全量自检与自愈对齐"
+            className="group px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-[4px] transition-all flex items-center gap-1.5 border border-emerald-200/80 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
+            title="检查全站模块与权限的一致性，自动补齐缺失权限项并同步对齐超级管理员"
           >
             <Layers className={`w-3.5 h-3.5 ${isCheckingSync ? "animate-spin" : ""}`} />
-            <span>{isCheckingSync ? "自愈对齐中..." : "规则自检与动态自愈"}</span>
+            <span>{isCheckingSync ? "规则校验中..." : "权限规则校准同步"}</span>
+            <HelpCircle className="w-3.5 h-3.5 text-emerald-600/70 group-hover:text-emerald-700 transition-colors" />
           </button>
 
           <button
             type="button"
             onClick={handleResetDefaultPermissions}
             disabled={isResettingCatalog}
-            className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-[#3182ce] bg-slate-50 hover:bg-slate-100 rounded-[4px] transition-colors flex items-center gap-1 border border-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
-            title="按内置官方标准库补齐缺失权限项并还原标准项定义（保留自定义补充项）"
+            className="group px-3 py-1.5 text-xs font-bold text-slate-600 hover:text-[#3182ce] bg-slate-50 hover:bg-slate-100 rounded-[4px] transition-colors flex items-center gap-1.5 border border-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+            title="将系统的标准权限名称与描述还原为出厂默认值（不会删除您自定义的权限）"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isResettingCatalog ? "animate-spin" : ""}`} />
             <span>{isResettingCatalog ? "恢复中..." : "恢复官方标准"}</span>
+            <HelpCircle className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#3182ce] transition-colors" />
           </button>
 
           <button
             type="button"
             onClick={() => setShowExtGuideModal(true)}
-            className="px-3 py-1.5 text-xs font-bold text-[#3182ce] bg-blue-50 hover:bg-blue-100 rounded-[4px] transition-colors flex items-center gap-1.5 border border-blue-200/80 cursor-pointer whitespace-nowrap shrink-0"
-            title="查看全平台零硬编码、数据库驱动的高扩展性设计规范"
+            className="group px-3 py-1.5 text-xs font-bold text-[#3182ce] bg-blue-50 hover:bg-blue-100 rounded-[4px] transition-colors flex items-center gap-1.5 border border-blue-200/80 cursor-pointer whitespace-nowrap shrink-0"
+            title="查看平台权限设计规则、管理员角色等级划分与授权使用说明手册"
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span>扩展性机制指引</span>
+            <span>模块授权机制指引</span>
+            <HelpCircle className="w-3.5 h-3.5 text-blue-500/70 group-hover:text-[#3182ce] transition-colors" />
           </button>
         </div>
       </div>
@@ -1444,6 +1495,15 @@ function PermissionsContent() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => handleDeleteGroup(group)}
+                                className="px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1 border border-red-200/60"
+                                title={`从数据库中删除【${group.group}】模块及其中全部权限`}
+                              >
+                                <Trash2 className="w-3 h-3 text-red-500" />
+                                <span>删除模块</span>
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleToggleGroup(groupKeyStrings)}
                                 className="px-2.5 py-1 text-xs font-bold text-slate-600 hover:text-[#3182ce] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                               >
@@ -1550,7 +1610,7 @@ function PermissionsContent() {
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setDeletingKeyItem(perm);
+                                        handleDeleteSingle(perm);
                                       }}
                                       className="h-6 px-1.5 rounded-[4px] bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all flex items-center gap-1 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer"
                                       title="从数据库中删除此权限"
@@ -1595,48 +1655,6 @@ function PermissionsContent() {
         </div>
       )}
 
-      {/* ======================= MODAL: 单个删除二次确认 ======================= */}
-      {deletingKeyItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in-50 duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 text-left">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-800">
-                  确认从数据库中删除该权限？
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  权限名称：<strong className="text-red-600">{deletingKeyItem.label}</strong>（{deletingKeyItem.key}）
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-              删除后，系统数据库将同步移除此权限记录，各管理员将无法再被授予此功能权限。若删除的是官方标准项，可通过顶部的【恢复官方标准】一键补回；自定义补充项删除后不可恢复。
-            </p>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingKeyItem(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeleteSingle}
-                className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>确认从数据库删除</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* 灵活补充新功能权限模态框（知阁·舟坊顶级规范设计系统） */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -1898,14 +1916,14 @@ function PermissionsContent() {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-50/50 via-white to-white shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-blue-100/80 text-[#3182ce] flex items-center justify-center shadow-xs">
-                  <Sparkles className="w-4 h-4" />
+                  <FolderPlus className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-800">
-                    注册新功能模块（纯数据库数据驱动）
+                    注册新功能模块
                   </h3>
                   <p className="text-[11px] text-slate-500 font-medium">
-                    仅需录入模块元数据，系统规则引擎将根据数据库规则字典全自动派生全套权限并入库
+                    录入业务功能模块基础信息，系统将基于统一模板自动生成标准操作权限并纳管
                   </p>
                 </div>
               </div>
@@ -2082,7 +2100,7 @@ function PermissionsContent() {
                   {isRegisteringModule ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <FilePlus className="w-3.5 h-3.5" />
                   )}
                   <span>{isRegisteringModule ? "正在派生并入库..." : "确认注册并自动生成权限"}</span>
                 </button>
@@ -2103,10 +2121,10 @@ function PermissionsContent() {
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-800">
-                    系统高扩展性与数据库驱动权限治理规范
+                    平台模块授权与权限管理规范
                   </h3>
                   <p className="text-[11px] text-slate-500 font-medium">
-                    100% 数据库驱动，绝无硬编码，后期新增功能自动赋予对应权限与规则
+                    平台功能模块统一接入、标准动作权限划分与自动化赋权业务说明
                   </p>
                 </div>
               </div>
@@ -2122,43 +2140,43 @@ function PermissionsContent() {
             <div className="p-6 space-y-4 overflow-y-auto text-left text-xs leading-relaxed text-slate-600">
               <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200/60 space-y-1">
                 <span className="font-bold text-[#2b6cb0] block">
-                  🌟 核心原则：坚决拒绝硬编码，全链路数据库驱动
+                  业务治理：平台权限统一纳管与动态同步
                 </span>
                 <p className="text-[11px] text-slate-600">
-                  系统所有的功能模块元数据、标准动作生成模板、风险等级映射以及角色赋权规则，全部存储在数据库 <code className="font-mono text-[#2b6cb0]">systemconfig</code> 表中。无论是前端还是后端，均从数据库动态获取执行。
+                  平台所有管理模块的元数据、标准操作模板、风险等级划分以及角色授权关系，均通过系统配置服务集中统一管理与实时生效。
                 </p>
               </div>
 
               <div className="space-y-2">
                 <h4 className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
                   <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[11px]">1</span>
-                  新功能接入全自动机制（Auto-Discovery & Auto-Registration）
+                  功能模块标准化接入机制
                 </h4>
                 <p className="pl-6 text-[11px] text-slate-600">
-                  后续开发新模块时，通过页面点击【注册新功能模块】或在数据库模块表中插入一条元数据，系统规则引擎会自动根据数据库中的动作规则模板，秒级派生出 <code className="font-mono bg-slate-100 px-1 py-0.5 rounded">read</code>、<code className="font-mono bg-slate-100 px-1 py-0.5 rounded">create</code>、<code className="font-mono bg-slate-100 px-1 py-0.5 rounded">update</code>、<code className="font-mono bg-slate-100 px-1 py-0.5 rounded">delete</code> 等全套标准权限，并自动写入真实权限目录。
+                  当平台纳管新的管理功能时，通过点击【注册新功能模块】登记业务模块信息，系统将基于统一的标准操作模板，自动生成包括浏览查看、新增录入、修改编辑、删除清理等在内的完整权限条目，并纳管至平台权限目录。
                 </p>
               </div>
 
               <div className="space-y-2">
                 <h4 className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
                   <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[11px]">2</span>
-                  自适应规则自动赋权（Auto-Grant Policy）
+                  自适应赋权策略（Auto-Grant Policy）
                 </h4>
                 <p className="pl-6 text-[11px] text-slate-600">
-                  新功能一旦注册入库：① 平台超级管理员自动获得所有新权限；② 普通管理员将根据数据库配置的默认规则（如自动授予只读基线权限），自动在后台可见该新功能，免去每次上线后超管需逐一为数十位管理员手动打勾的繁琐操作。
+                  模块注册生效后：超级管理员默认获得该模块全部操作授权；普通运维管理员则遵循统一策略（如默认授予查看浏览权限），确保管理工作台平滑衔接，无需人工逐一配置基础权限。
                 </p>
               </div>
 
               <div className="space-y-2">
                 <h4 className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
                   <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[11px]">3</span>
-                  数据库驱动的核心数据表与键值
+                  权限元数据核心字典
                 </h4>
-                <ul className="pl-6 space-y-1 text-[11px] font-mono text-slate-600">
-                  <li>• <strong className="text-slate-800">PLATFORM_MODULE_REGISTRY_V1</strong>: 数据库系统模块元数据注册表</li>
-                  <li>• <strong className="text-slate-800">PLATFORM_PERMISSION_RULES_V1</strong>: 动作推导模板与自动赋权策略配置</li>
-                  <li>• <strong className="text-slate-800">PLATFORM_PERMISSION_CATALOG_V1</strong>: 数据库实时生效的细粒度权限目录</li>
-                  <li>• <strong className="text-slate-800">PLATFORM_PERMISSION_LEVELS_V1</strong>: 数据库标准风险等级字典</li>
+                <ul className="pl-6 space-y-1 text-[11px] font-medium text-slate-600">
+                  <li>• <strong className="text-slate-800">模块注册配置 (Module Registry)</strong>: 平台管理模块基础业务清单</li>
+                  <li>• <strong className="text-slate-800">权限派生规则 (Action Rules)</strong>: 标准操作动作与自动化赋权策略</li>
+                  <li>• <strong className="text-slate-800">授权配置目录 (Permission Catalog)</strong>: 全平台当前生效的细粒度操作权限总表</li>
+                  <li>• <strong className="text-slate-800">风险等级字典 (Permission Levels)</strong>: 平台操作风险分级（只读/常规/敏感/高危）</li>
                 </ul>
               </div>
             </div>

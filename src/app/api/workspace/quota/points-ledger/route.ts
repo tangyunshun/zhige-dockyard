@@ -41,6 +41,15 @@ export async function GET(request: NextRequest) {
       }, { status: 403 });
     }
 
+    // 普通成员（非所有者/管理员）：仅可见自身算力点流水与操作记录
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    const requesterMember = await prisma.workspacemember.findUnique({
+      where: { userId_workspaceId: { userId: auth.user.id, workspaceId } },
+    });
+    const isOwner = ws?.ownerId === auth.user.id || requesterMember?.role === "OWNER";
+    const isAdmin = requesterMember?.role === "ADMIN";
+    const isMemberOnly = !isOwner && !isAdmin && requesterMember?.role === "MEMBER";
+
     const typeFilter = (searchParams.get("type") || "all").toLowerCase();
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "20", 10) || 20, 1), 100);
@@ -49,13 +58,17 @@ export async function GET(request: NextRequest) {
     const operatorId = searchParams.get("operatorId");
     const componentId = searchParams.get("componentId");
 
-    // 基础范围：空间内全部流水 + 用户钱包无空间归属的流水
-    const baseWhere: any = {
-      OR: [
-        { workspaceId },
-        { scope: "WALLET", userId: auth.user.id, workspaceId: null },
-      ],
-    };
+    // 基础范围：
+    //   - 普通成员：仅其自身在本空间的流水（含管理员对其算力的操作记录），不含共享池与其他成员
+    //   - 所有者/管理员：本空间全部流水 + 用户钱包无空间归属的流水
+    const baseWhere: any = isMemberOnly
+      ? { userId: auth.user.id, workspaceId }
+      : {
+          OR: [
+            { workspaceId },
+            { scope: "WALLET", userId: auth.user.id, workspaceId: null },
+          ],
+        };
 
     const createdAtFilter: any = {};
     if (startDate) createdAtFilter.gte = new Date(startDate);
@@ -182,7 +195,9 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
       .slice((page - 1) * pageSize, page * pageSize);
 
-    const summary = await getBalanceSummary(auth.user.id, workspaceId);
+    const summary = await getBalanceSummary(auth.user.id, workspaceId, {
+      memberTokenBalance: isMemberOnly ? Number(requesterMember?.tokenBalance || 0) : undefined,
+    });
 
     return NextResponse.json(
       {

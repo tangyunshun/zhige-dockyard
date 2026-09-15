@@ -114,7 +114,11 @@ export async function finalizeAccountDeletion(userId: string): Promise<boolean> 
         userId,
         action: "ACCOUNT_DELETED",
         resource: "user/account",
-        details: { type: "user_deletion_finalized", reason: "cooldown_elapsed" },
+        details: {
+          message: "账号注销冷静期已结束，用户全部数据已彻底删除",
+          type: "user_deletion_finalized",
+          reason: "cooldown_elapsed",
+        },
       },
     });
 

@@ -42,6 +42,7 @@ export default function PersonalWorkspaceSettings() {
     name: string;
     description: string;
     emoji: string;
+    logo: string;
     contactEmail?: string;
     contactPhone?: string;
   }>({
@@ -49,9 +50,13 @@ export default function PersonalWorkspaceSettings() {
     name: "",
     description: "",
     emoji: "🚀",
+    logo: "",
     contactEmail: "",
     contactPhone: "",
   });
+
+  // 空间头像上传中状态
+  const [logoUploading, setLogoUploading] = useState(false);
 
   // 研发偏好
   const [preferences, setPreferences] = useState({
@@ -151,6 +156,7 @@ export default function PersonalWorkspaceSettings() {
             contactEmail: contactEmail,
             contactPhone: contactPhone,
             emoji: personalWorkspace.emoji || "🚀",
+            logo: personalWorkspace.logo || detailData.workspace?.logo || "",
           });
         }
       }
@@ -185,6 +191,7 @@ export default function PersonalWorkspaceSettings() {
           description: workspaceData.description,
           contactEmail: workspaceData.contactEmail,
           contactPhone: workspaceData.contactPhone,
+          logo: workspaceData.logo,
         }),
       });
 
@@ -199,6 +206,53 @@ export default function PersonalWorkspaceSettings() {
       toast.error("保存失败，请稍后重试");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 空间头像上传处理（参照企业空间设计，上传至 /api/workspace/upload-icon）
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("只能上传图片文件");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("图片大小不能超过 2MB");
+      return;
+    }
+
+    try {
+      setLogoUploading(true);
+      const authToken = getAuthToken();
+      const formData = new FormData();
+      formData.append("icon", file);
+
+      const res = await fetch("/api/workspace/upload-icon", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.iconUrl) {
+          setWorkspaceData((prev: any) => ({ ...prev, logo: data.iconUrl }));
+          toast.success("头像上传成功，请点击右上角『保存修改』生效");
+        }
+      } else {
+        const err = await res.json();
+        throw new Error(err.message || "上传图标失败");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "上传图标失败，请重试");
+    } finally {
+      setLogoUploading(false);
     }
   };
 
@@ -526,8 +580,18 @@ export default function PersonalWorkspaceSettings() {
                           空间标识
                         </label>
                         <div className="flex items-center gap-3">
-                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-lg shadow-[#3182ce]/20 text-2xl">
-                            {workspaceData.emoji}
+                          <div className="relative group">
+                            {workspaceData.logo ? (
+                              <img
+                                src={workspaceData.logo}
+                                alt="空间头像"
+                                className="w-14 h-14 rounded-xl object-cover border border-[#e2e8f0] shadow-lg shadow-[#3182ce]/20"
+                              />
+                            ) : (
+                              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center shadow-lg shadow-[#3182ce]/20 text-2xl">
+                                {workspaceData.emoji}
+                              </div>
+                            )}
                           </div>
                           <div className="flex gap-2">
                             <button
@@ -549,6 +613,7 @@ export default function PersonalWorkspaceSettings() {
                                 setWorkspaceData({
                                   ...workspaceData,
                                   emoji: random,
+                                  logo: "",
                                 });
                                 toast.success("标识已随机更换");
                               }}
@@ -556,15 +621,32 @@ export default function PersonalWorkspaceSettings() {
                             >
                               随机标识
                             </button>
-                            <button
-                              onClick={() =>
-                                toast.info("上传图标功能开发中...")
-                              }
-                              className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#3182ce] text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer inline-flex items-center gap-2"
-                            >
+                            <label className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-[#3182ce] text-[#3182ce] hover:bg-[#3182ce]/5 transition-all cursor-pointer inline-flex items-center gap-2">
                               <Upload className="w-4 h-4" />
-                              上传图标
-                            </button>
+                              {logoUploading ? "上传中..." : "上传图标"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleLogoUpload}
+                                disabled={logoUploading}
+                                className="hidden"
+                              />
+                            </label>
+                            {workspaceData.logo && (
+                              <button
+                                onClick={() => {
+                                  setWorkspaceData({
+                                    ...workspaceData,
+                                    logo: "",
+                                  });
+                                  toast.info("已重置头像为默认图标，请点击右上角『保存修改』生效");
+                                }}
+                                className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-all cursor-pointer inline-flex items-center gap-2"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                恢复默认头像
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

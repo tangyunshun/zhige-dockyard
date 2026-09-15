@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -117,10 +117,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast, success, error, warning, info, dismissAll }}>
       {children}
-      {/* 所有 Toast - 中间顶部（严格遵循设计系统规范） */}
+      {/* 所有 Toast - 中间顶部（严格遵循设计系统规范，层级置顶防止被遮罩遮挡） */}
       <div
         id="zg-toast-container"
-        className="fixed top-8 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-3 pointer-events-none"
+        className="fixed top-8 left-1/2 -translate-x-1/2 z-[99999] flex flex-col gap-3 pointer-events-none"
       >
         {toasts.map((toast) => (
           <ToastItem
@@ -305,13 +305,13 @@ function ToastItem({
   // 普通 Toast 渲染（严格遵循设计规范）
   return (
     <div
-      className="zg-toast show flex items-center gap-2 px-3 py-2 rounded-full border border-[#e2e8f0]/90 bg-white/95 backdrop-blur-md shadow-[0_8px_24px_-6px_rgba(15,23,42,0.1),0_2px_6px_-2px_rgba(15,23,42,0.04)] pointer-events-auto"
-      style={{ width: "fit-content", maxWidth: "480px" }}
+      className="zg-toast show flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border border-[#e2e8f0]/90 bg-white/95 backdrop-blur-md shadow-[0_8px_24px_-6px_rgba(15,23,42,0.1),0_2px_6px_-2px_rgba(15,23,42,0.04)] pointer-events-auto"
+      style={{ width: "fit-content", maxWidth: "620px" }}
     >
       <div className="flex-shrink-0 flex items-center justify-center">
         {icons[toast.type]}
       </div>
-      <div className="flex-1 text-xs md:text-[13px] font-extrabold text-slate-800 tracking-tight leading-none whitespace-nowrap truncate max-w-[70vw]">
+      <div className="flex-1 text-xs md:text-[13px] font-bold text-slate-800 tracking-tight leading-relaxed break-words">
         {toast.message}
       </div>
       <button
