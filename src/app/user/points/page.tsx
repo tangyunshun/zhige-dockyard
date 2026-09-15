@@ -122,7 +122,7 @@ export default function MyPointsPage() {
   const stats = data?.stats;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 font-sans">
+    <div className="space-y-6 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
