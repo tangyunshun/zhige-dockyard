@@ -35,6 +35,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
+  Quote,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
@@ -137,6 +138,13 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "组件阶段管理",
     href: "/admin/content",
     description: "维护平台组件的阶段大纲",
+    requiredPermission: "content:read",
+  },
+  {
+    icon: Quote,
+    label: "用户评价",
+    href: "/admin/testimonials",
+    description: "维护首页用户评价与每周轮换",
     requiredPermission: "content:read",
   },
   {

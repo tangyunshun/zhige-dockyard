@@ -17,7 +17,7 @@ export default function UpgradeModal({ open, onClose, workspaceType }: UpgradeMo
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-left border border-slate-100 space-y-4">
         <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-          <span>👑 升级工作空间服务配额与额度限制</span>
+          <span>升级工作空间服务配额与额度限制</span>
         </h3>
         <p className="text-xs text-slate-500 font-bold leading-relaxed">
           {workspaceType === "PERSONAL" ? "个人空间" : "空间"}当前处于免费自主沙盒套餐下。升级为企业协同空间将享有以下专有服务额度：

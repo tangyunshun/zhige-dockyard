@@ -118,7 +118,7 @@ const getSceneCopy = (highlight: UpgradeHighlight) => {
       };
     case "component":
       return {
-        badge: "🧩 组件额度已满",
+        badge: "⚙️ 组件额度已满",
         title: "提升组件装配额度",
         desc: "单个空间可装配的组件实例上限由会员等级决定。",
       };
@@ -130,7 +130,7 @@ const getSceneCopy = (highlight: UpgradeHighlight) => {
       };
     default:
       return {
-        badge: "✨ 解锁更多企业级权益",
+        badge: "解锁更多企业级权益",
         title: "升级会员套餐",
         desc: "对比各等级权益，选择最适合您团队规模的订阅方案。",
       };

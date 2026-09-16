@@ -518,7 +518,7 @@ export const COMPONENT_CATALOG_SEED = [
   {
     id: "C54", name: "智能效能分析引擎",
     description: "自动识别代码与契约偏离度，深度静态架构评审与指标诊断",
-    category: "BID_PREP", icon: "sparkles", tags: ["智能分析", "效能引擎", "静态评审"],
+    category: "BID_PREP", icon: "bar-chart", tags: ["智能分析", "效能引擎", "静态评审"],
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#效能评估", "#架构审查"],
     previewData: { inputMock: "粘贴源代码段落或架构设计文档", outputMock: "输出结构化分析报告：指出代码与契约偏离度及 3 处质量风险点", roiText: "自动静态评审代码与架构偏离，节约人工评审 90% 时间" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,

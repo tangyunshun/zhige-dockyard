@@ -527,7 +527,7 @@ export default function OverviewTab({
                         <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border shrink-0 ${
                           isManager ? "bg-blue-50 text-[#2b6cb0] border-blue-200" : "bg-amber-50 text-amber-600 border-amber-200"
                         }`}>
-                          {isManager ? "🛡️ 特权放行" : "🔒 岗位受限"}
+                          {isManager ? "特权放行" : "岗位受限"}
                         </span>
                       ) : (
                         <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 shrink-0">

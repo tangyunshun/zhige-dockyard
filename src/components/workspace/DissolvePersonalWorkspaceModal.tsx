@@ -12,7 +12,6 @@ import {
   ArrowRight,
   AlertTriangle,
   Layers,
-  Sparkles,
   Loader2,
   Terminal,
   Activity,
@@ -187,7 +186,7 @@ export function DissolvePersonalWorkspaceModal({
                   <RefreshCw className="w-7 h-7 animate-spin text-blue-600" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center shadow-xs">
-                  <Sparkles className="w-3 h-3 text-white" />
+                  <UserCheck className="w-3 h-3 text-white" />
                 </div>
               </div>
 

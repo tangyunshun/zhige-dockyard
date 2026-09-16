@@ -10,7 +10,6 @@ import {
   ArrowLeft,
   Settings,
   Save,
-  Sparkles,
   UploadCloud,
   Lock,
   Briefcase,
@@ -44,9 +43,9 @@ type PermissionMatrix = Record<string, string[]>; // Key: PostId, Value: Compone
 
 // 新建自定义岗位时可选的岗位图标（emoji，跨平台渲染一致）
 const POST_ICON_OPTIONS = [
-  "👑", "🛡️", "💼", "📄", "🧩", "📐",
+  "👑", "🛡️", "💼", "📄", "⚙️", "📐",
   "💻", "🗄️", "✅", "🐳", "👁️", "⚙️",
-  "🚀", "🔧", "📊", "🎯", "🔒", "🌟",
+  "🚀", "🔧", "📊", "🎯", "🔒", "📌",
 ];
 
 export default function WorkspacePermissionsPage() {
@@ -867,7 +866,7 @@ export default function WorkspacePermissionsPage() {
             <div className="p-6 text-left space-y-4">
               <div className="flex items-start gap-3.5">
                 <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0 shadow-2xs">
-                  <Sparkles className="w-5 h-5" />
+                  <Briefcase className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-800">

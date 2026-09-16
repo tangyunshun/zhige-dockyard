@@ -380,7 +380,7 @@ export default function WebhooksPage() {
                     }}
                     className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md font-bold transition-all cursor-pointer"
                   >
-                    🤖 钉钉机器人
+                    钉钉机器人
                   </button>
                   <button
                     type="button"

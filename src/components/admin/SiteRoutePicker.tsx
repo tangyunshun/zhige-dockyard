@@ -10,7 +10,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
+  Radar,
   Layers,
   X,
   Boxes,
@@ -320,7 +320,7 @@ export default function SiteRoutePicker({
     if (catName.includes("开发")) return <FileText className="w-3.5 h-3.5 text-emerald-600" />;
     if (catName.includes("安全")) return <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />;
     if (catName.includes("用户")) return <User className="w-3.5 h-3.5 text-sky-600" />;
-    if (catName.includes("自动感知") || catName.includes("新增")) return <Sparkles className="w-3.5 h-3.5 text-purple-600" />;
+    if (catName.includes("自动感知") || catName.includes("新增")) return <Radar className="w-3.5 h-3.5 text-purple-600" />;
     if (catName.includes("组件")) return <Component className="w-3.5 h-3.5 text-cyan-600" />;
     return <Layers className="w-3.5 h-3.5 text-slate-500" />;
   };
@@ -362,7 +362,7 @@ export default function SiteRoutePicker({
             </div>
           ) : (
             <span className="truncate text-slate-500">
-              ✨ 快捷选取站内页面 (已智能感知收录 {totalCount || allRoutes.length || "30+"} 项功能)...
+              快捷选取站内页面 (已智能感知收录 {totalCount || allRoutes.length || "30+"} 项功能)...
             </span>
           )}
         </div>
@@ -576,7 +576,7 @@ export default function SiteRoutePicker({
           {/* 底部指示栏 */}
           <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
             <span className="flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-500" />
+              <Radar className="w-3 h-3 text-amber-500" />
               <span>新功能发布后自动感知，无需手动修改代码</span>
             </span>
             <span>按 ESC 关闭</span>

@@ -14,7 +14,6 @@ import {
   Mail,
   UserX,
   Layers,
-  Sparkles,
   Loader2,
   ShieldCheck,
   Zap,
@@ -194,7 +193,7 @@ export function DissolveWorkspaceCheckModal({
                 </div>
                 
                 <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center shadow-sm">
-                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-white" />
                 </div>
               </div>
 

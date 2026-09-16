@@ -96,7 +96,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#63b3ed] opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3182ce]"></span>
             </span>
-            V5.0 全新发布:50+ 效能组件引擎上线
+            V5.0 全新发布:50+ 效能组件上线
           </div>
 
           <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-[#3182ce] via-[#2b6cb0] to-[#2b6cb0] bg-clip-text text-transparent leading-[1.15] mb-6">
@@ -194,7 +194,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                     <div className="bg-white p-6 rounded-[20px] shadow-2xl border border-slate-100 flex flex-col items-center gap-3 max-w-xs text-center animate-fade-in">
                       <div className="w-10 h-10 border-4 border-[#3182ce] border-t-transparent rounded-full animate-spin" />
                       <div>
-                        <h4 className="text-sm font-bold text-slate-800">舟坊效能引擎提取中</h4>
+                        <h4 className="text-sm font-bold text-slate-800">舟坊效能组件解析中</h4>
                         <p className="text-[10px] text-slate-500 mt-1">正在模拟推演效能组件沙盘...</p>
                       </div>
                     </div>
@@ -362,7 +362,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                                 <div className="col-span-6 text-slate-500">系统完全解耦，支持专网物理单机包及VPC隔离环境离线一键部署。</div>
                               </div>
                               <div className="grid grid-cols-12 bg-white border border-red-100 bg-red-50/10 rounded-lg py-2 px-3 items-center">
-                                <div className="col-span-4 text-red-600 font-semibold">3. 系统需内置本地化部署引擎</div>
+                                <div className="col-span-4 text-red-600 font-semibold">3. 系统需内置本地化部署能力</div>
                                 <div className="col-span-2 text-center text-red-600 font-bold">! 建议偏离</div>
                                 <div className="col-span-6 text-slate-600 font-medium">不提供公网SaaS服务，建议应答为：完美对接本地私有化自研算力集群。</div>
                               </div>
@@ -407,7 +407,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                               逆向推导物理 ERD 结构
                             </h2>
-                            <p className="text-xs text-slate-500 mt-1">引擎配置：PostgreSQL • 自动优化外键联合索引</p>
+                            <p className="text-xs text-slate-500 mt-1">配置：PostgreSQL • 自动优化外键联合索引</p>
                           </div>
                           <div className="flex-1 flex items-center justify-center gap-8 bg-slate-50/30 border border-slate-100 rounded-xl p-4 min-h-[220px]">
                             {/* users table */}
@@ -536,7 +536,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             </div>
                             <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 flex flex-col justify-center text-center">
                               <div className="text-[9px] font-medium text-slate-400 mb-0.5">兼容性</div>
-                              <div className="text-base font-bold text-slate-800">多引擎</div>
+                              <div className="text-base font-bold text-slate-800">多类型</div>
                             </div>
                           </>
                         )}
@@ -570,7 +570,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                           <Workflow className="w-3.5 h-3.5" />
                         </div>
                         <span className="font-bold text-slate-800 text-sm tracking-wide">
-                        架构助手
+                        架构诊断
                         </span>
                       </div>
 
@@ -591,7 +591,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
                             标书内容《政务云二期建设项目》解析成功。
                           </div>
                           <div className="bg-blue-50/70 rounded-12 p-4 border border-blue-100 text-xs text-slate-700 leading-relaxed mb-6">
-                            检测到 <span className="text-red-600 font-bold">1项</span> 技术规格偏离（本地化引擎集成要求），建议应答方案已生成。
+                            检测到 <span className="text-red-600 font-bold">1项</span> 技术规格偏离（本地化部署集成要求），建议应答方案已生成。
                           </div>
                         </>
                       )}

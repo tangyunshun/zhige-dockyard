@@ -156,7 +156,7 @@ export default function FeaturedComponents({
                         className="px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100/50 rounded text-[9px] font-black shrink-0 cursor-help select-none animate-pulse-subtle"
                         title={`已装配在以下空间：\n${names.join("、")}`}
                       >
-                        👤 我的：已配 {names.length} 空间
+                        我的：已配 {names.length} 空间
                       </span>
                     )}
                   </div>

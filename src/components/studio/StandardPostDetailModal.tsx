@@ -14,7 +14,6 @@ import {
   Plus,
   Loader2,
   CheckCircle2,
-  Sparkles,
   Layers,
   Users,
   Check,

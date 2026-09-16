@@ -9,7 +9,7 @@ import {
   Server, ShieldCheck, Check, ArrowRight, BookOpen, AlertCircle, 
   CheckCircle2, Play, Users, BarChart2, ShieldAlert, FileDown, Clipboard, Trash2, Edit2, HelpCircle, Info,
   Upload, Save, AlertTriangle, Copy, KeyRound, ExternalLink, Share2, Ban, Clock, History, Zap, PenLine, Eye,
-  Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock, Sparkles,
+  Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock,
   SlidersHorizontal, Briefcase, Crown, Loader2
 } from "lucide-react";
 import AvatarDropdown from "@/components/AvatarDropdown";
@@ -705,11 +705,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     setCheckLogs([]);
     
     const logs = [
-      "⚙️ 正在初始化安全卸载引导区...",
-      "⚙️ 正在建立空间本地文件依赖校验...",
-      `⚙️ 正在拉取组件 [${compName}] 的历史数据指标...`,
-      "⚙️ 正在检索当前空间的任务执行历史记录...",
-      "⚙️ 正在校验资产完整性与底层数据依存冲突..."
+      "正在初始化安全卸载引导区...",
+      "正在建立空间本地文件依赖校验...",
+      `正在拉取组件 [${compName}] 的历史数据指标...`,
+      "正在检索当前空间的任务执行历史记录...",
+      "正在校验资产完整性与底层数据依存冲突..."
     ];
     
     let currentLogIdx = 0;
@@ -3102,7 +3102,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     const safeQuery = reqSensitivity?.hasSensitive ? reqSensitivity.sanitizedText : aiQuery;
     if (reqSensitivity?.hasSensitive) {
       toast.warning(
-        `🛡️ 安全合规提示：您输入的诉求中包含敏感字词 [${reqSensitivity.foundWords.join(", ")}]，系统已自动模糊打码遮罩 (***)，请核对修改后再进行匹配。`,
+        `安全合规提示：您输入的诉求中包含敏感字词 [${reqSensitivity.foundWords.join(", ")}]，系统已自动模糊打码遮罩 (***)，请核对修改后再进行匹配。`,
         6000
       );
       setAiQuery(safeQuery);
@@ -3263,7 +3263,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               <p>• <span className="text-slate-900 font-bold">授权保护</span> 企业空间遵循岗位安全授权矩阵，不同角色对应不同的运行权限。</p>
             </div>
             <button onClick={() => router.push(`/studio?workspaceId=${workspaceId}`)} className="w-full h-9 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-lg shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5">
-              <span>🧩 挑选并装配新组件</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>挑选并装配新组件</span>
             </button>
           </div>
         );
@@ -3377,7 +3378,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               </div>
               {workspaceType === "PERSONAL" && (
                 <div className="flex justify-between items-center p-2 rounded-lg hover:bg-slate-50 border-t border-slate-100 text-slate-700 pt-3">
-                  <span className="text-amber-600 font-bold">👑 升级为企业协同空间</span>
+                  <span className="text-amber-600 font-bold">升级为企业协同空间</span>
                   <button onClick={handleUpgradeClick} className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs shadow-sm hover:shadow transition-all cursor-pointer">立即升级</button>
                 </div>
               )}
@@ -4087,7 +4088,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         })()}
                       </div>
                     ) : (
-                      // 路径 B (AI 智能匹配)
+                      // 路径 B (自动匹配)
                       <div className="space-y-3 pt-1">
                         <label className="text-[11px] font-bold text-slate-400 block tracking-wider uppercase">描述您的任务诉求（或上传文件）</label>
                         <div className="space-y-1.5">
@@ -4922,7 +4923,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   <span className="text-xs font-black text-slate-800">当前空间协同协作者 ({filteredMembers.length} 人)</span>
                   {workspaceType === "ENTERPRISE" && (
                     <span className="text-[10px] px-2 py-0.5 bg-blue-50 text-[#3182ce] rounded border border-blue-100 font-bold">
-                      我的角色：{isTabOwner ? "👑 所有者" : isTabAdmin ? "🔧 管理员" : "👤 协同成员"}
+                      我的角色：{isTabOwner ? "所有者" : isTabAdmin ? "管理员" : "协同成员"}
                     </span>
                   )}
                 </div>
@@ -5348,7 +5349,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                           到期时间: {new Date(inv.expiresAt).toLocaleDateString("zh-CN")}
                         </div>
                         <span className="text-[11px] px-2.5 py-1 bg-amber-50/60 border border-amber-200 rounded-lg text-amber-600 font-extrabold select-none">
-                          拟分配: {inv.role === "ADMIN" ? "🔧 空间管理员" : "👤 协同成员"}
+                          拟分配: {inv.role === "ADMIN" ? "空间管理员" : "协同成员"}
                         </span>
                         <button
                           onClick={() => handleTabDeleteInvitation(inv.id)}
@@ -5378,7 +5379,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   onClick={handleUpgradeClick}
                   className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-500 hover:from-amber-600 hover:to-amber-600 text-white rounded-lg text-xs font-bold shadow hover:shadow-md transition-all cursor-pointer"
                 >
-                  👑 升级为企业版空间，体验协同研发
+                  升级为企业版空间，体验协同研发
                 </button>
               </div>
             )}
@@ -6129,7 +6130,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     {/* 1. 个人空间列表 */}
                     {personalWs.length > 0 && (
                       <div className="space-y-1">
-                        <span className="text-[10px] font-black text-slate-400 block px-1">👤 个人自主空间</span>
+                        <span className="text-[10px] font-black text-slate-400 block px-1">个人自主空间</span>
                         {personalWs.map(ws => (
                           <button
                             key={ws.id}
@@ -6242,7 +6243,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">{workspaceName}</h1>
               {workspaceType === "PERSONAL" ? (
-                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 bg-blue-50 text-[#3182ce] rounded-full border border-blue-100 font-bold">👤 个人空间</span>
+                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 bg-blue-50 text-[#3182ce] rounded-full border border-blue-100 font-bold">个人空间</span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 bg-amber-50 text-[#d97706] rounded-full border border-amber-100 font-bold">🏢 企业协同空间</span>
               )}
@@ -6262,14 +6263,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       }
                     }
                     return userRole === "Owner" || userRole === "OWNER"
-                      ? "👑 空间所有者"
+                      ? "空间所有者"
                       : userRole === "Admin" || userRole === "ADMIN"
-                      ? "🔧 空间管理员"
+                      ? "空间管理员"
                       : userRole === "ComponentManager"
-                      ? "🧩 组件管理员"
+                      ? "组件管理员"
                       : userRole === "KnowledgeManager"
-                      ? "📚 规范库管理员"
-                      : "👤 协同成员";
+                      ? "规范库管理员"
+                      : "协同成员";
                   })()}
                 </span>
               )}
@@ -6477,7 +6478,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 return (
                   <div className="bg-gradient-to-r from-blue-50/90 to-slate-50/70 border border-blue-200/70 rounded-2xl p-4 space-y-2">
                     <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-[#3182ce]" />
+                      <ClipboardList className="w-3.5 h-3.5 text-[#3182ce]" />
                       <span className="text-[11px] font-black text-[#3182ce] uppercase tracking-wider">
                         智能总结
                       </span>
@@ -6931,7 +6932,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     <button
                       onClick={() => {
                         const joinUrl = `${window.location.origin}/workspace-hub?inviteCode=${invitationCode}`;
-                        const promoLinkText = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🚀 专属快捷加入链接（点击即入）：${joinUrl}\n\n—— 知阁·舟坊：高效、自动化的团队研发协同中枢，让开发化繁为简。`;
+                        const promoLinkText = `【知阁·舟坊】项目协同邀请函\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n专属快捷加入链接（点击即入）：${joinUrl}\n\n—— 知阁·舟坊：高效、自动化的团队研发协同中枢，让开发化繁为简。`;
                         navigator.clipboard.writeText(promoLinkText);
                         toast.success("邀请链接已成功复制，请转发给团队成员");
                       }}
@@ -7728,7 +7729,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </div>
                 <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-600 flex items-center justify-between gap-2 font-medium flex-wrap">
                   <span>⚡ 空间可用算力池：<strong className="text-amber-600 font-bold font-mono">{isUnlimitedToken(workspaceQuotaInfo.tokenBalance) ? "无限" : `${workspaceQuotaInfo.tokenBalance} 算力点`}</strong></span>
-                  <span>👤 该成员独立余额：<strong className="text-amber-600 font-bold font-mono">{Number(editingQuotaMember.tokenBalance || 0).toLocaleString()} 算力点</strong></span>
+                  <span>该成员独立余额：<strong className="text-amber-600 font-bold font-mono">{Number(editingQuotaMember.tokenBalance || 0).toLocaleString()} 算力点</strong></span>
                   <span>📊 未锁定余量：<strong className="text-emerald-600 font-bold font-mono">{formatTokenBalance(workspaceQuotaInfo.unallocatedBalance)} 算力点</strong></span>
                 </div>
               </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle, TrendingDown, TrendingUp, Clock, Users, Shield, Code, Database, X, Loader2 } from "lucide-react";
+import { ArrowRight, CheckCircle, TrendingDown, TrendingUp, Clock, Users, Shield, Code, Database, X, Loader2, Briefcase } from "lucide-react";
 import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useToast } from "@/components/Toast";
@@ -87,7 +87,7 @@ const tabContents: Record<TabType, TabContent> = {
 const industryScenarios = [
   {
     title: "智慧水利",
-    description: "大坝智能化健康安全运维、核心水资源智能调配系统",
+    description: "大坝健康安全运维、核心水资源调度系统",
     stats: [
       { label: "异常故障预警", value: "99.2%" },
       { label: "日常运维开销", value: "-35%" },
@@ -95,7 +95,7 @@ const industryScenarios = [
   },
   {
     title: "装备制造",
-    description: "轨道交通、起重及盾构设备数字孪生与智能化设计",
+    description: "轨道交通、起重及盾构设备数字化建模与设计",
     stats: [
       { label: "技术设计耗时", value: "-40%" },
       { label: "测试缺陷下降", value: "-55%" },
@@ -111,7 +111,7 @@ const industryScenarios = [
   },
   {
     title: "金融合规",
-    description: "银企交易风控平台、智能质检与高敏感级客服应答系统",
+    description: "银企交易风控平台、质检与高敏感级客服应答系统",
     stats: [
       { label: "并发事务处理", value: "10万TPS" },
       { label: "虚假交易拦截", value: "99.8%" },
@@ -187,28 +187,51 @@ export default function SolutionsPage() {
   }, []);
 
   // 从数据库动态加载工作空间已部署的方案配置 (闭环流程)
+  // 结构化来源：CONFIGURE_SOLUTION 操作日志（GET /api/workspace/configure-solution）；
+  // 为兼容历史数据，若结构化结果为空则回退解析 description 旧前缀 [已部署方案: xxx]。
   useEffect(() => {
     if (mounted && userState.isLoggedIn) {
       const fetchWorkspaceSolutions = async () => {
         try {
           const authToken = getAuthToken();
-          const res = await fetch("/api/workspace/list", {
-            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-            credentials: "include",
-          });
-          if (res.ok) {
-            const data = await res.json();
-            const dbConfigs: Record<string, string> = {};
-            data.workspaces.forEach((ws: any) => {
-              if (ws.description && ws.description.includes("[已部署方案: ")) {
-                const match = ws.description.match(/\[已部署方案:\s*(\w+)\]/);
-                if (match) {
-                  dbConfigs[ws.id] = match[1];
-                }
-              }
+          const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+          // 1) 结构化权威来源
+          let dbConfigs: Record<string, string> = {};
+          try {
+            const res = await fetch("/api/workspace/configure-solution", {
+              headers,
+              credentials: "include",
             });
-            setConfiguredWorkspaces(dbConfigs);
+            if (res.ok) {
+              const data = await res.json();
+              if (data?.configs && typeof data.configs === "object") {
+                dbConfigs = data.configs;
+              }
+            }
+          } catch (e) {
+            console.error("Failed to load structured solutions:", e);
           }
+
+          // 2) 历史兼容回退：解析 description 旧前缀
+          if (Object.keys(dbConfigs).length === 0) {
+            const res = await fetch("/api/workspace/list", {
+              headers,
+              credentials: "include",
+            });
+            if (res.ok) {
+              const data = await res.json();
+              (data.workspaces || []).forEach((ws: any) => {
+                const m =
+                  typeof ws.description === "string"
+                    ? ws.description.match(/\[已部署方案:\s*([\w-]+)\]/)
+                    : null;
+                if (m) dbConfigs[ws.id] = m[1];
+              });
+            }
+          }
+
+          setConfiguredWorkspaces(dbConfigs);
         } catch (error) {
           console.error("Failed to load workspace solutions from DB:", error);
         }
@@ -397,7 +420,8 @@ export default function SolutionsPage() {
         <div className="max-w-7xl mx-auto px-6 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/70 backdrop-blur-md rounded-full shadow-sm border border-blue-200/30 mb-6">
             <span className="text-xs text-[#2b6cb0] font-black tracking-wide flex items-center gap-1.5">
-              🚀 行业效能实践方案
+              <Briefcase className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
+              行业效能实践方案
             </span>
           </div>
 

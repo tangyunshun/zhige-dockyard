@@ -453,7 +453,7 @@ export default function ComponentDispatcherPanel({
           <div className="lg:col-span-5 h-full overflow-y-auto p-5 bg-gradient-to-br from-[#f8fafc] to-[#f1f5f9] scrollbar-thin flex flex-col justify-between border-l border-slate-200">
             <div className="space-y-4">
               
-              {/* 🚀 智能路由网关 (ZhiGe Dynamic Routing Hub) - 精致仪表卡片 */}
+              {/* 任务路由网关 (ZhiGe Routing Hub) - 精致仪表卡片 */}
               <section className="bg-white border border-[#3182ce]/15 rounded-xl p-4 shadow-[0_4px_12px_rgba(49,130,206,0.03)] relative overflow-hidden flex flex-col gap-3">
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-[#3182ce]/5 to-indigo-500/2 rounded-full blur-lg pointer-events-none"></div>
                 <div className="space-y-1.5 min-w-0 relative z-10 flex-1">

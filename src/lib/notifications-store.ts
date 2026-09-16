@@ -124,7 +124,7 @@ export async function getNotifications(
   await prisma.notification.deleteMany({
     where: {
       userId,
-      title: "⚙️ 招标文件分析任务处理完成",
+      title: "招标文件分析任务处理完成",
     },
   }).catch(() => {});
 

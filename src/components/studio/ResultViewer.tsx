@@ -178,7 +178,7 @@ export function ResultViewer({
     }
 
     if (outputData.advices?.length) {
-      lines.push(`\n## ✨ 整改及设计优化建议\n${outputData.advices.map((a: string) => `- 💡 ${a}`).join("\n")}`);
+      lines.push(`\n## 整改及设计优化建议\n${outputData.advices.map((a: string) => `- 💡 ${a}`).join("\n")}`);
     }
 
     return lines.join("\n");
@@ -228,7 +228,7 @@ export function ResultViewer({
           ` : ""}
 
           ${outputData.advices?.length ? `
-            <h3 style="color: #22543d;">✨ 整改及设计优化建议</h3>
+            <h3 style="color: #22543d;">整改及设计优化建议</h3>
             <ul style="font-size: 13px; color: #276749;">
               ${outputData.advices.map((a: string) => `<li>💡 ${a}</li>`).join("")}
             </ul>
@@ -440,7 +440,7 @@ export function ResultViewer({
         {outputData.advices && outputData.advices.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-extrabold text-xs text-slate-800 flex items-center gap-1.5">
-              ✨ 整改及设计优化建议
+              整改及设计优化建议
             </h4>
             <div className="space-y-1.5">
               {outputData.advices.map((a: string, idx: number) => (

@@ -643,12 +643,12 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
   {
     group: "AI 算力与模型定价模块 (AI Pricing)",
     moduleRoute: "/admin/ai-pricing",
-    description: "全网大模型算力消耗比率核定、Token计费单价微调与服务通道启停",
+    description: "全网算力消耗比率核定、Token计费单价微调与服务通道启停",
     keys: [
       {
         key: "ai_pricing:read",
         label: "查看模型算力单价列表",
-        desc: "查看全网已接入的大模型算力倍率、输入输出单价与实时状态",
+        desc: "查看全网已接入的算力倍率、输入输出单价与实时状态",
         moduleName: "AI 算力与定价",
         level: "read",
       },
@@ -662,7 +662,7 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
       {
         key: "ai_pricing:toggle",
         label: "启停特定模型服务通道",
-        desc: "控制特定底层大模型通道对工作空间前台的开放或维护状态",
+        desc: "控制特定底层算力通道对工作空间前台的开放或维护状态",
         moduleName: "AI 算力与定价",
         level: "high",
       },

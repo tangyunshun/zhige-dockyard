@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Plus, Search, HelpCircle, Users, LayoutGrid } from "lucide-react";
+import { Plus, Search, HelpCircle, Users, LayoutGrid, Ticket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Workspace, EnterpriseQuota } from "@/hooks/useWorkspaceHubData";
@@ -191,7 +191,8 @@ export default function EnterpriseWorkspaceList({
                 onClick={onJoinClick}
                 className="zg-btn px-4.5 h-[38px] text-sm font-semibold text-[#d97706] bg-white hover:bg-amber-50/20 border border-amber-200/80 rounded-lg cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
               >
-                <span>🧩 输入邀请码加入</span>
+                <Ticket className="w-3.5 h-3.5" />
+                <span>输入邀请码加入</span>
               </button>
             </div>
           </div>

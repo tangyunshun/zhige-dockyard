@@ -306,7 +306,7 @@ export default function WorkspaceHub() {
     }
   };
 
-  // 智能路由分流：统一执行真实后端物理装配，装配成功后带上 newBoundComponentId 触发高亮跳转
+  // 任务路由分流：统一执行真实后端物理装配，装配成功后带上 newBoundComponentId 触发高亮跳转
   const navigateToWorkspaceComponent = async (workspaceId: string, type: "PERSONAL" | "ENTERPRISE", componentId: string) => {
     toast.info("正在装配组件并连接环境...", 1000);
     
@@ -1032,7 +1032,7 @@ export default function WorkspaceHub() {
                       </span>
                     </div>
                     <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-none flex items-center gap-1">
-                      <span>👤</span> 个人空间
+                      <span>个人空间</span>
                     </span>
                   </div>
                   <span className="text-xs font-bold text-[#2b6cb0] transition-transform group-hover:translate-x-0.5">

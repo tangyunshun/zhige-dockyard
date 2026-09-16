@@ -566,6 +566,36 @@ model userpreference {
 }
 
 // 用户帮助反馈表：记录用户从"帮助与反馈"页面提交的意见反馈（含匿名提交）
+// 首页「用户评价」：按 groupNo 分组（共 5 组），系统默认每周自动轮换展示一组，
+// 管理员可在后台手动指定当前展示组、增删改评价与上下架。
+model testimonial {
+  id             String   @id @default(cuid())
+  groupNo        Int // 分组编号 1..5
+  category       String   @default("personal") // personal（个人用户）| enterprise（企业客户）
+  name           String
+  role           String?
+  org            String?
+  avatar         String? // 头像 URL（可空，为空时前端回退为姓名首字）
+  rating         Int      @default(5)
+  content        String   @db.Text
+  tags           Json? // string[] 能力标签
+  highlightLabel String?
+  highlightValue String?
+  sortOrder      Int      @default(0)
+  // active（上架展示）| hidden（后台下架）| pending（用户提交待审核）| rejected（审核驳回）
+  status         String   @default("active")
+  // —— 用户自助提交信息（管理员直接录入时为空）——
+  submitterId    String? // 提交人 userId
+  submittedAt    DateTime? // 提交时间
+  reviewNote     String? // 审核备注 / 驳回原因
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([groupNo], map: "Testimonial_groupNo_idx")
+  @@index([status], map: "Testimonial_status_idx")
+  @@index([submitterId], map: "Testimonial_submitterId_idx")
+}
+
 model userfeedback {
   id        String   @id @default(cuid())
   userId    String?

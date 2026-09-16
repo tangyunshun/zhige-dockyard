@@ -4,9 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import HeroSection from "@/components/HeroSection";
-import UserQuickAccess from "@/components/UserQuickAccess";
 import CoreFeatures from "@/components/CoreFeatures";
 import RoleCapabilities from "@/components/RoleCapabilities";
+import TestimonialsSection from "@/components/TestimonialsSection";
 import EnterpriseSecurity from "@/components/EnterpriseSecurity";
 import CTA from "@/components/CTA";
 import Footer from "@/components/Footer";
@@ -214,6 +214,7 @@ export default function Home() {
       <HeroSection onDemoRequest={() => setShowDemoModal(true)} />
       <CoreFeatures />
       <RoleCapabilities />
+      <TestimonialsSection onDemoRequest={() => setShowDemoModal(true)} />
       <EnterpriseSecurity />
       <CTA onDemoRequest={() => setShowDemoModal(true)} />
       <Footer />

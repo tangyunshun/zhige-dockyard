@@ -12,7 +12,8 @@ import {
   Code,
   HelpCircle,
   Sliders,
-  History
+  History,
+  Star
 } from "lucide-react";
 import { useAppContext } from "@/contexts/AppContext";
 import { useLogout } from "@/hooks/useLogout";
@@ -293,6 +294,13 @@ export default function AvatarDropdown({
             >
               <HelpCircle className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">帮助与反馈</span>
+            </button>
+            <button
+              onClick={() => { router.push("/user/reviews"); setShowDropdown(false); }}
+              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"
+            >
+              <Star className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
+              <span className="group-hover:translate-x-0.5 transition-transform">评价系统</span>
             </button>
             <button
               onClick={() => { router.push("/releases"); setShowDropdown(false); }}

@@ -1171,7 +1171,7 @@ export default function KnowledgeLibraryPage() {
               <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
                 previewItem.authorRole === "OWNER" ? "text-[#3182ce] bg-blue-50 border-blue-200" : "text-purple-700 bg-purple-50 border-purple-200"
               }`}>
-                {previewItem.authorRole === "OWNER" ? "👑 所有者沉淀" : "👤 成员沉淀"}
+                {previewItem.authorRole === "OWNER" ? "所有者沉淀" : "成员沉淀"}
               </span>
               <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
                 <BuildingIcon className="w-3.5 h-3.5" /> {previewItem.workspaceName}

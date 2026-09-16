@@ -195,7 +195,7 @@ export default function ComponentBrowser({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [activeTab, setActiveTab] = useState<"recent" | "favorites">("recent");
 
-  // 工作模式分流：smart - 智能匹配推荐；active - 主动选择
+  // 工作模式分流：smart - 自动匹配推荐；active - 主动选择
   const [workMode, setWorkMode] = useState<"active" | "smart">("smart");
   const [uploadedFile, setUploadedFile] = useState<{ name: string; size: number } | null>(null);
   const [smartPrompt, setSmartPrompt] = useState("");
@@ -605,7 +605,7 @@ export default function ComponentBrowser({
       } else {
         clearInterval(interval);
 
-        // 智能匹配计算逻辑：基于数据库 component_catalog 的 keywords / 名称 / 描述做通用需求匹配
+        // 自动匹配计算逻辑：基于数据库 component_catalog 的 keywords / 名称 / 描述做通用需求匹配
         const promptLower = smartPrompt.toLowerCase();
         const fileLower = uploadedFile ? uploadedFile.name.toLowerCase() : "";
 
@@ -1042,7 +1042,7 @@ export default function ComponentBrowser({
           <section id="dispatch-engines" className="bg-white rounded-2xl p-5 sm:p-6 border border-[#e2e8f0]/90 shadow-sm space-y-4">
             <div>
               <div className="inline-flex items-center gap-1 bg-blue-50 text-[#3182ce] px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide border border-blue-100 uppercase">
-                🔍 检索与装配双引擎
+                🔍 检索与装配
               </div>
               <h2 className="text-sm font-black text-slate-900 tracking-tight mt-2 flex items-center gap-1.5">
                 如何寻找最适合您的效能资产组件？
@@ -1835,7 +1835,7 @@ export default function ComponentBrowser({
                             }`}
                         />
                         
-                        {/* 智能润色悬浮按钮面板 */}
+                        {/* 文本润色悬浮按钮面板 */}
                         <div className="absolute right-3 bottom-3 flex items-center gap-1.5 z-10">
                           {showRefineSmartPanel ? (
                             <div className="flex gap-1.5 bg-white/95 backdrop-blur-sm p-1 rounded-lg border border-slate-200/80 shadow-md animate-in zoom-in-95 duration-150">
@@ -1867,7 +1867,7 @@ export default function ComponentBrowser({
                               onClick={async () => {
                                 setIsRefiningSmart(true);
                                 setOriginalSmartPrompt(smartPrompt);
-                                await new Promise(resolve => setTimeout(resolve, 600)); // 智能润色模拟运算微延迟
+                                await new Promise(resolve => setTimeout(resolve, 600)); // 文本润色模拟运算微延迟
                                 const resText = getRefinedText(smartPrompt);
                                 setRefinedSmartPrompt(resText);
                                 setSmartPrompt(resText);

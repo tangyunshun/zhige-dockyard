@@ -26,6 +26,8 @@ const PUBLIC_PREFIXES = [
   "/init",
   // 营销页面与注册登录未登录展示所需的公开数据接口
   "/api/membership/levels",
+  // 首页「用户评价」公开读取（未登录访客可见；后台维护接口 /api/admin/testimonials 仍需鉴权）
+  "/api/testimonials",
   "/api/documents/list",
   "/api/system-documents",
   "/api/account-appeal",

@@ -63,6 +63,7 @@ export default function SecurityPage() {
   const [wizardStep, setWizardStep] = useState(0); // 0: step 1, 1: step 2, 2: processing, 3: report
   const [diagnoseProgress, setDiagnoseProgress] = useState(0);
   const [apiResult, setApiResult] = useState<{ score: number; risks: string[]; recs: string[] } | null>(null);
+  const [diagnoseError, setDiagnoseError] = useState("");
   
   // Form selections
   const [envScale, setEnvScale] = useState("medium");
@@ -84,6 +85,7 @@ export default function SecurityPage() {
     if (wizardStep === 2) {
       setDiagnoseProgress(5);
       setApiResult(null);
+      setDiagnoseError("");
 
       // 调用后端真实诊断 API
       const fetchDiagnosis = async () => {
@@ -115,11 +117,9 @@ export default function SecurityPage() {
           }
         } catch (err) {
           console.error(err);
-          // 备用兜底逻辑（如果 API 网卡，保证 UI 顺畅）
-          let score = 95;
-          const risks: string[] = ["【备份兜底提示】因网络通道异常，当前报告由本地算法生成。"];
-          const recs: string[] = ["建议检查本地网络并重新运行架构安全诊断。"];
-          setApiResult({ score, risks, recs });
+          // 诊断接口不可用：如实反馈，绝不生成任何虚假评分或兜底报告
+          setDiagnoseError("诊断服务暂时不可用，未能生成报告，请检查网络后重试。");
+          setApiResult(null);
         }
       };
 
@@ -155,6 +155,13 @@ export default function SecurityPage() {
     }
   }, [diagnoseProgress, wizardStep, apiResult]);
 
+  // 诊断失败：结束进度动画并切换到错误提示（不再伪造报告）
+  useEffect(() => {
+    if (wizardStep === 2 && diagnoseError) {
+      setDiagnoseProgress(100);
+    }
+  }, [wizardStep, diagnoseError]);
+
   const downloadReport = () => {
     const docContent = `ZhiGe Dockyard - Architecture & Security Diagnostic Report
 Generated At: ${new Date().toLocaleString()}
@@ -189,7 +196,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
       desc: "用户发起的所有研发与管理请求，全部通过双向 TLS 链路加密，并结合设备证书和动态零信任准入控制，杜绝中间人攻击与未授权终端接入。"
     },
     central: {
-      title: "知阁舟坊核心引擎 (ZhiGe-Dockyard Core)",
+      title: "知阁舟坊核心平台 (ZhiGe-Dockyard Core)",
       desc: "私有部署的中央引擎。调度运行时沙箱、管理权限策略、分发原子组件。与外网物理隔绝，所有核心任务调度均在企业本地局域网（LAN）中完成。"
     },
     sandbox: {
@@ -368,7 +375,7 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
                     <Database className="w-5 h-5" />
                   </div>
                   <span className="text-xs text-white font-black">4. 本地昇腾/GPU</span>
-                  <span className="text-[10px] text-slate-500 mt-1">纯本地化离线计算引擎</span>
+                  <span className="text-[10px] text-slate-500 mt-1">纯本地化离线计算能力</span>
                 </button>
               </div>
 
@@ -634,29 +641,43 @@ ${reportRecs.map((r, i) => `${i + 1}. ${r}`).join("\n")}
               </div>
             )}
 
-            {/* Step 3: Diagnosing */}
+            {/* Step 3: Diagnosing / 失败提示 */}
             {wizardStep === 2 && (
-              <div className="space-y-6 py-4 text-center">
-                <div className="flex justify-center">
-                  <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs text-slate-700 font-black">正在分析您的网络架构安全因子...</p>
-                  <p className="text-[10px] text-slate-500">
-                    {diagnoseProgress < 30 && "⚡ 正在计算本地信创硬件适配兼容性指数..."}
-                    {diagnoseProgress >= 30 && diagnoseProgress < 65 && "⚡ 正在扫描传输层国密 SM 链路覆盖率..."}
-                    {diagnoseProgress >= 65 && "⚡ 正在出具定制数据库及容器隔离配置报告..."}
-                  </p>
-                </div>
-                <div className="relative pt-1 max-w-xs mx-auto">
-                  <div className="overflow-hidden h-2 text-xs flex rounded-full bg-emerald-100">
-                    <div 
-                      style={{ width: `${diagnoseProgress}%` }}
-                      className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-300 rounded-full"
-                    />
+              diagnoseError ? (
+                <div className="space-y-5 py-6 text-center">
+                  <div className="flex justify-center">
+                    <AlertTriangle className="w-10 h-10 text-amber-500" />
+                  </div>
+                  <p className="text-xs text-slate-700 font-black leading-relaxed">{diagnoseError}</p>
+                  <div className="flex justify-center gap-2">
+                    <button onClick={() => setWizardStep(0)} className="zg-btn zg-btn-primary text-xs">
+                      返回重试
+                    </button>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-6 py-4 text-center">
+                  <div className="flex justify-center">
+                    <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-700 font-black">正在分析您的网络架构安全因子...</p>
+                    <p className="text-[10px] text-slate-500">
+                      {diagnoseProgress < 30 && "正在计算本地信创硬件适配兼容性指数..."}
+                      {diagnoseProgress >= 30 && diagnoseProgress < 65 && "正在扫描传输层国密 SM 链路覆盖率..."}
+                      {diagnoseProgress >= 65 && "正在出具定制数据库及容器隔离配置报告..."}
+                    </p>
+                  </div>
+                  <div className="relative pt-1 max-w-xs mx-auto">
+                    <div className="overflow-hidden h-2 text-xs flex rounded-full bg-emerald-100">
+                      <div 
+                        style={{ width: `${diagnoseProgress}%` }}
+                        className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-300 rounded-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
             )}
 
             {/* Step 4: Diagnostic Report Display */}

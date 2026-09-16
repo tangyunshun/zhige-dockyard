@@ -799,7 +799,7 @@ function AdminPostsContent() {
                 <span className="text-xs font-medium text-slate-400">位岗位成员</span>
               </div>
               <p className="text-[11px] text-slate-400 mt-2 font-medium">
-                跨 {stats.totalWorkspaces || workspaces.length} 个企业空间协同赋能
+                跨 {stats.totalWorkspaces || workspaces.length} 个企业空间协同支持
               </p>
             </div>
           </div>

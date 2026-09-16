@@ -8,7 +8,6 @@ import {
   Save,
   AlertCircle,
   ChevronRight,
-  Sparkles,
   Plus,
   Briefcase,
   Loader2,
@@ -276,7 +275,7 @@ export default function RoleMatrix({ workspaceId }: PermissionMatrixProps) {
             onClick={handleOpenImportModal}
             className="px-5 py-2.5 bg-[#3182ce] text-white text-xs font-bold rounded-xl hover:bg-[#2b6cb0] transition-colors flex items-center gap-2 shadow-sm"
           >
-            <Sparkles className="w-4 h-4" />
+            <Briefcase className="w-4 h-4" />
             <span>从平台标准库一键导入</span>
           </button>
           <button
@@ -310,7 +309,7 @@ export default function RoleMatrix({ workspaceId }: PermissionMatrixProps) {
             onClick={handleOpenImportModal}
             className="px-3.5 py-2 bg-blue-50 text-[#3182ce] hover:bg-blue-100 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 border border-blue-200/80 shadow-2xs"
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Briefcase className="w-3.5 h-3.5" />
             <span>从平台标准库导入</span>
           </button>
           <button
@@ -494,7 +493,7 @@ export default function RoleMatrix({ workspaceId }: PermissionMatrixProps) {
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center">
-                <Sparkles className="w-4 h-4" />
+                <Briefcase className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="text-sm font-black text-slate-800">
@@ -622,7 +621,7 @@ export default function RoleMatrix({ workspaceId }: PermissionMatrixProps) {
                 {importing ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Briefcase className="w-3.5 h-3.5" />
                 )}
                 <span>一键导入所选岗位</span>
               </button>

@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Zap,
   Coins,
+  Star,
   Menu,
   X,
   Shield,
@@ -101,6 +102,12 @@ export default function UserDashboardLayout({
           label: "我的算力",
           href: "/user/points",
           description: "算力点余额、赠送、消耗与充值流水",
+        },
+        {
+          icon: Star,
+          label: "我的评价",
+          href: "/user/reviews",
+          description: "提交使用评价、查看审核进度",
         },
         {
           icon: FolderOpen,

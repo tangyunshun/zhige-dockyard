@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Trash2, ShieldCheck, Check, Lock, Save, Download, Crown, Users, RefreshCw, AlertTriangle, RotateCcw, AlertCircle, ArrowUp, ArrowDown, GripVertical, Eye, Sparkles, CheckCircle2, Globe } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, Check, Lock, Save, Download, Crown, Users, RefreshCw, AlertTriangle, RotateCcw, AlertCircle, ArrowUp, ArrowDown, GripVertical, Eye, CheckCircle2, Globe } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { PostIcon, POST_ICON_MAP, DEFAULT_POST_ICON, isValidPostIcon } from "./PostIcon";
@@ -1605,7 +1605,7 @@ export default function WorkspacePostsPermissionsTab({
           >
             <div className="flex items-start gap-3.5 pb-2 border-b border-slate-100">
               <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5" />
+                <Globe className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-black text-slate-900">

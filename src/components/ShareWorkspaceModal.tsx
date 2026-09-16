@@ -169,7 +169,7 @@ export function ShareWorkspaceModal({ isOpen, onClose }: ShareWorkspaceModalProp
   };
 
   const handleCopyInvitation = (code: string, invitationUrl: string) => {
-    const text = `【知阁·舟坊】项目协同邀请函 ✉️\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n🔑 专属邀请码：${code}\n🚀 专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、自动化的团队研发协同中枢，让开发化繁为简。`;
+    const text = `【知阁·舟坊】项目协同邀请函\n\n您的团队负责人正在邀请您加入项目工作空间进行实时协作与自动化流程运行。\n\n专属邀请码：${code}\n专属快捷加入链接（点击即入）：${invitationUrl}\n\n—— 知阁·舟坊：高效、自动化的团队研发协同中枢，让开发化繁为简。`;
     navigator.clipboard.writeText(text);
     setCopiedCode(code);
     toast.success("已复制到剪贴板");

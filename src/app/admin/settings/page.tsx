@@ -94,7 +94,7 @@ export interface SystemSiteRouteGroup {
 
 export const SYSTEM_SITE_ROUTE_GROUPS: SystemSiteRouteGroup[] = [
   {
-    category: "🌟 核心业务与工作台",
+    category: "核心业务与工作台",
     routes: [
       { label: "核心能力与模块", url: "/capabilities", description: "全生命周期工程组件能力体系" },
       { label: "组件市场广场", url: "/market", description: "企业级组件发现、筛选与接入" },
@@ -103,17 +103,17 @@ export const SYSTEM_SITE_ROUTE_GROUPS: SystemSiteRouteGroup[] = [
     ],
   },
   {
-    category: "💼 行业场景解决方案",
+    category: "行业场景解决方案",
     routes: [
       { label: "解决方案总览", url: "/solutions", description: "四大核心行业信创解决方案" },
       { label: "政务云信创方案", url: "/solutions?type=gov", description: "安全可控的政务软件架构" },
       { label: "军工科研解决方案", url: "/solutions?type=military", description: "高等级内网隔离与研发规范" },
       { label: "金融安全解决方案", url: "/solutions?type=fintech", description: "分布式交易与合规风控" },
-      { label: "智慧城市物联网", url: "/solutions?type=city", description: "数字孪生与物联网中台集成" },
+      { label: "智慧城市物联网", url: "/solutions?type=city", description: "数字化建模与物联网中台集成" },
     ],
   },
   {
-    category: "📚 开发者生态与技术文档",
+    category: "开发者生态与技术文档",
     routes: [
       { label: "开发者文档中心", url: "/docs", description: "系统集成、API 文档与快速上手" },
       { label: "开发者开放社区", url: "/developers", description: "极客社区、开源规范与生态伙伴" },
@@ -123,7 +123,7 @@ export const SYSTEM_SITE_ROUTE_GROUPS: SystemSiteRouteGroup[] = [
     ],
   },
   {
-    category: "🛡️ 安全风控与服务合规",
+    category: "安全风控与服务合规",
     routes: [
       { label: "全生命周期安全", url: "/security", description: "信创等保三级与静态代码安全" },
       { label: "会员权益与算力定价", url: "/pricing", description: "个人版/专业版/企业版算力价格" },

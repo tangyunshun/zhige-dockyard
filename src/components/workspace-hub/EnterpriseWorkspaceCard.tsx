@@ -137,13 +137,13 @@ export default function EnterpriseWorkspaceCard({
               </span>
             )}
             {isOwner ? (
-              <span className="px-2.5 py-0.5 bg-amber-50 text-amber-600 text-xs font-bold rounded border-none">👑 所有者</span>
+              <span className="px-2.5 py-0.5 bg-amber-50 text-amber-600 text-xs font-bold rounded border-none">所有者</span>
             ) : isAdmin ? (
-              <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 text-xs font-bold rounded border-none">🔧 管理员</span>
+              <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 text-xs font-bold rounded border-none">管理员</span>
             ) : isComponentAdmin ? (
-              <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-bold rounded border-none">⚙️ 组件管理员</span>
+              <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-bold rounded border-none">组件管理员</span>
             ) : (
-              <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded border-none">👤 协同成员</span>
+              <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded border-none">协同成员</span>
             )}
           </div>
           <div className="text-xs text-slate-500 font-semibold mt-2 flex items-center gap-2 flex-wrap leading-none">

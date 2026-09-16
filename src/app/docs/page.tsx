@@ -114,7 +114,7 @@ const DOC_SECTION_DEFS: DocSectionDef[] = [
     id: "knowledge",
     title: "知识库与自定义组件",
     icon: Database,
-    description: "Vector 向量化语义索引、自定义 Python 算子发布与流水报表",
+    description: "全文与语义检索、自定义 Python 算子发布与流水报表",
     categories: ["knowledge"],
   },
   {
@@ -458,7 +458,7 @@ export default function DocsPage() {
           </div>
           
           <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 tracking-tight">
-            探索全栈自动化中枢、OpenAPI 与企业部署指南
+            探索全栈协同中枢、OpenAPI 与企业部署指南
           </h1>
           <p className="text-xs md:text-sm font-semibold text-slate-500 max-w-4xl mx-auto leading-relaxed whitespace-normal md:whitespace-nowrap truncate">
             提供涵盖 API 鉴权、Webhooks 异步推发、组件挑选、RBAC 空间治理与企业部署全套技术文档

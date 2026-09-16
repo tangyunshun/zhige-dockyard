@@ -106,22 +106,22 @@ const FIELD_TRANSLATIONS: Record<string, string> = {
 
 // 岗位与常见英文代码转中文映射表
 const CODE_TRANSLATIONS: Record<string, string> = {
-  OWNER: "👑 空间所有者 (最高管控)",
-  ADMIN: "🛡️ 空间管理员 (团队管理)",
-  PROJECT_MANAGER: "💼 项目经理 (业务调度)",
-  BID_SPECIALIST: "📄 投标专家 (商务打单)",
-  PRODUCT_MANAGER: "🧩 产品经理 (需求设计)",
-  UI_DESIGNER: "📐 UI/UX 视觉设计师 (界面视觉)",
-  BACKEND_ENGINEER: "💻 后端开发工程师 (核心研发)",
-  DBA_ARCHITECT: "🗄️ 数据架构师 (数据工程)",
-  QA_ENGINEER: "✅ QA工程师 (质量保证)",
-  DEVOPS_ENGINEER: "🐳 运维工程师 (运维安全)",
-  VIEWER: "👁️ 空间审计员 (只读查看)",
-  DELIVERY_OWNER: "🚚 交付负责人 (交付统筹)",
-  BUSINESS_SOLUTION: "📝 商务方案师 (商务方案)",
-  DATABASE_ADMIN: "🗄️ 数据库管理员 (数据库运维)",
-  REQUIREMENT_ANALYST: "🔍 需求分析师 (需求分析)",
-  TEST_ENGINEER: "🧪 测试工程师 (功能测试)",
+  OWNER: "空间所有者 (最高管控)",
+  ADMIN: "空间管理员 (团队管理)",
+  PROJECT_MANAGER: "项目经理 (业务调度)",
+  BID_SPECIALIST: "投标专家 (商务打单)",
+  PRODUCT_MANAGER: "产品经理 (需求设计)",
+  UI_DESIGNER: "UI/UX 视觉设计师 (界面视觉)",
+  BACKEND_ENGINEER: "后端开发工程师 (核心研发)",
+  DBA_ARCHITECT: "数据架构师 (数据工程)",
+  QA_ENGINEER: "QA工程师 (质量保证)",
+  DEVOPS_ENGINEER: "运维工程师 (运维安全)",
+  VIEWER: "空间审计员 (只读查看)",
+  DELIVERY_OWNER: "交付负责人 (交付统筹)",
+  BUSINESS_SOLUTION: "商务方案师 (商务方案)",
+  DATABASE_ADMIN: "数据库管理员 (数据库运维)",
+  REQUIREMENT_ANALYST: "需求分析师 (需求分析)",
+  TEST_ENGINEER: "测试工程师 (功能测试)",
   POSITIONS_CONFIG: "空间岗位权限配置",
   ACTIVE: "正常启用",
   INACTIVE: "已停用",
@@ -727,7 +727,7 @@ export default function UserActivitiesPage() {
             >
               <option value="ALL">全量模块分类 (全部)</option>
               <option value="workspace">📁 工作空间协同 (Workspace)</option>
-              <option value="component">🧩 工程研发组件 (Component)</option>
+              <option value="component">⚙️ 工程研发组件 (Component)</option>
               <option value="security">🛡️ 安全与身份认证 (Security)</option>
               <option value="profile">👤 用户与个人资料 (Profile)</option>
               <option value="membership">💳 会员与充值订单 (Membership)</option>

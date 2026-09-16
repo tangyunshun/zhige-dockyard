@@ -508,7 +508,7 @@ export default function PricingPage() {
             <span className="text-[11px] font-bold text-amber-600 hidden sm:inline">｜{POINT_RATE_HINT}</span>
           </div>
           {/* 单位口径说明：全系统只使用「算力点」，1 token = 1 算力点 */}
-          <p className="text-[11px] font-bold text-slate-500 max-w-3xl mx-auto mt-3 mb-10 leading-relaxed">
+          <p className="text-[11px] font-bold text-slate-500 mx-auto mt-3 mb-10 leading-relaxed whitespace-nowrap overflow-x-auto text-center">
             {POINT_UNIT_HINT}
           </p>
 
@@ -963,9 +963,12 @@ export default function PricingPage() {
               <span>支付宝</span>
             </button>
           </div>
-          <p className="text-[11px] text-slate-500 font-medium">
-            当前为演示支付，选择任一方式即可完成开通；真实支付通道后续接入。
-          </p>
+          <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <span className="text-amber-500 font-black text-xs leading-none mt-0.5">※</span>
+            <p className="text-[11px] text-amber-700 font-bold leading-relaxed">
+              当前为<strong>演示支付</strong>：选择任一方式即可完成开通，仅用于功能演示，真实支付通道后续接入。
+            </p>
+          </div>
         </div>
       </ConfirmDialog>
     </div>

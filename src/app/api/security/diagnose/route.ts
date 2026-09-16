@@ -34,11 +34,11 @@ export async function POST(request: NextRequest) {
     if (gpuType === "nvidia") {
       score -= 12;
       risks.push("【算力采购风险】使用非信创英伟达 GPU 系列算力卡，面临长周期供应链封锁与高敏感项目采购审核阻碍风险。");
-      recs.push("建议逐步将模型推理环境向华为昇腾 Ascend 910B 或寒武纪思元系列国产化算力硬件迁移。");
+      recs.push("建议逐步将算力推理环境向华为昇腾 Ascend 910B 或寒武纪思元系列国产化算力硬件迁移。");
     } else if (gpuType === "cpu") {
       score -= 5;
-      risks.push("【计算效能瓶颈】纯 CPU 本地算力集群在大模型高并发推理时，可能会面临响应时延激增的体验风险。");
-      recs.push("针对核心生成式业务，建议配置小规模国产专用大模型硬件加速板卡以分担算力负载。");
+      risks.push("【计算效能瓶颈】纯 CPU 本地算力集群在高并发任务推理时，可能会面临响应时延激增的体验风险。");
+      recs.push("针对核心生成式业务，建议配置小规模国产专用算力硬件加速板卡以分担算力负载。");
     } else {
       recs.push("国产信创 GPU 硬件适配良好：昇腾芯片/思元芯片具备极高的国产适配性与采购合规优势。");
     }
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     if (complianceType === "none") {
       score -= 8;
       risks.push("【安全审计缺失】未启用等保三级加解密套件或国密标准，企业核心资产和代码在中枢流转时处于明文状态。");
-      recs.push("建议在舟坊中央中枢（Core Engine）中全局开启 SM2/3/4 全链路国密加解密与敏感级网络数据流传输。");
+      recs.push("建议在舟坊中央中枢（核心中枢）中全局开启 SM2/3/4 全链路国密加解密与敏感级网络数据流传输。");
     } else if (complianceType === "level3") {
       recs.push("国家三级等保合规：支持全覆盖的安全防护体系与审计日志备份清退设计。");
     } else if (complianceType === "guomi") {

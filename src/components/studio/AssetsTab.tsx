@@ -800,7 +800,7 @@ export default function AssetsTab({
                       {/* 上传人 */}
                       <td className="py-3.5 px-3">
                         <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px] border border-slate-200/80 inline-flex items-center gap-1 truncate max-w-[110px]" title={`上传者: ${displayUploader}`}>
-                          👤 {displayUploader}
+                          {displayUploader}
                         </span>
                       </td>
 
