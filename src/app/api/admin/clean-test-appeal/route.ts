@@ -1,8 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSystemSettingsAdmin } from "@/lib/security";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // 该接口会写入风控案由数据：收敛为「超管 + system:settings」双校验（原先无任何鉴权）
+    const auth = await requireSystemSettingsAdmin(request);
+    if (!auth.authorized) {
+      return auth.errorResponse || NextResponse.json({ error: "无权访问" }, { status: 403 });
+    }
     const user = await prisma.user.findFirst({
       where: {
         OR: [{ name: "test-01" }, { email: "test-01" }, { phone: "18220098392" }],

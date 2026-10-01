@@ -4,6 +4,7 @@ import { join } from "path";
 import { existsSync } from "fs";
 import crypto from "crypto";
 import { requirePlatformPermission } from "@/lib/security";
+import { TESTIMONIAL_PERMISSIONS } from "@/lib/testimonial-service";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requirePlatformPermission(request, "content:publish");
+    const auth = await requirePlatformPermission(request, TESTIMONIAL_PERMISSIONS.update);
     if (!auth.authorized) {
       const status = auth.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json(

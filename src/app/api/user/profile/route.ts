@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/with-auth";
 import { getDeletionCooldownDays } from "@/lib/account-deletion";
+import { resolveEffectiveMembershipLevel } from "@/lib/user-entitlement";
 
 // GET - 获取用户信息（P0-2 修复：统一走 withAuth 状态机校验）
 export const GET = withAuth(async (req, user) => {
@@ -68,8 +69,8 @@ export const GET = withAuth(async (req, user) => {
       console.warn("[profile] 查询算力非致命提示:", e);
     }
 
-    // 查询会员等级中文名称与权益
-    const membershipLevelCode = dbUser.membershipLevel || "FREE";
+    // 查询会员等级中文名称与权益（统一走 resolveEffectiveMembershipLevel 判定）
+    const effectiveMembershipLevel = resolveEffectiveMembershipLevel(dbUser.role, dbUser.membershipLevel);
     const membershipMap: Record<string, string> = {
       FREE: "普通会员",
       BRONZE: "青铜会员",
@@ -79,7 +80,7 @@ export const GET = withAuth(async (req, user) => {
       CROWN: "皇冠会员",
       ENTERPRISE: "企业专享会员",
     };
-    const membershipDisplayName = membershipMap[membershipLevelCode.toUpperCase()] || "普通会员";
+    const membershipDisplayName = membershipMap[effectiveMembershipLevel.toUpperCase()] || "普通会员";
 
     // 统计用户所属工作空间总数
     const workspaceCount = await prisma.workspacemember.count({
@@ -134,6 +135,7 @@ export const GET = withAuth(async (req, user) => {
           success: true,
           data: {
             ...dbUser,
+            membershipLevel: effectiveMembershipLevel,
             tokenBalance,
             membershipDisplayName,
             securityProfile: {
@@ -241,18 +243,49 @@ export const PUT = withAuth(async (req, user) => {
       consumeSmsCode(trimmedPhone);
     }
 
-    // 检查邮箱是否已被其他用户使用
-    const targetEmail = email ? String(email).trim() : currentUser.email;
-    if (targetEmail && targetEmail !== currentUser.email) {
-      const existingUser = await prisma.user.findFirst({
-        where: {
-          email: targetEmail,
-          id: { not: user.id },
-        },
-      });
+    // 检查并更新登录邮箱
+    const rawEmail = email !== undefined ? String(email).trim() : undefined;
+    let targetEmail = currentUser.email;
 
-      if (existingUser) {
-        return NextResponse.json({ error: "该邮箱已被使用" }, { status: 400 });
+    if (rawEmail !== undefined) {
+      if (rawEmail === "") {
+        targetEmail = null;
+      } else {
+        // 校验合法邮箱格式与长度边界
+        if (rawEmail.length > 100) {
+          return NextResponse.json(
+            { error: "邮箱地址长度不能超过 100 个字符" },
+            { status: 400 },
+          );
+        }
+        if (/[\u4e00-\u9fa5]/.test(rawEmail)) {
+          return NextResponse.json(
+            { error: "邮箱地址不能包含中文字符" },
+            { status: 400 },
+          );
+        }
+        if (!/^[a-zA-Z0-9_\.\-\+]+@[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)*\.[a-zA-Z]{2,}$/.test(rawEmail)) {
+          return NextResponse.json(
+            { error: "请输入规范有效的电子邮箱格式，如 name@example.com" },
+            { status: 400 },
+          );
+        }
+        if (rawEmail !== (currentUser.email || "")) {
+          const existingUser = await prisma.user.findFirst({
+            where: {
+              email: rawEmail,
+              id: { not: user.id },
+            },
+          });
+
+          if (existingUser) {
+            return NextResponse.json(
+              { error: "该邮箱已被其他账号使用，请更换其他邮箱" },
+              { status: 400 },
+            );
+          }
+          targetEmail = rawEmail;
+        }
       }
     }
 
@@ -261,6 +294,7 @@ export const PUT = withAuth(async (req, user) => {
       where: { id: user.id },
       data: {
         name: String(name).trim(),
+        email: targetEmail,
         phone: trimmedPhone || null,
       },
       select: {

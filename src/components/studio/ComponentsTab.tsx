@@ -208,10 +208,21 @@ export default function ComponentsTab({
               const isManager = ["OWNER", "ADMIN", "Owner", "Admin", "COMPONENT_MANAGER", "ComponentManager"].includes(userRole);
               const isEnabled = componentStates?.[comp.id]?.enabled !== false;
               const isRestrictedForCurrentUser = !isManager && isRestricted;
+              // 合同诚实化：仅 PUBLISHED 激活合同视为可执行，其余如实展示待配置/即将上线/暂不可执行
+              const isContractReady = comp.contractReady === true;
+              const contractStatusLabel =
+                comp.activeContractLifecycle === "PUBLISHED"
+                  ? null
+                  : !comp.activeContractLifecycle
+                    ? "待配置"
+                    : comp.activeContractLifecycle === "DRAFT"
+                      ? "即将上线"
+                      : "暂不可执行";
               
               return (
                 <div
                   key={comp.id}
+                  data-component-id={comp.id}
                   onContextMenu={(e) => { e.preventDefault(); handleComponentClick(comp); }}
                   onTouchStart={() => handleTouchStart(() => handleComponentClick(comp))}
                   onTouchEnd={handleTouchEnd}
@@ -251,6 +262,11 @@ export default function ComponentsTab({
                           >
                             {isEnabled ? "已启用" : "已禁用"}
                           </StatusBadge>
+                        )}
+                        {contractStatusLabel && (
+                          <span className="text-xs font-black px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-500 shrink-0">
+                            {contractStatusLabel}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -343,14 +359,22 @@ export default function ComponentsTab({
                           variant="primary"
                           onClick={() => handleComponentClick(comp)}
                           disabledReason={
-                            isRestrictedForCurrentUser ? "当前岗位无权限使用该组件" : undefined
+                            isRestrictedForCurrentUser
+                              ? "当前岗位无权限使用该组件"
+                              : !isContractReady
+                                ? contractStatusLabel
+                                  ? `该组件${contractStatusLabel}，暂不可执行`
+                                  : "该组件尚未配置有效合同，暂不可执行"
+                                : undefined
                           }
                         >
                           {isRestrictedForCurrentUser
                             ? "🔒 岗位受限 (不可用)"
-                            : isManager && isRestricted
-                              ? "⚡ 特权执行"
-                              : "开始使用"}
+                            : !isContractReady
+                              ? "暂不可执行"
+                              : isManager && isRestricted
+                                ? "⚡ 特权执行"
+                                : "开始使用"}
                         </ActionButton>
                       )}
                     </div>

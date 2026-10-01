@@ -377,6 +377,8 @@ export default function MaintenancePage() {
     setScheduleForm({
       title: "",
       type: "UPGRADE",
+      // 表单状态必填字段补默认值（原对象缺 isDowntime，导致类型不匹配）
+      isDowntime: false,
       startTime: startStr,
       endTime: endStr,
       manager: "",

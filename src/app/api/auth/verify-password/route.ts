@@ -1,13 +1,10 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
 import { verifyPassword } from "@/lib/auth";
 import { issueStepUpToken, verifyStepUpToken, STEP_UP_TTL_MS } from "@/lib/step-up";
 import { assertCSRF } from "@/lib/csrf";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * 二次鉴权API
@@ -46,7 +43,7 @@ export async function POST(request: NextRequest) {
     // 验证 token
     let payload: any;
     try {
-      const { payload: p } = await jwtVerify(token, JWT_SECRET);
+      const { payload: p } = await jwtVerify(token, getJwtSecretKey());
       payload = p;
     } catch (error) {
       return NextResponse.json(
@@ -159,7 +156,7 @@ export async function PUT(request: NextRequest) {
 
     let payload: any;
     try {
-      const { payload: p } = await jwtVerify(token, JWT_SECRET);
+      const { payload: p } = await jwtVerify(token, getJwtSecretKey());
       payload = p;
     } catch (error) {
       return NextResponse.json(

@@ -15,6 +15,7 @@ import {
 import AvatarDropdown from "@/components/AvatarDropdown";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
 import { useAppContext } from "@/contexts/AppContext";
+import { describeAcceptedMimes } from "@/lib/fileConstraintsFormat";
 
 export const categoryIconsMap: Record<string, any> = {
   BID_PREP: ClipboardList,
@@ -36,6 +37,7 @@ export const categoryIconsMap: Record<string, any> = {
 import { iconMap } from "@/components/ComponentShowcase";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, applyMemberDiscount, formatDiscountLabel } from "@/lib/point-rate";
 import { isAllowedTextFile, isExtractableFile, isProbablyBinaryContent, uploadAndExtractText } from "@/lib/text-utils";
+import { MAX_SINGLE_MATERIAL_FILES } from "@/lib/component-cost";
 import { scanSensitiveWords } from "@/lib/sensitive-words";
 import { getFileTypeLabel, formatFileSize, resolveAssetSize } from "@/lib/file-type";
 import { generateSmartSummary } from "@/lib/smart-summary";
@@ -72,7 +74,7 @@ interface ZhiGeComponent {
   isPremium?: boolean;
 }
 
-// 上传文件队列项（支持一次最多上传 MAX_UPLOAD_FILES 个文件，逐个解析并展示状态）
+// 上传文件队列项（当前阶段仅允许一个主文件，逐个解析并展示状态）
 type UploadedFileItem = {
   id: string;
   name: string;
@@ -81,6 +83,7 @@ type UploadedFileItem = {
   status: "queued" | "parsing" | "done" | "error";
   text?: string;
   error?: string;
+  file: File;
 };
 
 // 标准化与格式化时间字符串 (展现为标准 YYYY-MM-DD HH:mm:ss)
@@ -166,15 +169,139 @@ const stageMetaData: Record<number, { icon: any; iconText: string; code: string;
 };
 
 // 历史自动化任务（status 支持明确未知态，避免后端新状态被误判）
+interface ArtifactItem {
+  id?: string | null;
+  type?: string | null;
+  title?: string | null;
+  mimeType?: string | null;
+  schemaVersion?: string | null;
+  rendererType?: string | null;
+  content?: string | Record<string, unknown> | null;
+  previewable?: boolean;
+  downloadable?: boolean;
+}
+interface TaskContractView {
+  contractVersion?: string | null;
+  outputKind?: string | null;
+  artifactMime?: string | null;
+  rendererType?: string | null;
+  qualityHints?: string[];
+  disclaimer?: string | null;
+  requireHumanReview?: boolean;
+}
 interface TaskRecord {
   id: string;
   name: string;
   componentId: string;
   componentName: string;
-  tokenUsed: number;
+  pointsCost: number;
   status: "SUCCESS" | "FAILED" | "RUNNING" | "UNKNOWN";
   time: string;
-  outputData?: any;
+  outputData?: string | Record<string, unknown> | null;
+  executionMode?: "REAL_MODEL" | "SIMULATED" | "UNKNOWN" | null;
+  metaMissing?: boolean;
+  anomaly?: string | null;
+  legacy?: boolean;
+  provider?: { id?: string; modelId?: string } | null;
+  model?: string | null;
+  usage?: { inputTokens?: number | null; outputTokens?: number | null; totalTokens?: number | null } | null;
+  billingMode?: string | null;
+  estimatedPoints?: number | null;
+  actualPoints?: number | null;
+  contractVersion?: string | null;
+  // 以下字段仅在调用 task_detail 成功后被安全 DTO 覆盖，列表/POST 响应不得臆造
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  artifacts?: ArtifactItem[] | null;
+  artifact?: ArtifactItem | null;
+  hasArtifact?: boolean;
+  contractView?: TaskContractView | null;
+  refundStatus?: "NO_CHARGE" | "REFUNDED" | "REFUND_PENDING" | "RECONCILIATION_REQUIRED" | "UNKNOWN" | null;
+  refundedPoints?: number | null;
+  chargeAttempted?: boolean | null;
+  execution?: {
+    executionMode?: "REAL_MODEL" | "SIMULATED" | "UNKNOWN" | null;
+    anomaly?: string | null;
+    legacy?: boolean;
+    provider?: { id?: string; modelId?: string } | null;
+    model?: string | null;
+    usage?: { inputTokens?: number | null; outputTokens?: number | null; totalTokens?: number | null } | null;
+    billingMode?: string | null;
+    estimatedPoints?: number | null;
+    actualPoints?: number | null;
+    contractVersion?: string | null;
+    hasContractSnapshot?: boolean;
+    qualityHints?: string[];
+  } | null;
+  notFound?: boolean;
+  authError?: boolean;
+  qualityHints?: string[];
+  disclaimer?: string | null;
+  requireHumanReview?: boolean;
+  outputKind?: string | null;
+}
+
+// 列表任务原始响应（/api/studio?action=tasks）：服务端字段宽松，仅做只读安全映射，禁止 any
+interface RawTaskExecution {
+  estimatedPoints?: unknown;
+  executionMode?: unknown;
+  metaMissing?: unknown;
+  anomaly?: unknown;
+  legacy?: unknown;
+  provider?: unknown;
+  model?: unknown;
+  usage?: unknown;
+  billingMode?: unknown;
+  actualPoints?: unknown;
+  contractVersion?: unknown;
+}
+interface RawTaskListItem {
+  id?: unknown;
+  name?: unknown;
+  taskName?: unknown;
+  type?: unknown;
+  componentName?: unknown;
+  status?: unknown;
+  createdAt?: unknown;
+  execution?: RawTaskExecution;
+}
+function isRawTaskListItem(v: unknown): v is RawTaskListItem {
+  return typeof v === "object" && v !== null;
+}
+const strOr = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
+const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const numOrNull = (v: unknown): number | null => (typeof v === "number" ? v : null);
+const boolOr = (v: unknown, fallback: boolean): boolean => (typeof v === "boolean" ? v : fallback);
+function coerceExecMode(v: unknown): TaskRecord["executionMode"] {
+  const s = strOr(v);
+  return s === "REAL_MODEL" || s === "SIMULATED" || s === "UNKNOWN" ? s : "UNKNOWN";
+}
+// 列表/POST 响应 → TaskRecord 的只读安全映射；缺失字段一律回落到中性默认值，绝不按组件 ID 臆造
+function coerceTaskListItem(t: RawTaskListItem, components: ZhiGeComponent[]): TaskRecord {
+  const exec = t.execution;
+  const catalogComp = components.find((c) => c.id === strOr(t.type));
+  return {
+    id: strOr(t.id),
+    name: strOr(t.name) || strOr(t.taskName) || "未命名任务",
+    componentId: strOr(t.type),
+    componentName: strOrNull(t.componentName) || catalogComp?.title || "",
+    pointsCost: numOrNull(exec?.estimatedPoints) ?? 0,
+    status: normalizeTaskStatus(strOr(t.status)),
+    time: strOr(t.createdAt),
+    // 列表严禁携带 outputData / 成果物内容，成果物仅由 task_detail 返回
+    outputData: null,
+    executionMode: coerceExecMode(exec?.executionMode),
+    metaMissing: boolOr(exec?.metaMissing, true),
+    anomaly: strOrNull(exec?.anomaly),
+    legacy: boolOr(exec?.legacy, false),
+    provider: (exec?.provider as TaskRecord["provider"]) ?? null,
+    model: strOrNull(exec?.model),
+    usage: (exec?.usage as TaskRecord["usage"]) ?? null,
+    billingMode: strOrNull(exec?.billingMode),
+    estimatedPoints: numOrNull(exec?.estimatedPoints),
+    actualPoints: numOrNull(exec?.actualPoints),
+    contractVersion: strOrNull(exec?.contractVersion),
+  };
 }
 
 // 任务状态归一化：把后端各类任务状态显式映射到前端四种展示状态，
@@ -261,7 +388,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const searchParams = useSearchParams();
 
   // AppContext
-  const { boundComponentIds, boundComponentsWorkspaceId, refreshBoundComponents, bindComponent, addRecentUsed, userState, setUserState, componentCatalog, componentCategories, presetPositions, resetWorkspaceData } = useAppContext();
+  const { boundComponentIds, boundComponentsWorkspaceId, refreshBoundComponents, bindComponent, addRecentUsed, userState, setUserState, componentCatalog, componentCategories, presetPositions, resetWorkspaceData, catalogError, refreshComponentCatalog } = useAppContext();
 
   // 分类 → 阶段号映射（由数据库 component_category.sortOrder 驱动，不再硬编码）
   const categoryToStageId = useMemo(() => {
@@ -350,17 +477,20 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [compSearchQuery, setCompSearchQuery] = useState("");
 
   const [quickInputMaterial, setQuickInputMaterial] = useState<string>("");
+  /** 结构化表单输入（合同声明 STRUCTURED_FORM 时使用，如 C04 的「汇报对象」） */
+  const [quickFormData, setQuickFormData] = useState<Record<string, string>>({});
   const [quickSubStep, setQuickSubStep] = useState<"select" | "material">("select");
   const [isExecutingTask, setIsExecutingTask] = useState(false);
   const [quickResultHistoryOpen, setQuickResultHistoryOpen] = useState(false);
   const [materialInputMode, setMaterialInputMode] = useState<"text" | "file" | "asset">("text");
-  const [uploadedFileMeta, setUploadedFileMeta] = useState<{ name: string; size: string; sizeBytes?: number } | null>(null);
+  const [uploadedFileMeta, setUploadedFileMeta] = useState<{ name: string; size: string; sizeBytes?: number; file?: File } | null>(null);
   // 文件上传队列（支持一次最多上传多个文件，每个文件独立解析并显示状态）
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
   // 服务端解析文件中（含图片 OCR），用于持续显示解析进度提示
   const [extractingText, setExtractingText] = useState(false);
   // 一次最多上传文件数 / 同时解析并发数
-  const MAX_UPLOAD_FILES = 5;
+  // 当前阶段仅允许单一主材料：文件输入上限为 1（与任务中心一致）
+  const MAX_UPLOAD_FILES = MAX_SINGLE_MATERIAL_FILES;
   const PARSE_CONCURRENCY = 3;
   const [selectedAsset, setSelectedAsset] = useState<{ id: string; title: string } | null>(null);
   const [showFullMaterialModal, setShowFullMaterialModal] = useState<boolean>(false);
@@ -381,9 +511,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [offlineResultOrderNo, setOfflineResultOrderNo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 自动匹配面板的文件上传（仅支持纯文本）
-  const [aiMatchFileMeta, setAiMatchFileMeta] = useState<{ name: string; size: string; sizeBytes?: number } | null>(null);
+  const [aiMatchFileMeta, setAiMatchFileMeta] = useState<{ name: string; size: string; sizeBytes?: number; file?: File } | null>(null);
   const [aiMatchFileText, setAiMatchFileText] = useState<string>("");
-  // 自动匹配面板的多文件上传队列
+  // 自动匹配面板的文件上传（当前阶段仅允许一个主文件）
   const [aiMatchFiles, setAiMatchFiles] = useState<UploadedFileItem[]>([]);
   const aiMatchFileInputRef = useRef<HTMLInputElement>(null);
   // 自动匹配结果详情弹窗
@@ -501,6 +631,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       size: fmt(f.size),
       sizeBytes: f.size,
       status: "queued",
+      file: f,
     }));
     // 合并历史文件 + 新文件，保证追加而非覆盖
     const combined: UploadedFileItem[] = [...currentQueue, ...newItems];
@@ -535,7 +666,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     onComplete(mergedText, combined);
   };
 
-  // 路径 A：上传本地文件作为快速任务主材料（支持一次最多 MAX_UPLOAD_FILES 个文件）
+  // 路径 A：上传本地文件作为快速任务主材料（当前阶段仅允许一个主文件）
   const handleFileUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -568,6 +699,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           name: successCount === 1 ? done[0].name : `${successCount} 个文件`,
           size: formatFileSize(totalBytes),
           sizeBytes: totalBytes,
+          file: done[0]?.file,
         });
       } else {
         setUploadedFileMeta(null);
@@ -585,20 +717,20 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // 路径 B：自动匹配面板上传文件作为匹配诉求（支持一次最多 MAX_UPLOAD_FILES 个文件）
+  // 路径 B：自动匹配面板上传文件作为匹配诉求（当前阶段仅允许一个主文件）
   const handleAiMatchFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
 
+    // 当前阶段仅允许单一主材料：多选时只保留第一个文件，并给出明确提示
     let pending = Array.from(fileList);
-    const remainingSlots = Math.max(0, MAX_UPLOAD_FILES - aiMatchFiles.length);
-    if (pending.length > remainingSlots) {
-      toast.error(`最多可同时保留 ${MAX_UPLOAD_FILES} 个文件，当前还可添加 ${remainingSlots} 个，超出部分已忽略`);
-      pending = pending.slice(0, remainingSlots);
+    if (pending.length > MAX_UPLOAD_FILES) {
+      toast.error(`当前阶段仅支持上传 ${MAX_UPLOAD_FILES} 个文件，已自动保留第一个，其余已忽略`);
+      pending = pending.slice(0, MAX_UPLOAD_FILES);
     }
     const oversized = pending.filter((f) => f.size > 20 * 1024 * 1024);
     if (oversized.length > 0) {
-      toast.error(`「${safeTruncateFileName(oversized[0].name)}」等 ${oversized.length} 个文件超过 20MB 上限，请压缩后重试`);
+      toast.error(`「${safeTruncateFileName(oversized[0].name)}」超过 20MB 上限，请压缩后重试`);
       pending = pending.filter((f) => f.size <= 20 * 1024 * 1024);
     }
     if (pending.length === 0) {
@@ -606,29 +738,21 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       return;
     }
 
-    await runFileQueue(pending, aiMatchFiles, setAiMatchFiles, (mergedText, combined) => {
+    // 覆盖式单文件：传入空队列，避免与历史文件合并
+    await runFileQueue(pending, [], setAiMatchFiles, (mergedText, combined) => {
       setAiMatchFileText(mergedText);
       const done = combined.filter((r) => r.status === "done");
-      const fail = combined.filter((r) => r.status === "error");
-      const successCount = done.length;
-      const failCount = fail.length;
-      const totalBytes = combined.reduce((s, x) => s + (x.sizeBytes || 0), 0);
-      if (successCount > 0) {
+      if (done.length > 0) {
         setAiMatchFileMeta({
-          name: successCount === 1 ? done[0].name : `${successCount} 个文件`,
-          size: formatFileSize(totalBytes),
-          sizeBytes: totalBytes,
+          name: done[0].name,
+          size: formatFileSize(done[0].sizeBytes || 0),
+          sizeBytes: done[0].sizeBytes || 0,
+          file: done[0].file,
         });
+        toast.success(`已成功解析文件【${done[0].name}】，可用于自动匹配`);
       } else {
         setAiMatchFileMeta(null);
-      }
-      if (successCount > 0 && failCount === 0) {
-        toast.success(`已成功解析 ${successCount} 个文件，可用于自动匹配`);
-      } else if (successCount > 0 && failCount > 0) {
-        toast.warning(`成功解析 ${successCount} 个文件，${failCount} 个解析失败（详见下方列表）`, 6000);
-      } else {
-        toast.error("所有文件均未能提取到有效文本，请检查文件内容后重试", 8000);
-        setAiMatchFileMeta(null);
+        toast.error("文件未能提取到有效文本，请检查文件内容后重试", 8000);
       }
     });
 
@@ -681,6 +805,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [importAssetMode, setImportAssetMode] = useState<"asset" | "knowledge">("asset");
   const [showConfirmRunModal, setShowConfirmRunModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskRecord | null>(null);
+  // 历史任务详情加载状态机：idle / loading / ready / forbidden / notfound / error（仅由 task_detail 真实响应驱动）
+  const [historyTaskState, setHistoryTaskState] = useState<"idle" | "loading" | "ready" | "forbidden" | "notfound" | "error">("idle");
+  const [historyTaskError, setHistoryTaskError] = useState<string | null>(null);
+  // 详情请求令牌：每次打开自增，关闭时再自增；迟到响应若令牌不匹配则被忽略，避免旧请求覆盖新选择
+  const detailReqToken = useRef(0);
 
   // 组件生命周期安全卸载诊断中心状态
   const [uninstallingComponentId, setUninstallingComponentId] = useState<string | null>(null);
@@ -1230,7 +1359,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       const token = getAuthToken();
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-      const res = await fetch("/api/workspace/quota/recharge", {
+      // 关键改动：不再「选完支付方式就直接加算力点」，而是先创建一张待支付订单，
+      // 必须到收银台完成支付确认后，才由支付回调执行真实入账。
+      const res = await fetch("/api/payments/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1240,28 +1371,30 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         body: JSON.stringify({
           workspaceId,
           points: selectedRechargePack.points,
-          packName: selectedRechargePack.name,
           packId: selectedRechargePack.id || null,
-          price: selectedRechargePack.price,
           paymentMethod: rechargePaymentMethod,
         }),
       });
 
       const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message || `充值成功！为您注入 ${selectedRechargePack.points} 算力点`);
-        setShowRechargeModal(false);
-        if (typeof data.tokenBalance === "number") {
-          setWorkspaceToken(data.tokenBalance);
-        }
-        setRechargeSignal((s) => s + 1); // 通知算力点页签刷新流水
-        loadTabMembers();
-      } else {
-        toast.error(data.error || "充值失败，请检查操作权限");
+      if (!res.ok) {
+        toast.error(data.error || "创建充值订单失败，请检查操作权限");
+        return;
+      }
+
+      toast.success(
+        data.paymentMode === "MOCK"
+          ? "订单已创建，正在前往【模拟收银台】（不会产生真实扣款）"
+          : "订单已创建，正在前往在线收银台",
+      );
+      setShowRechargeModal(false);
+      // 跳转发起支付；支付成功后由回调入账，返回本页面即得最新余额
+      if (data.payUrl) {
+        window.location.href = data.payUrl;
       }
     } catch (error: any) {
-      console.error("执行充值失败:", error);
-      toast.error("充值处理异常");
+      console.error("创建充值订单失败:", error);
+      toast.error("下单处理异常");
     } finally {
       setRecharging(false);
     }
@@ -2116,20 +2249,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             if (r.ok) {
               const tasksJson = await r.json();
               const rawTaskList = tasksJson.data || tasksJson.tasks || [];
-              const backendTasks: TaskRecord[] = rawTaskList.map((t: any) => {
-                // componenttask 原始字段：name（任务名）、type（组件ID）、config.tokenCost（真实消耗）、result.outputData（结果数据）
-                const catalogComp = allComponents.find((c: any) => c.id === t.type);
-                return {
-                  id: t.id,
-                  name: t.name || t.taskName || "未命名任务",
-                  componentId: t.type || "",
-                  componentName: t.componentName || catalogComp?.title || "",
-                  tokenUsed: t.config && t.config.tokenCost ? Number(t.config.tokenCost) : t.tokens || 0,
-                  status: normalizeTaskStatus(t.status),
-                  time: t.createdAt,
-                  outputData: t.result?.outputData
-                };
-              });
+              // 严格只消费 /api/studio?action=tasks 返回的安全字段（unknown + 类型守卫），严禁 any
+              const backendTasks: TaskRecord[] = (rawTaskList as unknown[])
+                .filter(isRawTaskListItem)
+                .map((t) => coerceTaskListItem(t, allComponents));
               setRecentTasks(prev => {
                 const existingIds = new Set(prev.map(p => p.id));
                 const merged = [...backendTasks.filter(b => !existingIds.has(b.id)), ...prev];
@@ -2383,6 +2506,35 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     }
   }, [searchParams]);
 
+  // 监听路由参数中的 componentId 字段以直接载入快速执行通道（支持从 Studio 货架无缝转场）
+  useEffect(() => {
+    const queryCompId = searchParams.get("componentId");
+    if (queryCompId) {
+      setQuickSelectedCompId(queryCompId);
+      setActiveTab("quick");
+    }
+  }, [searchParams]);
+
+  // 供自动化测试无缝唤起历史任务结果弹窗（不改变任何既有业务逻辑）
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const testHook = window as unknown as {
+        __openTestTaskResult?: (task: TaskRecord) => void;
+      };
+      testHook.__openTestTaskResult = (task: TaskRecord) => {
+        openHistoryTaskDetail(task);
+      };
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        const testHook = window as unknown as {
+          __openTestTaskResult?: (task: TaskRecord) => void;
+        };
+        delete testHook.__openTestTaskResult;
+      }
+    };
+  }, []);
+
   // 立即使用交互逻辑
   const handleUseNewBoundComp = () => {
     if (!newBoundComp) return;
@@ -2500,7 +2652,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     componentId?: string;
     inputMaterial?: string;
     materialInputMode?: "text" | "file" | "asset";
-    uploadedFileMeta?: { name: string; size: string; sizeBytes?: number } | null;
+    uploadedFileMeta?: { name: string; size: string; sizeBytes?: number; file?: File } | null;
     selectedAsset?: { id: string; title: string } | null;
   }) => {
     const execCompId = overrides?.componentId || quickSelectedCompId;
@@ -2518,8 +2670,22 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     const hasText = execInputMaterial.trim().length > 0;
     const hasFile = execMaterialInputMode === "file" && !!execUploadedFileMeta;
     const hasAsset = execMaterialInputMode === "asset" && !!execSelectedAsset;
+    // 结构化表单（合同输入为 STRUCTURED_FORM）：以合同声明字段为准做前端必填校验，提交 formData
+    const execStructuredFields: Array<{ name: string; label?: string; type: string; required: boolean; options?: string[] }> =
+      execComp?.inputContractKind === "STRUCTURED_FORM"
+        ? (execComp?.formConstraints?.fields ?? [])
+        : [];
+    const execIsStructuredForm = execStructuredFields.length > 0;
     let inputErr = "";
-    if (execInputMode === "file") {
+    if (execIsStructuredForm) {
+      for (const fdef of execStructuredFields) {
+        const v = quickFormData[fdef.name];
+        if (fdef.required && !String(v ?? "").trim()) {
+          inputErr = `请填写必填项「${fdef.label || fdef.name}」`;
+          break;
+        }
+      }
+    } else if (execInputMode === "file") {
       if (!hasFile && !hasAsset) inputErr = "该组件需要上传文件或选择空间资料作为主材料，纯文本粘贴不允许执行";
     } else if (execInputMode === "text") {
       if (!hasText && !hasAsset) inputErr = "请输入待处理的研发源材料，或选择空间资料";
@@ -2530,7 +2696,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       toast.error(inputErr);
       return;
     }
-    const estimatedCost = Number(componentCatalog.find(c => c.id === execCompId)?.estimatedModelTokens) || 5;
+    const estimatedCost = Number(componentCatalog.find(c => c.id === execCompId)?.estimatedModelTokens) || 0;
     const selectedComp = componentCatalog.find(c => c.id === execCompId);
     const taskName = `${selectedComp?.name || "效能组件"}自动化任务`;
     const finalExecInputMaterial = execInputMaterial.trim();
@@ -2554,34 +2720,85 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       toast.error("执行拦截：当前用户岗位受矩阵规则限制，无法执行该受限组件！");
       return;
     }
-    if (workspaceType === "ENTERPRISE" && availableTokenForUser !== -1 && availableTokenForUser < estimatedCost) {
+    // 合同诚实化：无有效 PUBLISHED 激活合同一律拦截，绝不发送 Studio 执行请求、绝不产生模拟结果
+    const execCompDef = componentCatalog.find((c) => c.id === execCompId);
+    if (execCompDef && execCompDef.contractReady !== true) {
+      toast.error(
+        execCompDef.activeContractLifecycle === "DRAFT"
+          ? "执行拦截：该组件合同处于草稿状态（即将上线），暂不可执行。"
+          : execCompDef.activeContractLifecycle === "ARCHIVED"
+            ? "执行拦截：该组件合同已归档，暂不可执行。"
+            : "执行拦截：该组件尚未配置有效可执行合同（缺少 PUBLISHED 激活合同），暂不可执行。",
+      );
+      return;
+    }
+    // 执行前扣点预估：一律取算账中心估价接口，严禁把 estimatedModelTokens（Token 估算）当点数。
+    // 估价失败时回退到兼容口径（后端当前亦按此扣），保证不误拦截、不静默放行。
+    let gateCost = estimatedCost;
+    try {
+      const token = getAuthToken();
+      const params = new URLSearchParams({
+        componentId: execCompId || "",
+        workspaceId: String(workspaceId || ""),
+      });
+      const estRes = await fetch(`/api/billing/estimate?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+      const estJson = await estRes.json().catch(() => null);
+      const estPoints = estJson?.data?.points;
+      if (typeof estPoints === "number" && estPoints > 0) gateCost = estPoints;
+    } catch {
+      // 估价不可用 → 保持兼容口径，不阻断执行
+    }
+    if (workspaceType === "ENTERPRISE" && availableTokenForUser !== -1 && availableTokenForUser < gateCost) {
       toast.error(
         isMemberView
-          ? `执行拦截：您的独立算力点不足（需要 ${estimatedCost} 点，当前 ${availableTokenForUser} 点），请向空间管理员申请分配！`
-          : `执行拦截：当前空间剩余服务调用额度不足（需要 ${estimatedCost} 算力点），请联系空间管理员！`,
+          ? `执行拦截：您的独立算力点不足（需要 ${gateCost} 点，当前 ${availableTokenForUser} 点），请向空间管理员申请分配！`
+          : `执行拦截：当前空间剩余服务调用额度不足（需要 ${gateCost} 算力点），请联系空间管理员！`,
       );
       return;
     }
     setIsExecutingTask(true);
     // 先请求后端真实执行（扣费 / 写入任务历史 / 审计闭环），成功后才更新本地状态
     try {
-      const res = await fetch("/api/studio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "simulate",
-          workspaceId,
-          componentId: execCompId,
-          taskName,
-          inputMaterial: finalExecInputMaterial,
-          inputSource,
-          tokens: estimatedCost,
-        }),
-      });
+      const execFile = execMaterialInputMode === "file" ? (execUploadedFileMeta?.file || null) : null;
+      const res = execFile
+        ? await (() => {
+            // 文件任务：multipart 上传原始 File，文本由服务端解析（不发送客户端读取的文本）
+            const fd = new FormData();
+            fd.append("action", "simulate");
+            fd.append("workspaceId", workspaceId);
+            fd.append("componentId", execCompId);
+            fd.append("taskName", taskName);
+            fd.append("inputSource", JSON.stringify(inputSource));
+            fd.append("file", execFile);
+            return fetch("/api/studio", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${getAuthToken()}` },
+              credentials: "include",
+              body: fd,
+            });
+          })()
+        : await fetch("/api/studio", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${getAuthToken()}`,
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              action: "simulate",
+              workspaceId,
+              componentId: execCompId,
+              taskName,
+              inputMaterial: finalExecInputMaterial,
+              inputSource,
+              tokens: estimatedCost,
+              // 结构化表单组件：以 formData 提交（服务端按合同字段强校验）
+              ...(execIsStructuredForm ? { formData: quickFormData } : {}),
+            }),
+          });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -2598,29 +2815,32 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         toast.error("任务执行成功但接口未返回任务记录（契约异常），请刷新后到结果中心查看");
         return;
       }
-      const backendOutput = backendTask.outputData || backendTask.result?.outputData || null;
+      // POST 成功只提取 taskId / 状态 / 最小展示元数据，严禁直接消费 backendTask.result 或 backendTask.outputData；
+      // 随后立即请求 task_detail 安全 DTO 覆盖 ResultViewer（见 openHistoryTaskDetail）。
       const newTask: TaskRecord = {
         id: backendTask.id,
         name: backendTask.name || taskName,
         componentId: execCompId,
         componentName: selectedComp?.name || "",
-        tokenUsed: typeof backendTask.tokens === "number" ? backendTask.tokens : estimatedCost,
+        pointsCost: typeof backendTask.estimatedPoints === "number" ? backendTask.estimatedPoints : (typeof backendTask.tokens === "number" ? backendTask.tokens : 0),
         status: normalizeTaskStatus(backendTask.status || "SUCCESS"),
         time: backendTask.createdAt ? new Date(backendTask.createdAt).toLocaleString("zh-CN", { hour12: false }) : "刚刚",
-        outputData: backendOutput,
+        contractVersion: data.contractVersion ?? null,
       };
 
       setRecentTasks(prev => [newTask, ...prev]);
       if (typeof data.tokenBalance === "number") {
         setWorkspaceToken(data.tokenBalance);
       } else {
-        setWorkspaceToken(prev => Math.max(0, prev - newTask.tokenUsed));
+        setWorkspaceToken(prev => Math.max(0, prev - newTask.pointsCost));
       }
-      setSelectedTask(newTask);
-      setQuickResultHistoryOpen(false);
       setIsExecutingTask(false);
+      // 立即请求 task_detail，用安全 DTO 覆盖 ResultViewer，绝不把 POST 响应渲染成成功结果页
+      await openHistoryTaskDetail(newTask);
+      setQuickResultHistoryOpen(false);
       // 执行成功后清空输入来源状态，避免下次任务串数据（单一主材料）
       setQuickInputMaterial("");
+      setQuickFormData({});
       setUploadedFileMeta(null);
       setUploadedFiles([]);
       setSelectedAsset(null);
@@ -2899,7 +3119,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           action: "save_knowledge",
           workspaceId,
           title: `${task.componentName}标准化研发规范及偏离防范SOP`,
-          content: task.outputData?.summary || task.name || "",
+          content: (task.outputData && typeof task.outputData !== "string"
+            ? ((task.outputData as Record<string, unknown>).summary as string) || task.name || ""
+            : task.name || ""),
           sourceTaskId: task.id,
           componentId: task.componentId,
         }),
@@ -3087,9 +3309,116 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     }
   };
 
-  // 补齐结果预览与 AI 助手相关的方法
+  // 补齐结果预览与 AI 助手相关的方法：所有任务结果打开入口统一走 openHistoryTaskDetail（经 task_detail 安全 DTO）
   const openStructurePreview = (task: TaskRecord) => {
-    setSelectedTask(task);
+    openHistoryTaskDetail(task);
+  };
+
+  // 关闭结果查看：同时复位详情状态机，避免 loading/error/detail 残留
+  const closeResultViewer = () => {
+    detailReqToken.current++;
+    setSelectedTask(null);
+    setHistoryTaskState("idle");
+    setHistoryTaskError(null);
+  };
+
+  /**
+   * 历史任务结果查看统一入口：只经 task_detail 安全 DTO 加载，严禁把列表摘要/POST 结果渲染成成功页。
+   * 状态机：idle -> loading -> ready | forbidden(403) | notfound(404) | error(500/网络)。
+   * 进入 loading 时先清空旧详情字段；403/404/500/网络异常均按真实状态展示，绝不保留旧成功任务对象。
+   */
+  const openHistoryTaskDetail = async (t: TaskRecord) => {
+    const myToken = ++detailReqToken.current;
+    setQuickResultHistoryOpen(false);
+    // 进入加载态：先清空所有旧详情字段，绝不把旧列表摘要/POST 结果渲染成成功页
+    setHistoryTaskState("loading");
+    setHistoryTaskError(null);
+    setSelectedTask({
+      ...t,
+      outputData: null,
+      artifacts: null,
+      artifact: null,
+      hasArtifact: false,
+      contractView: null,
+      execution: null,
+      refundStatus: null,
+      refundedPoints: null,
+      chargeAttempted: null,
+      errorMessage: null,
+      errorCode: null,
+    });
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`/api/studio?action=task_detail&taskId=${encodeURIComponent(t.id)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+      });
+      // 迟到响应守卫：若期间已关闭/重新打开其它任务，则忽略本次结果，避免旧请求覆盖新选择
+      if (detailReqToken.current !== myToken) return;
+      if (res.status === 403) {
+        setHistoryTaskState("forbidden");
+        setSelectedTask({ ...t, authError: true, outputData: null, artifacts: null, artifact: null, hasArtifact: false, contractView: null, execution: null, refundStatus: null, refundedPoints: null, chargeAttempted: null, errorMessage: null, errorCode: null });
+        return;
+      }
+      if (res.status === 404) {
+        setHistoryTaskState("notfound");
+        setSelectedTask({ ...t, notFound: true, outputData: null, artifacts: null, artifact: null, hasArtifact: false, contractView: null, execution: null, refundStatus: null, refundedPoints: null, chargeAttempted: null, errorMessage: null, errorCode: null });
+        return;
+      }
+      if (!res.ok) {
+        // 500 / 其它服务端错误：稳定错误态，展示安全错误码/说明，绝不保留旧成功任务对象
+        let serverMsg = `服务端错误（HTTP ${res.status}）`;
+        try {
+          const errJson: unknown = await res.json().catch(() => null);
+          const errObj = errJson && typeof errJson === "object" ? (errJson as Record<string, unknown>) : null;
+          const m =
+            (typeof errObj?.error === "string" && errObj.error) ||
+            (typeof errObj?.message === "string" && errObj.message) ||
+            (typeof errObj?.code === "string" && errObj.code) ||
+            null;
+          if (m) serverMsg = m;
+        } catch {
+          // 非 JSON 响应时沿用 HTTP 状态码说明
+        }
+        if (detailReqToken.current !== myToken) return;
+        setHistoryTaskState("error");
+        setHistoryTaskError(serverMsg);
+        setSelectedTask({ ...t, outputData: null, artifacts: null, artifact: null, hasArtifact: false, contractView: null, execution: null, refundStatus: null, refundedPoints: null, chargeAttempted: null, errorMessage: serverMsg, errorCode: "TASK_DETAIL_FETCH_FAILED" });
+        return;
+      }
+      const json: unknown = await res.json();
+      if (detailReqToken.current !== myToken) return;
+      const detail = json as { success?: unknown; data?: Record<string, unknown> } | null;
+      if (!detail || detail.success !== true || typeof detail.data !== "object" || detail.data === null) {
+        setHistoryTaskState("error");
+        setHistoryTaskError("详情接口返回异常，未取得任务数据");
+        setSelectedTask({ ...t, outputData: null, artifacts: null, artifact: null, hasArtifact: false, contractView: null, execution: null, refundStatus: null, refundedPoints: null, chargeAttempted: null, errorMessage: "详情接口返回异常，未取得任务数据", errorCode: "TASK_DETAIL_INVALID" });
+        return;
+      }
+      const d = detail.data;
+      // 详情 DTO 是唯一真源；null 必须覆盖旧值，严禁沿用列表对象/当前目录合同/组件 ID 推断
+      setHistoryTaskState("ready");
+      setSelectedTask({
+        ...t,
+        outputData: (d.outputData as string | Record<string, unknown> | null) ?? null,
+        errorCode: (d.errorCode as string | null) ?? null,
+        errorMessage: (d.errorMessage as string | null) ?? null,
+        artifacts: Array.isArray(d.artifacts) ? (d.artifacts as ArtifactItem[]) : [],
+        artifact: (d.artifact as ArtifactItem | null) ?? null,
+        hasArtifact: d.hasArtifact === true,
+        contractView: (d.contractView as TaskContractView | null) ?? null,
+        refundStatus: (d.refundStatus as TaskRecord["refundStatus"]) ?? "UNKNOWN",
+        refundedPoints: (d.refundedPoints as number | null) ?? null,
+        chargeAttempted: (d.chargeAttempted as boolean | null) ?? null,
+        contractVersion: (d.contractVersion as string | null) ?? null,
+        execution: (d.execution as TaskRecord["execution"]) ?? null,
+      });
+    } catch (e) {
+      if (detailReqToken.current !== myToken) return;
+      setHistoryTaskState("error");
+      setHistoryTaskError(e instanceof Error ? e.message : "网络请求失败，无法加载任务详情");
+      setSelectedTask({ ...t, outputData: null, artifacts: null, artifact: null, hasArtifact: false, contractView: null, execution: null, refundStatus: null, refundedPoints: null, chargeAttempted: null, errorMessage: "网络请求失败，无法加载任务详情", errorCode: "TASK_DETAIL_NETWORK" });
+    }
   };
 
   const handleQuickStartSubmit = () => {
@@ -3216,7 +3545,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         const selCatalogCompRight = componentCatalog.find(c => c.id === quickSelectedCompId);
         const costRight = selCatalogCompRight?.estimatedModelTokens && Number(selCatalogCompRight.estimatedModelTokens) > 0
           ? Number(selCatalogCompRight.estimatedModelTokens)
-          : 5;
+          : 0;
+        const isCompBlockedOrDraft = selCatalogCompRight && selCatalogCompRight.contractReady !== true;
         return (
           <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs text-left space-y-4 animate-in fade-in duration-200">
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-1.5">
@@ -3229,6 +3559,24 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   {quickSelectedCompId ? `[已选 ${quickSelectedCompId}]` : "✕ 未选择"}
                 </span>
               </div>
+              {quickSelectedCompId && (
+                <div className="flex justify-between items-center">
+                  <span>合同就绪门禁</span>
+                  <span className={`font-bold text-[11px] px-2 py-0.5 rounded ${
+                    !isCompBlockedOrDraft
+                      ? "text-emerald-600 bg-emerald-50 border border-emerald-100"
+                      : selCatalogCompRight?.readinessStatus === "BLOCKED" || (selCatalogCompRight?.blockingReasons && selCatalogCompRight.blockingReasons.length > 0)
+                        ? "text-red-700 bg-red-50 border border-red-200"
+                        : "text-amber-700 bg-amber-50 border border-amber-200"
+                  }`}>
+                    {!isCompBlockedOrDraft
+                      ? "✔ 合同已激活"
+                      : selCatalogCompRight?.readinessStatus === "BLOCKED" || (selCatalogCompRight?.blockingReasons && selCatalogCompRight.blockingReasons.length > 0)
+                        ? "✕ 门禁阻断 (BLOCKED)"
+                        : "✕ 待配置/草稿"}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span>源材料输入 <span className="text-red-500">*</span></span>
                 <span className={`font-bold text-[11px] px-2 py-0.5 rounded ${quickInputMaterial.trim() ? "text-emerald-600 bg-emerald-50 border border-emerald-100" : "text-red-600 bg-red-50 border border-red-100"}`}>
@@ -3236,16 +3584,37 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </span>
               </div>
               <div className="flex justify-between items-center border-t border-slate-100 pt-2.5">
-                <span>预估扣减点数</span>
+                {/* estimatedModelTokens 是 Token 用量估算，不是扣点数；不得硬编码兜底点数 */}
+                <span>预估用量</span>
                 <span className="text-[#3182ce] font-mono text-xs font-black">
-                  {quickSelectedCompId ? `${costRight} 算力点` : "5 算力点"}
+                  {quickSelectedCompId ? `${costRight} Token（估算）` : "—"}
                 </span>
               </div>
             </div>
             {quickSelectedCompId && (
-              <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs font-semibold text-slate-600 leading-relaxed space-y-1 text-left">
-                <p>💡 <span className="text-slate-800 font-bold">输入规格</span>: {selCatalogCompRight?.previewData?.inputMock || "粘贴对应研发文本"}</p>
-                <p>📋 <span className="text-slate-800 font-bold">产出说明</span>: {selCatalogCompRight?.previewData?.outputMock || "导出架构偏离报告或代码"}</p>
+              <div className="space-y-2">
+                {selCatalogCompRight?.blockingReasons && selCatalogCompRight.blockingReasons.length > 0 && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-medium text-red-800 leading-relaxed text-left space-y-1">
+                    <p className="font-bold text-red-900 flex items-center gap-1">
+                      ⚠️ 门禁阻断原因说明（BLOCKED）
+                    </p>
+                    <p>{selCatalogCompRight.blockingReasons.join("；")}</p>
+                  </div>
+                )}
+                {selCatalogCompRight?.qualityHints && selCatalogCompRight.qualityHints.length > 0 && (
+                  <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs font-medium text-blue-900 leading-relaxed text-left space-y-1">
+                    <p className="font-bold text-blue-950 flex items-center gap-1">
+                      💡 质量与使用限制说明
+                    </p>
+                    {selCatalogCompRight.qualityHints.map((hint: string, hIdx: number) => (
+                      <p key={hIdx}>• {hint}</p>
+                    ))}
+                  </div>
+                )}
+                <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs font-semibold text-slate-600 leading-relaxed space-y-1 text-left">
+                  <p>💡 <span className="text-slate-800 font-bold">输入规格</span>: {selCatalogCompRight?.previewData?.inputMock || "粘贴对应研发文本"}</p>
+                  <p>📋 <span className="text-slate-800 font-bold">产出说明</span>: {selCatalogCompRight?.previewData?.outputMock || "导出架构偏离报告或代码"}</p>
+                </div>
               </div>
             )}
           </div>
@@ -3370,11 +3739,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             <div className="space-y-2.5 text-xs font-medium text-slate-600">
               <div className="flex justify-between items-center p-2 rounded-lg hover:bg-slate-50 text-slate-700 transition-colors">
                 <span className="font-bold">更改显示名称</span>
-                <button onClick={() => router.push(`/workspace/${workspaceId}/settings`)} className="text-[#3182ce] hover:underline font-bold">前往 ➔</button>
+                <button onClick={() => setActiveTab("settings")} className="text-[#3182ce] hover:underline font-bold cursor-pointer">前往 ➔</button>
               </div>
               <div className="flex justify-between items-center p-2 rounded-lg hover:bg-slate-50 text-slate-700 transition-colors">
                 <span className="font-bold">配置关联组件</span>
-                <button onClick={() => router.push(`/workspace/${workspaceId}/settings`)} className="text-[#3182ce] hover:underline font-bold">配置 ➔</button>
+                <button onClick={() => setActiveTab("settings")} className="text-[#3182ce] hover:underline font-bold cursor-pointer">配置 ➔</button>
               </div>
               {workspaceType === "PERSONAL" && (
                 <div className="flex justify-between items-center p-2 rounded-lg hover:bg-slate-50 border-t border-slate-100 text-slate-700 pt-3">
@@ -3533,7 +3902,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               const selCatalogCompLeft = componentCatalog.find(c => c.id === quickSelectedCompId);
               const estimatedCost = selCatalogCompLeft?.estimatedModelTokens && Number(selCatalogCompLeft.estimatedModelTokens) > 0
                 ? Number(selCatalogCompLeft.estimatedModelTokens)
-                : 5;
+                : 0;
 
               return (
                 <div className="flex flex-col lg:flex-row gap-6 items-start w-full animate-in fade-in duration-200 font-sans">
@@ -3610,7 +3979,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               <div className="flex items-center gap-1.5 shrink-0 ml-1">
                                 {selCatalogCompLeft && (
                                   <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#2b6cb0] border border-blue-100 font-mono text-[10px] font-black">
-                                    {estimatedCost} 算力点
+                                    {/* estimatedModelTokens 是 Token 用量估算，非算力点 */}
+                                    {estimatedCost} Token（估算）
                                   </span>
                                 )}
                                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isCompDropdownOpen ? "rotate-180 text-[#3182ce]" : ""}`} />
@@ -3651,6 +4021,20 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     });
 
                                     if (filteredComps.length === 0) {
+                                      if (catalogError && componentCatalog.length === 0) {
+                                        return (
+                                          <div className="py-6 px-3 text-center space-y-2">
+                                            <p className="text-xs text-rose-600 font-semibold font-mono">{catalogError}</p>
+                                            <button
+                                              type="button"
+                                              onClick={() => refreshComponentCatalog()}
+                                              className="px-3 py-1 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-[11px] font-bold rounded-lg cursor-pointer transition-all"
+                                            >
+                                              重试加载组件
+                                            </button>
+                                          </div>
+                                        );
+                                      }
                                       return (
                                         <div className="py-6 text-center text-xs text-slate-400 font-medium">
                                           {availableComps.length === 0 ? "暂无已装配的可用组件" : "未搜索到匹配的组件"}
@@ -3659,7 +4043,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     }
 
                                     return filteredComps.map(c => {
-                                      const cost = c.estimatedModelTokens && Number(c.estimatedModelTokens) > 0 ? Number(c.estimatedModelTokens) : 5;
+                                      const cost = c.estimatedModelTokens && Number(c.estimatedModelTokens) > 0 ? Number(c.estimatedModelTokens) : 0;
                                       const catName = componentCategories[c.category as ComponentCategory]?.name || c.category || "组件";
                                       const isSelected = c.id === quickSelectedCompId;
                                       const Ico = iconMap[c.icon || ""] || Box;
@@ -3670,6 +4054,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                           type="button"
                                           onClick={() => {
                                             setQuickSelectedCompId(c.id);
+                                            if (c.inputMode === "file") {
+                                              setMaterialInputMode("file");
+                                            } else if (c.inputMode === "text") {
+                                              setMaterialInputMode("text");
+                                            }
                                             setIsCompDropdownOpen(false);
                                             setCompSearchQuery("");
                                           }}
@@ -3729,8 +4118,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     {componentCategories[selCatalogCompLeft.category as ComponentCategory]?.name || selCatalogCompLeft.category || "组件"}
                                   </span>
                                   <span>·</span>
-                                  <span className="font-mono text-[#3182ce] font-black">{estimatedCost} 算力点</span>
-                                  <span className="font-mono text-slate-400 font-bold">({formatYuanFromPoints(estimatedCost)})</span>
+                                  {/* estimatedModelTokens 是 Token 用量估算，非算力点；不得再据此推导金额 */}
+                                  <span className="font-mono text-[#3182ce] font-black">{estimatedCost} Token（估算）</span>
                                   <span>·</span>
                                   <span className="truncate max-w-[160px]">{selCatalogCompLeft.description || "暂无描述"}</span>
                                 </div>
@@ -3742,7 +4131,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block">提供研发源材料内容</label>
-                            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/60">
+                            <div className={`flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 ${selCatalogCompLeft?.inputContractKind === "STRUCTURED_FORM" ? "hidden" : ""}`}>
                               {[
                                 { key: "text", label: "📝 文本" },
                                 { key: "file", label: "📄 文件" },
@@ -3772,48 +4161,89 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             </div>
                           </div>
 
-                          {materialInputMode === "text" && (
-                            <div className="space-y-1.5">
-                              <div className="relative">
-                                <textarea
-                                  value={quickInputMaterial}
-                                  onChange={(e) => {
-                                    const text = e.target.value;
-                                    if (text.length <= 2000) {
-                                      setQuickInputMaterial(text);
-                                    } else {
-                                      setQuickInputMaterial(text.slice(0, 2000));
-                                      toast.warning("已触发 2000 字数上限限制，超出部分已截断");
-                                    }
-                                  }}
-                                  placeholder="在此直接输入或粘贴招标文件、PRD需求、接口JSON或代码（上限 2000 字）..."
-                                  maxLength={2000}
-                                  className="w-full h-32 p-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce] outline-none resize-none transition-all font-sans leading-relaxed"
-                                />
-                                {quickInputMaterial.length > 50 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowFullMaterialModal(true)}
-                                    className="absolute bottom-2.5 right-2.5 px-2.5 py-1 bg-white/95 hover:bg-white text-[#3182ce] border border-blue-200/90 rounded-md text-[10px] font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
-                                    title="查看/全屏编辑完整文本内容"
-                                  >
-                                    <Eye className="w-3 h-3 text-[#3182ce]" />
-                                    <span>展开完整内容</span>
-                                  </button>
-                                )}
-                              </div>
-                              <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold px-0.5">
-                                <span className="flex items-center gap-1">
-                                  {quickInputMaterial.length >= 1900 ? (
-                                    <span className="text-amber-600 font-bold">⚠️ 即将达到 2000 字上限</span>
+                          {selCatalogCompLeft?.inputContractKind === "STRUCTURED_FORM" && (
+                            <div className="space-y-2.5">
+                              {(selCatalogCompLeft?.formConstraints?.fields ?? []).map((f) => (
+                                <div key={f.name} className="space-y-1">
+                                  <label className="text-[11px] font-bold text-slate-600 block">
+                                    {f.label || f.name}
+                                    {f.required ? <span className="text-red-500"> *</span> : null}
+                                  </label>
+                                  {f.type === "select" ? (
+                                    <select
+                                      value={quickFormData[f.name] ?? ""}
+                                      onChange={(e) => setQuickFormData((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                                      className="w-full h-9 px-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-[#3182ce] outline-none"
+                                    >
+                                      <option value="">请选择</option>
+                                      {(f.options ?? []).map((opt) => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                      ))}
+                                    </select>
                                   ) : (
-                                    <span className="text-slate-400">实时字数检测</span>
+                                    <textarea
+                                      value={quickFormData[f.name] ?? ""}
+                                      onChange={(e) => setQuickFormData((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                                      rows={5}
+                                      className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-[#3182ce] outline-none resize-none leading-relaxed"
+                                    />
                                   )}
-                                </span>
-                                <span className={quickInputMaterial.length >= 2000 ? "text-red-600 font-black" : "text-slate-500 font-mono"}>
-                                  {quickInputMaterial.length} / 2000 字
-                                </span>
-                              </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {selCatalogCompLeft?.inputContractKind !== "STRUCTURED_FORM" && materialInputMode === "text" && (
+                            <div className="space-y-1.5">
+                              {(() => {
+                                const maxTextChars = selCatalogCompLeft?.textConstraints?.maxLength;
+                                return (
+                                  <>
+                                    <div className="relative">
+                                      <textarea
+                                        value={quickInputMaterial}
+                                        onChange={(e) => {
+                                          setQuickInputMaterial(e.target.value);
+                                        }}
+                                        placeholder={
+                                          selCatalogCompLeft
+                                            ? `在此直接输入或粘贴 ${selCatalogCompLeft.name} 所需的分析材料${typeof maxTextChars === "number" ? `（上限 ${maxTextChars.toLocaleString()} 字符）` : "（长度限制由服务端合同校验）"}...`
+                                            : "在此直接输入或粘贴分析文本材料（长度限制由服务端合同校验）..."
+                                        }
+                                        maxLength={typeof maxTextChars === "number" ? maxTextChars : undefined}
+                                        className="w-full h-32 p-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce] outline-none resize-none transition-all font-sans leading-relaxed"
+                                      />
+                                      {quickInputMaterial.length > 50 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowFullMaterialModal(true)}
+                                          className="absolute bottom-2.5 right-2.5 px-2.5 py-1 bg-white/95 hover:bg-white text-[#3182ce] border border-blue-200/90 rounded-md text-[10px] font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                                          title="查看/全屏编辑完整文本内容"
+                                        >
+                                          <Eye className="w-3 h-3 text-[#3182ce]" />
+                                          <span>展开完整内容</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold px-0.5">
+                                      <span className="flex items-center gap-1">
+                                        {typeof maxTextChars === "number" ? (
+                                          quickInputMaterial.length >= Math.floor(maxTextChars * 0.95) ? (
+                                            <span className="text-amber-600 font-bold">⚠️ 即将达到 {maxTextChars} 字上限</span>
+                                          ) : (
+                                            <span className="text-slate-400">实时字数检测</span>
+                                          )
+                                        ) : (
+                                          <span className="text-slate-400">长度限制由服务端合同校验</span>
+                                        )}
+                                      </span>
+                                      <span className={typeof maxTextChars === "number" && quickInputMaterial.length >= maxTextChars ? "text-red-600 font-black" : "text-slate-500 font-mono"}>
+                                        {typeof maxTextChars === "number" ? `${quickInputMaterial.length} / ${maxTextChars} 字` : `${quickInputMaterial.length} 字符（由服务端合同校验）`}
+                                      </span>
+                                    </div>
+                                  </>
+                                );
+                              })()}
 
                               {/* 敏感词自动防线 Banner */}
                               {(() => {
@@ -3843,7 +4273,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 type="file"
                                 ref={fileInputRef}
                                 onChange={handleFileUploadChange}
-                                multiple
                                 className="hidden"
                               />
                               <div
@@ -3851,8 +4280,16 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 className="w-full h-32 border-2 border-dashed border-slate-200 hover:border-[#3182ce] bg-slate-50/60 hover:bg-blue-50/20 rounded-xl p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
                               >
                                 <Upload className="w-6 h-6 text-slate-400 group-hover:text-[#3182ce] mb-1.5 group-hover:scale-110 transition-all" />
-                                <p className="text-xs font-black text-slate-700 group-hover:text-[#3182ce]">点击或拖拽上传本地文件</p>
-                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">支持 Word / Excel / PPT / PDF / 图片 / 压缩包 / 代码 / 文本 等绝大多数格式</p>
+                                <p className="text-xs font-black text-slate-700 group-hover:text-[#3182ce]">
+                                  {selCatalogCompLeft?.inputMode === "file"
+                                    ? `点击或拖拽上传源文件（${selCatalogCompLeft?.name || "主材料"}）`
+                                    : "点击或拖拽上传本地文件"}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                  {selCatalogCompLeft?.fileConstraints?.acceptedMimes
+                                    ? `合同支持格式：${describeAcceptedMimes(selCatalogCompLeft.fileConstraints.acceptedMimes)}`
+                                    : "支持 Word / Excel / PPT / PDF / 图片 / 压缩包 / 代码 / 文本 等绝大多数格式"}
+                                </p>
                               </div>
                               {uploadedFiles.length > 0 && (
                                 <div className="space-y-1.5">
@@ -3928,6 +4365,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                                   name: remaining.length === 1 ? remaining[0].name : `${remaining.length} 个文件`,
                                                   size: formatFileSize(remaining.reduce((s, x) => s + x.sizeBytes, 0)),
                                                   sizeBytes: remaining.reduce((s, x) => s + x.sizeBytes, 0),
+                                                  file: remaining[0]?.file,
                                                 }
                                               : null
                                           );
@@ -3944,7 +4382,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               {extractingText && (
                                 <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-[11px] font-bold text-amber-700">
                                   <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                                  <span>正在上传并解析文件内容（{uploadedFiles.filter((f) => f.status === "parsing").length}/{uploadedFiles.length} 进行中），图片 OCR 可能需要数十秒，请耐心等候...</span>
+                                  <span>正在上传并解析文件内容，图片 OCR 可能需要数十秒，请耐心等候...</span>
                                 </div>
                               )}
                             </div>
@@ -3999,7 +4437,23 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
                           if (!hasSelectedComp) {
                             disableReason = "请先选择需要执行的效能组件";
+                          } else if (selCatalogCompLeft && selCatalogCompLeft.contractReady !== true) {
+                            // 优先消费服务端就绪状态与阻断原因，未就绪直接禁用并如实说明
+                            if (selCatalogCompLeft.blockingReasons && selCatalogCompLeft.blockingReasons.length > 0) {
+                              disableReason = `阻断：${selCatalogCompLeft.blockingReasons[0]}`;
+                            } else if (selCatalogCompLeft.readinessStatus === "BLOCKED") {
+                              disableReason = "阻断：组件存在未满足的业务依赖门禁，当前不能发布/执行";
+                            } else if (selCatalogCompLeft.readinessStatus === "NOT_EXECUTABLE") {
+                              disableReason = "不可执行：平台当前模型部署未满足合同所需能力";
+                            } else if (selCatalogCompLeft.readinessStatus === "UNCONFIGURED" || selCatalogCompLeft.isCandidateEligible || selCatalogCompLeft.activeContractLifecycle === "DRAFT") {
+                              disableReason = "待配置/不可执行：该组件尚未在平台正式发布上线";
+                            } else if (selCatalogCompLeft.activeContractLifecycle === "ARCHIVED") {
+                              disableReason = "不可执行：该组件合同已归档，暂不可执行";
+                            } else {
+                              disableReason = "待配置/不可执行：该组件状态信息不可用，暂不可执行";
+                            }
                           } else {
+                            // 组件已就绪可执行，再校验源材料与权限配额
                             const compInputMode = selCatalogCompLeft?.inputMode || "text";
                             const hasText = quickInputMaterial.trim().length > 0;
                             const hasFile = materialInputMode === "file" && !!uploadedFileMeta;
@@ -4011,11 +4465,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             } else {
                               if (!hasText && !hasFile && !hasAsset) disableReason = "请输入文本、上传文件或选择空间资料作为主材料";
                             }
-                          }
-                          if (!disableReason && restrictedComponentIds.includes(quickSelectedCompId)) {
-                            disableReason = "当前企业岗位无权限执行此受限组件";
-                          } else if (!disableReason && isShortOnTokens) {
-                            disableReason = "当前空间服务算力点不足，请升级或联系管理员";
+
+                            if (!disableReason && restrictedComponentIds.includes(quickSelectedCompId)) {
+                              disableReason = "当前企业岗位无权限执行此受限组件";
+                            } else if (!disableReason && isShortOnTokens) {
+                              disableReason = "当前空间服务算力点不足，请升级或联系管理员";
+                            }
                           }
 
                           return (
@@ -4033,21 +4488,19 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                   <span>本次组件所需算力:</span>
                                   {hasSelectedComp ? (
                                     <span className="font-mono font-black text-[#3182ce]">
-                                      {estimatedCost} 算力点
-                                      <span className="text-[10px] opacity-80 font-bold"> ({formatYuanFromPoints(estimatedCost)})</span>
+                                      {/* estimatedModelTokens 是 Token 用量估算，非算力点；不得再据此推导金额 */}
+                                      {estimatedCost} Token（估算）
                                     </span>
                                   ) : (
                                     <span className="text-slate-400 font-medium">请先在上方选择组件</span>
                                   )}
                                 </div>
-                                {hasSelectedComp && isShortOnTokens && (
-                                  <div className="flex items-center justify-between border-t border-red-200/60 pt-1.5 text-red-600 font-bold text-[11px]">
-                                    <span>算力额度缺口:</span>
-                                    <span className="font-mono font-black text-red-600">
-                                      -{estimatedCost - availableTokenForUser} 算力点
-                                    </span>
-                                  </div>
-                                )}
+                                <div className="flex items-center justify-between border-t border-red-200/60 pt-1.5 text-red-600 font-bold text-[11px]">
+                                  <span>算力额度缺口:</span>
+                                  <span className="font-mono font-black text-red-600">
+                                    {hasSelectedComp && isShortOnTokens ? `-${estimatedCost - availableTokenForUser} 算力点` : "0 算力点"}
+                                  </span>
+                                </div>
                               </div>
 
                               {disableReason && (
@@ -4073,6 +4526,47 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 </div>
                               )}
 
+                              {/* 阻断状态与原因展示卡片 */}
+                              {hasSelectedComp && selCatalogCompLeft && selCatalogCompLeft.contractReady !== true && (
+                                <div className="text-[11px] font-medium text-amber-900 bg-amber-50/90 p-2.5 rounded-xl border border-amber-200/80 space-y-1">
+                                  <div className="font-bold text-amber-950 flex items-center gap-1">
+                                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span>
+                                      {(selCatalogCompLeft.blockingReasons && selCatalogCompLeft.blockingReasons.length > 0) || selCatalogCompLeft.readinessStatus === "BLOCKED"
+                                        ? "组件发布阻断说明（BLOCKED）"
+                                        : selCatalogCompLeft.readinessStatus === "NOT_EXECUTABLE"
+                                          ? "运行能力不足（NOT_EXECUTABLE）"
+                                          : "组件当前不可发布/执行（待配置/不可执行）"}
+                                    </span>
+                                  </div>
+                                  {selCatalogCompLeft.blockingReasons && selCatalogCompLeft.blockingReasons.length > 0 ? (
+                                    selCatalogCompLeft.blockingReasons.map((reason: string, rIdx: number) => (
+                                      <p key={rIdx} className="leading-relaxed text-amber-800/90">• {reason}</p>
+                                    ))
+                                  ) : (
+                                    <p className="leading-relaxed text-amber-800/90">
+                                      {selCatalogCompLeft.readinessStatus === "NOT_EXECUTABLE"
+                                        ? "平台当前模型部署未满足合同所需能力，暂不可执行。"
+                                        : selCatalogCompLeft.readinessStatus === "UNCONFIGURED" || selCatalogCompLeft.isCandidateEligible || selCatalogCompLeft.activeContractLifecycle === "DRAFT"
+                                          ? "该组件尚未在平台正式发布上线（待配置/不可执行）。"
+                                          : "该组件状态信息不可用，暂不可执行。"}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 统一消费服务端 qualityHints，不再按组件 ID 特判，不论按钮是否禁用均可见 */}
+                              {hasSelectedComp && selCatalogCompLeft?.qualityHints && selCatalogCompLeft.qualityHints.length > 0 && (
+                                <div className="text-[11px] font-medium text-blue-900 bg-blue-50/80 p-2.5 rounded-xl border border-blue-200/70 space-y-1">
+                                  <div className="font-bold text-blue-950 flex items-center gap-1">
+                                    💡 质量与使用限制说明
+                                  </div>
+                                  {selCatalogCompLeft.qualityHints.map((hint: string, hIdx: number) => (
+                                    <p key={hIdx} className="leading-relaxed text-blue-800/90">• {hint}</p>
+                                  ))}
+                                </div>
+                              )}
+
                               <button
                                 onClick={handleQuickStartSubmit}
                                 disabled={!!disableReason || isExecutingTask || uploadedFiles.some((f) => f.status === "queued" || f.status === "parsing")}
@@ -4081,7 +4575,19 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 {isExecutingTask && (
                                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 )}
-                                <span>{isExecutingTask ? "正在分析中..." : "启动组件分析"}</span>
+                                <span>
+                                  {isExecutingTask
+                                    ? "正在分析中..."
+                                    : !hasSelectedComp
+                                      ? "启动组件分析"
+                                      : selCatalogCompLeft?.contractReady !== true
+                                        ? (selCatalogCompLeft?.readinessStatus === "BLOCKED"
+                                            ? "已阻断 (不可执行)"
+                                            : selCatalogCompLeft?.readinessStatus === "NOT_EXECUTABLE"
+                                              ? "能力不满足 (不可执行)"
+                                              : "待配置/不可执行")
+                                        : "启动组件分析"}
+                                </span>
                               </button>
                             </div>
                           );
@@ -4092,51 +4598,60 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       <div className="space-y-3 pt-1">
                         <label className="text-[11px] font-bold text-slate-400 block tracking-wider uppercase">描述您的任务诉求（或上传文件）</label>
                         <div className="space-y-1.5">
-                          <div className="relative">
-                            <textarea
-                              value={aiQuery}
-                              onChange={(e) => {
-                                const text = e.target.value;
-                                if (text.length <= 2000) {
-                                  setAiQuery(text);
-                                } else {
-                                  setAiQuery(text.slice(0, 2000));
-                                  toast.warning("已触发 2000 字数上限限制，超出部分已截断");
-                                }
-                              }}
-                              placeholder="在此输入您的任务诉求或需求描述（支持最多 2000 字）..."
-                              maxLength={2000}
-                              className="w-full h-32 p-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce] outline-none resize-none transition-all font-sans leading-relaxed"
-                            />
-                            {(aiQuery.length > 50 || aiMatchFileText.length > 50) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  // 把路径 B 的内容自动赋值给全屏预览弹窗
-                                  setQuickInputMaterial(aiQuery || aiMatchFileText);
-                                  setShowFullMaterialModal(true);
-                                }}
-                                className="absolute bottom-2.5 right-2.5 px-2.5 py-1 bg-white/95 hover:bg-white text-[#3182ce] border border-blue-200/90 rounded-md text-[10px] font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
-                                title="查看/全屏编辑完整诉求内容"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-[#3182ce]" />
-                                <span>展开完整内容</span>
-                              </button>
-                            )}
-                          </div>
+                          {(() => {
+                            const maxLimit = selCatalogCompLeft?.textConstraints?.maxLength;
+                            return (
+                              <>
+                                <div className="relative">
+                                  <textarea
+                                    value={aiQuery}
+                                    onChange={(e) => {
+                                      setAiQuery(e.target.value);
+                                    }}
+                                    placeholder={
+                                      selCatalogCompLeft
+                                        ? `在此输入您的任务诉求或需求描述${typeof maxLimit === "number" ? `（支持最多 ${maxLimit.toLocaleString()} 字符）` : "（长度限制由服务端合同校验）"}...`
+                                        : "在此输入您的任务诉求或需求描述（长度限制由服务端合同校验）..."
+                                    }
+                                    maxLength={typeof maxLimit === "number" ? maxLimit : undefined}
+                                    className="w-full h-32 p-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce] outline-none resize-none transition-all font-sans leading-relaxed"
+                                  />
+                                  {(aiQuery.length > 50 || aiMatchFileText.length > 50) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        // 把路径 B 的内容自动赋值给全屏预览弹窗
+                                        setQuickInputMaterial(aiQuery || aiMatchFileText);
+                                        setShowFullMaterialModal(true);
+                                      }}
+                                      className="absolute bottom-2.5 right-2.5 px-2.5 py-1 bg-white/95 hover:bg-white text-[#3182ce] border border-blue-200/90 rounded-md text-[10px] font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
+                                      title="查看/全屏编辑完整诉求内容"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-[#3182ce]" />
+                                      <span>展开完整内容</span>
+                                    </button>
+                                  )}
+                                </div>
 
-                          <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold px-0.5">
-                            <span className="flex items-center gap-1">
-                              {aiQuery.length >= 1900 ? (
-                                <span className="text-amber-600 font-bold">⚠️ 即将达到 2000 字上限</span>
-                              ) : (
-                                <span className="text-slate-400">实时字数检测</span>
-                              )}
-                            </span>
-                            <span className={aiQuery.length >= 2000 ? "text-red-600 font-black" : "text-slate-500 font-mono"}>
-                              {aiQuery.length} / 2000 字
-                            </span>
-                          </div>
+                                <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold px-0.5">
+                                  <span className="flex items-center gap-1">
+                                    {typeof maxLimit === "number" ? (
+                                      aiQuery.length >= Math.floor(maxLimit * 0.95) ? (
+                                        <span className="text-amber-600 font-bold">⚠️ 即将达到 {maxLimit} 字上限</span>
+                                      ) : (
+                                        <span className="text-slate-400">实时字数检测</span>
+                                      )
+                                    ) : (
+                                      <span className="text-slate-400">长度限制由服务端合同校验</span>
+                                    )}
+                                  </span>
+                                  <span className={typeof maxLimit === "number" && aiQuery.length >= maxLimit ? "text-red-600 font-black" : "text-slate-500 font-mono"}>
+                                    {typeof maxLimit === "number" ? `${aiQuery.length} / ${maxLimit} 字` : `${aiQuery.length} 字符（由服务端合同校验）`}
+                                  </span>
+                                </div>
+                              </>
+                            );
+                          })()}
 
                           {/* 敏感词自动防线 Banner */}
                           {(() => {
@@ -4163,7 +4678,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             type="file"
                             ref={aiMatchFileInputRef}
                             onChange={handleAiMatchFileUpload}
-                            multiple
                             className="hidden"
                           />
                           <button
@@ -4236,7 +4750,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         {extractingText && (
                           <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-[11px] font-bold text-amber-700">
                             <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                            <span>正在上传并解析文件内容（{aiMatchFiles.filter((f) => f.status === "parsing").length}/{aiMatchFiles.length} 进行中），图片 OCR 可能需要数十秒，请耐心等候...</span>
+                            <span>正在上传并解析文件内容，图片 OCR 可能需要数十秒，请耐心等候...</span>
                           </div>
                         )}
                         {aiMatchedComponent && (
@@ -4370,7 +4884,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               {recentTasks.length > 1 && (
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedTask(null)}
+                                  onClick={() => closeResultViewer()}
                                   className="text-[11px] font-bold text-slate-500 hover:text-slate-800 px-2 py-1 rounded-lg hover:bg-slate-100 cursor-pointer transition-all"
                                 >
                                   清空画布
@@ -4394,10 +4908,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                   <button
                                     key={t.id}
                                     type="button"
-                                    onClick={() => {
-                                      setSelectedTask(t);
-                                      setQuickResultHistoryOpen(false);
-                                    }}
+                                    onClick={() => openHistoryTaskDetail(t)}
                                     className={`p-2 rounded-lg text-left border transition-all text-xs cursor-pointer ${
                                       activeDisplayTask.id === t.id ? "bg-blue-50 border-[#3182ce] text-[#2b6cb0] font-bold" : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                                     }`}
@@ -4414,7 +4925,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             <ResultViewer
                               task={activeDisplayTask}
                               embedded={true}
-                              onSaveToKnowledge={handleSaveToKnowledge}
+                              onSaveToKnowledge={(task) => handleSaveToKnowledge(task as unknown as TaskRecord)}
                             />
                           </div>
                         </div>
@@ -6382,12 +6893,35 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       />
 
       {/* 4. 任务成果预览与沉淀 Modal (使用共享 ResultViewer 组件) */}
-      <ResultViewer
-        task={selectedTask}
-        open={!!selectedTask}
-        onClose={() => setSelectedTask(null)}
-        onSaveToKnowledge={handleSaveToKnowledge}
-      />
+      {selectedTask && historyTaskState === "loading" ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center space-y-3">
+            <div className="text-sm font-black text-slate-700">正在加载任务详情…</div>
+            <div className="text-xs text-slate-400">请稍候</div>
+          </div>
+        </div>
+      ) : selectedTask && historyTaskState === "error" ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center space-y-3">
+            <div className="text-sm font-black text-red-600">加载失败</div>
+            <div className="text-xs text-slate-500">{historyTaskError || "无法加载任务详情"}</div>
+            <button
+              type="button"
+              onClick={closeResultViewer}
+              className="mt-2 rounded-lg bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 cursor-pointer"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      ) : (
+        <ResultViewer
+          task={selectedTask}
+          open={!!selectedTask}
+          onClose={closeResultViewer}
+          onSaveToKnowledge={(task) => handleSaveToKnowledge(task as unknown as TaskRecord)}
+        />
+      )}
 
       {/* 5. 知识与资料详情查阅 Modal (全保真多模态全量中枢阅读器：支持图片原图、文档全量排版与源码视图) */}
       {showPreviewModal && (
@@ -6716,7 +7250,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   输入方式: {aiMatchDetailModal.inputMode === "file" ? "文件" : aiMatchDetailModal.inputMode === "both" ? "文本/文件" : "文本"}
                 </span>
                 <span className="px-2 py-1 bg-amber-50 text-amber-600 border border-amber-100 rounded-lg text-[10px] font-bold">
-                  预估消耗: {aiMatchDetailModal.estimatedModelTokens || 5} 点
+                  预估模型 Token: {aiMatchDetailModal.estimatedModelTokens || 0} Token（非算力点）
                 </span>
               </div>
               {/* 以下内容 100% 来自数据库 component_catalog.detail 字段 */}
@@ -7198,28 +7732,32 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>研发材料文本内容:</span>
-                <span className={quickInputMaterial.length >= 2000 ? "text-red-600 font-black font-mono" : "text-slate-500 font-mono"}>
-                  {quickInputMaterial.length} / 2000 字
-                </span>
-              </div>
-              <textarea
-                value={quickInputMaterial}
-                onChange={(e) => {
-                  const text = e.target.value;
-                  const val = text.length <= 2000 ? text : text.slice(0, 2000);
-                  setQuickInputMaterial(val);
-                  setAiQuery(val);
-                  if (text.length > 2000) {
-                    toast.warning("已触发 2000 字数上限限制，超出部分已截断");
-                  }
-                }}
-                rows={12}
-                maxLength={2000}
-                placeholder="在此直接输入或粘贴长文本、PRD需求规格说明书、招标文件细节或测试用例..."
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all font-sans leading-relaxed resize-none font-medium"
-              />
+              {(() => {
+                const curComp = componentCatalog.find((c) => c.id === quickSelectedCompId);
+                const maxModalLimit = curComp?.textConstraints?.maxLength;
+                return (
+                  <>
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>研发材料文本内容:</span>
+                      <span className={typeof maxModalLimit === "number" && quickInputMaterial.length >= maxModalLimit ? "text-red-600 font-black font-mono" : "text-slate-500 font-mono"}>
+                        {typeof maxModalLimit === "number" ? `${quickInputMaterial.length} / ${maxModalLimit} 字` : `${quickInputMaterial.length} 字符（长度限制由服务端合同校验）`}
+                      </span>
+                    </div>
+                    <textarea
+                      value={quickInputMaterial}
+                      onChange={(e) => {
+                        const text = e.target.value;
+                        setQuickInputMaterial(text);
+                        setAiQuery(text);
+                      }}
+                      rows={12}
+                      maxLength={typeof maxModalLimit === "number" ? maxModalLimit : undefined}
+                      placeholder="在此直接输入或粘贴长文本、PRD需求规格说明书、招标文件细节或测试用例（长度限制由服务端合同校验）..."
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all font-sans leading-relaxed resize-none font-medium"
+                    />
+                  </>
+                );
+              })()}
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
@@ -7527,7 +8065,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 对公转账 / 合同结算：提交后将生成充值工单，由平台管理员审批并通过后自动入账至本空间对应算力账户。请按提示完成对公打款并准确回填凭证信息，便于财务对账。
               </div>
               <div>
-                <label className="block text-xs font-black text-slate-700 mb-1">充值算力点数 *</label>
+                <label className="block text-xs font-black text-slate-700 mb-1">
+                  充值算力点数 <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="number" min="1"
                   value={offlineForm.points}
@@ -7645,7 +8185,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-black text-slate-700 mb-1">回收算力点数 *</label>
+                <label className="block text-xs font-black text-slate-700 mb-1">
+                  回收算力点数 <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="number" min="1"
                   value={recyclePoints}

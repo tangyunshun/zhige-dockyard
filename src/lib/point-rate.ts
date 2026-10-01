@@ -13,15 +13,22 @@
  * 概念边界（全系统统一口径）：
  *   - 「算力点」是本平台唯一的【计量与计费货币】，用户级钱包(pointwallet)/空间余额(tokenBalance)/
  *     会员额度(tokenLimit) 均属同一币种，最终应以 pointledger 流水总账为唯一真源。
- *   - 「模型 Token」是 AI 实际输入/输出的用量度量。全系统统一换算口径：
- *     **1 个模型 Token = 1 个算力点（1:1）**，用户只需理解「算力点」一种单位。
- *   - token 的【计费成本】取决于所用厂商的官方单价（DeepSeek / 智谱 / OpenAI …），
- *     不同厂商按各自价格折算扣点，统一由 @/lib/model-rate 的折算引擎负责，
- *     禁止在页面或接口中自行硬编码厂商价格。
+ *   - 「模型 Token」是 AI 实际输入/输出的用量度量，「算力点」是本平台唯一的计量与计费货币。
+ *     模型 Token 是用量单位，算力点是计费单位；真实结算按模型注册表用户售价换算，不再宣称固定 1 Token = 1 点。
+ *   - 模型的价格（供应商成本与用户售价）**唯一真源是数据库模型注册表**：
+ *     modelprovider / modeldeployment / modelpricing。
+ *     全系统禁止在页面、接口或本模块中硬编码任何厂商或模型价格；
+ *     计费单价一律经 modelpricing 读取，缺失即视为「未配置」并显式报错。
  */
 
 /** 1 元可兑换的算力点数量 */
 export const POINTS_PER_YUAN = 100;
+
+/** 1 元对应微元数量（1,000,000 微元） */
+export const MICROS_PER_YUAN = 1_000_000;
+
+/** 单个算力点对应的微元数量（10,000 微元 = 0.01 元）全系统统一真源 */
+export const MICROS_PER_POINT = BigInt(MICROS_PER_YUAN / POINTS_PER_YUAN);
 
 /** 单个算力点对应的人民币金额（元） */
 export const YUAN_PER_POINT = 0.01;
@@ -38,7 +45,13 @@ export const POINT_RATE_HINT =
  * 用于定价页、充值页、组件分发面板等需要解释单位的位置。
  */
 export const POINT_UNIT_HINT =
-  "全系统统一使用「算力点」计量：1 个模型 token = 1 个算力点，100 算力点 = 1 元。不同 AI 厂商（DeepSeek / 智谱 / OpenAI 等）按各自官方价折算扣点。";
+  "模型 Token 是用量度量单位，算力点是平台统一计费货币；真实结算按模型注册表用户售价换算，100 算力点 = 1 元。";
+
+/**
+ * 计量口径唯一提示文案（用户可见，全系统唯一来源）。
+ * 只陈述计量关系，不包含任何厂商名称或价格——模型价格一律以后台模型注册表（modelpricing）为准。
+ */
+export const UNIT_EXPLAIN_HINT = POINT_UNIT_HINT;
 
 /** 算力点 ➔ 人民币金额（元） */
 export function pointsToYuan(points: number | bigint | null | undefined): number {

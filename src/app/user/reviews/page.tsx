@@ -65,6 +65,9 @@ export default function UserReviewsPage() {
     content: "",
   });
 
+  // 表单校验错误：内联展示在输入框下方（不使用 toast 打断填写）
+  const [formErrors, setFormErrors] = useState<{ name?: string; content?: string }>({});
+
   const authHeaders = useCallback((): HeadersInit => {
     const token = getAuthToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -100,14 +103,14 @@ export default function UserReviewsPage() {
   const hasPending = rows.some((r) => r.status === "pending");
 
   const handleSubmit = async () => {
-    if (!form.name.trim()) {
-      toast.error("请填写您的姓名或称呼");
-      return;
-    }
+    // 校验提示内联展示在输入框下方（不使用 toast 打断填写）
+    const errors: { name?: string; content?: string } = {};
+    if (!form.name.trim()) errors.name = "请填写您的姓名或称呼";
     if (form.content.trim().length < 10) {
-      toast.error("评价内容至少需要 10 个字符");
-      return;
+      errors.content = `评价内容至少需要 10 个字符（当前 ${form.content.trim().length} 字）`;
     }
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     setSubmitting(true);
     try {
@@ -214,13 +217,26 @@ export default function UserReviewsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label className="block">
-                <span className="text-[11px] font-black text-slate-500">姓名 / 称呼 *</span>
+                <span className="text-[11px] font-black text-slate-500">
+                  姓名 / 称呼 <span className="text-red-500">*</span>
+                </span>
                 <input
                   value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, name: e.target.value }));
+                    if (formErrors.name) setFormErrors((p) => ({ ...p, name: undefined }));
+                  }}
                   placeholder="如：张三"
-                  className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                  aria-invalid={!!formErrors.name}
+                  className={`mt-1 w-full h-10 px-3 rounded-xl border text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 ${
+                    formErrors.name
+                      ? "border-red-400 bg-red-50/40 focus:ring-red-200"
+                      : "border-slate-200 focus:ring-[#3182ce]/30"
+                  }`}
                 />
+                {formErrors.name && (
+                  <span className="mt-1 block text-[10px] font-bold text-red-500">{formErrors.name}</span>
+                )}
               </label>
               <label className="block">
                 <span className="text-[11px] font-black text-slate-500">身份 / 岗位</span>
@@ -243,16 +259,30 @@ export default function UserReviewsPage() {
             </div>
 
             <label className="block">
-              <span className="text-[11px] font-black text-slate-500">评价内容 *</span>
+              <span className="text-[11px] font-black text-slate-500">
+                评价内容 <span className="text-red-500">*</span>
+              </span>
               <textarea
                 value={form.content}
-                onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, content: e.target.value }));
+                  if (formErrors.content) setFormErrors((p) => ({ ...p, content: undefined }));
+                }}
                 rows={4}
                 maxLength={1000}
                 placeholder="说说您用知阁·舟坊做项目时的真实体验与收获……"
-                className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 resize-none"
+                aria-invalid={!!formErrors.content}
+                className={`mt-1 w-full px-3 py-2 rounded-xl border text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 resize-none ${
+                  formErrors.content
+                    ? "border-red-400 bg-red-50/40 focus:ring-red-200"
+                    : "border-slate-200 focus:ring-[#3182ce]/30"
+                }`}
               />
-              <span className="text-[10px] text-slate-400">{form.content.trim().length} / 1000 字</span>
+              {formErrors.content ? (
+                <span className="mt-1 block text-[10px] font-bold text-red-500">{formErrors.content}</span>
+              ) : (
+                <span className="text-[10px] text-slate-400">{form.content.trim().length} / 1000 字</span>
+              )}
             </label>
 
             <div className="flex justify-end">

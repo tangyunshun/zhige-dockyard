@@ -58,9 +58,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       } else if (res.status === 401 || res.status === 403) {
         setUser(null);
       }
-    } catch (err) {
+    } catch (err: any) {
       setError("获取用户信息失败");
-      console.error("Fetch user error:", err);
+      if (err?.name !== "TimeoutError" && err?.name !== "AbortError") {
+        console.error("Fetch user error:", err);
+      } else {
+        console.warn("[UserContext] 获取用户信息请求超时或中断，已优雅降级");
+      }
     } finally {
       setLoading(false);
     }

@@ -286,7 +286,8 @@ export async function POST(request: NextRequest) {
     // 严格校验标准岗位创建权限（无权直接阻断）
     const authCheck = await requirePlatformPermission(request, "post:create");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -339,9 +340,10 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     // 严格校验标准岗位更新与启停分发权限（无权直接阻断）
-    const authCheck = await requirePlatformPermission(request, "post:update", "post:toggle");
+    const authCheck = await requirePlatformPermission(request, "post:update", "post:toggle", "post:status_update");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -441,7 +443,8 @@ export async function DELETE(request: NextRequest) {
     // 严格校验标准岗位删除权限（高危操作，无权直接阻断）
     const authCheck = await requirePlatformPermission(request, "post:delete");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

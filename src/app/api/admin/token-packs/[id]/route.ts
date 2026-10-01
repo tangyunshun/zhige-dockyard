@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 import { getTokenPackModel, updateTokenPackMemoryCache, removeTokenPackMemoryCache, markTokenPackDeleted } from "@/lib/token-pack-service";
 import { pointsToYuan } from "@/lib/point-rate";
 
@@ -15,6 +16,16 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 细粒度权限：token_pack:manage ∨ token_pack:publish ∨ token_pack:status_update
+    const permCheck = await requirePlatformPermission(
+      request,
+      "token_pack:manage",
+      "token_pack:publish",
+      "token_pack:status_update"
+    );
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限维护算力加油包" }, { status: 403 });
+    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });

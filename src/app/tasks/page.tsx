@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
+import { mergeTaskDetailIntoListItem } from "@/lib/task-detail-merge";
 import { useAppContext } from "@/contexts/AppContext";
 import AvatarDropdown from "@/components/AvatarDropdown";
 import Pagination from "@/components/Pagination";
@@ -32,14 +33,88 @@ interface UserTaskRecord {
   name: string;
   componentId: string;
   componentName: string;
-  tokenUsed: number;
+  pointsCost: number;
   status: TaskStatus;
   time: string;
   createdAt: number;
   workspaceId: string;
   workspaceName: string;
   workspaceType: "PERSONAL" | "ENTERPRISE";
-  outputData?: any;
+  /** 成果数据：历史结构可能为字符串（Markdown 正文），新结构为安全对象 */
+  outputData?: string | TaskOutputDataView | null;
+  // 真实/模拟/未知执行状态（由后端 execution 字段透传，禁止前端猜测；缺失不得显示为模拟）
+  executionMode?: "REAL_MODEL" | "SIMULATED" | "UNKNOWN" | null;
+  metaMissing?: boolean;
+  anomaly?: string | null;
+  legacy?: boolean;
+  provider?: { id?: string; modelId?: string } | null;
+  model?: string | null;
+  usage?: { inputTokens?: number | null; outputTokens?: number | null; totalTokens?: number | null } | null;
+  billingMode?: string | null;
+  estimatedPoints?: number | null;
+  actualPoints?: number | null;
+  contractVersion?: string | null;
+  refundStatus?: "NO_CHARGE" | "REFUNDED" | "REFUND_PENDING" | "RECONCILIATION_REQUIRED" | "UNKNOWN";
+  refundedPoints?: number | null;
+  /** 三态：false=明确未扣费，true=明确发生扣费尝试，null=无法判断（缺失严禁推断） */
+  chargeAttempted?: boolean | null;
+  resultSummary?: string | null;
+  errorCode?: string | null;
+  /** 详情接口返回的安全成果物数组（不含 storagePath / 原始输入 / prompt / 密钥） */
+  artifacts?: TaskArtifactView[];
+  hasArtifact?: boolean;
+  /** 历史合同安全视图：由任务自身 contractSnapshot 派生，无快照为 null，严禁按 componentId 补写业务标签 */
+  contractView?: TaskContractView | null;
+  execution?: TaskExecutionView | null;
+}
+
+/** 成果数据安全视图（严禁含原始输入 / prompt / storagePath / 密钥） */
+export interface TaskOutputDataView {
+  summary?: string;
+  code?: string;
+  error?: string;
+  message?: string;
+  artifacts?: TaskArtifactView[];
+}
+
+/** 详情接口返回的安全成果物 */
+export interface TaskArtifactView {
+  id: string | null;
+  type: string | null;
+  title: string | null;
+  mimeType: string | null;
+  rendererType: string | null;
+  content: string | Record<string, unknown> | null;
+  previewable: boolean;
+  downloadable: boolean;
+}
+
+/** 历史合同安全视图（严格由任务自身快照派生） */
+export interface TaskContractView {
+  contractVersion: string | null;
+  outputKind: string | null;
+  artifactMime: string | null;
+  rendererType: string | null;
+  qualityHints: string[];
+  disclaimer: string | null;
+  requireHumanReview: boolean;
+}
+
+/** 详情专用安全执行元数据（严禁含 artifacts / 原始输入 / prompt / 完整 config） */
+export interface TaskExecutionView {
+  executionMode: "REAL_MODEL" | "SIMULATED" | "UNKNOWN";
+  anomaly: string | null;
+  legacy: boolean;
+  provider: { id: string; modelId?: string } | null;
+  model: string | null;
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
+  billingMode: string | null;
+  estimatedPoints: number | null;
+  actualPoints: number | null;
+  contractVersion: string | null;
+  hasContractSnapshot: boolean;
+  qualityHints: string[];
+  isRealExecution?: boolean;
 }
 
 // 服务端状态归一化：completed/pending 等变体状态统一映射，避免误判
@@ -51,6 +126,19 @@ const normalizeTaskStatus = (raw?: string): TaskStatus => {
   return "UNKNOWN";
 };
 
+/** 执行状态展示：缺失元数据不得显示为“模拟执行” */
+function taskExecLabel(t: UserTaskRecord): { text: string; cls: string; title: string } {
+  if (t.executionMode === "REAL_MODEL") {
+    if (t.anomaly === "REAL_MODEL_META_INCOMPLETE") {
+      return { text: "真实模型 · 数据异常", cls: "text-red-600", title: "缺少 provider / usage / 合同版本" };
+    }
+    return { text: "真实模型", cls: "text-emerald-600", title: "真实模型执行" };
+  }
+  if (t.executionMode === "SIMULATED") return { text: "模拟执行", cls: "text-amber-600", title: "模拟执行（非真实模型）" };
+  if (t.legacy) return { text: "历史数据缺失", cls: "text-slate-500", title: "执行元数据引入前的旧任务" };
+  return { text: "执行信息缺失", cls: "text-red-600", title: "缺少 executionMode，禁止默认按模拟执行" };
+}
+
 const STATUS_META: Record<TaskStatus, { label: string; cls: string; dot?: string }> = {
   SUCCESS: { label: "成功", cls: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   RUNNING: { label: "进行中", cls: "text-amber-600 bg-amber-50 border-amber-200", dot: "bg-amber-500 animate-pulse" },
@@ -61,6 +149,49 @@ const STATUS_META: Record<TaskStatus, { label: string; cls: string; dot?: string
 export default function PersonalTasksManagementPage() {
   const router = useRouter();
   const toast = useToast();
+
+  interface ComponentCategoryMeta {
+    key?: string;
+    name?: string;
+  }
+  interface ExecutionMeta {
+    executionMode?: string | null;
+    metaMissing?: boolean;
+    anomaly?: string | null;
+    legacy?: boolean;
+    provider?: { id?: string; modelId?: string } | null;
+    model?: string | null;
+    usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
+    billingMode?: string | null;
+    estimatedPoints?: number | null;
+    actualPoints?: number | null;
+    contractVersion?: string | null;
+    [key: string]: unknown;
+  }
+  interface RawTaskResponse {
+    id?: string;
+    name?: string;
+    type?: string;
+    componentName?: string;
+    status?: string;
+    createdAt?: string | number | Date;
+    workspaceId?: string | number;
+    workspaceName?: unknown;
+    workspaceType?: unknown;
+    execution?: ExecutionMeta;
+    refundStatus?: unknown;
+    refundedPoints?: unknown;
+    chargeAttempted?: unknown;
+    resultSummary?: unknown;
+    errorCode?: unknown;
+    [key: string]: unknown;
+  }
+  interface WorkspaceMeta {
+    id: string;
+    name?: string;
+    type?: string;
+    [key: string]: unknown;
+  }
   // 组件信息来自数据库（component_catalog / component_category 表），代码中不再硬编码组件名称/描述
   const { componentCatalog, internalComponentCatalog, componentCategories } = useAppContext();
 
@@ -70,15 +201,16 @@ export default function PersonalTasksManagementPage() {
     const keyUpper = catKey.trim().toUpperCase();
     if (componentCategories) {
       // 遍历 AppContext 中从数据库 componentcategory 表查出的真实分类数据
-      const catList = Object.values(componentCategories) as any[];
+      const cats = componentCategories as Record<string, ComponentCategoryMeta>;
+      const catList = Object.values(cats);
       const found = catList.find(
-        (c: any) => (c.key || "").trim().toUpperCase() === keyUpper || (c.name && c.name === catKey)
+        (c) => (c.key || "").trim().toUpperCase() === keyUpper || (c.name && c.name === catKey)
       );
       if (found?.name) {
         return found.name;
       }
-      if ((componentCategories as any)[catKey]?.name) {
-        return (componentCategories as any)[catKey].name;
+      if (cats[catKey]?.name) {
+        return cats[catKey].name;
       }
     }
     return catKey;
@@ -119,7 +251,9 @@ export default function PersonalTasksManagementPage() {
     }
 
     // 3. 从数据库 componentcategory 分类表匹配 (如 key: "BACKEND_CORE", name: "后端开发与接口")
-    const catMetaName = componentCategories && (componentCategories as any)[code]?.name;
+    const catMetaName = componentCategories
+      ? (componentCategories as Record<string, ComponentCategoryMeta>)[code]?.name
+      : undefined;
     const catName = catMetaName || (rawName && rawName.trim().toUpperCase() !== code.toUpperCase() ? rawName.trim() : "");
     const finalName = catName || code;
 
@@ -129,7 +263,7 @@ export default function PersonalTasksManagementPage() {
 
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<UserTaskRecord[]>([]);
-  const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceMeta[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // 筛选控制
@@ -155,94 +289,56 @@ export default function PersonalTasksManagementPage() {
   // 查看成果 Modal
   const [previewTask, setPreviewTask] = useState<UserTaskRecord | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  // 详情加载状态机：loading / ready / forbidden(403) / notfound(404) / error(500 或网络失败)
+  const [previewState, setPreviewState] = useState<"ready" | "loading" | "forbidden" | "notfound" | "error">("ready");
+  const [previewErrorMsg, setPreviewErrorMsg] = useState<string | null>(null);
 
-  // 新建任务 Modal
-  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
-  const [createTaskWorkspaceId, setCreateTaskWorkspaceId] = useState("");
-  const [createTaskComponentId, setCreateTaskComponentId] = useState("");
-  const [createTaskName, setCreateTaskName] = useState("");
-  const [createTaskMaterial, setCreateTaskMaterial] = useState("");
-  const [componentSearchQuery, setComponentSearchQuery] = useState("");
-  const [isComponentDropdownOpen, setIsComponentDropdownOpen] = useState(false);
-  const [boundComponents, setBoundComponents] = useState<{ id: string; name: string; enabled: boolean }[]>([]);
-  const [loadingBound, setLoadingBound] = useState(false);
-  const [isSubmittingTask, setIsSubmittingTask] = useState(false);
 
-  // 文件上传与自动解析 state
-  const [taskUploadedFile, setTaskUploadedFile] = useState<{ name: string; size: number; content: string } | null>(null);
-  const [isDraggingTaskFile, setIsDraggingTaskFile] = useState(false);
-  const taskFileInputRef = useRef<HTMLInputElement>(null);
 
-  // 智能编码识别与安全文件读取器 (支持 UTF-8 严格解码与 GBK/GB2312 中文自动回退解码)
-  const readFileContentSafely = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      if (["docx", "pdf", "xlsx", "zip"].includes(ext)) {
-        resolve(`[已关联本地文档: ${file.name} (${(file.size / 1024).toFixed(1)} KB)]\n此二进制文档已成功装载，后端分析引擎将自动提炼其结构。`);
-        return;
-      }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const buffer = e.target?.result as ArrayBuffer;
-        if (!buffer) {
-          resolve("");
-          return;
-        }
-        try {
-          const decoderUtf8 = new TextDecoder("utf-8", { fatal: true });
-          resolve(decoderUtf8.decode(buffer));
-        } catch (err) {
-          try {
-            const decoderGbk = new TextDecoder("gbk");
-            resolve(decoderGbk.decode(buffer));
-          } catch (err2) {
-            const decoderLoose = new TextDecoder("utf-8");
-            resolve(decoderLoose.decode(buffer));
-          }
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    });
-  };
-
-  const handleTaskFileUpload = async (file: File) => {
-    if (!file) return;
-    const content = await readFileContentSafely(file);
-    setTaskUploadedFile({
-      name: file.name,
-      size: file.size,
-      content,
-    });
-    setCreateTaskMaterial((prev) => (prev ? `${prev}\n\n--- [导入文件内容: ${file.name}] ---\n${content}` : content));
-    if (!createTaskName.trim()) {
-      const baseName = file.name.replace(/\.[^/.]+$/, "");
-      setCreateTaskName(`分析任务: ${baseName}`);
-    }
-    toast.success(`已安全解析并导入文件【${file.name}】！`);
-  };
-
-  const formatTask = (t: any, ws: any): UserTaskRecord => {
-    const cMeta = getComponentMeta(t.type);
+  const formatTask = (t: RawTaskResponse, ws: WorkspaceMeta): UserTaskRecord => {
+    const cMeta = getComponentMeta(t.type ?? "");
     const dbName = t.componentName && t.componentName !== t.type ? t.componentName : undefined;
-    return {
-      id: t.id,
-      name: t.name || `任务 #${String(t.id).substring(0, 6)}`,
-      componentId: t.type || "",
-      componentName: cMeta?.name || dbName || t.componentName || t.type || "",
-      tokenUsed: t.config?.tokenCost ?? 5,
-      status: normalizeTaskStatus(t.status),
+    const record = {
+      id: t.id ?? "",
+      name: t.name ? String(t.name) : `任务 #${String(t.id ?? "").substring(0, 6)}`,
+      componentId: t.type ?? "",
+      componentName: cMeta?.name || dbName || (typeof t.componentName === "string" ? t.componentName : "") || (t.type ?? ""),
+      // 列表严禁读取完整 config：只消费后端统一安全字段 execution.estimatedPoints（算力点）
+      pointsCost: typeof t.execution?.estimatedPoints === "number" ? t.execution.estimatedPoints : 0,
+      status: normalizeTaskStatus(typeof t.status === "string" ? t.status : undefined),
       time: t.createdAt ? new Date(t.createdAt).toLocaleString("zh-CN", { hour12: false }) : "近期执行",
       createdAt: t.createdAt ? new Date(t.createdAt).getTime() : 0,
       workspaceId: ws.id,
-      workspaceName: ws.name,
-      workspaceType: ws.type,
-      outputData: t.result?.outputData || t.outputData || null,
+      workspaceName: ws.name ?? "",
+      workspaceType: ws.type === "ENTERPRISE" ? "ENTERPRISE" : "PERSONAL",
+      // 列表严禁携带 outputData / 成果物内容，成果物仅由详情接口（task_detail）返回
+      outputData: null,
+      // 执行状态一律取后端 execution 字段；缺失时为 UNKNOWN，绝不默认为模拟
+      executionMode: (t.execution?.executionMode as UserTaskRecord["executionMode"]) ?? "UNKNOWN",
+      metaMissing: t.execution?.metaMissing ?? true,
+      anomaly: t.execution?.anomaly ?? null,
+      legacy: t.execution?.legacy ?? false,
+      provider: t.execution?.provider ?? null,
+      model: t.execution?.model ?? null,
+      usage: t.execution?.usage ?? null,
+      billingMode: t.execution?.billingMode ?? null,
+      estimatedPoints: t.execution?.estimatedPoints ?? null,
+      actualPoints: t.execution?.actualPoints ?? null,
+      contractVersion: t.execution?.contractVersion ?? null,
+      refundStatus: (typeof t.refundStatus === "string" ? (t.refundStatus as UserTaskRecord["refundStatus"]) : "UNKNOWN"),
+      refundedPoints: typeof t.refundedPoints === "number" ? t.refundedPoints : null,
+      // 三态：缺失一律保留 null，严禁推断为「已发生扣费」
+      chargeAttempted: typeof t.chargeAttempted === "boolean" ? t.chargeAttempted : null,
+      resultSummary: typeof t.resultSummary === "string" ? t.resultSummary : null,
+      errorCode: typeof t.errorCode === "string" ? t.errorCode : null,
+      execution: (t.execution ?? null) as TaskExecutionView | null,
     };
+    return record as unknown as UserTaskRecord;
   };
 
   // 按空间拉取任务（后端逐空间校验成员身份）
-  const fetchTasksForWorkspace = async (ws: any): Promise<UserTaskRecord[]> => {
+  const fetchTasksForWorkspace = async (ws: WorkspaceMeta): Promise<UserTaskRecord[]> => {
     const token = getAuthToken();
     const res = await fetch(`/api/studio?action=tasks&workspaceId=${encodeURIComponent(ws.id)}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -251,7 +347,7 @@ export default function PersonalTasksManagementPage() {
     if (!res.ok) return [];
     const data = await res.json();
     if (!data?.success || !Array.isArray(data.data)) return [];
-    return data.data.map((t: any) => formatTask(t, ws));
+    return (data.data as RawTaskResponse[]).map((t) => formatTask(t, ws));
   };
 
   // 加载全部空间并聚合任务档案 (优先调用服务端 /api/tasks 聚合接口，失败时降级逐空间拉取)
@@ -270,17 +366,14 @@ export default function PersonalTasksManagementPage() {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
       });
-      let wsList: any[] = [];
+      let wsList: WorkspaceMeta[] = [];
       if (wsRes.ok) {
         const wsData = await wsRes.json();
         if (Array.isArray(wsData.workspaces)) {
-          wsList = wsData.workspaces;
+          wsList = wsData.workspaces as WorkspaceMeta[];
         }
       }
       setWorkspaces(wsList);
-      if (wsList.length > 0) {
-        setCreateTaskWorkspaceId((prev) => (prev && wsList.some((w) => w.id === prev) ? prev : wsList[0].id));
-      }
 
       // 2. 优先尝试服务端一次性聚合接口 GET /api/tasks
       try {
@@ -292,8 +385,8 @@ export default function PersonalTasksManagementPage() {
         if (tasksRes.ok) {
           const tasksData = await tasksRes.json();
           if (tasksData?.success && Array.isArray(tasksData.data)) {
-            const formattedAll = tasksData.data.map((t: any) =>
-              formatTask(t, { id: t.workspaceId, name: t.workspaceName, type: t.workspaceType })
+            const formattedAll = (tasksData.data as RawTaskResponse[]).map((t) =>
+              formatTask(t, { id: String(t.workspaceId ?? ""), name: typeof t.workspaceName === "string" ? t.workspaceName : undefined, type: typeof t.workspaceType === "string" ? t.workspaceType : undefined })
             );
             formattedAll.sort((a: UserTaskRecord, b: UserTaskRecord) => b.createdAt - a.createdAt);
             setTasks(formattedAll);
@@ -329,76 +422,87 @@ export default function PersonalTasksManagementPage() {
     fetchUserTasks();
   }, []);
 
-  // 联动加载目标空间的已装配组件（真实 bound 接口）
-  const loadBoundComponents = async (wsId: string) => {
-    if (!wsId) return;
-    setLoadingBound(true);
+
+  // 新建任务：引导前往组件工坊由标准合同与调度器正规执行，隔离生产页面对直接 simulate 的暴露
+  const handleOpenCreateTaskModal = () => {
+    const targetWsId =
+      selectedWorkspaceId !== "ALL"
+        ? selectedWorkspaceId
+        : (workspaces[0]?.id || "");
+    toast.info("任务需在组件工坊依据已发布合同标准执行，正在为您前往工坊...");
+    router.push(`/studio?workspaceId=${targetWsId}&tab=components`);
+  };
+
+  // 按需鉴权加载单条任务成果物详情（真实状态机，严禁把列表对象伪装成详情成功结果）
+  const handleOpenPreviewModal = async (t: UserTaskRecord) => {
+    setPreviewTask(t);
+    setShowPreviewModal(true);
+    setPreviewState("loading");
+    setPreviewErrorMsg(null);
     try {
       const token = getAuthToken();
-      const res = await fetch(`/api/studio?action=bound&workspaceId=${encodeURIComponent(wsId)}`, {
+      const res = await fetch(`/api/studio?action=task_detail&taskId=${encodeURIComponent(t.id)}`, {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
       });
+
+      // 403：无权限（绝不降级为「暂无内容」）
+      if (res.status === 403) {
+        setPreviewState("forbidden");
+        setPreviewErrorMsg("无权限查看该任务结果");
+        return;
+      }
+      // 404：结果不存在（绝不渲染为成功空态）
+      if (res.status === 404) {
+        setPreviewState("notfound");
+        setPreviewErrorMsg("结果不存在");
+        return;
+      }
+      // 500 / 其它服务端错误：展示真实错误，不统一显示「加载失败」
       if (!res.ok) {
-        setBoundComponents([]);
-        setCreateTaskComponentId("");
+        let serverMsg: string | null = null;
+        try {
+          const errJson = await res.json();
+          serverMsg =
+            (typeof errJson?.error === "string" && errJson.error) ||
+            (typeof errJson?.message === "string" && errJson.message) ||
+            null;
+        } catch {
+          serverMsg = null;
+        }
+        setPreviewState("error");
+        setPreviewErrorMsg(serverMsg || `服务端错误（HTTP ${res.status}）`);
         return;
       }
-      const data = await res.json();
-      if (!data?.success) {
-        setBoundComponents([]);
-        setCreateTaskComponentId("");
+
+      const json = await res.json();
+      if (!json?.success || !json?.data) {
+        setPreviewState("error");
+        setPreviewErrorMsg(
+          (typeof json?.error === "string" && json.error) || "详情接口返回异常，未取得任务数据",
+        );
         return;
       }
-      const states = data.states || {};
-      const rawList = data.details || data.data || [];
-      const list = rawList.map((item: any) => {
-        const id = typeof item === "string" ? item : item?.id || item?.code || String(item);
-        const code = typeof item === "object" ? item?.code || id : id;
-        const info = getUnifiedComponentLabel(id, typeof item === "object" ? item?.name : undefined);
-        const name = typeof item === "object" && item?.name && item.name !== id ? item.name : info.name;
-        const category = typeof item === "object" ? item?.category || "研发组件" : "研发组件";
-        const desc = typeof item === "object" ? item?.desc || "" : "";
-        const fullLabel = `${name} (${code})`;
-        return {
-          id,
-          code,
-          name,
-          fullLabel,
-          category,
-          desc,
-          enabled: states[id]?.enabled !== false,
-        };
+
+      // 成功后只使用详情响应（task_detail 安全 DTO）覆盖任务对象。
+      // 详情 DTO 是唯一真源：null 必须覆盖旧列表值，严禁回退未认证顶层字段或旧对象。
+      setPreviewTask((prev) => {
+        if (!prev || prev.id !== t.id) return prev;
+        return mergeTaskDetailIntoListItem(prev, json.data);
       });
-      setBoundComponents(list);
-      const firstEnabled = list.find((c: { enabled: boolean }) => c.enabled);
-      setCreateTaskComponentId(firstEnabled?.id || "");
+      setPreviewState("ready");
     } catch (e) {
-      setBoundComponents([]);
-    } finally {
-      setLoadingBound(false);
+      setPreviewState("error");
+      setPreviewErrorMsg(e instanceof Error ? e.message : "网络请求失败，无法加载任务详情");
     }
   };
 
-  // 打开新建任务弹窗：确保有效空间选中并联动组件
-  const handleOpenCreateTaskModal = () => {
-    let targetWsId = createTaskWorkspaceId;
-    if (workspaces.length > 0 && (!targetWsId || !workspaces.some((w) => w.id === targetWsId))) {
-      targetWsId = workspaces[0].id;
-      setCreateTaskWorkspaceId(targetWsId);
-    }
-    if (targetWsId) {
-      loadBoundComponents(targetWsId);
-    }
-    setTaskUploadedFile(null);
-    setShowCreateTaskModal(true);
-  };
-
-  // 关闭弹窗并跳转至组件大厅挑选装配组件
-  const handleGoToComponentBrowser = () => {
-    setShowCreateTaskModal(false);
-    const targetWsId = createTaskWorkspaceId || selectedWorkspaceId || "";
-    router.push(`/studio?workspaceId=${targetWsId}&tab=components`);
+  // 关闭弹窗：清除 loading、error 与 detail state
+  const handleClosePreviewModal = () => {
+    setShowPreviewModal(false);
+    setPreviewTask(null);
+    setPreviewState("ready");
+    setPreviewErrorMsg(null);
   };
 
   // 多维过滤
@@ -424,8 +528,11 @@ export default function PersonalTasksManagementPage() {
   const successTasks = filteredTasks.filter((t) => t.status === "SUCCESS");
   const runningTasks = filteredTasks.filter((t) => t.status === "RUNNING");
   const failedTasks = filteredTasks.filter((t) => t.status === "FAILED" || t.status === "UNKNOWN");
-  const successCount = tasks.filter((t) => t.status === "SUCCESS").length;
-  const totalTokensUsed = tasks.reduce((sum, t) => sum + (t.tokenUsed || 0), 0);
+  // 真实模型成功任务统计（排查隔离 SIMULATED，绝不把模拟执行计入真实模型统计）
+  const realSuccessCount = tasks.filter(
+    (t) => t.status === "SUCCESS" && t.execution?.isRealExecution === true,
+  ).length;
+  const totalPoints = tasks.reduce((sum, t) => sum + (t.pointsCost || 0), 0);
 
   // 看板模块独立分页 (每页 5 条)
   const kanbanPageSize = 5;
@@ -502,118 +609,12 @@ export default function PersonalTasksManagementPage() {
       } else {
         throw new Error(data.error || data.message || "任务归档失败");
       }
-    } catch (e: any) {
-      toast.error(e.message || "任务归档失败，请稍后重试");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "任务归档失败，请稍后重试");
     }
   };
 
-  // 提交新建任务（simulate 真实执行：依据数据库 componentCatalog 成本扣减）
-  const handleCreateTaskSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!createTaskWorkspaceId) {
-      toast.warning("请选择目标工作空间");
-      return;
-    }
-    if (!createTaskComponentId) {
-      toast.warning("请先在该空间装配并启用一个组件");
-      return;
-    }
-    if (!createTaskName.trim()) {
-      toast.warning("任务名称为必填项，请输入明确的任务名称");
-      return;
-    }
-    if (isSubmittingTask) return;
 
-    const targetComp = componentCatalog.find((c) => c.id === createTaskComponentId);
-    const estimatedCost = Number(targetComp?.estimatedModelTokens) || 5;
-
-    // 统一任务输入契约：按组件 inputMode 校验输入来源（文本 / 文件任一满足即可）
-    const tInputMode = targetComp?.inputMode || "text";
-    const tHasText = createTaskMaterial.trim().length > 0;
-    const tHasFile = !!taskUploadedFile;
-    let tInputErr = "";
-    if (tInputMode === "file") {
-      if (!tHasFile) tInputErr = "该组件需要上传文件作为主材料，请先上传文件再执行";
-    } else if (tInputMode === "text") {
-      if (!tHasText) tInputErr = "请输入任务所需的文本材料";
-    } else {
-      if (!tHasText && !tHasFile) tInputErr = "请输入文本或上传文件作为任务主材料";
-    }
-    if (tInputErr) {
-      toast.warning(tInputErr);
-      return;
-    }
-
-    // 组装统一 inputSource 结构（任务中心当前仅支持文本 / 文件）
-    const createInputSource: Record<string, any> = taskUploadedFile
-      ? { sourceType: "file", sourceId: null, fileName: taskUploadedFile.name, fileSize: taskUploadedFile.size }
-      : { sourceType: "text", sourceId: null, fileName: null, fileSize: null };
-
-    setIsSubmittingTask(true);
-    try {
-      const token = getAuthToken();
-      const res = await fetch("/api/studio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "simulate",
-          workspaceId: createTaskWorkspaceId,
-          componentId: createTaskComponentId,
-          taskName: createTaskName.trim() || undefined,
-          inputMaterial: createTaskMaterial.trim() || undefined,
-          inputSource: createInputSource,
-          tokens: estimatedCost,
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.success) {
-        toast.success(`任务已执行完成，当前空间剩余 ${data.tokenBalance} 算力点`);
-        setShowCreateTaskModal(false);
-        const taskNameCreated = createTaskName.trim() || `任务 #${String(data.task?.id || "").substring(0, 6)}`;
-        setCreateTaskName("");
-        setCreateTaskMaterial("");
-        setTaskUploadedFile(null);
-
-        await fetchUserTasks();
-
-        // 自动调起新任务成果
-        const matchedWs = workspaces.find((w) => w.id === createTaskWorkspaceId);
-        setPreviewTask({
-          id: data.task?.id || "new_task",
-          name: taskNameCreated,
-          componentId: createTaskComponentId,
-          componentName: getComponentMeta(createTaskComponentId)?.name || createTaskComponentId,
-          tokenUsed: 5,
-          status: "SUCCESS",
-          time: "刚刚执行",
-          createdAt: Date.now(),
-          workspaceId: createTaskWorkspaceId,
-          workspaceName: matchedWs?.name || "工作空间",
-          workspaceType: matchedWs?.type || "PERSONAL",
-          outputData: data.task?.result?.outputData || data.task?.outputData || null,
-        });
-        setShowPreviewModal(true);
-      } else {
-        const errMsg = data?.error || "任务创建失败，请重试";
-        toast.error(errMsg);
-        if (errMsg.includes("算力") || errMsg.includes("配额") || errMsg.includes("余额不足")) {
-          setTimeout(async () => {
-            if (await confirm({ title: "算力不足", message: "当前工作空间算力点余额不足，是否立即前往工作控制台充值算力包？", type: "warning" })) {
-              router.push(`/workspace/${createTaskWorkspaceId}/members`);
-            }
-          }, 500);
-        }
-      }
-    } catch (err) {
-      toast.error("网络请求异常");
-    } finally {
-      setIsSubmittingTask(false);
-    }
-  };
 
   return (
     <div className="min-h-screen w-full bg-[#f1f5f9] flex flex-col font-sans relative">
@@ -680,11 +681,11 @@ export default function PersonalTasksManagementPage() {
 
           <div className="p-4.5 bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-2xl shadow-xs flex items-center justify-between">
             <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">成功完成任务</span>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">真实模型成功</span>
               <div className="text-2xl font-black text-emerald-600 font-mono tracking-tight">
-                {loading ? "···" : successCount} <span className="text-xs font-bold text-slate-400">项</span>
+                {loading ? "···" : realSuccessCount} <span className="text-xs font-bold text-slate-400">项</span>
               </div>
-              <p className="text-[10px] text-emerald-600/80 font-medium">已生成执行结果</p>
+              <p className="text-[10px] text-emerald-600/80 font-medium">真实模型调用生成结果</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
               <CheckIcon className="w-5 h-5" />
@@ -695,10 +696,10 @@ export default function PersonalTasksManagementPage() {
             <div className="space-y-1">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">累计消耗点数</span>
               <div className="text-2xl font-black text-[#3182ce] font-mono tracking-tight">
-                {loading ? "···" : totalTokensUsed} <span className="text-xs font-bold text-slate-400">点</span>
+                {loading ? "···" : totalPoints} <span className="text-xs font-bold text-slate-400">点</span>
               </div>
               <p className="text-[10px] text-slate-400 font-medium">
-                折算 {loading ? "···" : formatYuanFromPoints(totalTokensUsed)}（{POINT_RATE_TEXT}）
+                折算 {loading ? "···" : formatYuanFromPoints(totalPoints)}（{POINT_RATE_TEXT}）
               </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-[#3182ce] flex items-center justify-center shadow-xs">
@@ -878,7 +879,7 @@ export default function PersonalTasksManagementPage() {
                     </tr>
                   ) : (
                     paginatedTasks.map((t) => (
-                      <tr key={t.id} className="hover:bg-blue-50/20 transition-colors">
+                      <tr key={t.id} data-task-id={t.id} className="hover:bg-blue-50/20 transition-colors">
                         <td className="py-3.5 px-4 font-bold text-slate-900">
                           <div className="truncate max-w-[220px]" title={t.name}>{t.name}</div>
                           <div className="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">ID: {t.id}</div>
@@ -910,8 +911,18 @@ export default function PersonalTasksManagementPage() {
                         </td>
 
                         <td className="py-3.5 px-3 font-mono font-black text-slate-800">
-                          {t.tokenUsed} <span className="text-[10px] text-slate-400 font-normal">点</span>
-                          <div className="text-[10px] text-slate-400 font-normal">{formatYuanFromPoints(t.tokenUsed)}</div>
+                          {t.pointsCost} <span className="text-[10px] text-slate-400 font-normal">点</span>
+                          <div className="text-[10px] text-slate-400 font-normal">{formatYuanFromPoints(t.pointsCost)}</div>
+                          <div className="text-[10px] font-bold mt-0.5">
+                            <span className={taskExecLabel(t).cls} title={taskExecLabel(t).title}>
+                              {taskExecLabel(t).text}
+                            </span>
+                            {t.contractVersion ? (
+                              <span className="ml-1 text-[9px] text-slate-400 font-mono font-normal">
+                                v{t.contractVersion}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-3">
@@ -919,6 +930,26 @@ export default function PersonalTasksManagementPage() {
                             {STATUS_META[t.status].dot && <span className={`w-2 h-2 rounded-full ${STATUS_META[t.status].dot}`} />}
                             {STATUS_META[t.status].label}
                           </span>
+                          {t.status === "FAILED" && (
+                            <div className="space-y-0.5 mt-1">
+                              {(() => {
+                                const codeText = t.errorCode;
+                                if (!codeText) return null;
+                                return (
+                                  <div className="text-[9.5px] font-mono text-rose-600 font-bold truncate max-w-[150px]" title={codeText}>
+                                    错误: {codeText}
+                                  </div>
+                                );
+                              })()}
+                              {t.refundStatus ? (
+                                <div className="text-[9.5px] font-semibold text-slate-500">
+                                  退款: {t.refundStatus === "REFUNDED" ? `退款成功 (${t.refundedPoints ?? 0}点)` : t.refundStatus === "NO_CHARGE" ? "未发生扣费" : t.refundStatus === "REFUND_PENDING" ? "退款处理中" : t.refundStatus === "RECONCILIATION_REQUIRED" ? "退款待对账" : "退款状态待系统确认"}
+                                </div>
+                              ) : (
+                                <div className="text-[9.5px] text-slate-400">退款: 退款状态待系统确认</div>
+                              )}
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-3 font-mono text-slate-400 text-[11px]">
@@ -933,7 +964,8 @@ export default function PersonalTasksManagementPage() {
                             <>
                               <button
                                 type="button"
-                                onClick={() => { setPreviewTask(t); setShowPreviewModal(true); }}
+                                data-task-id={t.id}
+                                onClick={() => handleOpenPreviewModal(t)}
                                 className="text-[#3182ce] hover:text-[#2b6cb0] hover:underline cursor-pointer"
                               >
                                 查看结果
@@ -945,6 +977,25 @@ export default function PersonalTasksManagementPage() {
                                 className="text-amber-600 hover:opacity-70 hover:underline cursor-pointer"
                               >
                                 存入知识库
+                              </button>
+                            </>
+                          ) : t.status === "FAILED" ? (
+                            <>
+                              <button
+                                type="button"
+                                data-task-id={t.id}
+                                onClick={() => handleOpenPreviewModal(t)}
+                                className="text-rose-600 hover:text-rose-800 hover:underline cursor-pointer font-bold"
+                              >
+                                失败详情
+                              </button>
+                              <span className="text-slate-200">|</span>
+                              <button
+                                type="button"
+                                onClick={() => router.push(`/workspace/${t.workspaceId}`)}
+                                className="text-slate-600 hover:text-slate-800 hover:underline cursor-pointer"
+                              >
+                                前往空间
                               </button>
                             </>
                           ) : (
@@ -1045,7 +1096,8 @@ export default function PersonalTasksManagementPage() {
                         })()}
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
-                            onClick={() => { setPreviewTask(t); setShowPreviewModal(true); }}
+                            data-task-id={t.id}
+                            onClick={() => handleOpenPreviewModal(t)}
                             className="px-2.5 py-1 bg-blue-50 text-[#3182ce] hover:bg-blue-100 rounded-lg font-bold cursor-pointer transition-colors whitespace-nowrap shrink-0"
                           >
                             查看结果
@@ -1184,11 +1236,28 @@ export default function PersonalTasksManagementPage() {
                       <div className="h-1 w-full bg-rose-500 absolute top-0 left-0" />
                       <h4 className="font-extrabold text-slate-900 text-xs leading-snug line-clamp-2 pt-1">{t.name}</h4>
                       <p className="text-[11px] text-slate-500 font-medium">{t.workspaceName}</p>
+                      {(() => {
+                        // 列表只消费服务端安全字段 errorCode；失败详情文本由 task_detail 的 errorMessage 提供
+                        const errCode = t.errorCode;
+                        if (!errCode) return null;
+                        return (
+                          <p className="text-[10.5px] text-rose-700 bg-rose-100/70 p-2 rounded-lg font-medium leading-relaxed">
+                            <strong className="font-mono">[{errCode}] </strong>
+                            详情请查看失败详情
+                          </p>
+                        );
+                      })()}
                       <div className="flex items-center justify-between pt-2 border-t border-rose-100">
-                        <span className="text-[10px] font-bold text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded">
-                          执行中中断
-                        </span>
                         <button
+                          type="button"
+                          data-task-id={t.id}
+                          onClick={() => handleOpenPreviewModal(t)}
+                          className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-100/80 hover:bg-rose-200 rounded-lg transition-colors cursor-pointer"
+                        >
+                          查看失败详情
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => router.push(`/workspace/${t.workspaceId}`)}
                           className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-2xs transition-colors"
                         >
@@ -1230,291 +1299,45 @@ export default function PersonalTasksManagementPage() {
         )}
       </main>
 
-      {/* 新建任务 Modal */}
-      {showCreateTaskModal && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in">
-          <form
-            onSubmit={handleCreateTaskSubmit}
-            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-left space-y-4 relative max-h-[85vh] overflow-y-auto no-scrollbar flex flex-col justify-between"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2">
-                <ZapIcon className="w-5 h-5 text-[#3182ce]" />
-                <h3 className="text-base font-black text-slate-900">新建任务</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCreateTaskModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
-              >
-                <XIcon className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="space-y-4 my-auto">
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1">1. 选择目标工作空间 <span className="text-red-500">*</span></label>
-                <select
-                  value={createTaskWorkspaceId || (workspaces[0]?.id || "")}
-                  onChange={(e) => {
-                    const newId = e.target.value;
-                    setCreateTaskWorkspaceId(newId);
-                    loadBoundComponents(newId);
-                  }}
-                  className="w-full p-2.5 text-xs font-extrabold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none text-slate-800 cursor-pointer"
-                >
-                  {workspaces.map((ws) => (
-                    <option key={ws.id} value={ws.id}>
-                      {ws.type === "ENTERPRISE" ? "团队" : "个人"} | {ws.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1 flex items-center justify-between">
-                  <span>2. 选择要运行的组件 <span className="text-red-500">*</span></span>
-                  <span className="text-[10px] text-slate-400 font-normal">已装配 {boundComponents.length} 个组件</span>
-                </label>
-                {loadingBound ? (
-                  <p className="text-xs text-slate-400 font-semibold p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                    正在获取当前空间已装配的组件...
-                  </p>
-                ) : boundComponents.length === 0 ? (
-                  <div className="space-y-2 bg-amber-50/90 p-3.5 rounded-xl border border-amber-200 text-left">
-                    <p className="text-xs text-amber-700 font-bold leading-relaxed">
-                      当前选中的工作空间暂无可用组件，请去组件大厅挑选并装配。
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleGoToComponentBrowser}
-                      className="w-full py-2 px-3.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs hover:shadow-md"
-                    >
-                      <MouseClickIcon className="w-3.5 h-3.5" />
-                      <span>去选择组件 ➔</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2 text-left relative">
-                    {/* 带搜索光标与下拉箭头的组合可搜索选择框 */}
-                    <div className="relative flex items-center">
-                      <SearchIcon className="w-3.5 h-3.5 absolute left-3 text-slate-400 pointer-events-none z-10" />
-                      <input
-                        type="text"
-                        value={
-                          isComponentDropdownOpen
-                            ? componentSearchQuery
-                            : boundComponents.find((c) => c.id === createTaskComponentId)
-                            ? getUnifiedComponentLabel(createTaskComponentId, boundComponents.find((c) => c.id === createTaskComponentId)?.name).fullLabel
-                            : createTaskComponentId
-                        }
-                        onFocus={() => setIsComponentDropdownOpen(true)}
-                        onChange={(e) => {
-                          setComponentSearchQuery(e.target.value);
-                          if (!isComponentDropdownOpen) setIsComponentDropdownOpen(true);
-                        }}
-                        placeholder="点击展开下拉列表，或输入组件名称/编号搜索..."
-                        className="w-full pl-8 pr-9 py-2.5 text-xs font-extrabold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none text-slate-900 cursor-pointer shadow-2xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setIsComponentDropdownOpen(!isComponentDropdownOpen)}
-                        className="absolute right-2.5 p-1 text-slate-400 hover:text-[#3182ce] cursor-pointer"
-                        title="展开/收起组件下拉列表"
-                      >
-                        <ArrowIcon className={`w-4 h-4 transition-transform duration-200 ${isComponentDropdownOpen ? "rotate-90 text-[#3182ce]" : ""}`} />
-                      </button>
-                    </div>
-
-                    {/* 点击箭头或聚焦后展开的下拉浮层 */}
-                    {isComponentDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto no-scrollbar p-1.5 space-y-1 animate-in fade-in duration-150">
-                        <div className="px-2 py-1 text-[10px] font-bold text-slate-400 border-b border-slate-100 flex justify-between items-center">
-                          <span>包含 {boundComponents.length} 个可用组件</span>
-                          <span className="text-blue-600 font-bold cursor-pointer hover:underline" onClick={() => setIsComponentDropdownOpen(false)}>收起 ✕</span>
-                        </div>
-                        {boundComponents
-                          .filter((comp) => {
-                            const info = getUnifiedComponentLabel(comp.id, comp.name);
-                            const detail = getComponentMeta(comp.id);
-                            const desc = detail?.description || "";
-                            const q = componentSearchQuery.trim().toLowerCase();
-                            return !q || comp.id.toLowerCase().includes(q) || info.name.toLowerCase().includes(q) || desc.toLowerCase().includes(q);
-                          })
-                          .map((comp) => {
-                            const detail = getComponentMeta(comp.id);
-                            const info = getUnifiedComponentLabel(comp.id, comp.name);
-                            const isSelected = createTaskComponentId === comp.id;
-                            return (
-                              <div
-                                key={comp.id}
-                                onClick={() => {
-                                  setCreateTaskComponentId(comp.id);
-                                  setIsComponentDropdownOpen(false);
-                                  setComponentSearchQuery("");
-                                }}
-                                className={`p-2.5 rounded-lg cursor-pointer flex items-center justify-between text-xs transition-colors ${
-                                  isSelected
-                                    ? "bg-blue-50 text-[#3182ce] font-extrabold"
-                                    : "hover:bg-slate-50 text-slate-700 font-bold"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 truncate">
-                                  <span className="truncate text-slate-900">{info.fullLabel}</span>
-                                  {detail && (
-                                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
-                                      {getCategoryChineseName(detail?.category)}
-                                    </span>
-                                  )}
-                                </div>
-                                {isSelected && <CheckIcon className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />}
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
-
-                    {/* 选中组件的功能用途单行简述 */}
-                    {createTaskComponentId && (
-                      <div className="p-2 bg-blue-50/70 border border-blue-100 rounded-lg text-[11px] text-slate-600 font-medium flex items-center gap-1.5">
-                        <span className="font-extrabold text-[#3182ce] shrink-0">
-                          💡 选中说明:
-                        </span>
-                        <span className="truncate text-slate-600">
-                          {getComponentMeta(createTaskComponentId)?.description || "支持自动化任务分析与数据归集处理。"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1">3. 任务名称 <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  placeholder="请输入明确的任务名称，例如：订单模块架构分析任务"
-                  value={createTaskName}
-                  onChange={(e) => setCreateTaskName(e.target.value)}
-                  className="w-full p-2.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1">4. 需求说明或源数据（选填）</label>
-                <textarea
-                  value={createTaskMaterial}
-                  onChange={(e) => setCreateTaskMaterial(e.target.value)}
-                  placeholder="可在此粘贴原始需求文本、代码段或说明..."
-                  className="w-full h-24 p-2.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400 resize-none"
-                />
-              </div>
-
-              {/* 5. 关联本地文件上传解析 */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1">5. 关联本地需求/代码文件（选填）</label>
-                <input
-                  type="file"
-                  ref={taskFileInputRef}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleTaskFileUpload(file);
-                  }}
-                  accept=".txt,.md,.json,.csv,.docx,.pdf"
-                  className="hidden"
-                />
-                
-                {taskUploadedFile ? (
-                  <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 truncate">
-                      <FileIcon className="w-4 h-4 text-[#3182ce] shrink-0" />
-                      <div className="truncate">
-                        <p className="text-xs font-extrabold text-slate-900 truncate">{taskUploadedFile.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">{(taskUploadedFile.size / 1024).toFixed(1)} KB · 内容已自动提取至需求文本框</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setTaskUploadedFile(null)}
-                      className="p-1 text-slate-400 hover:text-red-500 rounded-lg transition-colors cursor-pointer shrink-0"
-                      title="移除此文件"
-                    >
-                      <XIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setIsDraggingTaskFile(true); }}
-                    onDragLeave={() => setIsDraggingTaskFile(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDraggingTaskFile(false);
-                      const file = e.dataTransfer.files?.[0];
-                      if (file) handleTaskFileUpload(file);
-                    }}
-                    onClick={() => taskFileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-xl p-3 text-center cursor-pointer transition-all ${
-                      isDraggingTaskFile
-                        ? "border-[#3182ce] bg-blue-50/80 scale-[1.01]"
-                        : "border-slate-200 hover:border-[#3182ce]/50 bg-slate-50/50 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-center gap-2 text-xs font-extrabold text-slate-600">
-                      <FileUpIcon className="w-4 h-4 text-[#3182ce]" />
-                      <span>拖拽文件至此 或 <span className="text-[#3182ce] hover:underline">点击上传</span></span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-0.5">支持 .md, .txt, .json, .csv, .docx, .pdf 等文件内容自动读取解析</p>
-                  </div>
-                )}
-              </div>
-
-              {(() => {
-                const selectedCatalogComp = componentCatalog.find((c) => c.id === createTaskComponentId);
-                const cost = Number(selectedCatalogComp?.estimatedModelTokens) || 5;
-                return (
-                  <div className="flex items-center gap-1.5 bg-blue-50/80 border border-blue-100 rounded-xl px-3 py-2">
-                    <ZapIcon className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
-                    <p className="text-[10px] font-bold text-[#3182ce]">
-                      本次任务预计消耗 {cost} 算力点资源（当前空间余额见顶部）。
-                    </p>
-                  </div>
-                );
-              })()}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowCreateTaskModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
-              >
-                取消
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmittingTask || !createTaskComponentId}
-                className="px-5 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#4299e1] hover:to-[#2b6cb0] text-white text-xs font-black rounded-xl shadow-md cursor-pointer disabled:opacity-50"
-              >
-                {isSubmittingTask ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <LoaderIcon className="w-3.5 h-3.5 animate-spin" /> 创建中...
-                  </span>
-                ) : (
-                  "确认创建任务"
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* 查看结果 Modal (共享 ResultViewer 组件) */}
-      <ResultViewer
-        task={previewTask}
-        open={showPreviewModal}
-        onClose={() => setShowPreviewModal(false)}
-      />
+      {showPreviewModal && previewState !== "ready" ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center space-y-3 shadow-xl">
+            {previewState === "loading" ? (
+              <>
+                <div className="text-sm font-bold text-slate-700">正在加载任务详情…</div>
+                <div className="text-xs text-slate-400">请稍候</div>
+              </>
+            ) : previewState === "forbidden" ? (
+              <>
+                <div className="text-sm font-bold text-red-600">权限拒绝</div>
+                <div className="text-xs text-slate-500">{previewErrorMsg || "无权限查看该任务结果"}</div>
+              </>
+            ) : previewState === "notfound" ? (
+              <>
+                <div className="text-sm font-bold text-slate-700">结果不存在</div>
+                <div className="text-xs text-slate-500">{previewErrorMsg || "该任务结果不存在或已被清理"}</div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-bold text-red-600">加载失败</div>
+                <div className="text-xs text-slate-500">{previewErrorMsg || "无法加载任务详情"}</div>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={handleClosePreviewModal}
+              className="mt-2 rounded-lg bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 cursor-pointer"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      ) : (
+        <ResultViewer task={previewTask} open={showPreviewModal} onClose={handleClosePreviewModal} />
+      )}
 
       <Footer />
     </div>

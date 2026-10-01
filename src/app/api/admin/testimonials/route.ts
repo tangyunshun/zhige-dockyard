@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { requireAnyPlatformPermission } from "@/lib/admin-permission-utils";
 import {
   TESTIMONIAL_GROUP_COUNT,
+  TESTIMONIAL_PERMISSIONS,
   getGroupSummaries,
   getRotationState,
 } from "@/lib/testimonial-service";
@@ -77,7 +79,7 @@ function parsePayload(body: Record<string, unknown>): { error: string } | { data
 /** GET /api/admin/testimonials?groupNo=1 —— 轮换状态 + 各组统计 + 指定组明细（含隐藏项） */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requirePlatformPermission(request, "content:read");
+    const auth = await requirePlatformPermission(request, TESTIMONIAL_PERMISSIONS.read);
     if (!auth.authorized) {
       const status = auth.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json({ error: status === 401 ? "未授权，请重新登录" : "无权限查看用户评价" }, { status });
@@ -89,7 +91,8 @@ export async function GET(request: NextRequest) {
       getRotationState(),
       getGroupSummaries(),
       prisma.testimonial.findMany({
-        where: { groupNo },
+        // 仅列出已归组的条目；待审核 / 已驳回统一在「待审核区」处理，避免重复出现
+        where: { groupNo, status: { in: ["active", "hidden"] } },
         orderBy: [{ category: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
       }),
     ]);
@@ -108,45 +111,43 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** POST /api/admin/testimonials —— 新增一条评价 */
+/**
+ * POST /api/admin/testimonials
+ * 已下线「后台新增评价」能力（原实现允许管理员凭空创建评价，属造假源头）。
+ * 业务规则：评价只能由真实用户在系统内提交（/user/reviews），后台仅负责审核与运营维护。
+ */
 export async function POST(request: NextRequest) {
-  try {
-    const auth = await requirePlatformPermission(request, "content:publish");
-    if (!auth.authorized) {
-      const status = auth.errorResponse?.status === 401 ? 401 : 403;
-      return NextResponse.json({ error: status === 401 ? "未授权，请重新登录" : "无权限修改用户评价" }, { status });
-    }
-
-    const body = await request.json().catch(() => ({}));
-    const parsed = parsePayload(body);
-    if ("error" in parsed) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 });
-    }
-
-    const created = await prisma.testimonial.create({
-      data: parsed.data,
-    });
-
-    await writeAuditLog(
-      auth.user!.id,
-      "testimonial:create",
-      { id: created.id, groupNo: created.groupNo, name: created.name },
-      null,
-      null,
-      request
-    );
-
-    return NextResponse.json({ success: true, testimonial: created, message: "评价已创建" });
-  } catch (error) {
-    console.error("Create testimonial error:", error);
-    return NextResponse.json({ error: "创建评价失败" }, { status: 500 });
+  const auth = await requirePlatformPermission(request, TESTIMONIAL_PERMISSIONS.read);
+  if (!auth.authorized) {
+    const status = auth.errorResponse?.status === 401 ? 401 : 403;
+    return NextResponse.json({ error: status === 401 ? "未授权，请重新登录" : "无权限" }, { status });
   }
+
+  await writeAuditLog(
+    auth.user!.id,
+    "testimonial:create_rejected",
+    { reason: "后台新增评价已下线" },
+    null,
+    null,
+    request
+  );
+
+  return NextResponse.json(
+    {
+      error:
+        "后台不支持新增评价。评价只能由用户在系统内（我的评价）提交，再经后台审核通过后上架展示。",
+    },
+    { status: 405 }
+  );
 }
 
 /** PUT /api/admin/testimonials —— 按 id 更新 */
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requirePlatformPermission(request, "content:publish");
+    const auth = await requireAnyPlatformPermission(request, [
+      TESTIMONIAL_PERMISSIONS.update,
+      TESTIMONIAL_PERMISSIONS.statusUpdate,
+    ]);
     if (!auth.authorized) {
       const status = auth.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json({ error: status === 401 ? "未授权，请重新登录" : "无权限修改用户评价" }, { status });
@@ -158,6 +159,42 @@ export async function PUT(request: NextRequest) {
 
     const existing = await prisma.testimonial.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "评价不存在或已被删除" }, { status: 404 });
+
+    // 用户真实提交的评价：正文 / 评分 / 姓名 / 身份 / 单位 一律不可被后台改写（防止篡改用户原话）。
+    // 后台仅可维护运营字段：头像、所属分组、排序、展示状态。
+    // 注意：此处的服务端强校验不可省略——前端的只读仅是交互层，直连接口同样必须被拦截。
+    if (existing.submitterId) {
+      const operationalOnly = {
+        avatar: String(body?.avatar ?? "").trim() || null,
+        groupNo: clampGroupNo(body?.groupNo ?? existing.groupNo),
+        sortOrder: Number.isFinite(Number(body?.sortOrder))
+          ? Math.trunc(Number(body.sortOrder))
+          : existing.sortOrder,
+        status:
+          body?.status === "hidden"
+            ? "hidden"
+            : body?.status === "active"
+              ? "active"
+              : existing.status,
+      };
+
+      const updated = await prisma.testimonial.update({ where: { id }, data: operationalOnly });
+
+      await writeAuditLog(
+        auth.user!.id,
+        "testimonial:update",
+        { id, groupNo: updated.groupNo, name: updated.name, scope: "operational-only" },
+        null,
+        null,
+        request
+      );
+
+      return NextResponse.json({
+        success: true,
+        testimonial: updated,
+        message: "已更新头像 / 分组 / 状态（用户提交的评价正文不可修改）",
+      });
+    }
 
     const parsed = parsePayload(body);
     if ("error" in parsed) {
@@ -188,10 +225,10 @@ export async function PUT(request: NextRequest) {
 /** DELETE /api/admin/testimonials?id=xxx —— 删除一条评价 */
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await requirePlatformPermission(request, "content:publish");
+    const auth = await requirePlatformPermission(request, TESTIMONIAL_PERMISSIONS.delete);
     if (!auth.authorized) {
       const status = auth.errorResponse?.status === 401 ? 401 : 403;
-      return NextResponse.json({ error: status === 401 ? "未授权，请重新登录" : "无权限修改用户评价" }, { status });
+      return NextResponse.json({ error: status === 401 ? "未授权，请重新登录" : "无权限删除用户评价" }, { status });
     }
 
     const id = request.nextUrl.searchParams.get("id")?.trim();

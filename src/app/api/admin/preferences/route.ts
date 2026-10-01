@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
           },
         }),
         prisma.userpreference.count(),
-        // 引擎使用分布：全量 count，避免用当前分页数组长度估算
+        // 【已弃用字段】aiEngine 历史值分布：仅作历史数据统计展示，
+        // 不参与任何模型选择或计费；真实执行模型由组件执行合同 + 模型注册表 + 空间模型策略决定。
         prisma.userpreference.count({ where: { aiEngine: "zhige" } }),
         prisma.userpreference.count({ where: { aiEngine: "openai" } }),
       ]);
@@ -55,7 +56,10 @@ export async function GET(request: NextRequest) {
         total,
         page,
         totalPages: Math.ceil(total / limit),
+        /** 历史字段分布（已弃用），仅用于运营侧历史数据查看 */
         stats: { zhigeEngineCount, openaiEngineCount },
+        /** 明确标记：aiEngine / defaultModel 已弃用，不再代表用户可选的模型 */
+        engineFieldDeprecated: true,
       },
     });
   } catch (error) {

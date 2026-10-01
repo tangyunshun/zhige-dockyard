@@ -18,6 +18,25 @@ export const TESTIMONIAL_GROUP_COUNT = 5;
 /** 自动轮换周期：7 天 */
 export const TESTIMONIAL_ROTATION_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * 后台「用户评价」模块权限点（与权限配置页的 USER_REVIEWS 模块一一对应）。
+ * 注意：菜单、接口必须统一使用这里的 key，切勿再复用 content:*（那是「组件阶段管理」的权限）。
+ */
+export const TESTIMONIAL_PERMISSIONS = {
+  /** 查阅列表与详情 */
+  read: "user_reviews:read",
+  /** 编辑与修改（含头像上传等运营字段） */
+  update: "user_reviews:update",
+  /** 废弃与删除 */
+  delete: "user_reviews:delete",
+  /** 启停与状态流转（上架/下架） */
+  statusUpdate: "user_reviews:status_update",
+  /** 审核与决策裁决（通过/驳回） */
+  audit: "user_reviews:audit",
+  /** 高级综合管控（轮换设置等） */
+  manage: "user_reviews:manage",
+} as const;
+
 /** 复用项目既有 system_config 键值表存储轮换状态 */
 export const TESTIMONIAL_CONFIG_KEYS = {
   mode: "testimonial_rotation_mode", // auto | manual
@@ -213,8 +232,11 @@ export async function getPublicTestimonials(): Promise<PublicTestimonialsPayload
 export async function getGroupSummaries(): Promise<
   { groupNo: number; total: number; active: number }[]
 > {
+  // 仅统计已正式归组的条目（active/hidden）；
+  // pending / rejected 属于「待审核区」，尚未归组，不占用分组名额
   const rows = await prisma.testimonial.groupBy({
     by: ["groupNo"],
+    where: { status: { in: ["active", "hidden"] } },
     _count: { _all: true },
   });
   const activeRows = await prisma.testimonial.groupBy({

@@ -141,8 +141,8 @@ interface HistoryStats {
 export default function AdminNotificationsPage() {
   const toast = useToast();
   const { hasPermission } = useAdminPermission();
-  // 细粒度权限控制：发布通知绑定 announcement:publish；删除/出清流水绑定 announcement:delete
-  const canPublish = hasPermission("announcement:publish");
+  // 细粒度权限控制：发布通知绑定 announcement:create；删除/出清流水绑定 announcement:delete
+  const canPublish = hasPermission("announcement:create");
   const canDelete = hasPermission("announcement:delete");
 
   const [notificationData, setNotificationData] =

@@ -1,10 +1,7 @@
-﻿﻿import { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { getClientIP } from "./ip-risk";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 interface RequestLog {
   userId?: string;
@@ -116,7 +113,7 @@ export async function withSecurityCheck(
   const token = request.cookies.get("auth_token")?.value;
   if (token) {
     try {
-      const { payload } = await jwtVerify(token, JWT_SECRET);
+      const { payload } = await jwtVerify(token, getJwtSecretKey());
       userId = payload.userId as string;
     } catch {
       // token 无效，忽略

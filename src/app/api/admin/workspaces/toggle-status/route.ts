@@ -9,8 +9,11 @@ export async function PATCH(request: NextRequest) {
     // 严格校验工作空间状态更新权限（无权直接阻断）
     const authCheck = await requirePlatformPermission(request, "workspace:status_update");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
+    // 当前操作人 ID：用于「管理员自己的空间受系统保护、不可停用」判定
+    const userId = authCheck.user!.id;
 
     // 支持同时从 URL searchParams 或 JSON body 获取参数
     let workspaceId: string | null = null;

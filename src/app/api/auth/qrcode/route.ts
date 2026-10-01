@@ -4,10 +4,7 @@ import { grantNewUserGift } from "@/lib/credit-service";
 import { SignJWT } from "jose";
 
 export const dynamic = "force-dynamic";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 interface QRSession {
   token: string;
@@ -141,6 +138,7 @@ export async function POST(request: NextRequest) {
         data: {
           sessionToken,
           sessionExpiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+          sessionRememberMe: false, // 扫码模拟登录固定 24h，非记住我会话
           lastLoginAt: new Date(),
         },
       });
@@ -152,7 +150,7 @@ export async function POST(request: NextRequest) {
       })
         .setProtectedHeader({ alg: "HS256" })
         .setExpirationTime("24h")
-        .sign(JWT_SECRET);
+        .sign(getJwtSecretKey());
 
       const userData = {
         id: user.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdminRole } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 /**
  * GET /api/admin/membership/users
@@ -26,6 +27,12 @@ export async function GET(request: NextRequest) {
         { message: authResult.error || "UNAUTHORIZED" },
         { status: 401 },
       );
+    }
+
+    // 细粒度权限：会员用户查看（membership:read），不再只依赖 isAdminRole/isAdmin 角色校验
+    const permCheck = await requirePlatformPermission(request, "membership:read");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ message: "无权限查看会员用户" }, { status: 403 });
     }
 
     // 如果是管理员

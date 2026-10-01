@@ -105,6 +105,10 @@ export default function WorkspacePlanSection({
         onUpgraded?.();
       } else {
         toast.error(data.error || "空间套餐扩容失败");
+        // 失败后强制回源刷新：避免页面套餐状态与数据库不一致（如后端已生效但本地未感知），
+        // 防止用户对同一目标套餐重复点击后命中「当前已是该套餐」的矛盾提示
+        await loadWorkspacePlan(planData.workspace.id);
+        onUpgraded?.();
       }
     } catch (err) {
       console.error("扩容空间套餐失败:", err);

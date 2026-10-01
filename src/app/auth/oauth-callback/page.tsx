@@ -58,10 +58,12 @@ function OAuthCallbackContent() {
         try {
           await fetch("/api/auth/touch", {
             method: "POST",
-            signal: AbortSignal.timeout(3000),
+            signal: AbortSignal.timeout(8000),
           });
-        } catch (touchError) {
-          console.warn("/api/auth/touch 调用失败:", touchError);
+        } catch (touchError: any) {
+          if (touchError?.name !== "TimeoutError" && touchError?.name !== "AbortError") {
+            console.warn("/api/auth/touch 调用失败:", touchError?.message || touchError);
+          }
         }
 
         // 预拉取登录后需要强提醒弹窗的未读通知，跳转后由目标页统一展示
@@ -72,7 +74,7 @@ function OAuthCallbackContent() {
             {
               headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
               credentials: "include",
-              signal: AbortSignal.timeout(3000),
+              signal: AbortSignal.timeout(8000),
             },
           );
           if (popupRes.ok) {
@@ -87,8 +89,10 @@ function OAuthCallbackContent() {
               sessionStorage.removeItem("pendingLoginNotifications");
             }
           }
-        } catch (popupError) {
-          console.warn("登录弹窗通知预拉取失败:", popupError);
+        } catch (popupError: any) {
+          if (popupError?.name !== "TimeoutError" && popupError?.name !== "AbortError") {
+            console.warn("登录弹窗通知预拉取失败:", popupError?.message || popupError);
+          }
         }
 
         // 关键防护：使用 window.location.href 进行全新初始化跳转，

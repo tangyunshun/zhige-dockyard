@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { requireWorkspaceMembership } from "@/lib/security";
+import { requireWorkspaceMembership, requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
 import { pointsToCents, discountedCents, formatDiscountLabel } from "@/lib/point-rate";
 import { grantPoints, getBalanceSummary } from "@/lib/credit-service";
@@ -23,6 +23,23 @@ export async function POST(request: NextRequest) {
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
+
+    // 【安全加固】本接口绕过支付链路直接为客户加算力点，历史上任何人都能调用它凭空获得算力点。
+    // 现收紧为「仅平台管理员 / 财务角色」用于线下对公转账到账后的账务补录；
+    // 用户自助充值必须走 /api/payments/create 下单并在支付确认后才入账。
+    const perm = await requirePlatformPermission(request, "order:read", "system:manage");
+    if (!perm.authorized) {
+      return NextResponse.json(
+        {
+          error:
+            "该接口已收紧为平台管理员专用（线下账务补录）。请通过充值下单流程购买算力：/api/payments/create",
+        },
+        { status: 403 },
+      );
+    }
+    console.warn(
+      `[SECURITY] 管理员 ${auth.user.id} 调用了免支付直充接口 /api/workspace/quota/recharge，请核对是否存在对应的已收款凭证。`,
+    );
 
     const body = await request.json();
     const { workspaceId, points, packName, packId, paymentMethod } = body;
@@ -110,6 +127,25 @@ export async function POST(request: NextRequest) {
         : null,
       idempotencyKey: rechargeOrderNo,
     });
+
+    // 操作日志：算力点充值入账必须留痕（点数 / 实付金额 / 订单号 / 空间 / 流水号）
+    await writeAuditLog(
+      auth.user.id,
+      "billing:quota_recharge",
+      {
+        orderNo: rechargeOrderNo,
+        points: effectivePoints,
+        amountCents,
+        packName: finalPackName,
+        scope,
+        workspaceId,
+        paymentMethod: paymentMethod || "ONLINE_PAY",
+        ledgerId: grantResult.ledgerId,
+      },
+      null,
+      null,
+      request,
+    );
 
     // 7. 写入交易流转账单明细 (billing_record)，形成订单与财务合规全闭环
     const billingModel = (prisma as any).billing_record || (prisma as any).billingrecord;

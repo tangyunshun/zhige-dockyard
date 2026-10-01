@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
-function toUserComponentView(c: any) {
+function toUserComponentView(c: any, contractLifecycle: string | null = null) {
   return {
     id: c.id,
     name: c.name,
@@ -14,6 +14,11 @@ function toUserComponentView(c: any) {
     usageCount: c.usageCount,
     isPremium: c.isPremium,
     estimatedModelTokens: c.estimatedModelTokens,
+    // 合同就绪状态（数据库唯一真源）：前端据此如实展示可执行性，禁止硬编码完成态
+    activeContractLifecycle: contractLifecycle,
+    hasActiveContract: Boolean(c.activeContractId),
+    contractReady: contractLifecycle === "PUBLISHED",
+    hasPublishedContract: contractLifecycle === "PUBLISHED",
   };
 }
 
@@ -64,9 +69,23 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // 合同生命周期（数据库唯一真源）：批量读取激活合同状态，供前端如实展示可执行性
+    const activeIds = components
+      .map((c) => c.activeContractId)
+      .filter((x): x is string => Boolean(x));
+    const contractRows = activeIds.length
+      ? await prisma.componentcontract.findMany({
+          where: { id: { in: activeIds } },
+          select: { id: true, lifecycle: true },
+        })
+      : [];
+    const lifecycleMap = new Map(contractRows.map((r) => [r.id, r.lifecycle as string]));
+
     return NextResponse.json({
       success: true,
-      data: components.map(toUserComponentView),
+      data: components.map((c) =>
+        toUserComponentView(c, c.activeContractId ? (lifecycleMap.get(c.activeContractId) ?? null) : null),
+      ),
     });
   } catch (error) {
     console.warn("Get user components error:", error);

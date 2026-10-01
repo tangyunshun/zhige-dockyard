@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import {
   History,
   Tag,
@@ -50,7 +50,16 @@ interface MaintenanceSchedule {
   isDowntime?: boolean;
 }
 
+// useSearchParams 必须在 Suspense 边界内使用，否则构建时（CSR bailout）会预渲染失败
 export default function ReleasesPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-400 text-sm">加载中...</div>}>
+      <ReleasesContent />
+    </Suspense>
+  );
+}
+
+function ReleasesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);

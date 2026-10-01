@@ -73,7 +73,8 @@ export async function POST(request: NextRequest) {
           ownerId: true,
           workspacemember: {
             where: {
-              role: { in: ["OWNER", "ADMIN", "MEMBER", "CREATOR"] },
+              // workspacemember_role 枚举只有 OWNER/ADMIN/MEMBER/VIEWER 等合法值，不存在 CREATOR
+              role: { in: ["OWNER", "ADMIN", "MEMBER"] },
             },
             select: { userId: true, role: true },
           },

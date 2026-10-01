@@ -58,9 +58,8 @@ export default function PersonalWorkspaceSettings() {
   // 空间头像上传中状态
   const [logoUploading, setLogoUploading] = useState(false);
 
-  // 研发偏好
+  // 研发偏好（模型选择不由用户决定：真实模型由组件合同 + 模型注册表 + 空间模型策略决定）
   const [preferences, setPreferences] = useState({
-    aiEngine: "zhige", // zhige | deepseek | custom
     systemPrompt: "",
   });
 
@@ -143,8 +142,18 @@ export default function PersonalWorkspaceSettings() {
           });
           let contactEmail = "";
           let contactPhone = "";
+          // detailData 在 if 块外仍被引用（取 logo），这里提前声明安全默认值，避免作用域错误
+          let detailData: {
+            workspace?: {
+              contactEmail?: string;
+              ownerEmail?: string;
+              contactPhone?: string;
+              ownerPhone?: string;
+              logo?: string;
+            };
+          } = {};
           if (detailRes.ok) {
-            const detailData = await detailRes.json();
+            detailData = await detailRes.json();
             contactEmail = detailData.workspace?.contactEmail || detailData.workspace?.ownerEmail || "";
             contactPhone = detailData.workspace?.contactPhone || detailData.workspace?.ownerPhone || "";
           }
@@ -263,7 +272,6 @@ export default function PersonalWorkspaceSettings() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          aiEngine: preferences.aiEngine,
           systemPrompt: preferences.systemPrompt,
         }),
       });
@@ -759,75 +767,27 @@ export default function PersonalWorkspaceSettings() {
                     </h2>
 
                     <div className="space-y-5">
-                      {/* 默认引擎 */}
+                      {/* 生成引擎：由管理员统一配置，用户侧只读（不提供任何伪造的模型选择） */}
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-3">
                           生成引擎
                         </label>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          {[
-                            {
-                              id: "zhige",
-                              label: "知阁自研引擎",
-                              desc: "高性能、低成本",
-                            },
-                            {
-                              id: "deepseek",
-                              label: "DeepSeek-V3",
-                              desc: "强大计算能力",
-                            },
-                            {
-                              id: "custom",
-                              label: "自带 API 密钥",
-                              desc: "灵活配置",
-                            },
-                          ].map((option) => (
-                            <button
-                              key={option.id}
-                              onClick={() =>
-                                setPreferences({
-                                  ...preferences,
-                                  aiEngine: option.id,
-                                })
-                              }
-                              className={`group relative p-4 rounded-xl border-2 transition-all cursor-pointer text-left ${
-                                preferences.aiEngine === option.id
-                                  ? "border-[#3182ce] bg-[#3182ce]/5"
-                                  : "border-[#e2e8f0] hover:border-[#3182ce]/50"
-                              }`}
-                              style={{
-                                transitionTimingFunction:
-                                  "cubic-bezier(0.175, 0.885, 0.32, 1.15)",
-                              }}
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                <div
-                                  className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                    preferences.aiEngine === option.id
-                                      ? "border-[#3182ce] bg-[#3182ce]"
-                                      : "border-slate-300"
-                                  }`}
-                                >
-                                  {preferences.aiEngine === option.id && (
-                                    <Check className="w-3 h-3 text-white" />
-                                  )}
-                                </div>
-                                <span className="text-sm font-bold text-slate-800">
-                                  {option.label}
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-500 pl-6">
-                                {option.desc}
-                              </p>
-                            </button>
-                          ))}
+                        <div className="rounded-xl border-2 border-[#e2e8f0] bg-slate-50/60 p-4">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Server className="w-4 h-4 text-[#3182ce]" />
+                            <span className="text-sm font-bold text-slate-800">
+                              由管理员统一配置
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            本空间可用的生成模型由平台管理员在后台「模型注册表」中配置（供应商 / 模型部署 / 空间模型策略）。
+                            用户无需也无法自行选择模型，避免出现「可选择但实际不生效」的情况；如需更换模型，请联系空间管理员。
+                          </p>
                         </div>
 
-                        {/* 折算说明：全系统统一以「算力点」结算，避免 AI / token 术语 */}
+                        {/* 计量口径说明：全系统统一以「算力点」结算，避免 AI / token 术语混淆 */}
                         <p className="mt-2.5 text-[11px] font-bold text-slate-500 leading-relaxed">
-                          {preferences.aiEngine === "custom"
-                            ? "自带密钥时按您配置的厂商官方单价折算，可在后台「算力计价」中核对。"
-                            : `已选「${preferences.aiEngine === "deepseek" ? "DeepSeek-V3" : "知阁自研引擎"}」生成引擎：全系统统一以「算力点」结算，1 个生成单元 = 1 个算力点，具体单价可在后台「算力计价」核对。`}
+                          全系统统一以「算力点」结算：1 个模型 token = 1 个算力点，100 算力点 = 1 元；实际扣点以组件已配置的算力成本为准。
                         </p>
                       </div>
 

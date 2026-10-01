@@ -13,7 +13,7 @@ import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 export async function POST(request: NextRequest) {
   try {
     // 鉴权：与审批、列表接口保持一致，需具备用户管理权限
-    const authResult = await requirePlatformPermission(request, "user:update");
+    const authResult = await requirePlatformPermission(request, "user:update", "appeal:manage");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }

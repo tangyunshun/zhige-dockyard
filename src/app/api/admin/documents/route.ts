@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,12 @@ export async function GET(request: NextRequest) {
 
     if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ error: "无权访问" }, { status: 403 });
+    }
+
+    // 细粒度权限：文档查看（document:read）；写操作由已启用接口规则 document:create/update/delete 强制覆盖
+    const permCheck = await requirePlatformPermission(request, "document:read");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限查看文档" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

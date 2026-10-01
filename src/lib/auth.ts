@@ -3,15 +3,11 @@ import bcrypt from "bcryptjs";
 import { jwtVerify } from "jose";
 import {
   IDLE_TIMEOUT_MS,
-  ABSOLUTE_TIMEOUT_NO_REMEMBER_MS,
-  ABSOLUTE_TIMEOUT_REMEMBER_MS,
 } from "@/lib/session-constants";
 import { toAccountStatus, isLoginBlocked, isFullyBlocked } from "@/lib/account-status";
 import { isMaintenanceMode } from "@/lib/maintenance";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 // 空闲超时从统一常量导出（A-01：10 分钟）
 export { IDLE_TIMEOUT_MS };
@@ -108,7 +104,7 @@ export async function validateUser(
     let jwtIssuedAtStr: string | undefined;
 
     // 4. 强制 JWT 验签：任何非 JWT 明文（裸 userId / 伪造串）都会在此抛错 → INVALID_TOKEN
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     userId = payload.userId as string;
     if (!userId) {
       return { valid: false, error: "INVALID_TOKEN" };
@@ -142,6 +138,7 @@ export async function validateUser(
         bannedUntil: true,
         lastActivityAt: true,
         sessionExpiresAt: true, // A-02 绝对过期强踢
+        sessionRememberMe: true, // 「7天内免登录」显式标记：豁免 A-01 空闲超时，仅受 A-02 绝对超时约束
         passwordExpireDate: true, // C-04 密码过期拦截
       },
     });
@@ -241,7 +238,10 @@ export async function validateUser(
 
     // 8. 空闲超时校验：超过 IDLE_TIMEOUT_MS 无活动则失效（A-01）
     //    注意：lastActivityAt 仅由前端真实操作时更新，后端不自动刷新。
-    if (user.lastActivityAt) {
+    //    勾选「7天内免登录」的会话（登录时持久化 sessionRememberMe=true）豁免空闲超时，
+    //    仅由 7 天绝对硬超时（A-02）兜底；未勾选会话保持 10 分钟空闲保护。
+    //    不用「剩余时长 > 24h」推断：sessionTimeoutHours 可由管理员配置为 >24h，推断会误伤普通会话。
+    if (!user.sessionRememberMe && user.lastActivityAt) {
       const idleMs = Date.now() - new Date(user.lastActivityAt).getTime();
       if (idleMs > IDLE_TIMEOUT_MS) {
         return { valid: false, error: "IDLE_TIMEOUT" };
@@ -276,27 +276,44 @@ export function isAdmin(user: AuthenticatedUser): boolean {
   return adminRoles.includes(user.role);
 }
 
-export function isAdminRole(role: string): boolean {
-  const adminRoles = [
-    "admin",
-    "super_admin",
-    "superadmin",
-    "ADMIN",
-    "SUPERADMIN",
-    "SUPER_ADMIN",
-  ];
-  return adminRoles.includes(role);
+// 用户明确规范的角色枚举集合
+// 超级管理员包括：SUPER_ADMIN、SUPERADMIN、superadmin、super_admin、Superadmin、Super_admin
+export const SUPER_ADMIN_ROLES = [
+  "SUPER_ADMIN",
+  "SUPERADMIN",
+  "superadmin",
+  "super_admin",
+  "Superadmin",
+  "Super_admin",
+] as const;
+
+// 管理员包括：ADMIN、admin、Admin
+export const ADMIN_ROLES = [
+  "ADMIN",
+  "admin",
+  "Admin",
+] as const;
+
+export function isSuperAdminRole(role?: string | null): boolean {
+  if (!role) return false;
+  const raw = String(role).trim();
+  if ((SUPER_ADMIN_ROLES as readonly string[]).includes(raw)) return true;
+  const upper = raw.toUpperCase();
+  return upper === "SUPER_ADMIN" || upper === "SUPERADMIN" || upper === "SUPER_ADMIN_ROLE" || upper === "SUPER";
 }
 
-export function isSuperAdminRole(role: string): boolean {
-  const superAdminRoles = [
-    "super_admin",
-    "superadmin",
-    "SUPERADMIN",
-    "SUPER_ADMIN",
-    "SuperAdmin",
-  ];
-  return superAdminRoles.includes(role);
+/** 检查是否为标准管理员（不含超级管理员） */
+export function isStandardAdminRole(role?: string | null): boolean {
+  if (!role) return false;
+  const raw = String(role).trim();
+  if ((ADMIN_ROLES as readonly string[]).includes(raw)) return true;
+  const upper = raw.toUpperCase();
+  return (upper === "ADMIN" || upper === "ADMINISTRATOR") && !isSuperAdminRole(role);
+}
+
+/** 具备管理特权（包含超级管理员与管理员） */
+export function isAdminRole(role?: string | null): boolean {
+  return isSuperAdminRole(role) || isStandardAdminRole(role);
 }
 
 /**

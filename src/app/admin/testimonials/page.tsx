@@ -9,9 +9,9 @@ import {
   ImagePlus,
   Inbox,
   Pencil,
-  Plus,
   Quote,
   RefreshCw,
+  ShieldAlert,
   Trash2,
   User,
   X,
@@ -49,10 +49,7 @@ interface Row {
   highlightValue: string | null;
   sortOrder: number;
   status: string;
-}
-
-/** 用户自助提交的评价（含审核相关字段） */
-interface SubmissionRow extends Row {
+  /** 提交人 userId：非空 = 真实用户提交（正文受保护，后台不可改写） */
   submitterId: string | null;
   submittedAt: string | null;
   reviewNote: string | null;
@@ -121,14 +118,16 @@ export default function AdminTestimonialsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm(1));
+  /** 用户真实提交的评价：正文/评分/身份等字段在编辑时锁定（仅可维护头像/分组/排序/状态） */
+  const [formLocked, setFormLocked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
 
   // 待审核（用户自助提交）
-  const [pendingRows, setPendingRows] = useState<SubmissionRow[]>([]);
-  const [rejectedRows, setRejectedRows] = useState<SubmissionRow[]>([]);
+  const [pendingRows, setPendingRows] = useState<Row[]>([]);
+  const [rejectedRows, setRejectedRows] = useState<Row[]>([]);
   const [submitterMap, setSubmitterMap] = useState<Record<string, SubmitterInfo>>({});
   const [reviewGroup, setReviewGroup] = useState<Record<string, number>>({});
   const [rejectingId, setRejectingId] = useState<string | null>(null);
@@ -263,12 +262,9 @@ export default function AdminTestimonialsPage() {
     }
   };
 
-  const openCreate = () => {
-    setForm(emptyForm(groupNo));
-    setShowForm(true);
-  };
-
   const openEdit = (row: Row) => {
+    // 用户提交的评价锁定正文；内置示例数据可全字段维护
+    setFormLocked(Boolean(row.submitterId));
     setForm({
       id: row.id,
       groupNo: row.groupNo,
@@ -315,15 +311,15 @@ export default function AdminTestimonialsPage() {
     }
   };
 
+  // 表单校验错误：内联展示在对应输入框下方（不使用 toast 打断填写）
+  const [formErrors, setFormErrors] = useState<{ name?: string; content?: string }>({});
+
   const submitForm = async () => {
-    if (!form.name.trim()) {
-      toast.error("请填写评价者姓名");
-      return;
-    }
-    if (!form.content.trim()) {
-      toast.error("请填写评价内容");
-      return;
-    }
+    const errors: { name?: string; content?: string } = {};
+    if (!form.name.trim()) errors.name = "请填写评价者姓名";
+    if (!form.content.trim()) errors.content = "请填写评价内容";
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     setSaving(true);
     try {
@@ -440,14 +436,6 @@ export default function AdminTestimonialsPage() {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
             刷新
-          </button>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-xs font-black shadow-xs hover:shadow-md transition-all cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            新增评价
           </button>
         </div>
       </div>
@@ -713,13 +701,9 @@ export default function AdminTestimonialsPage() {
         ) : rows.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-xs font-bold text-slate-400">该分组暂无评价</p>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="mt-3 text-xs font-black text-[#2b6cb0] hover:underline cursor-pointer"
-            >
-              + 新增第一条评价
-            </button>
+            <p className="mt-2 text-[11px] text-slate-400">
+              评价由用户在「我的评价」中提交，审核通过后归入分组展示
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -760,6 +744,13 @@ export default function AdminTestimonialsPage() {
                         已下架
                       </span>
                     )}
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                        row.submitterId ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      {row.submitterId ? "用户提交" : "内置示例"}
+                    </span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed mt-1.5 line-clamp-2">{row.content}</p>
                   <div className="flex flex-wrap items-center gap-1.5 mt-2">
@@ -815,9 +806,14 @@ export default function AdminTestimonialsPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h3 className="text-sm font-black text-slate-800">
-                {form.id ? "编辑评价" : "新增评价"}
-              </h3>
+              <div>
+                <h3 className="text-sm font-black text-slate-800">编辑评价</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {formLocked
+                    ? "用户提交的评价：正文与评分不可修改，仅可维护头像 / 分组 / 排序 / 状态"
+                    : "内置示例数据：可维护全部字段"}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
@@ -829,6 +825,16 @@ export default function AdminTestimonialsPage() {
             </div>
 
             <div className="px-5 py-4 overflow-y-auto space-y-4">
+              {/* 用户提交的评价：明确提示正文受保护 */}
+              {formLocked && (
+                <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5">
+                  <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <p className="text-[11px] font-bold text-amber-700 leading-relaxed">
+                    该评价由用户本人提交，<strong>正文、评分与身份信息不可修改</strong>（避免篡改用户原话）。
+                    如需修正内容，请驳回后由用户重新提交；此处仅可维护头像、所属分组、排序与展示状态。
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="block">
                   <span className="text-[11px] font-black text-slate-500">所属分组</span>
@@ -849,10 +855,11 @@ export default function AdminTestimonialsPage() {
                   <span className="text-[11px] font-black text-slate-500">人群</span>
                   <select
                     value={form.category}
+                    disabled={formLocked}
                     onChange={(e) =>
                       setForm((p) => ({ ...p, category: e.target.value as "personal" | "enterprise" }))
                     }
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   >
                     <option value="personal">个人用户</option>
                     <option value="enterprise">企业客户</option>
@@ -863,8 +870,9 @@ export default function AdminTestimonialsPage() {
                   <span className="text-[11px] font-black text-slate-500">评分（1-5 星）</span>
                   <select
                     value={form.rating}
+                    disabled={formLocked}
                     onChange={(e) => setForm((p) => ({ ...p, rating: Number(e.target.value) }))}
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   >
                     {[5, 4, 3, 2, 1].map((r) => (
                       <option key={r} value={r}>
@@ -877,30 +885,46 @@ export default function AdminTestimonialsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="block">
-                  <span className="text-[11px] font-black text-slate-500">姓名 / 称呼 *</span>
+                  <span className="text-[11px] font-black text-slate-500">
+                    姓名 / 称呼 <span className="text-red-500">*</span>
+                  </span>
                   <input
                     value={form.name}
-                    onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                    disabled={formLocked}
+                    onChange={(e) => {
+                      setForm((p) => ({ ...p, name: e.target.value }));
+                      if (formErrors.name) setFormErrors((p) => ({ ...p, name: undefined }));
+                    }}
                     placeholder="如：王立群"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    aria-invalid={!!formErrors.name}
+                    className={`mt-1 w-full h-10 px-3 rounded-xl border text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed ${
+                      formErrors.name
+                        ? "border-red-400 bg-red-50/40 focus:ring-red-200"
+                        : "border-slate-200 focus:ring-[#3182ce]/30"
+                    }`}
                   />
+                  {formErrors.name && (
+                    <span className="mt-1 block text-[10px] font-bold text-red-500">{formErrors.name}</span>
+                  )}
                 </label>
                 <label className="block">
                   <span className="text-[11px] font-black text-slate-500">身份 / 岗位</span>
                   <input
                     value={form.role}
+                    disabled={formLocked}
                     onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
                     placeholder="如：技术总监"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </label>
                 <label className="block">
                   <span className="text-[11px] font-black text-slate-500">单位（企业客户填）</span>
                   <input
                     value={form.org}
+                    disabled={formLocked}
                     onChange={(e) => setForm((p) => ({ ...p, org: e.target.value }))}
                     placeholder="如：恒晟软件"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </label>
               </div>
@@ -951,14 +975,28 @@ export default function AdminTestimonialsPage() {
               </div>
 
               <label className="block">
-                <span className="text-[11px] font-black text-slate-500">评价内容 *</span>
+                <span className="text-[11px] font-black text-slate-500">
+                  评价内容 <span className="text-red-500">*</span>
+                </span>
                 <textarea
                   value={form.content}
-                  onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))}
+                  disabled={formLocked}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, content: e.target.value }));
+                    if (formErrors.content) setFormErrors((p) => ({ ...p, content: undefined }));
+                  }}
                   rows={3}
                   placeholder="如：私有化部署在客户内网，研发资产不出内网……"
-                  className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 resize-none"
+                  aria-invalid={!!formErrors.content}
+                  className={`mt-1 w-full px-3 py-2 rounded-xl border text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 resize-none disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed ${
+                    formErrors.content
+                      ? "border-red-400 bg-red-50/40 focus:ring-red-200"
+                      : "border-slate-200 focus:ring-[#3182ce]/30"
+                  }`}
                 />
+                {formErrors.content && (
+                  <span className="mt-1 block text-[10px] font-bold text-red-500">{formErrors.content}</span>
+                )}
               </label>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -966,27 +1004,30 @@ export default function AdminTestimonialsPage() {
                   <span className="text-[11px] font-black text-slate-500">能力标签（逗号分隔）</span>
                   <input
                     value={form.tagsText}
+                    disabled={formLocked}
                     onChange={(e) => setForm((p) => ({ ...p, tagsText: e.target.value }))}
                     placeholder="私有化部署, 合规审计"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </label>
                 <label className="block">
                   <span className="text-[11px] font-black text-slate-500">成效指标名称</span>
                   <input
                     value={form.highlightLabel}
+                    disabled={formLocked}
                     onChange={(e) => setForm((p) => ({ ...p, highlightLabel: e.target.value }))}
                     placeholder="实施返工率"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </label>
                 <label className="block">
                   <span className="text-[11px] font-black text-slate-500">成效指标数值</span>
                   <input
                     value={form.highlightValue}
+                    disabled={formLocked}
                     onChange={(e) => setForm((p) => ({ ...p, highlightValue: e.target.value }))}
                     placeholder="-60%"
-                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30"
+                    className="mt-1 w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/30 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
                   />
                 </label>
               </div>
@@ -1029,7 +1070,7 @@ export default function AdminTestimonialsPage() {
                 onClick={submitForm}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white text-xs font-black shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-50"
               >
-                {saving ? "保存中..." : "保存"}
+                {saving ? "保存中..." : formLocked ? "保存运营设置" : "保存"}
               </button>
             </div>
           </div>

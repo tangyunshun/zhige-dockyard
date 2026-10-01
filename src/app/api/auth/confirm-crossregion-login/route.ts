@@ -1,11 +1,8 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify, SignJWT } from "jose";
 import { getClientIP, recordLoginIP } from "@/lib/ip-risk";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 // 异地登录验证码临时存储（进程内，生产应替换为 Redis）
 const crossRegionCodes = new Map<string, { code: string; expiresAt: number }>();
@@ -13,7 +10,7 @@ const crossRegionCodes = new Map<string, { code: string; expiresAt: number }>();
 const CODE_TTL_MS = 5 * 60 * 1000;
 
 async function readVerifyToken(verifyToken: string) {
-  const { payload } = await jwtVerify(verifyToken, JWT_SECRET);
+  const { payload } = await jwtVerify(verifyToken, getJwtSecretKey());
   if (payload.action !== "cross_region_verify") {
     throw new Error("TOKEN_TYPE_MISMATCH");
   }
@@ -147,6 +144,7 @@ export async function POST(request: NextRequest) {
       data: {
         sessionToken,
         sessionExpiresAt,
+        sessionRememberMe: rememberMe === true, // 「7天内免登录」显式标记：validateUser 据此豁免空闲超时
         lastLoginAt: now,
         lastActivityAt: now,
         lastForcedLogoutAt: now,
@@ -178,7 +176,7 @@ export async function POST(request: NextRequest) {
     })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime(expiresIn)
-      .sign(JWT_SECRET);
+      .sign(getJwtSecretKey());
 
     // 生成Refresh Token（仅当记住我时）
     let refreshToken = null;
@@ -186,7 +184,7 @@ export async function POST(request: NextRequest) {
       refreshToken = await new SignJWT({ userId: user.id })
         .setProtectedHeader({ alg: "HS256" })
         .setExpirationTime("30d")
-        .sign(JWT_SECRET);
+        .sign(getJwtSecretKey());
 
       await prisma.user.update({
         where: { id: user.id },

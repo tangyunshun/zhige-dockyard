@@ -1,0 +1,275 @@
+/**
+ * 批次 2B 真实验收（第二部分）：C10、C11 真实外部模型端到端执行
+ *
+ * 目标：对已 PUBLISHED + 激活的 C10/C11 合同，走真实生产路由（POST /api/studio action=simulate）
+ * 完成真实外部模型调用，验证 executionMode=REAL_MODEL、真实 usage、真实成果物与账务。
+ *
+ * 输入路径覆盖：
+ *  - C10：纯文本（目录 inputMode=text）→ 结构化模拟数据表；
+ *  - C11：**文件路径**（multipart 上传 .md 需求文档，服务端提取文本后交模型），验证文本+文件合同真实可用。
+ *
+ * 约束：
+ *  - 使用真实注册表部署（平台默认部署），不切换供应商、不改 baseUrl、不打印密钥；
+ *  - 临时用户/空间/额度，finally 严格清理，**清理不净即抛出异常使测试失败**；
+ *  - 与 C06/C08 分文件独立进程运行，避免同进程连续真实调用触发上游限流。
+ */
+
+import test, { describe, before } from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "crypto";
+import { NextRequest } from "next/server";
+import { SignJWT } from "jose";
+import { loadEnvConfig } from "@next/env";
+
+// 仅注入运行时环境变量，绝不打印/读取密钥值
+loadEnvConfig(process.cwd());
+
+const JWT_SECRET_STRING = "zhige-test-explicit-jwt-secret-key-min-32-chars!";
+process.env.JWT_SECRET = process.env.JWT_SECRET || JWT_SECRET_STRING;
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+
+const MAGIC_PROVIDER = "MagicAI";
+const MAGIC_MODEL = "gpt-5.5";
+
+type PrismaMod = typeof import("@/lib/prisma");
+type RouteMod = typeof import("../route");
+
+let prisma: PrismaMod["prisma"];
+let studioPostRoute: RouteMod["POST"];
+
+before(async () => {
+  process.env.MODEL_TIMEOUT_MS = "300000";
+  process.env.MODEL_MAX_OUTPUT_TOKENS = "300";
+  ({ prisma } = await import("@/lib/prisma"));
+  ({ POST: studioPostRoute } = await import("../route"));
+
+  // 预热真实端点（吸收冷启动）；预热失败不判失败，但清理失败必须暴露
+  const warm = await setupFixture();
+  try {
+    await studioPostRoute(
+      jsonReq("http://localhost/api/studio", warm.userToken, {
+        action: "simulate",
+        workspaceId: warm.workspaceId,
+        componentId: "C10",
+        inputMaterial: "预热：生成 1 条订单测试数据，字段 name、amount。",
+      }),
+    ).catch(() => null);
+  } finally {
+    await warm.cleanup();
+  }
+});
+
+async function token(userId: string) {
+  return new SignJWT({ userId }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("2h").sign(JWT_SECRET);
+}
+
+function jsonReq(url: string, tokenValue: string, body: Record<string, unknown>): NextRequest {
+  return new NextRequest(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenValue}` },
+    body: JSON.stringify(body),
+  });
+}
+
+function multipartReq(
+  url: string,
+  tokenValue: string,
+  fields: Record<string, string>,
+  files: Array<{ name: string; content: string; mimeType: string }>,
+): NextRequest {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  for (const f of files) form.append("file", new Blob([f.content], { type: f.mimeType }), f.name);
+  return new NextRequest(url, { method: "POST", headers: { Authorization: `Bearer ${tokenValue}` }, body: form });
+}
+
+type TaskResultShape = {
+  executionMode?: string;
+  provider?: { id?: string; modelId?: string };
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+};
+type TaskConfigShape = {
+  executionMode?: string;
+  billingMode?: string;
+  providerId?: string;
+  modelId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+};
+
+/** 临时夹具：临时用户 + 个人空间 + 额度（清理不净即抛错使测试失败） */
+async function setupFixture() {
+  const suffix = randomUUID().replace(/-/g, "").slice(0, 8);
+  const userId = `u_c2br2_${suffix}`;
+  const workspaceId = `ws_c2br2_${suffix}`;
+  const balance = BigInt(100000);
+
+  await prisma.user.create({ data: { id: userId, password: "t", role: "USER", status: "active" } });
+  await prisma.workspace.create({ data: { id: workspaceId, name: `C2B真实2_${suffix}`, ownerId: userId, type: "PERSONAL", updatedAt: new Date() } });
+  await prisma.workspacemember.create({ data: { id: `m_${suffix}`, userId, workspaceId, role: "OWNER", monthlyTokenUsed: BigInt(0), tokenBalance: balance } });
+  await prisma.userwallet.create({ data: { id: `w_${suffix}`, userId, balance } });
+  await prisma.workspacequota.create({ data: { id: `q_${suffix}`, workspaceId, membershipLevelId: "FREE", tokenBalance: balance, updatedAt: new Date() } });
+  await prisma.pointgrant.create({ data: { id: `g_${suffix}`, scope: "WALLET", userId, workspaceId: null, points: balance, remaining: balance, sourceType: "MANUAL", status: "ACTIVE" } });
+
+  const userToken = await token(userId);
+
+  const cleanup = async () => {
+    await prisma.pointledger.deleteMany({ where: { userId } });
+    await prisma.pointgrant.deleteMany({ where: { userId } });
+    await prisma.userwallet.deleteMany({ where: { userId } });
+    await prisma.componenttask.deleteMany({ where: { userId } });
+    await prisma.componentusage.deleteMany({ where: { workspaceId } });
+    await prisma.workspacemember.deleteMany({ where: { workspaceId } });
+    await prisma.workspacequota.deleteMany({ where: { workspaceId } });
+    await prisma.workspace.deleteMany({ where: { id: workspaceId } });
+    await prisma.user.deleteMany({ where: { id: userId } });
+
+    // 清理失败必须使测试失败（不允许静默残留）
+    const residue = {
+      ledgers: await prisma.pointledger.count({ where: { userId } }),
+      grants: await prisma.pointgrant.count({ where: { userId } }),
+      wallets: await prisma.userwallet.count({ where: { userId } }),
+      tasks: await prisma.componenttask.count({ where: { userId } }),
+      usages: await prisma.componentusage.count({ where: { workspaceId } }),
+      members: await prisma.workspacemember.count({ where: { workspaceId } }),
+      quotas: await prisma.workspacequota.count({ where: { workspaceId } }),
+      workspaces: await prisma.workspace.count({ where: { id: workspaceId } }),
+      users: await prisma.user.count({ where: { id: userId } }),
+    };
+    if (Object.values(residue).some((v) => v !== 0)) {
+      throw new Error(`清理失败：临时数据存在残留 ${JSON.stringify(residue)}`);
+    }
+  };
+
+  return { userId, workspaceId, userToken, cleanup };
+}
+
+async function assertRealExecution(
+  f: Awaited<ReturnType<typeof setupFixture>>,
+  componentId: string,
+  req: NextRequest,
+) {
+  const res = await studioPostRoute(req);
+  const json = await res.json();
+  assert.equal(res.status, 200, `${componentId} 期望 200，实际 ${res.status} body=${JSON.stringify(json).slice(0, 300)}`);
+  assert.equal(json.success, true, `${componentId} success 必须为 true`);
+  assert.equal(json.executionMode, "REAL_MODEL", `${componentId} 必须真实模型执行`);
+  assert.notEqual(json.executionMode, "SIMULATED", `${componentId} 绝不允许 SIMULATED`);
+  assert.equal(json.billingMode, "ESTIMATED_COMPATIBILITY", `${componentId} billingMode 必须为兼容口径`);
+  assert.ok(
+    json.provider && json.provider.id === MAGIC_PROVIDER && json.provider.modelId === MAGIC_MODEL,
+    `${componentId} provider 必须为 ${MAGIC_PROVIDER}/${MAGIC_MODEL}，实际 ${JSON.stringify(json.provider)}`,
+  );
+  assert.ok(Array.isArray(json.artifacts) && json.artifacts.length > 0, `${componentId} 必须有 artifact`);
+  assert.ok(
+    typeof json.artifacts[0].content === "string" && json.artifacts[0].content.trim().length > 0,
+    `${componentId} artifact 内容必须非空`,
+  );
+  assert.ok(
+    json.usage && Number(json.usage.inputTokens) > 0 && Number(json.usage.outputTokens) > 0 && Number(json.usage.totalTokens) > 0,
+    `${componentId} usage 必须为真实正数，实际 ${JSON.stringify(json.usage)}`,
+  );
+
+  const task = await prisma.componenttask.findFirst({
+    where: { userId: f.userId, type: componentId },
+    orderBy: { createdAt: "desc" },
+  });
+  assert.ok(task, `${componentId} 必须落库任务`);
+  const cfg = task!.config as TaskConfigShape;
+  const result = task!.result as TaskResultShape;
+  assert.equal(cfg.executionMode, "REAL_MODEL", `${componentId} task.config.executionMode 必须为 REAL_MODEL`);
+  assert.equal(result.executionMode, "REAL_MODEL", `${componentId} task.result.executionMode 必须为 REAL_MODEL`);
+  assert.equal(cfg.billingMode, "ESTIMATED_COMPATIBILITY", `${componentId} task.config.billingMode 必须为兼容口径`);
+  assert.ok(
+    cfg.providerId === MAGIC_PROVIDER && cfg.modelId === MAGIC_MODEL,
+    `${componentId} task.config provider/model 必须为 ${MAGIC_PROVIDER}/${MAGIC_MODEL}`,
+  );
+  assert.ok(Number(cfg.totalTokens) > 0, `${componentId} task.config 必须落库真实 usage`);
+  assert.ok(
+    result.provider && result.provider.id === MAGIC_PROVIDER && result.provider.modelId === MAGIC_MODEL,
+    `${componentId} task.result provider/model 必须为 ${MAGIC_PROVIDER}/${MAGIC_MODEL}`,
+  );
+  assert.ok(Number(result.usage?.totalTokens) > 0, `${componentId} task.result 必须落库真实 usage`);
+
+  // 账务：平台按分桶拆分扣点（实测「当月赠送点优先，余额补足」→ 同一任务产生 1..N 条 CONSUME 流水，
+  // 幂等键为 `CONSUME:<taskId>#1..#N` 且序号连续）。因此不变量为：
+  // 「同一任务、点数合计 == 任务 token 成本、幂等序号连续、无退款」。
+  const consume = await prisma.pointledger.findMany({
+    where: { userId: f.userId, type: "CONSUME" },
+    select: { points: true, taskId: true, idempotencyKey: true },
+  });
+  assert.ok(consume.length >= 1, `${componentId} 必须存在消费流水`);
+  const totalConsumed = consume.reduce((s, l) => s + Number(l.points), 0);
+  assert.equal(totalConsumed, Number(json.task?.estimatedPoints), `${componentId} 消费点数合计必须等于任务预估算力点`);
+  assert.equal(
+    new Set(consume.map((l) => l.taskId)).size,
+    1,
+    `${componentId} 一次执行只允许对应一个任务（禁止跨任务串账）`,
+  );
+  assert.ok(consume.every((l) => l.taskId === task!.id), `${componentId} 消费流水必须归属本次真实任务`);
+  const seq = consume
+    .map((l) => Number((l.idempotencyKey || "").split("#").pop()))
+    .sort((a, b) => a - b);
+  assert.deepEqual(seq, seq.map((_, i) => i + 1), `${componentId} 消费幂等序号必须为 #1..#N 连续无缺口`);
+  assert.equal(await prisma.pointledger.count({ where: { userId: f.userId, type: "REFUND" } }), 0, `${componentId} 成功路径不得退款`);
+}
+
+async function assertContractPublished(componentId: string) {
+  const cat = await prisma.componentcatalog.findUnique({ where: { id: componentId }, select: { activeContractId: true } });
+  assert.ok(cat?.activeContractId, `${componentId} 必须已激活合同`);
+  const row = await prisma.componentcontract.findUnique({ where: { id: cat!.activeContractId! }, select: { lifecycle: true } });
+  assert.equal(row?.lifecycle, "PUBLISHED", `${componentId} 激活合同必须为 PUBLISHED`);
+}
+
+describe("批次 2B 真实执行验收（C10 / C11，真实外部模型）", () => {
+  test("C10 真实执行：行业规则文本输入 → 脱敏模拟数据表 + REAL_MODEL + 真实 usage + 消费流水合计等于任务成本", async () => {
+    const f = await setupFixture();
+    try {
+      await assertContractPublished("C10");
+      const req = jsonReq("http://localhost/api/studio", f.userToken, {
+        action: "simulate",
+        workspaceId: f.workspaceId,
+        componentId: "C10",
+        inputMaterial:
+          "行业：电商订单。目标表结构：user_name（姓名）、mobile（手机号）、amount（订单金额）、created_at（下单时间）。" +
+          "生成 10 条模拟数据；姓名必须虚构、手机号中间四位打码，严禁使用真实个人信息。",
+      });
+      await assertRealExecution(f, "C10", req);
+    } finally {
+      await f.cleanup();
+    }
+  });
+
+  test("C11 真实执行（文件路径）：上传 .md 接口需求文档 → 服务端提取文本后 REAL_MODEL + 成果物 + 消费流水合计等于任务成本", async () => {
+    const f = await setupFixture();
+    try {
+      await assertContractPublished("C11");
+      const req = multipartReq(
+        "http://localhost/api/studio",
+        f.userToken,
+        {
+          action: "simulate",
+          workspaceId: f.workspaceId,
+          componentId: "C11",
+          inputSource: JSON.stringify({ sourceType: "file", fileName: "api-requirement.md", mimeType: "text/markdown" }),
+        },
+        [
+          {
+            name: "api-requirement.md",
+            content:
+              "# 接口需求：用户注册与登录\n\n" +
+              "1. 注册接口：入参 mobile（手机号，必填，11 位）、code（短信验证码，必填，6 位）、password（密码，必填，8-20 位）；" +
+              "返回 userId 与 token；需校验字段格式并返回统一错误码。\n" +
+              "2. 登录接口：入参 mobile 与 code，返回 token；验证码错误需返回可区分的错误码。\n" +
+              "3. 需给出接口清单、实现代码（含参数校验）、数据契约与说明书注解。\n",
+            mimeType: "text/markdown",
+          },
+        ],
+      );
+      await assertRealExecution(f, "C11", req);
+    } finally {
+      await f.cleanup();
+    }
+  });
+});

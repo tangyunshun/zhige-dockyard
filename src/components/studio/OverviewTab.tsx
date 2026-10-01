@@ -12,7 +12,7 @@ interface TaskRecord {
   name: string;
   componentId: string;
   componentName: string;
-  tokenUsed: number;
+  pointsCost: number;
   status: "SUCCESS" | "FAILED" | "RUNNING" | "UNKNOWN";
   time: string;
 }
@@ -433,11 +433,11 @@ export default function OverviewTab({
                           <Clock className="w-3 h-3 text-slate-400" />
                           {formatTaskTime(task.time)}
                         </span>
-                        {typeof task.tokenUsed === "number" && (
+                        {typeof task.pointsCost === "number" && (
                           <span className="flex items-center gap-1 font-mono font-bold text-slate-500">
                             <Zap className="w-3 h-3 text-amber-500" />
-                            {task.tokenUsed} 算力点
-                            <span className="text-slate-400 font-normal">({formatYuanFromPoints(task.tokenUsed)})</span>
+                            {task.pointsCost} 算力点
+                            <span className="text-slate-400 font-normal">({formatYuanFromPoints(task.pointsCost)})</span>
                           </span>
                         )}
                         {compDef?.name && (
@@ -496,18 +496,30 @@ export default function OverviewTab({
               const isManager = ["OWNER", "ADMIN", "Owner", "Admin"].includes(userRole);
               const isRestricted = restrictedComponentIds.includes(c.id);
               const isRestrictedForCurrentUser = !isManager && isRestricted;
+              // 合同就绪状态（数据库唯一真源，来自 catalog API）：禁止前端硬编码完成态
+              const contractReady = (c as { contractReady?: boolean }).contractReady === true;
+              const contractLifecycle = (c as { activeContractLifecycle?: string | null }).activeContractLifecycle ?? null;
+              const contractStatusLabel = contractReady
+                ? null
+                : !contractLifecycle
+                  ? "待配置"
+                  : contractLifecycle === "DRAFT"
+                    ? "即将上线"
+                    : "暂不可执行";
+              const cardDisabled = isRestrictedForCurrentUser || !contractReady;
               const Ico = iconMap[iconKey] || Box;
 
               return (
                 <div
+                  data-component-id={c.id}
                   onClick={() => {
-                    if (!isRestrictedForCurrentUser) {
+                    if (!cardDisabled) {
                       handleComponentClick(c);
                     }
                   }}
                   key={c.id}
                   className={`p-4.5 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
-                    isRestrictedForCurrentUser
+                    cardDisabled
                       ? "bg-slate-100/60 border border-slate-200/80 cursor-not-allowed opacity-90"
                       : "bg-slate-50/70 hover:bg-white border border-slate-200/70 cursor-pointer hover:shadow-md hover:border-[#3182ce]/40"
                   }`}
@@ -529,9 +541,13 @@ export default function OverviewTab({
                         }`}>
                           {isManager ? "特权放行" : "岗位受限"}
                         </span>
+                      ) : contractStatusLabel ? (
+                        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+                          {contractStatusLabel}
+                        </span>
                       ) : (
                         <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 shrink-0">
-                          🟢 正常运行
+                          🟢 可执行
                         </span>
                       )}
                     </div>
@@ -568,6 +584,10 @@ export default function OverviewTab({
                     {isRestrictedForCurrentUser ? (
                       <button disabled className="w-full py-1 px-2 bg-slate-200 text-slate-500 text-[11px] font-bold rounded cursor-not-allowed text-center block">
                         🔒 岗位受限 (不可用)
+                      </button>
+                    ) : contractStatusLabel ? (
+                      <button disabled className="w-full py-1 px-2 bg-slate-200 text-slate-500 text-[11px] font-bold rounded cursor-not-allowed text-center block">
+                        {contractStatusLabel}
                       </button>
                     ) : (
                       <span className="text-[11px] text-[#3182ce] font-black flex items-center gap-1 group-hover:translate-x-1 transition-transform">

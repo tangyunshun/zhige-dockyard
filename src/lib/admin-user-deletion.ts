@@ -43,6 +43,8 @@ export interface DeletionPreview {
   exists: boolean;
   name: string | null;
   email: string | null;
+  /** 目标当前状态（banned / deleted），用于前端按状态展示真实将执行的操作 */
+  status: string;
   case: DeletionCase;
   dataSummary: {
     /** 拥有的工作空间数量（个人 + 企业） */
@@ -72,6 +74,7 @@ const EMPTY_PREVIEW: DeletionPreview = {
   exists: false,
   name: null,
   email: null,
+  status: "",
   case: "REGULAR",
   dataSummary: {
     ownedWorkspaceCount: 0,
@@ -167,11 +170,24 @@ export async function analyzeUserDeletion(userId: string): Promise<DeletionPrevi
   // 4. 归属判定
   const blockers: string[] = [];
   const warnings: string[] = [];
-  // 核心安全红线校验：只有已被封禁的用户才允许被删除
-  if (user.status !== "banned") {
-    const statusText = user.status === "active" ? "正常活跃" : user.status === "inactive" ? "已停用" : user.status;
+  /**
+   * 删除场景判定（对应返回值的 case 字段）。
+   * 原代码在使用前遗漏了声明，这里按分支实际取值补齐声明，不改变任何判断逻辑。
+   */
+  let dc: DeletionCase = "REGULAR";
+  // 核心安全红线校验：只有已被封禁(banned)或已注销(deleted)的用户才允许被删除；
+  // 已注销用户为逻辑删除后的残留数据，允许超管彻底清理。注销中(deleting)处于冷静期，不开放删除
+  if (user.status !== "banned" && user.status !== "deleted") {
+    const statusText =
+      user.status === "active"
+        ? "正常活跃"
+        : user.status === "inactive"
+          ? "已停用"
+          : user.status === "deleting"
+            ? "注销中"
+            : user.status;
     blockers.push(
-      `该用户当前状态为「${statusText}」，未被封禁。根据平台安全合规红线，只有处于「已封禁」状态的用户才允许被删除。请先对其执行封禁后再行删除。`
+      `该用户当前状态为「${statusText}」，不允许删除。根据平台安全合规红线，只有处于「已封禁」或「已注销」状态的用户才允许被删除（注销中 deleting 处于冷静期不开放）。请先对其执行封禁后再行删除。`
     );
   }
 
@@ -200,6 +216,7 @@ export async function analyzeUserDeletion(userId: string): Promise<DeletionPrevi
     exists: true,
     name: user.name,
     email: user.email,
+    status: user.status,
     case: dc,
     dataSummary: {
       ownedWorkspaceCount: ownedWorkspaces.length,
@@ -231,6 +248,8 @@ export interface ExecuteResult {
   case: DeletionCase;
   /** 已软删除（逻辑删除 + 匿名化） */
   softDeleted: boolean;
+  /** 已物理删除（被遗忘权：用户行及残留数据已彻底移除） */
+  hardDeleted?: boolean;
   /** 已移交所有权的个人/企业空间 ID 列表 */
   transferredWorkspaces: string[];
   /** 已归档的个人空间 ID 列表 */
@@ -240,7 +259,8 @@ export interface ExecuteResult {
 
 /**
  * 执行管理员删除：归属优先 + 默认软删除。
- * - 只有 status === 'banned'（已封禁）用户才允许删除。
+ * - 只有 status === 'banned'（已封禁）或 status === 'deleted'（已注销）用户才允许删除；
+ *   已注销用户为逻辑删除后的残留数据，允许超管彻底清理。注销中（deleting）不开放。
  * - 情况 C 或存在 blocker：直接抛错（不执行任何删除）。
  * - 情况 A：必须 transferToUserId 或 archivePersonalData 二选一，否则抛错。
  * - 情况 B / REGULAR：软删除（逻辑删除 + 匿名化），保留企业资产。
@@ -264,8 +284,8 @@ export async function executeAdminUserDeletion(
     where: { id: userId },
     select: { id: true, status: true },
   });
-  if (!targetUser || targetUser.status !== "banned") {
-    throw new Error("平台安全红线拦截：只有已被封禁的用户才允许被删除。请先封禁该用户。");
+  if (!targetUser || (targetUser.status !== "banned" && targetUser.status !== "deleted")) {
+    throw new Error("平台安全红线拦截：只有已被封禁(banned)或已注销(deleted)的用户才允许被删除（注销中 deleting 不开放）。请先封禁该用户。");
   }
 
   const transferredWorkspaces: string[] = [];
@@ -289,7 +309,26 @@ export async function executeAdminUserDeletion(
     }
   }
 
-  // 情况 A-个人侧：移交 or 归档
+  // 已注销(deleted)用户：已是匿名化终态，手动删除即「物理清理（被遗忘权）」——
+  // 无需再询问移交/归档，直接释放企业空间所有权（上方已完成非唯一所有者改派）后，
+  // 物理删除其个人工作空间并硬删用户行（级联清理设备/API Key/会话/操作日志等）。
+  if (targetUser.status === "deleted") {
+    const personalWsIds = preview.dataSummary.ownedPersonalWorkspaces.map((w) => w.id);
+    if (personalWsIds.length > 0) {
+      await prisma.workspace.deleteMany({ where: { id: { in: personalWsIds } } });
+    }
+    await prisma.user.delete({ where: { id: userId } });
+    return {
+      case: preview.case,
+      softDeleted: false,
+      hardDeleted: true,
+      transferredWorkspaces,
+      archivedWorkspaces,
+      message: "已注销用户已彻底删除（物理清理：账号及残留数据已移除）",
+    };
+  }
+
+  // 情况 A-个人侧：移交 or 归档（仅针对 banned → deleted 的软删除路径）
   if (preview.case === "PERSONAL_OWNER") {
     const personal = preview.dataSummary.ownedPersonalWorkspaces;
     if (opts.transferToUserId) {
@@ -342,6 +381,7 @@ export async function executeAdminUserDeletion(
   return {
     case: preview.case,
     softDeleted: true,
+    hardDeleted: false,
     transferredWorkspaces,
     archivedWorkspaces,
     message: "用户已软删除（账号不可登录，企业协作数据保留，个人数据已脱敏）",

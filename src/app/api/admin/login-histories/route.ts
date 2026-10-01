@@ -23,12 +23,28 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
     const targetUserId = searchParams.get("userId") || "";
     const keyword = searchParams.get("keyword") || "";
+    const startDate = searchParams.get("startDate") || "";
+    const endDate = searchParams.get("endDate") || "";
 
     const skip = (page - 1) * limit;
     const where: any = {};
 
     if (targetUserId) {
       where.userId = targetUserId;
+    }
+
+    // 时间区间过滤（与操作审计流水口径一致）
+    if (startDate || endDate) {
+      where.loginAt = {};
+      if (startDate) {
+        where.loginAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        // 包含当天结束时刻
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.loginAt.lte = end;
+      }
     }
 
     if (keyword) {
@@ -162,6 +178,62 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: "获取登录历史失败",
+        details: error instanceof Error ? error.message : error,
+      },
+      { status: 500 },
+    );
+  }
+}
+
+// 删除登录历史（支持单条、批量删除；3 年超期由系统自动出清，不提供手动操作）
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: auth.user.id },
+    });
+    if (!user || !isAdminRole(user.role)) {
+      return NextResponse.json({ error: "权限不足" }, { status: 403 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const { id, ids } = body;
+
+    // 批量删除
+    if (Array.isArray(ids) && ids.length > 0) {
+      const result = await prisma.loginhistory.deleteMany({
+        where: { id: { in: ids } },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `成功删除选中的 ${result.count} 条登录历史。`,
+        count: result.count,
+      });
+    }
+
+    // 模式 3：单个删除
+    const targetId = id || new URL(request.url).searchParams.get("id");
+    if (!targetId) {
+      return NextResponse.json({ error: "缺少待删除登录历史的 ID" }, { status: 400 });
+    }
+
+    await prisma.loginhistory.delete({
+      where: { id: targetId },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "登录历史已成功删除",
+    });
+  } catch (error) {
+    console.error("Delete login histories error:", error);
+    return NextResponse.json(
+      {
+        error: "删除登录历史失败",
         details: error instanceof Error ? error.message : error,
       },
       { status: 500 },

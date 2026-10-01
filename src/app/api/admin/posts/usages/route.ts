@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
+import type { workspacemember_role } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,12 @@ interface DeleteUsageItem {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    // 1. 验证管理员权限
+    // 1. 严格校验岗位装配记录维护权限点（无权直接阻断）
+    const permCheck = await requirePlatformPermission(request, "post:update");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限维护岗位装配记录" }, { status: 403 });
+    }
+    // 2. 验证管理员权限
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
@@ -133,7 +140,8 @@ export async function DELETE(request: NextRequest) {
           const updateResult = await prisma.workspacemember.updateMany({
             where: {
               workspaceId,
-              role: codeUpper,
+              // 历史兼容：岗位代号曾被直接当作空间成员角色使用，此处仅做类型收窄，保持原查询语义不变
+              role: codeUpper as unknown as workspacemember_role,
             },
             data: {
               role: "MEMBER",

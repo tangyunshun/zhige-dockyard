@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useToast } from "./Toast";
+import { useTokenRefresh } from "@/hooks/useTokenRefresh";
 import {
   SESSION_ERROR_MESSAGES,
   VALIDATE_ERROR_TO_SESSION_CODE,
@@ -35,6 +36,38 @@ const PUBLIC_PATHS = [
   "/help",
 ];
 
+// 用持久化的 refresh_token cookie 静默续命：关浏览器后 localStorage 中的 AT 可能已过期，
+// 但 refresh_token（记住我时持久 7 天）仍在，可换发新 AT 恢复会话（实现「7天内免登录」）
+// 并发锁：避免多标签页同时重新打开时拿同一旧 refresh_token 并发 /refresh 触发 E-06 重放封号。
+let refreshInFlight: Promise<boolean> | null = null;
+async function silentRefresh(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.token) {
+          localStorage.setItem("auth_token", data.token);
+          return true;
+        }
+      }
+    } catch {
+      /* 续命失败，交由调用方跳转登录 */
+    }
+    return false;
+  })();
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
 export default function AuthCheck({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -42,6 +75,10 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
   const hasHandledErrorRef = useRef(false);
   const isRedirectingRef = useRef(false);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 挂载 A-06 无感刷新：每 30s 用 refresh_token cookie 静默换发 AT，
+  // 使「7天内免登录」真正靠 refresh_token（持久 7 天）续命，而非仅靠登录瞬间发的 JWT 硬撑。
+  useTokenRefresh();
 
   // 检查是否是公共路径
   const isPublicPath = () => {
@@ -93,7 +130,7 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
     [toast],
   );
 
-  const checkAuth = useCallback(async () => {
+  const checkAuth = useCallback(async (attemptedRefresh = false) => {
     // 公共营销页面直接跳过检查
     if (isPublicPath()) {
       return;
@@ -106,8 +143,14 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
     try {
       const authToken = getAuthToken();
 
-      // 场景 1：localStorage 没有有效凭证 → 立即跳转，不调用 API
+      // 场景 1：localStorage 没有有效凭证 → 先尝试用持久 refresh_token cookie 静默续命，
+      // 续命成功则重新走校验流程（实现「7天内免登录」：关浏览器再开仍可恢复会话）
       if (!authToken) {
+        const refreshed = await silentRefresh();
+        if (refreshed) {
+          return checkAuth();
+        }
+
         isRedirectingRef.current = true;
 
         // 如果是公共页面，不需要跳转
@@ -150,6 +193,16 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
           code = errData?.code || VALIDATE_ERROR_TO_SESSION_CODE[reason] || "";
         } catch {
           // 无响应体时使用默认提示
+        }
+
+        // AT 可能只是短期过期（无感刷新将其降级为 5 分钟），但 refresh_token 仍有效
+        // （记住我 7 天）：先静默续命再重试，避免「关浏览器 / 隔段时间再开 / 切回后台标签页」
+        // 被误登出，从而真正落实「7 天内免登录」。refresh_token 失效时再走下方登出逻辑。
+        if (!attemptedRefresh) {
+          const ok = await silentRefresh();
+          if (ok) {
+            return checkAuth(true);
+          }
         }
 
         // F-03：空间成员关系已移除 → 清空空间缓存，跳转中控台

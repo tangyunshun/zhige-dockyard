@@ -12,9 +12,10 @@ import { requirePlatformPermission } from "@/lib/security";
 export async function GET(request: NextRequest) {
   try {
     // 严格校验订单流水查看权限（无权直接阻断）
-    const authCheck = await requirePlatformPermission(request, "order:read");
+    const authCheck = await requirePlatformPermission(request, "order:read", "order:detail");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse（不再有 error/status 字段）
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const model = (prisma as any).billing_record || (prisma as any).billingrecord;

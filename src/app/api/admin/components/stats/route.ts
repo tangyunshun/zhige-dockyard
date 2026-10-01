@@ -4,7 +4,7 @@ import { requirePlatformPermission } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "component:read");
+    const authResult = await requirePlatformPermission(request, "component:stats_audit", "component:read");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }

@@ -1,10 +1,7 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify, SignJWT } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 interface VerificationCode {
   code: string;
@@ -127,7 +124,7 @@ export async function PUT(request: NextRequest) {
     })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime("5m")
-      .sign(JWT_SECRET);
+      .sign(getJwtSecretKey());
 
     return NextResponse.json({
       success: true,

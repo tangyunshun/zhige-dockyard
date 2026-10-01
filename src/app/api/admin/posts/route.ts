@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 /**
  * 岗位管理 API
@@ -11,6 +12,11 @@ import { isAdminRole, validateUser } from "@/lib/auth";
 // GET: 获取岗位列表
 export async function GET(request: NextRequest) {
   try {
+    // 严格校验岗位管理权限点（无权直接阻断）
+    const permCheck = await requirePlatformPermission(request, "post:read");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权访问岗位管理" }, { status: 403 });
+    }
     // 验证管理员权限
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
@@ -117,6 +123,11 @@ export async function GET(request: NextRequest) {
 // POST: 创建新岗位
 export async function POST(request: NextRequest) {
   try {
+    // 严格校验岗位创建权限点（无权直接阻断）
+    const permCheck = await requirePlatformPermission(request, "post:create");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权创建岗位" }, { status: 403 });
+    }
     // 验证管理员权限
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {

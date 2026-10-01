@@ -1,10 +1,5 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
-import { SignJWT } from "jose";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
 
 /**
  * 发送邮箱验证码（用于找回密码等场景）

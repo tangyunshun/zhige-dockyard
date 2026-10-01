@@ -8,9 +8,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "generate:icon": "node scripts/generate_real_icon.js",
     "db:seed": "prisma db seed",
     "cron:expire-points": "tsx --tsconfig tsconfig.json scripts/expire-points-cron.ts",
-    "cron:zombie-scan": "tsx --tsconfig tsconfig.json scripts/zombie-scan-cron.ts"
+    "cron:zombie-scan": "tsx --tsconfig tsconfig.json scripts/zombie-scan-cron.ts",
+    "cron:token-settlement-recovery": "tsx --tsconfig tsconfig.json scripts/run-token-settlement-recovery.ts",
+    "cron:purge-deleted-users": "tsx --tsconfig tsconfig.json scripts/purge-deleted-users-cron.ts",
+    "check:permissions": "tsx --tsconfig tsconfig.json scripts/check-permission-wiring.ts",
+    "verify:permissions": "tsx --tsconfig tsconfig.json scripts/verify-permission-matrix.ts",
+    "catalog:snapshot": "tsx --tsconfig tsconfig.json scripts/sync-permission-catalog.ts",
+    "wire:admin-rules": "tsx --tsconfig tsconfig.json scripts/wire-admin-permission-rules.ts",
+    "permissions:delegate-cleanup": "tsx --tsconfig tsconfig.json scripts/delegate-and-cleanup-permissions.ts",
+    "verify:model-registry": "tsx --tsconfig tsconfig.json scripts/verify-model-registry-integrity.ts",
+    "init:model-registry": "tsx --tsconfig tsconfig.json scripts/init-c07-model-registry.ts",
+    "hooks:install": "tsx --tsconfig tsconfig.json scripts/install-git-hooks.ts",
+    "prepare": "tsx --tsconfig tsconfig.json scripts/install-git-hooks.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed-components.ts && npx tsx prisma/seed-membership.ts && npx tsx prisma/seed-positions.ts && npx tsx prisma/seed-system-documents.ts && npx tsx prisma/seed-audit-dict.ts && npx tsx prisma/seed-test-data.ts"
@@ -33,7 +46,8 @@
     "tailwindcss": "^4.2.2",
     "tsx": "^4.23.12",
     "typescript": "^6.0.3",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vitest": "^3.2.7"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

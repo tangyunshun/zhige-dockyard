@@ -41,6 +41,7 @@ import {
   ArrowRight,
   Loader2,
   Coins,
+  CheckSquare,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
@@ -135,6 +136,45 @@ function parseClientDeviceAndBrowser(device?: string | null, userAgent?: string 
     osName: os || (isMobile ? "移动端" : "桌面端"),
   };
 }
+
+// 用户明确规范的角色枚举集合
+// 超级管理员包括：SUPER_ADMIN、SUPERADMIN、superadmin、super_admin、Superadmin、Super_admin
+const SUPER_ADMIN_ROLES = new Set([
+  "SUPER_ADMIN",
+  "SUPERADMIN",
+  "superadmin",
+  "super_admin",
+  "Superadmin",
+  "Super_admin",
+]);
+
+// 管理员包括：ADMIN、admin、Admin
+const ADMIN_ROLES = new Set([
+  "ADMIN",
+  "admin",
+  "Admin",
+]);
+
+// 角色标准化判定辅助函数（严格对齐平台规范角色集合，并兼顾大小写与前后空格）
+const isSuperAdminRole = (role?: string | null): boolean => {
+  if (!role) return false;
+  const raw = String(role).trim();
+  if (SUPER_ADMIN_ROLES.has(raw)) return true;
+  const r = raw.toUpperCase();
+  return r === "SUPER_ADMIN" || r === "SUPERADMIN" || r === "SUPER_ADMIN_ROLE" || r === "SUPER";
+};
+
+const isAdminRole = (role?: string | null): boolean => {
+  if (!role) return false;
+  const raw = String(role).trim();
+  if (ADMIN_ROLES.has(raw)) return true;
+  const r = raw.toUpperCase();
+  return (r === "ADMIN" || r === "ADMINISTRATOR") && !isSuperAdminRole(role);
+};
+
+const isPrivilegedRole = (role?: string | null): boolean => {
+  return isSuperAdminRole(role) || isAdminRole(role);
+};
 
 // 定义完整的筛选项值（不依赖动态数据）
 const ROLE_OPTIONS = [
@@ -299,6 +339,8 @@ export default function AdminUsersPage() {
       selectedCount: number;
       skippedCount: number;
       skipped: { id: string; name: string; reason: string }[];
+      // 将执行动作的用户明细（含在线标记）：kick 预览用于解释「离线但会话未过期」也会被下线
+      processable?: { id: string; name: string; online: boolean }[];
     };
     processing: boolean;
     result?: {
@@ -630,8 +672,8 @@ export default function AdminUsersPage() {
             key: "role",
             width: 14,
             formatter: (val) => {
-              if (val === "super_admin") return "超级管理员";
-              if (val === "admin") return "平台管理员";
+              if (isSuperAdminRole(val)) return "超级管理员";
+              if (isAdminRole(val)) return "平台管理员";
               return "普通用户";
             },
           },
@@ -681,9 +723,13 @@ export default function AdminUsersPage() {
   };
 
   const isSelectableUser = (user: User) =>
-    user.role !== "super_admin" &&
-    user.role !== "admin" &&
+    !isSuperAdminRole(user.role) &&
+    !isAdminRole(user.role) &&
     user.id !== currentUserId;
+
+  // 统一规范化账号状态用于比较：Prisma UserStatus 枚举为小写（active/inactive/banned/deleted），
+  // 但历史/跨源数据偶有大写，统一 toLowerCase 避免大小写不一致导致“批量封禁/解封/删除”等判定错误
+  const normStatus = (s?: string | null) => (s ?? "").toLowerCase();
 
   const toggleSelectUser = (user: User) => {
     if (!isSelectableUser(user)) return;
@@ -697,17 +743,34 @@ export default function AdminUsersPage() {
     setShowBatchActions(newSelected.size > 0);
   };
 
-  const toggleSelectAll = () => {
+  // 选中当前页全部可选用户（与跨页全选互斥）
+  const selectAllCurrentPage = () => {
     const selectableUsers = userData?.users?.filter(isSelectableUser) || [];
-    const allSelectableSelected = selectableUsers.every((u) =>
-      selectedUsers.has(u.id),
-    );
-    if (allSelectableSelected) {
+    setSelectedUsers(new Set(selectableUsers.map((u) => u.id)));
+    setSelectAllMatching(false);
+    setShowBatchActions(true);
+  };
+
+  // 表头复选框：当前页全选/取消全选切换。
+  // 未全选时点击 → 选中当前页全部可选用户；
+  // 已全选时点击 → 取消全部选择并退出批量模式；
+  // 处于跨页全选模式时点击 → 退出跨页全选并清空选择。
+  const toggleSelectAll = () => {
+    if (selectAllMatching) {
+      setSelectAllMatching(false);
+      setSelectedUsers(new Set());
+      setShowBatchActions(false);
+      return;
+    }
+    const selectableUsers = userData?.users?.filter(isSelectableUser) || [];
+    const allSelected =
+      selectableUsers.length > 0 &&
+      selectableUsers.every((u) => selectedUsers.has(u.id));
+    if (allSelected) {
       setSelectedUsers(new Set());
       setShowBatchActions(false);
     } else {
-      const selectableIds = new Set(selectableUsers.map((u) => u.id));
-      setSelectedUsers(selectableIds);
+      setSelectedUsers(new Set(selectableUsers.map((u) => u.id)));
       setShowBatchActions(true);
     }
   };
@@ -726,14 +789,22 @@ export default function AdminUsersPage() {
       ? userData?.users?.filter(isSelectableUser) || []
       : selectedUserList;
     return {
-      ban: pool.some((u) => u.status === "active"),
-      unban: pool.some((u) => u.status === "banned"),
-      kick: pool.some((u) => u.status === "active" && !!u.hasSession),
-      // 核心安全红线：只有超级管理员且所选用户中包含已被封禁的用户时，才允许执行批量删除
+      // 封禁/解封/强制下线只作用于存活账号：已注销(deleted)用户不会被这些动作命中（后端按状态跳过），
+      // 故按各自目标状态判定可用性，已注销用户既不触发也不抑制其它合法动作
+      ban: pool.some((u) => normStatus(u.status) === "active"),
+      unban: pool.some((u) => normStatus(u.status) === "banned"),
+      // 强制下线可用性以「存在有效（未过期）会话」为准（与列表 hasSession、单行强制下线一致），
+      // 空闲超过 10 分钟但会话仍有效的用户同样可被踢下线
+      kick: pool.some((u) => normStatus(u.status) === "active" && u.hasSession),
+      // 核心安全红线：只有超级管理员且所选用户中包含已被封禁(banned)或已注销(deleted)的用户时，
+      // 才允许执行批量删除（已注销账号的残留数据可由超管彻底清理；注销中 deleting 不开放）
       delete:
-        currentUserRole === "super_admin" &&
+        isSuperAdminRole(currentUserRole) &&
         pool.length > 0 &&
-        pool.some((u) => u.status === "banned"),
+        pool.some(
+          (u) =>
+            normStatus(u.status) === "banned" || normStatus(u.status) === "deleted"
+        ),
     };
   })();
 
@@ -774,9 +845,11 @@ export default function AdminUsersPage() {
       const pool = selectAllMatching
         ? userData?.users?.filter(isSelectableUser) || []
         : selectedUserList;
-      const hasBanned = pool.some((u) => u.status === "banned");
+      const hasBanned = pool.some(
+        (u) => normStatus(u.status) === "banned" || normStatus(u.status) === "deleted"
+      );
       if (!hasBanned) {
-        showToast("所选用户均未被封禁。根据平台安全规则，只有已被封禁的用户才允许执行删除，请先封禁目标用户", "warning");
+        showToast("所选用户均未被封禁或已注销。根据平台安全规则，只有已被封禁(banned)或已注销(deleted)的用户才允许执行删除（请先封禁目标用户，或清理已注销用户的残留数据）", "warning");
         return;
       }
     }
@@ -805,6 +878,7 @@ export default function AdminUsersPage() {
                 selectedCount: data.selectedCount,
                 skippedCount: data.skippedCount,
                 skipped: data.skipped || [],
+                processable: data.processable || [],
               },
             }
           : f
@@ -903,6 +977,13 @@ export default function AdminUsersPage() {
       const user = userData?.users.find((u) => u.id === userId);
       if (!user) return;
 
+      // 平台安全规则前置拦截：禁止对超级管理员执行强制下线
+      if (isSuperAdminRole(user.role)) {
+        showToast("平台安全规则拦截：不能对超级管理员执行强制下线操作", "warning");
+        isProcessingRef.current = false;
+        return;
+      }
+
       setConfirmMessage(
         `确定要强制用户 "${user.name || user.email}" 下线吗？用户当前的所有操作将会中断。`,
       );
@@ -929,9 +1010,23 @@ export default function AdminUsersPage() {
     userId: string, 
     newStatus: string, 
     bannedUntil?: string | null,
-    reason?: string
+    reason?: string,
+    targetRole?: string
   ) => {
     try {
+      // 平台安全规则前置拦截：禁止对超级管理员执行封禁、解封或状态限制
+      const targetUser =
+        userData?.users?.find((u) => u.id === userId) ||
+        (banningUser?.id === userId ? banningUser : null) ||
+        (editingUser?.id === userId ? editingUser : null) ||
+        (viewingUser?.id === userId ? viewingUser : null);
+
+      const effectiveRole = targetRole || targetUser?.role;
+      if (isSuperAdminRole(effectiveRole)) {
+        showToast("平台安全规则拦截：不能对超级管理员执行编辑或限制操作", "warning");
+        return;
+      }
+
       const endpoint = newStatus === "banned" ? "/api/admin/user/ban" : "/api/admin/user";
       const method = newStatus === "banned" ? "POST" : "PATCH";
 
@@ -957,7 +1052,9 @@ export default function AdminUsersPage() {
 
       if (!res.ok) {
         const errorJson = await res.json().catch(() => ({}));
-        throw new Error(errorJson.error || errorJson.message || "更新状态失败");
+        const errorMsg = errorJson.error || errorJson.message || "更新状态失败";
+        showToast(errorMsg, res.status === 403 ? "warning" : "error");
+        return;
       }
 
       const statusText =
@@ -969,20 +1066,26 @@ export default function AdminUsersPage() {
       showToast(`用户状态已${statusText}`, "success");
       loadUsers(currentPage);
     } catch (error: any) {
-      console.error("Change status error:", error);
+      console.warn("Change status rejected or network error:", error);
       showToast(error?.message || "更新状态失败", "error");
     }
   };
 
   const handleUpdateUser = async () => {
     try {
+      // 平台安全规则前置拦截：禁止对超级管理员执行资料或角色更新
+      if (editingUser && isSuperAdminRole(editingUser.role)) {
+        showToast("平台安全规则拦截：不能对超级管理员执行编辑或限制操作", "warning");
+        return;
+      }
+
       const res = await fetch("/api/admin/user", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: editingUser?.id,
           role: editForm.role,
-          status: editForm.status,
+          status: normStatus(editForm.status),
         }),
       });
 
@@ -991,7 +1094,11 @@ export default function AdminUsersPage() {
         return;
       }
 
-      if (!res.ok) throw new Error("更新用户失败");
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        showToast(errorJson.error || errorJson.message || "更新用户失败", res.status === 403 ? "warning" : "error");
+        return;
+      }
 
       showToast("用户信息已更新", "success");
       setShowEditModal(false);
@@ -1004,10 +1111,25 @@ export default function AdminUsersPage() {
 
   const handleDelete = async (userId: string) => {
     setDeleteError(null);
-    // 前置安全红线校验：只有已被封禁(banned)的用户才允许被删除
+    // 前置安全红线校验：禁止删除超级管理员；只有已被封禁(banned)的用户才允许被删除
     const target = userData?.users?.find((u) => u.id === userId);
-    if (target && target.status !== "banned") {
-      showToast("平台安全规则拦截：只有已被封禁的用户才能被删除，请先封禁该用户", "warning");
+    if (target && isSuperAdminRole(target.role)) {
+      showToast("平台安全规则拦截：不能对超级管理员执行删除操作", "warning");
+      return;
+    }
+    if (target && !(normStatus(target.status) === "banned" || normStatus(target.status) === "deleted")) {
+      showToast("平台安全规则拦截：只有已被封禁(banned)或已注销(deleted)的用户才能被删除（已注销用户可清理其残留数据；注销中 deleting 不开放）", "warning");
+      return;
+    }
+    // 已注销(deleted)用户：残留数据已是匿名化终态，采用与其他删除弹窗一致的简单二次确认，无需归属分析/移交/归档
+    if (target && normStatus(target.status) === "deleted") {
+      setConfirmDialog({
+        isOpen: true,
+        title: "彻底清理已注销用户数据",
+        message: `确认彻底清理用户「${target.name || target.email || target.id}」的已注销残留数据？该操作不可恢复，将清除其账号及设备、API Key 等残留信息。`,
+        type: "danger",
+        onConfirm: () => runSimpleDelete(userId),
+      });
       return;
     }
     try {
@@ -1031,7 +1153,7 @@ export default function AdminUsersPage() {
           if (!list?.users) return;
           setTransferCandidates(
             list.users.filter(
-              (u: any) => u.id !== userId && u.status !== "deleted"
+              (u: any) => u.id !== userId && normStatus(u.status) !== "deleted"
             )
           );
         })
@@ -1080,11 +1202,38 @@ export default function AdminUsersPage() {
     }
   };
 
+  /** 已注销(deleted)用户的简单二次确认删除：残留数据已匿名化，无需归属分析/移交/归档 */
+  const runSimpleDelete = async (userId: string) => {
+    try {
+      const res = await fetch(`/api/admin/user?userId=${userId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "超级管理员清理已注销用户残留数据" }),
+      });
+      if (await handleUnauthorized(res)) return;
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "删除失败");
+      }
+      showToast("已注销用户残留数据已彻底清理", "success");
+      setCurrentPage(1);
+      loadUsers(currentPage);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "删除失败", "error");
+    }
+  };
+
   const handleToggleStatus = async (user: User) => {
-    const newStatus = user.status === "active" ? "inactive" : "active";
+    // 平台安全规则前置拦截：禁止对超级管理员执行停用或激活操作
+    if (isSuperAdminRole(user.role)) {
+      showToast("平台安全规则拦截：不能对超级管理员执行编辑或限制操作", "warning");
+      return;
+    }
+
+    const newStatus = normStatus(user.status) === "active" ? "inactive" : "active";
 
     // 已封禁账号已是最高限制级，禁止再叠加「禁用登录」，避免状态被重复处理
-    if (user.status === "banned") {
+    if (normStatus(user.status) === "banned") {
       showToast("该用户已被封禁，无需再执行禁用登录", "warning");
       return;
     }
@@ -1112,7 +1261,11 @@ export default function AdminUsersPage() {
             return;
           }
 
-          if (!res.ok) throw new Error("更新状态失败");
+          if (!res.ok) {
+            const errorJson = await res.json().catch(() => ({}));
+            showToast(errorJson.error || errorJson.message || "更新状态失败", res.status === 403 ? "warning" : "error");
+            return;
+          }
 
           showToast("用户已停用", "success");
           loadUsers(currentPage);
@@ -1138,7 +1291,11 @@ export default function AdminUsersPage() {
           return;
         }
 
-        if (!res.ok) throw new Error("更新状态失败");
+        if (!res.ok) {
+          const errorJson = await res.json().catch(() => ({}));
+          showToast(errorJson.error || errorJson.message || "更新状态失败", res.status === 403 ? "warning" : "error");
+          return;
+        }
 
         showToast("用户已激活", "success");
         loadUsers(currentPage);
@@ -1158,6 +1315,10 @@ export default function AdminUsersPage() {
 
   const submitResetPassword = async () => {
     if (!resetPwdUser) return;
+    if (isSuperAdminRole(resetPwdUser.role)) {
+      showToast("平台安全规则拦截：不能对超级管理员执行重置密码操作", "warning");
+      return;
+    }
     try {
       const res = await fetch("/api/admin/user/reset-password", {
         method: "POST",
@@ -1234,6 +1395,10 @@ export default function AdminUsersPage() {
     }
     if (!Number.isInteger(points)) {
       setAdjustPointsErrors({ points: "调整数量必须为整数" });
+      return;
+    }
+    if (isSuperAdminRole(adjustPointsUser.role)) {
+      showToast("平台安全规则拦截：不能对超级管理员执行算力调整操作", "warning");
       return;
     }
     setAdjustPointsErrors({});
@@ -1458,26 +1623,25 @@ export default function AdminUsersPage() {
   };
 
   const getRoleBadge = (role: string) => {
-    switch (role?.toUpperCase()) {
-      case "SUPER_ADMIN":
-        return (
-          <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full">
-            超级管理员
-          </span>
-        );
-      case "ADMIN":
-        return (
-          <span className="px-2 py-1 bg-blue-100 text-[#2b6cb0] text-xs font-bold rounded-full">
-            管理员
-          </span>
-        );
-      default:
-        return (
-          <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
-            普通用户
-          </span>
-        );
+    if (isSuperAdminRole(role)) {
+      return (
+        <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full">
+          超级管理员
+        </span>
+      );
     }
+    if (isAdminRole(role)) {
+      return (
+        <span className="px-2 py-1 bg-blue-100 text-[#2b6cb0] text-xs font-bold rounded-full">
+          管理员
+        </span>
+      );
+    }
+    return (
+      <span className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
+        普通用户
+      </span>
+    );
   };
 
   const getAccountStatusBadge = (status: string) => {
@@ -1498,6 +1662,18 @@ export default function AdminUsersPage() {
         return (
           <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-bold rounded-full">
             已封禁
+          </span>
+        );
+      case "DELETED":
+        return (
+          <span className="px-2 py-1 bg-slate-200 text-slate-500 text-xs font-bold rounded-full">
+            已注销
+          </span>
+        );
+      case "DELETING":
+        return (
+          <span className="px-2 py-1 bg-amber-100 text-amber-600 text-xs font-bold rounded-full">
+            注销中
           </span>
         );
       default:
@@ -1774,97 +1950,172 @@ export default function AdminUsersPage() {
             <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-spin" : ""}`} />
             <span>导出 Excel</span>
           </button>
+
         </div>
       </div>
 
       {/* 用户列表卡片 (圆润优雅 16px 大圆角与微阴影) */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
 
-        {/* 批量操作工具栏 */}
-        {showBatchActions && (selectedUserList.length > 0 || selectAllMatching) && (
-          <div className="relative bg-gradient-to-r from-[#3182ce]/10 to-[#8b5cf6]/10 border-b border-white/50 px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-bold text-slate-700">
-                {selectAllMatching ? (
-                  <>已按当前筛选条件跨页全选匹配用户</>
-                ) : (
-                  <>
-                    已选择{" "}
-                    <span className="text-[#3182ce]">{selectedUserList.length}</span>{" "}
-                    个用户
-                  </>
+        {/* 批量操作工具栏 (常驻呈现操作项，未满足条件时优雅置灰并带有明确 Tooltip 提示) */}
+        {(showBatchActions || selectedUsers.size > 0 || selectAllMatching) && (() => {
+          const hasSelection = selectedUsers.size > 0 || selectAllMatching;
+          return (
+            <div className="relative bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-white border-b border-blue-100/70 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 animate-in fade-in-50 duration-200">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-[#3182ce] text-white flex items-center justify-center shadow-2xs shrink-0">
+                    <CheckSquare className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-extrabold text-slate-800">
+                    {selectAllMatching ? (
+                      <>已按当前筛选条件跨页全选匹配用户（共 <span className="text-[#3182ce] font-mono">{userData?.total ?? 0}</span> 人）</>
+                    ) : (
+                      <>
+                        已选择{" "}
+                        <span className="text-[#3182ce] font-mono font-black text-base">{selectedUserList.length}</span>{" "}
+                        位用户
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                {/* 快捷选择按钮组 */}
+                <div className="flex items-center gap-1.5 text-xs">
+                  {userData && userData.users && userData.users.filter(isSelectableUser).length > 0 && !selectAllMatching && (
+                    <button
+                      type="button"
+                      onClick={selectAllCurrentPage}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 rounded-lg font-bold transition-colors cursor-pointer"
+                    >
+                      全选当前页
+                    </button>
+                  )}
+
+                  {userData && userData.totalPages > 1 && !selectAllMatching && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUsers(new Set());
+                        setSelectAllMatching(true);
+                        setShowBatchActions(true);
+                      }}
+                      className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#2b6cb0] border border-blue-200/80 rounded-lg font-bold transition-colors cursor-pointer"
+                    >
+                      跨页全选（共 {userData.total} 人）
+                    </button>
+                  )}
+
+                  {selectAllMatching && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectAllMatching(false);
+                        setShowBatchActions(false);
+                      }}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 rounded-lg font-bold transition-colors cursor-pointer"
+                    >
+                      取消跨页全选
+                    </button>
+                  )}
+
+                  {(selectedUsers.size > 0 || selectAllMatching) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUsers(new Set());
+                        setSelectAllMatching(false);
+                        setShowBatchActions(false);
+                      }}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80 rounded-lg font-bold transition-colors cursor-pointer"
+                    >
+                      清空选择
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 批量操作按钮组：常驻在工具栏中，未满足业务条件时置灰并提供明确说明 */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {canBan && batchActionEligible.ban && (
+                  <button
+                    type="button"
+                    disabled={false}
+                    onClick={() => openBatchFlow("ban")}
+                    className="px-3.5 py-1.5 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                    title={
+                      !hasSelection
+                        ? "请先在列表中勾选要批量封禁的用户"
+                        : !batchActionEligible.ban
+                        ? "所选用户中无处于正常状态的账号（均已被封禁或停用）"
+                        : "批量封禁所选用户账号并强制清除会话"
+                    }
+                  >
+                    <UserX className="w-3.5 h-3.5" />
+                    <span>批量封禁</span>
+                  </button>
                 )}
-              </span>
-              {userData && userData.totalPages > 1 && !selectAllMatching && (
-                <button
-                  onClick={() => {
-                    setSelectAllMatching(true);
-                    setShowBatchActions(true);
-                  }}
-                  className="text-sm text-[#3182ce] hover:text-[#2b6cb0] font-medium"
-                >
-                  跨页全选（当前筛选条件下共 {userData.total} 个）
-                </button>
-              )}
-              {selectAllMatching && (
-                <button
-                  onClick={() => setSelectAllMatching(false)}
-                  className="text-sm text-slate-600 hover:text-slate-800 font-medium"
-                >
-                  取消跨页全选
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setSelectedUsers(new Set());
-                  setSelectAllMatching(false);
-                  setShowBatchActions(false);
-                }}
-                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer transition-colors"
-              >
-                取消选择
-              </button>
+
+                {canUnban && batchActionEligible.unban && (
+                  <button
+                    type="button"
+                    disabled={false}
+                    onClick={() => openBatchFlow("unban")}
+                    className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                    title={
+                      !hasSelection
+                        ? "请先在列表中勾选要批量解封的用户"
+                        : !batchActionEligible.unban
+                        ? "所选用户中无处于封禁状态的账号"
+                        : "批量恢复所选用户的登录与访问权限"
+                    }
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>批量解封</span>
+                  </button>
+                )}
+
+                {canResetSession && batchActionEligible.kick && (
+                  <button
+                    type="button"
+                    disabled={false}
+                    onClick={() => openBatchFlow("kick")}
+                    className="px-3.5 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:bg-slate-200 disabled:text-slate-400 disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                    title={
+                      !hasSelection
+                        ? "请先在列表中勾选要批量强制下线的用户"
+                        : !batchActionEligible.kick
+                        ? "所选用户中无有效（未过期）的登录会话"
+                        : "批量注销所选用户的登录会话"
+                    }
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>批量强制下线</span>
+                  </button>
+                )}
+
+                {isSuperAdmin && batchActionEligible.delete && (
+                  <button
+                    type="button"
+                    disabled={false}
+                    onClick={() => openBatchFlow("delete")}
+                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:border-slate-200 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed shadow-2xs"
+                    title={
+                      !hasSelection
+                        ? "请先在列表中勾选要批量删除的用户"
+                        : !batchActionEligible.delete
+                        ? "平台安全规范：仅支持批量删除已处于封禁(banned)或已注销(deleted)状态的用户"
+                        : "批量删除所选封禁/已注销用户（封禁账号转已注销并脱敏；已注销账号将物理清理）"
+                    }
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>批量删除</span>
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {canBan && batchActionEligible.ban && (
-                <button
-                  onClick={() => openBatchFlow("ban")}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 transition-colors flex items-center gap-2"
-                >
-                  <UserX className="w-4 h-4" />
-                  批量封禁
-                </button>
-              )}
-              {canUnban && batchActionEligible.unban && (
-                <button
-                  onClick={() => openBatchFlow("unban")}
-                  className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-bold hover:bg-emerald-600 transition-colors flex items-center gap-2"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  批量解封
-                </button>
-              )}
-              {canResetSession && batchActionEligible.kick && (
-                <button
-                  onClick={() => openBatchFlow("kick")}
-                  className="px-4 py-2 bg-[#3182ce] text-white rounded-lg text-sm font-bold hover:bg-[#2b6cb0] transition-colors flex items-center gap-2"
-                >
-                  <LogOut className="w-4 h-4" />
-                  批量强制下线
-                </button>
-              )}
-              {isSuperAdmin && batchActionEligible.delete && (
-                <button
-                  onClick={() => openBatchFlow("delete")}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors flex items-center gap-2"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  批量删除
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="relative">
           {loading ? (
@@ -1881,15 +2132,34 @@ export default function AdminUsersPage() {
                         <input
                           type="checkbox"
                           checked={(() => {
+                            if (selectAllMatching) return true;
                             const selectableUsers =
                               userData?.users?.filter(isSelectableUser) || [];
                             return (
                               selectableUsers.length > 0 &&
+                              selectedUsers.size >= 2 &&
                               selectableUsers.every((u) => selectedUsers.has(u.id))
                             );
                           })()}
+                          ref={(el) => {
+                            if (!el) return;
+                            const selectableUsers =
+                              userData?.users?.filter(isSelectableUser) || [];
+                            el.indeterminate =
+                              !selectAllMatching &&
+                              selectedUsers.size >= 2 &&
+                              !selectableUsers.every((u) => selectedUsers.has(u.id));
+                          }}
                           onChange={toggleSelectAll}
-                          className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                          disabled={!userData?.users || userData.users.filter(isSelectableUser).length === 0}
+                          title={
+                            !userData?.users || userData.users.filter(isSelectableUser).length === 0
+                              ? "当前页无符合批量操作条件的用户"
+                              : selectAllMatching
+                                ? "点击取消跨页全选并退出批量操作"
+                                : "点击表头复选框可清空全部选择并退出批量操作"
+                          }
+                          className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         />
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
@@ -1950,12 +2220,28 @@ export default function AdminUsersPage() {
                           }`}
                         >
                           <td className="px-6 py-4 text-center">
-                            {isSelectableUser(user) && (
+                            {isSelectableUser(user) ? (
                               <input
                                 type="checkbox"
                                 checked={selectedUsers.has(user.id)}
                                 onChange={() => toggleSelectUser(user)}
                                 className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                                title={`选择用户: ${user.name || user.email || user.id}`}
+                              />
+                            ) : (
+                              <input
+                                type="checkbox"
+                                disabled
+                                className="w-4 h-4 rounded border-slate-200 bg-slate-100 text-slate-300 cursor-not-allowed opacity-60"
+                                title={
+                                  user.id === currentUserId
+                                    ? "无法选择当前登录账号进行批量操作"
+                                    : isSuperAdminRole(user.role)
+                                    ? "超级管理员受最高安全保护，不可被批量操作"
+                                    : isAdminRole(user.role)
+                                    ? "管理员账号受系统安全保护，不可被批量操作"
+                                    : "当前用户不可被批量操作"
+                                }
                               />
                             )}
                           </td>
@@ -2080,18 +2366,30 @@ export default function AdminUsersPage() {
                               )}
 
                               {(() => {
-                                const isTargetAdmin = user.role === "super_admin" || user.role === "admin";
-                                const hasRowAction = !isTargetAdmin && user.id !== currentUserId && (
-                                  (canResetSession && user.status === "active" && !!user.hasSession) ||
-                                  (canUpdate && (user.status === "active" || user.status === "inactive")) ||
-                                  (canBan && user.status !== "banned") ||
-                                  (canUnban && user.status === "banned") ||
+                                const isTargetAdmin = isSuperAdminRole(user.role) || isAdminRole(user.role);
+                                // 状态门控：注销中(deleting)处于 7 天冷静期，全局锁定，任何变更操作都不开放；
+                                // 已注销(deleted)仅对超级管理员开放“删除数据”操作，其余角色不展示操作入口；
+                                // 其余状态按各自权限判定
+                                const statusGate =
+                                  normStatus(user.status) === "deleting"
+                                    ? false
+                                    : normStatus(user.status) === "deleted"
+                                      ? isSuperAdmin
+                                      : true;
+                                const hasRowAction =
+                                  !isTargetAdmin &&
+                                  user.id !== currentUserId &&
+                                  statusGate && (
+                                  (canResetSession && normStatus(user.status) === "active" && !!user.hasSession) ||
+                                  (canUpdate && (normStatus(user.status) === "active" || normStatus(user.status) === "inactive")) ||
+                                  (canBan && normStatus(user.status) !== "banned") ||
+                                  (canUnban && normStatus(user.status) === "banned") ||
                                   canChangeRole ||
                                   canSecurityReset ||
-                                  hasPermission("announcement:publish") ||
-                                  hasPermission("order:update") ||
-                                  hasPermission("audit:read") ||
-                                  (isSuperAdmin && user.status === "banned")
+                                  hasPermission("announcement:create") ||
+                                  hasPermission("user:update") ||
+                                  hasPermission("audit:login_read") ||
+                                  (isSuperAdmin && (normStatus(user.status) === "banned" || normStatus(user.status) === "deleted"))
                                 );
 
                                 return (
@@ -2234,9 +2532,9 @@ export default function AdminUsersPage() {
                       当前角色
                     </label>
                     <div className="text-sm font-semibold px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
-                      {editingUser.role === "super_admin" ? (
+                      {isSuperAdminRole(editingUser.role) ? (
                         <span className="text-red-600">超级管理员</span>
-                      ) : editingUser.role === "admin" ? (
+                      ) : isAdminRole(editingUser.role) ? (
                         <span className="text-blue-600">管理员</span>
                       ) : (
                         <span className="text-slate-600">普通用户</span>
@@ -2248,12 +2546,12 @@ export default function AdminUsersPage() {
                       当前状态
                     </label>
                     <div className="text-sm font-semibold px-3 py-2 bg-white/60 rounded-lg border border-slate-100 flex items-center gap-2">
-                      {editingUser.status === "active" ? (
+                      {normStatus(editingUser.status) === "active" ? (
                         <>
                           <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
                           <span className="text-emerald-600">活跃</span>
                         </>
-                      ) : editingUser.status === "inactive" ? (
+                      ) : normStatus(editingUser.status) === "inactive" ? (
                         <>
                           <span className="w-2 h-2 bg-slate-400 rounded-full"></span>
                           <span className="text-slate-600 font-bold">已停用</span>
@@ -2302,10 +2600,10 @@ export default function AdminUsersPage() {
                   <span className="w-1.5 h-4 bg-gradient-to-b from-[#64748b] to-[#475569] rounded-full"></span>
                   修改角色权限
                 </h4>
-                {editingUser.role === "super_admin" ? (
+                {isSuperAdminRole(editingUser.role) ? (
                   <div className="text-sm text-slate-500 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
                     <span className="text-lg">⚠️</span>
-                    超级管理员角色不可修改
+                    超级管理员角色受系统底层保护，不可修改
                   </div>
                 ) : (
                   <div>
@@ -2341,7 +2639,7 @@ export default function AdminUsersPage() {
               </button>
               <button
                 onClick={handleUpdateUser}
-                disabled={editingUser.role === "super_admin"}
+                disabled={isSuperAdminRole(editingUser.role)}
                 className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white rounded-xl font-semibold hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 保存修改
@@ -2418,25 +2716,25 @@ export default function AdminUsersPage() {
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
                   <div className="text-[10px] text-slate-400 font-bold mb-0.5">API 密钥数量</div>
                   <div className="text-base font-black text-purple-600">
-                    {(viewingUser as any).stats?.apikeyCount ?? 0} <span className="text-[10px] font-normal text-slate-400">个</span>
+                    {(viewingUser as any).stats?.apikeyCount ?? "—"} <span className="text-[10px] font-normal text-slate-400">个</span>
                   </div>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
                   <div className="text-[10px] text-slate-400 font-bold mb-0.5">部署/使用组件</div>
                   <div className="text-base font-black text-emerald-600">
-                    {(viewingUser as any).stats?.componentCount ?? 0} <span className="text-[10px] font-normal text-slate-400">个</span>
+                    {(viewingUser as any).stats?.componentCount ?? "—"} <span className="text-[10px] font-normal text-slate-400">个</span>
                   </div>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
                   <div className="text-[10px] text-slate-400 font-bold mb-0.5">累计登录次数</div>
                   <div className="text-base font-black text-amber-600">
-                    {(viewingUser as any).stats?.loginHistoryCount ?? 1} <span className="text-[10px] font-normal text-slate-400">次</span>
+                    {(viewingUser as any).stats?.loginHistoryCount ?? "—"} <span className="text-[10px] font-normal text-slate-400">次</span>
                   </div>
                 </div>
               </div>
 
               {/* 如果用户已被封禁，极其清晰高亮地展示封禁详情与管理员判定原因 */}
-              {viewingUser.status === "banned" && (
+              {normStatus(viewingUser.status) === "banned" && (
                 <div className="bg-red-50/90 p-4 rounded-2xl border border-red-200/80 space-y-3 font-sans shadow-sm">
                   <div className="flex items-center justify-between border-b border-red-200/60 pb-2">
                     <div className="flex items-center gap-2 font-black text-red-800 text-xs">
@@ -2835,10 +3133,24 @@ export default function AdminUsersPage() {
                     已选中 <span className="font-bold text-slate-800">{p?.selectedCount ?? 0}</span> 个用户，
                     其中 <span className="font-bold text-amber-600">{p?.skippedCount ?? 0}</span> 个将被跳过，是否继续？
                   </p>
+                  {batchFlow.action === "kick" && (
+                    <div className="mb-3 rounded-xl bg-blue-50/70 border border-blue-100 p-3 text-sm text-slate-600 leading-relaxed">
+                      {(() => {
+                        const list = p?.processable || [];
+                        return (
+                          <>
+                            批量强制下线会对所有<span className="font-bold text-slate-800">存在有效（未过期）会话</span>的用户生效（含空闲超过 10 分钟但会话仍有效的用户）。
+                            将对 <span className="font-bold text-slate-800">{list.length}</span> 个有效会话用户执行强制下线并清除其登录态；
+                            仅「无有效会话（已退出 / 会话已过期 / 已被踢）」的用户会被自动跳过。
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
                   {meta.irreversible && (
                     <p className="text-red-600 text-sm font-medium mb-3 flex items-center gap-1">
                       <AlertTriangle className="w-4 h-4" />
-                      批量删除采用安全软删除：账号不可登录、隐私信息脱敏，企业协作数据保留；企业空间唯一所有者与个人空间所有者将自动跳过（个人空间所有者需在单个删除中移交或归档）。
+                      批量删除：封禁(banned)账号转为已注销并脱敏（企业协作数据保留）；已注销(deleted)账号直接物理清理（账号及残留数据彻底移除）。企业空间唯一所有者将被跳过（需先移交所有权），其余账号按状态安全处理。
                     </p>
                   )}
                   {p && p.skipped.length > 0 && (
@@ -3020,6 +3332,11 @@ export default function AdminUsersPage() {
               <button
                 type="button"
                 onClick={async () => {
+                  if (isSuperAdminRole(banningUser.role)) {
+                    showToast("平台安全规则拦截：不能对超级管理员执行编辑或限制操作", "warning");
+                    setBanningUser(null);
+                    return;
+                  }
                   if (!banReason || !banReason.trim()) {
                     showToast("请选择快捷封禁标签或在下方填写具体的封禁判定原因", "error");
                     return;
@@ -3035,7 +3352,7 @@ export default function AdminUsersPage() {
                     const days = dayMap[banDuration] || 1;
                     bannedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
                   }
-                  await handleChangeStatus(banningUser.id, "banned", bannedUntil, banReason);
+                  await handleChangeStatus(banningUser.id, "banned", bannedUntil, banReason, banningUser.role);
                   setBanningUser(null);
                 }}
                 className="px-5 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl text-xs font-black shadow-md shadow-red-500/20 hover:shadow-lg transition-all cursor-pointer"
@@ -3319,7 +3636,7 @@ export default function AdminUsersPage() {
                           {adjustPointsUser.name || "极客用户"}
                         </span>
                         <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-                          {adjustPointsUser.role === "super_admin" ? "超管" : adjustPointsUser.role === "admin" ? "管理员" : "普通用户"}
+                          {isSuperAdminRole(adjustPointsUser.role) ? "超管" : isAdminRole(adjustPointsUser.role) ? "管理员" : "普通用户"}
                         </span>
                       </div>
                       <div className="text-xs text-slate-400 font-mono truncate mt-0.5">
@@ -3930,6 +4247,11 @@ export default function AdminUsersPage() {
       {showActionMenu && (() => {
         const currentMenuUser = userData?.users?.find((u) => u.id === showActionMenu) || null;
         if (!currentMenuUser || !actionMenuPos) return null;
+        // 已注销（deleted）/ 注销中（deleting）为终态锁定账号：注销中处于 7 天冷静期且被全局接口拦截，
+        // 已注销为最终注销完成且已匿名化，二者均不允许任何变更类运营操作
+        const isLocked =
+          normStatus(currentMenuUser.status) === "deleted" ||
+          normStatus(currentMenuUser.status) === "deleting";
         return createPortal(
           <div
             ref={actionMenuRef}
@@ -3937,11 +4259,19 @@ export default function AdminUsersPage() {
             style={{ top: actionMenuPos.top, left: actionMenuPos.left }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* 超级管理员受保护提示 */}
+            {isSuperAdminRole(currentMenuUser.role) && (
+              <div className="px-4 py-2.5 text-xs text-slate-500 flex items-center gap-2 select-none">
+                <Shield className="w-4 h-4 text-red-500 shrink-0" />
+                <span className="font-bold text-slate-700">系统受保护账号（不可限制）</span>
+              </div>
+            )}
+
             {/* 强制下线 - 受控于 canResetSession：对存在有效会话的活跃用户显示，不能操作超级管理员和自己 */}
             {canResetSession &&
-              currentMenuUser.status === "active" &&
+              normStatus(currentMenuUser.status) === "active" &&
               !!currentMenuUser.hasSession &&
-              currentMenuUser.role !== "super_admin" &&
+              !isSuperAdminRole(currentMenuUser.role) &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={(e) => {
@@ -3959,9 +4289,9 @@ export default function AdminUsersPage() {
 
             {/* 禁用登录 - 受控于 canUpdate：对离线的活跃用户显示，不能操作超级管理员和自己 */}
             {canUpdate &&
-              currentMenuUser.status === "active" &&
+              normStatus(currentMenuUser.status) === "active" &&
               !currentMenuUser.hasSession &&
-              currentMenuUser.role !== "super_admin" &&
+              !isSuperAdminRole(currentMenuUser.role) &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={(e) => {
@@ -3979,8 +4309,8 @@ export default function AdminUsersPage() {
 
             {/* 解禁登录 - 受控于 canUpdate：已停用用户恢复登录，不能操作超级管理员和自己 */}
             {canUpdate &&
-              currentMenuUser.status === "inactive" &&
-              currentMenuUser.role !== "super_admin" &&
+              normStatus(currentMenuUser.status) === "inactive" &&
+              !isSuperAdminRole(currentMenuUser.role) &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={(e) => {
@@ -3998,8 +4328,9 @@ export default function AdminUsersPage() {
 
             {/* 封禁用户 - 受控于 canBan：对非封禁用户显示，不能操作超级管理员和自己 */}
             {canBan &&
-              currentMenuUser.status !== "banned" &&
-              currentMenuUser.role !== "super_admin" &&
+              (normStatus(currentMenuUser.status) === "active" ||
+                normStatus(currentMenuUser.status) === "inactive") &&
+              !isSuperAdminRole(currentMenuUser.role) &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={() => {
@@ -4017,12 +4348,12 @@ export default function AdminUsersPage() {
 
             {/* 解封用户 - 受控于 canUnban：对已封禁用户显示，不能操作超级管理员和自己 */}
             {canUnban &&
-              currentMenuUser.status === "banned" &&
-              currentMenuUser.role !== "super_admin" &&
+              normStatus(currentMenuUser.status) === "banned" &&
+              !isSuperAdminRole(currentMenuUser.role) &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={() => {
-                    handleChangeStatus(currentMenuUser.id, "active");
+                    handleChangeStatus(currentMenuUser.id, "active", undefined, undefined, currentMenuUser.role);
                     setShowActionMenu(null);
                     setActionMenuPos(null);
                   }}
@@ -4035,8 +4366,9 @@ export default function AdminUsersPage() {
 
             {/* 修改角色身份 - 受控于 canChangeRole：不能操作超级管理员和自己 */}
             {canChangeRole &&
-              currentMenuUser.role !== "super_admin" &&
-              currentMenuUser.id !== currentUserId && (
+              !isSuperAdminRole(currentMenuUser.role) &&
+              currentMenuUser.id !== currentUserId &&
+              !isLocked && (
                 <button
                   onClick={() => {
                     handleEdit(currentMenuUser);
@@ -4051,12 +4383,13 @@ export default function AdminUsersPage() {
               )}
 
             {/* 单用户高级运营操作分区（重置密码 / 发送通知 / 调整算力 / 查看登录历史） */}
-            {currentMenuUser.role !== "super_admin" &&
+            {!isLocked &&
+              !isSuperAdminRole(currentMenuUser.role) &&
               currentMenuUser.id !== currentUserId &&
               (canSecurityReset ||
-                hasPermission("announcement:publish") ||
-                hasPermission("order:update") ||
-                hasPermission("audit:read") ||
+                hasPermission("announcement:create") ||
+                hasPermission("user:update") ||
+                hasPermission("audit:login_read") ||
                 isSuperAdmin) && (
                 <>
                   <div className="my-1 border-t border-slate-100" />
@@ -4076,8 +4409,8 @@ export default function AdminUsersPage() {
                     </button>
                   )}
 
-                  {/* 发送通知 - 受控于 announcement:publish 或超管 */}
-                  {(hasPermission("announcement:publish") || isSuperAdmin) && (
+                  {/* 发送通知 - 受控于 announcement:create 或超管 */}
+                  {(hasPermission("announcement:create") || isSuperAdmin) && (
                     <button
                       onClick={() => {
                         handleSendNotify(currentMenuUser);
@@ -4091,8 +4424,8 @@ export default function AdminUsersPage() {
                     </button>
                   )}
 
-                  {/* 调整算力点 - 受控于 order:update 或超管 */}
-                  {(hasPermission("order:update") || isSuperAdmin) && (
+                  {/* 调整算力点 - 受控于 user:update 或超管 */}
+                  {(hasPermission("user:update") || isSuperAdmin) && (
                     <button
                       onClick={() => {
                         handleAdjustPoints(currentMenuUser);
@@ -4106,8 +4439,8 @@ export default function AdminUsersPage() {
                     </button>
                   )}
 
-                  {/* 查看登录历史 - 受控于 audit:read 或超管 */}
-                  {(hasPermission("audit:read") || isSuperAdmin) && (
+                  {/* 查看登录历史 - 受控于 audit:login_read 或超管 */}
+                  {(hasPermission("audit:login_read") || isSuperAdmin) && (
                     <button
                       onClick={() => {
                         handleViewLoginHistory(currentMenuUser);
@@ -4123,10 +4456,12 @@ export default function AdminUsersPage() {
                 </>
               )}
 
-            {/* 删除用户 - 受控于 isSuperAdmin：只对已封禁(banned)用户显示，不能删除超级管理员和自己 */}
+            {/* 删除用户 - 受控于 isSuperAdmin：对已封禁(banned)或已注销(deleted)用户显示，
+                不能删除超级管理员和自己；注销中(deleting)处于冷静期，不开放删除 */}
             {isSuperAdmin &&
-              currentMenuUser.status === "banned" &&
-              currentMenuUser.role !== "super_admin" &&
+              (normStatus(currentMenuUser.status) === "banned" ||
+                normStatus(currentMenuUser.status) === "deleted") &&
+              !isSuperAdminRole(currentMenuUser.role) &&
               currentMenuUser.id !== currentUserId && (
                 <>
                   <div className="my-1 border-t border-slate-100" />
@@ -4261,7 +4596,9 @@ export default function AdminUsersPage() {
                   {/* 情况 REGULAR */}
                   {deletePreview.case === "REGULAR" && (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                      该用户无个人空间所有权、也非企业空间成员，将执行软删除（账号不可登录，隐私信息脱敏）。
+                      {deletePreview.status === "deleted"
+                        ? "该用户无个人空间所有权、也非企业空间成员，将执行物理清理（彻底删除账号及残留数据，不可恢复）。"
+                        : "该用户无个人空间所有权、也非企业空间成员，将执行软删除（账号不可登录，隐私信息脱敏，账号转为已注销）。"}
                     </div>
                   )}
 

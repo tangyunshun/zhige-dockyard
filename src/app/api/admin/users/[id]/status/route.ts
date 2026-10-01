@@ -28,7 +28,7 @@ export async function PATCH(
     }
 
     // 1. 验证管理员权限
-    const authResult = await requirePlatformPermission(request, "user:update");
+    const authResult = await requirePlatformPermission(request, "user:update", "user:status_update");
     if (!authResult.authorized) {
       return NextResponse.json(
         { error: authResult.errorResponse || "权限不足" },

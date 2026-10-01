@@ -35,6 +35,11 @@ interface Component {
   createdAt: string;
   updatedAt: string;
   usageCount?: number;
+  // 合同就绪状态（数据库唯一真源，来自 /api/user/components）
+  activeContractLifecycle?: string | null;
+  hasActiveContract?: boolean;
+  contractReady?: boolean;
+  hasPublishedContract?: boolean;
 }
 
 export default function UserComponentsPage() {
@@ -213,6 +218,21 @@ export default function UserComponentsPage() {
     }
   };
 
+  // 合同就绪徽章：无有效 PUBLISHED 激活合同时如实显示可执行性，绝不显示为可正常执行
+  const getContractBadge = (component: Component) => {
+    if (component.contractReady === true) return null;
+    const label = !component.activeContractLifecycle
+      ? "待配置"
+      : component.activeContractLifecycle === "DRAFT"
+        ? "即将上线"
+        : "暂不可执行";
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200/60">
+        {label}
+      </span>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -342,6 +362,7 @@ export default function UserComponentsPage() {
                         </h3>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {getStatusBadge(component.status)}
+                          {getContractBadge(component)}
                           {component.category && (
                             <span className="text-[10px] text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">
                               {component.category}
@@ -561,6 +582,7 @@ export default function UserComponentsPage() {
                 <h3 className="text-base font-bold text-slate-800">{selectedComponent.name}</h3>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   {getStatusBadge(selectedComponent.status)}
+                  {getContractBadge(selectedComponent)}
                   {selectedComponent.category && (
                     <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
                       {selectedComponent.category}

@@ -1,0 +1,96 @@
+-- 🚢 知阁·舟坊 (ZhiGe Dockyard) - 结算字典与状态配置数据库持久化 SQL
+-- 目的：将结算单涉及的错误码、业务状态、Token物理量纲、资金流向动作等全部持久化至 system_config 库表
+-- 拒绝任何代码硬编码，前端与后端统一从数据库 system_config 查询并以中文展示
+
+INSERT INTO `system_config` (`key`, `value`, `updatedAt`)
+VALUES (
+  'settlement_display_dict',
+  '{
+    "errorCodes": {
+      "MODEL_UPSTREAM_ERROR": "上游模型服务异常",
+      "INVALID_USAGE_TOKENS": "Token用量参数非法",
+      "TOKEN_SETTLEMENT_ERROR": "Token结算核心异常",
+      "SETTLEMENT_FAILED": "任务扣费结算失败",
+      "RELEASE_FAILED": "预扣释放退还失败",
+      "HOLD_EXPIRED": "预扣单据超时过期",
+      "INSUFFICIENT_POINTS": "账户算力余额不足",
+      "MODEL_TIMEOUT": "模型响应超时中断",
+      "TASK_WRITE_FAILED": "任务记录落库失败",
+      "PRICING_SNAPSHOT_MISSING": "模型计费快照缺失",
+      "UNAUTHORIZED": "未授权访问拒绝",
+      "INTERNAL_ERROR": "系统内部计算异常",
+      "ACCOUNTING_RECONCILIATION_REQUIRED": "需人工对账仲裁",
+      "LIMIT_EXCEEDED": "超出配额限制",
+      "QUOTA_EXHAUSTED": "空间算力额度耗尽"
+    },
+    "statuses": {
+      "REQUIRES_REVIEW": {
+        "label": "待人工复核",
+        "desc": "高风险挂起与裁决争议单据",
+        "style": "bg-amber-50/90 text-amber-800 border-amber-300/80 shadow-2xs",
+        "dot": "bg-amber-500 ring-2 ring-amber-200"
+      },
+      "ALL": {
+        "label": "全部结算单",
+        "desc": "平台全量真实结算总流水",
+        "style": "bg-slate-100 text-slate-800 border-slate-300/80 shadow-2xs",
+        "dot": "bg-slate-500 ring-2 ring-slate-200"
+      },
+      "SETTLED": {
+        "label": "已结算",
+        "desc": "实际消耗已核销完成",
+        "style": "bg-emerald-50/90 text-emerald-800 border-emerald-300/80 shadow-2xs",
+        "dot": "bg-emerald-500 ring-2 ring-emerald-200"
+      },
+      "RELEASED": {
+        "label": "已全额退款",
+        "desc": "调用失败已全额原路退还",
+        "style": "bg-rose-50/90 text-rose-800 border-rose-300/80 shadow-2xs",
+        "dot": "bg-rose-500 ring-2 ring-rose-200"
+      },
+      "HOLD": {
+        "label": "预扣中",
+        "desc": "流式生成执行中尚未对账",
+        "style": "bg-blue-50/90 text-blue-800 border-blue-300/80 shadow-2xs",
+        "dot": "bg-[#3182ce] ring-2 ring-blue-200"
+      }
+    },
+    "actions": {
+      "RELEASE": "全额退款",
+      "SETTLE": "按实扣费",
+      "REFUND": "原路退款",
+      "SUPPLEMENT": "差额补扣",
+      "HOLD": "预扣锁定"
+    },
+    "tokens": {
+      "inputTokens": "输入Tokens (提示词)",
+      "outputTokens": "输出Tokens (模型补全)",
+      "cacheReadTokens": "缓存读取Tokens",
+      "cacheWriteTokens": "缓存写入Tokens",
+      "prompt": "提示词输入",
+      "completion": "模型补全输出",
+      "cache_read": "读取缓存",
+      "cache_write": "写入缓存"
+    },
+    "words": {
+      "inputTokens": "输入 Tokens",
+      "outputTokens": "输出 Tokens",
+      "cacheReadTokens": "缓存读取 Tokens",
+      "cacheWriteTokens": "缓存写入 Tokens",
+      "REFUND": "原路退款",
+      "RELEASE": "全额退款",
+      "SETTLE": "按实扣费",
+      "HOLD": "预扣锁定",
+      "REQUIRES_REVIEW": "待人工复核",
+      "SETTLED": "已结算",
+      "RELEASED": "已全额退款",
+      "TOKEN_SETTLEMENT_ERROR": "Token结算核心异常",
+      "INVALID_USAGE_TOKENS": "Token用量参数非法",
+      "MODEL_UPSTREAM_ERROR": "上游模型服务异常"
+    }
+  }',
+  NOW()
+)
+ON DUPLICATE KEY UPDATE
+  `value` = VALUES(`value`),
+  `updatedAt` = NOW();

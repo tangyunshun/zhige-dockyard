@@ -5,15 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   LogOut,
   Shield,
-  Settings,
   User,
   Lock,
-  CreditCard,
-  Code,
   HelpCircle,
   Sliders,
-  History,
-  Star
+  History
 } from "lucide-react";
 import { useAppContext } from "@/contexts/AppContext";
 import { useLogout } from "@/hooks/useLogout";
@@ -33,7 +29,7 @@ export default function AvatarDropdown({
   onUpgradeClick,
 }: AvatarDropdownProps) {
   const router = useRouter();
-  const { userState, setUserState } = useAppContext();
+  const { userState, setUserState, refreshUserState } = useAppContext();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { logout: handleLogout, confirmDialog } = useLogout();
@@ -52,11 +48,46 @@ export default function AvatarDropdown({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // 监听全站个人资料变更广播，实现无刷新即时响应
+  useEffect(() => {
+    const handleProfileUpdate = (e: any) => {
+      const detail = e.detail;
+      if (detail && setUserState) {
+        setUserState((prev) => ({
+          ...prev,
+          userInfo: prev.userInfo
+            ? {
+                ...prev.userInfo,
+                ...(detail.name ? { name: detail.name } : {}),
+                ...(detail.email !== undefined ? { email: detail.email } : {}),
+                ...(detail.avatar ? { avatar: detail.avatar } : {}),
+              }
+            : null,
+        }));
+      }
+    };
+    window.addEventListener("zhige_user_profile_updated", handleProfileUpdate);
+    return () => window.removeEventListener("zhige_user_profile_updated", handleProfileUpdate);
+  }, [setUserState]);
+
   if (!userState.isLoggedIn || !userState.userInfo) {
     return null;
   }
 
   const { userInfo } = userState;
+
+  // 优先取状态机中的邮箱，若尚未灌入则取本地持久化缓存兜底，确保已绑定邮箱 100% 准确呈现
+  const displayEmail =
+    userInfo.email ||
+    (typeof window !== "undefined" ? localStorage.getItem("userEmail") : "") ||
+    "";
+
+  // 若用户处于登录态但内存中尚未获取到邮箱，触发一次后台静默补齐
+  useEffect(() => {
+    if (userState.isLoggedIn && userInfo && !userInfo.email && refreshUserState) {
+      refreshUserState().catch(() => {});
+    }
+  }, [userState.isLoggedIn, userInfo?.email, refreshUserState]);
 
   // === 权限与多管理身份判定逻辑 (全栈互斥算法) ===
   const isSuperAdmin = !!(
@@ -159,7 +190,7 @@ export default function AvatarDropdown({
             {userInfo.name || "用户"}
           </span>
           <span className="text-xs text-slate-400 font-semibold mt-0.5">
-            {userInfo.email || "未绑定邮箱"}
+            {displayEmail || "未绑定邮箱"}
           </span>
         </span>
         <svg
@@ -268,20 +299,6 @@ export default function AvatarDropdown({
               <Lock className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">账号安全</span>
             </button>
-            <button
-              onClick={() => { router.push("/user/billing-center"); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
-            >
-              <CreditCard className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
-              <span className="group-hover:translate-x-0.5 transition-transform">套餐与计费</span>
-            </button>
-            <button
-              onClick={() => { router.push("/user/developer"); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-[#3182ce] transition-all cursor-pointer"
-            >
-              <Code className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
-              <span className="group-hover:translate-x-0.5 transition-transform">开发者设置</span>
-            </button>
           </div>
 
           <div className="h-px bg-slate-100/80 my-1" />
@@ -294,13 +311,6 @@ export default function AvatarDropdown({
             >
               <HelpCircle className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
               <span className="group-hover:translate-x-0.5 transition-transform">帮助与反馈</span>
-            </button>
-            <button
-              onClick={() => { router.push("/user/reviews"); setShowDropdown(false); }}
-              className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"
-            >
-              <Star className="w-4 h-4 text-slate-400 group-hover:text-[#3182ce] group-hover:scale-105 transition-all" />
-              <span className="group-hover:translate-x-0.5 transition-transform">评价系统</span>
             </button>
             <button
               onClick={() => { router.push("/releases"); setShowDropdown(false); }}

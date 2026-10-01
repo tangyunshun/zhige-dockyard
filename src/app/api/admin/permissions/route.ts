@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   requirePlatformPermission,
+  requirePermissionGrantAuthority,
   getAdminPermissions,
   saveAdminPermissions,
   getAdminStatusMap,
@@ -22,6 +23,11 @@ import {
   autoGrantNewFeatureRulesToAdmins,
   PlatformFeatureModuleItem,
 } from "@/lib/permission-rules-engine";
+import {
+  buildDraftRulesForModule,
+  getApiPermissionRules,
+  saveApiPermissionRules,
+} from "@/lib/api-permission-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -459,6 +465,56 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
     ],
   },
   {
+    group: "用户评价模块 (USER_REVIEWS)",
+    moduleRoute: "/admin/testimonials",
+    description:
+      "用户评价模块支持星级评分、标签与文字反馈，经审核后展示，助力产品持续优化与体验提升，形成高效反馈闭环。",
+    keys: [
+      {
+        key: "user_reviews:read",
+        label: "用户评价 - 查阅列表与详情",
+        desc: "查看用户评价相关信息、列表与基础详情（只读访问）",
+        moduleName: "用户评价",
+        level: "read",
+      },
+      {
+        key: "user_reviews:update",
+        label: "用户评价 - 编辑与修改",
+        desc: "调整或更新用户评价的核心数据、状态及业务配置",
+        moduleName: "用户评价",
+        level: "sensitive",
+      },
+      {
+        key: "user_reviews:delete",
+        label: "用户评价 - 废弃与删除",
+        desc: "从系统中彻底移除或废弃用户评价相关数据条目（高危操作）",
+        moduleName: "用户评价",
+        level: "high",
+      },
+      {
+        key: "user_reviews:status_update",
+        label: "用户评价 - 启停与状态流转",
+        desc: "切换用户评价的启用/禁用状态或推进业务审核流转",
+        moduleName: "用户评价",
+        level: "sensitive",
+      },
+      {
+        key: "user_reviews:audit",
+        label: "用户评价 - 审核与决策裁决",
+        desc: "审查用户评价相关的申报材料并执行通过或驳回",
+        moduleName: "用户评价",
+        level: "sensitive",
+      },
+      {
+        key: "user_reviews:manage",
+        label: "用户评价 - 高级综合管控",
+        desc: "执行用户评价全域核心参数与安全策略的深度管理",
+        moduleName: "用户评价",
+        level: "high",
+      },
+    ],
+  },
+  {
     group: "文档管理模块 (Documents)",
     moduleRoute: "/admin/documents",
     description: "平台使用指南、开发者接口手册、知识库与技术文档维护",
@@ -641,29 +697,29 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
     ],
   },
   {
-    group: "AI 算力与模型定价模块 (AI Pricing)",
-    moduleRoute: "/admin/ai-pricing",
-    description: "全网算力消耗比率核定、Token计费单价微调与服务通道启停",
+    group: "模型注册表与定价模块 (Model Registry)",
+    moduleRoute: "/admin/models",
+    description: "供应商与模型部署注册、空间模型策略与 modelpricing 价格配置（价格唯一真源）",
     keys: [
       {
         key: "ai_pricing:read",
-        label: "查看模型算力单价列表",
-        desc: "查看全网已接入的算力倍率、输入输出单价与实时状态",
-        moduleName: "AI 算力与定价",
+        label: "查看模型注册表与价格",
+        desc: "查看供应商、模型部署、空间模型策略与 modelpricing 已配置的成本/售价与状态",
+        moduleName: "模型注册表与定价",
         level: "read",
       },
       {
         key: "ai_pricing:update",
-        label: "调整模型算力单价与折扣",
-        desc: "修改各AI引擎的消耗点数、并发限制与不同会员等级专享折扣",
-        moduleName: "AI 算力与定价",
+        label: "调整模型价格与加价规则",
+        desc: "维护 modelpricing 的供应商成本、用户售价与加价率（DIRECT_PRICE / COST_PLUS_MARKUP）",
+        moduleName: "模型注册表与定价",
         level: "sensitive",
       },
       {
         key: "ai_pricing:toggle",
-        label: "启停特定模型服务通道",
-        desc: "控制特定底层算力通道对工作空间前台的开放或维护状态",
-        moduleName: "AI 算力与定价",
+        label: "启停模型部署服务通道",
+        desc: "通过 modeldeployment.enabled 控制特定模型对工作空间前台的开放或维护状态",
+        moduleName: "模型注册表与定价",
         level: "high",
       },
     ],
@@ -926,16 +982,17 @@ async function purgeInvalidPermissionsFromAdmins(invalidKeys: Set<string>): Prom
 // GET: 统一从数据库获取系统权限目录、管理员列表及权限包 (仅 SuperAdmin 可用)
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "system:settings");
+    // 权限授予策略（业务逻辑集中管控）：仅超管可查看/配置管理员权限；
+    // permission:manage / admin:permission_grant 等权限点默认**不得穿透**（见 PERMISSION_GRANT_POLICY）
+    const authResult = await requirePermissionGrantAuthority(
+      request,
+      "permission:read",
+      "admin:read",
+      "permission:manage",
+      "admin:permission_grant"
+    );
     if (!authResult.authorized) {
       return authResult.errorResponse!;
-    }
-    const adminRole = authResult.user!.role;
-    if (getCleanRole(adminRole) !== "SUPER_ADMIN") {
-      return NextResponse.json(
-        { error: "越权警告：只有超级管理员允许配置管理员权限" },
-        { status: 403 }
-      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -1026,18 +1083,19 @@ export async function GET(request: NextRequest) {
 // POST: 保存管理员权限，或在数据库中恢复全量官方标准权限
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "system:settings");
+    // 权限授予策略（业务逻辑集中管控）：仅超管可授予/回收权限、维护权限目录
+    const authResult = await requirePermissionGrantAuthority(
+      request,
+      "permission:manage",
+      "admin:permission_grant",
+      "admin:create",
+      "admin:update",
+      "admin:revoke"
+    );
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
     const operatorId = authResult.user!.id;
-    const adminRole = authResult.user!.role;
-    if (getCleanRole(adminRole) !== "SUPER_ADMIN") {
-      return NextResponse.json(
-        { error: "越权警告：只有超级管理员允许配置管理员权限" },
-        { status: 403 }
-      );
-    }
 
     const body = await request.json();
     const { action, targetUserId, permissions, nextStatus } = body;
@@ -1147,6 +1205,25 @@ export async function POST(request: NextRequest) {
         rules
       );
 
+      // 4.5 为新模块自动生成「接口权限规则」草稿（默认 enabled=false，需管理员确认后启用）
+      //     这是"前端注册模块 → 接口鉴权自动生效"的数据基础：规则数据层见 lib/api-permission-rules.ts
+      const draftRules = buildDraftRulesForModule({
+        name: cleanName,
+        route: cleanRoute,
+        resourceKey: cleanResourceKey,
+        supportedActions,
+      });
+      let draftRuleCount = 0;
+      if (draftRules.length > 0) {
+        const existingRules = await getApiPermissionRules(true);
+        const existingRuleIds = new Set(existingRules.map((r) => r.id));
+        const newRules = draftRules.filter((r) => !existingRuleIds.has(r.id));
+        if (newRules.length > 0) {
+          const saved = await saveApiPermissionRules([...existingRules, ...newRules]);
+          if (saved) draftRuleCount = newRules.length;
+        }
+      }
+
       // 5. 记录高危审计日志
       await writeAuditLog(
         operatorId,
@@ -1158,6 +1235,7 @@ export async function POST(request: NextRequest) {
           resourceKey: cleanResourceKey,
           generatedKeysCount: derivedKeys.length,
           grantedAdminCount,
+          draftRuleCount,
         },
         null,
         null,
@@ -1166,7 +1244,11 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `新功能【${cleanName}】已成功在数据库中注册，规则引擎全自动生成 ${derivedKeys.length} 项标准权限并入库，已为 ${grantedAdminCount} 位管理员自动同步默认权限规则！`,
+        message: `新功能【${cleanName}】已成功注册：自动生成 ${derivedKeys.length} 项权限并入库，已为 ${grantedAdminCount} 位管理员同步默认权限${
+          draftRuleCount > 0
+            ? `；另生成 ${draftRuleCount} 条「接口权限规则」草稿（默认未启用，请在「接口权限规则」页确认后启用）`
+            : ""
+        }！`,
         catalog: updatedCatalog,
         modules: updatedModules,
         generatedKeys: derivedKeys,
@@ -1722,18 +1804,16 @@ export async function POST(request: NextRequest) {
 // DELETE: 直接在数据库中删除某个权限项或批量删除权限项 (仅 SuperAdmin 可用)
 export async function DELETE(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "system:settings");
+    // 权限授予策略（业务逻辑集中管控）：仅超管可删除权限项
+    const authResult = await requirePermissionGrantAuthority(
+      request,
+      "permission:manage",
+      "admin:delete"
+    );
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
     const operatorId = authResult.user!.id;
-    const adminRole = authResult.user!.role;
-    if (getCleanRole(adminRole) !== "SUPER_ADMIN") {
-      return NextResponse.json(
-        { error: "越权警告：只有超级管理员允许删除权限项" },
-        { status: 403 }
-      );
-    }
 
     const { searchParams } = new URL(request.url);
     const singleKey = searchParams.get("key");

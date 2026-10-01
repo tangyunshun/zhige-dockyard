@@ -13,12 +13,75 @@ import { SignJWT } from 'jose';
 const WECHAT_APP_ID = process.env.WECHAT_APP_ID || '';
 const WECHAT_APP_SECRET = process.env.WECHAT_APP_SECRET || '';
 const WECHAT_REDIRECT_URI = process.env.WECHAT_REDIRECT_URI || 'http://localhost:3000/api/auth/wechat/callback';
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-change-in-production'
-);
+import { getJwtSecretKey } from '@/lib/jwt-config';
 
 // 检测是否处于测试模式
 const IS_TEST_MODE = !WECHAT_APP_ID || WECHAT_APP_ID === 'wx1234567890' || !WECHAT_APP_SECRET;
+
+// 统一写入第三方登录审计（action=auth:login），按来源区分 loginMethod，严禁写入会话令牌
+async function writeOAuthLoginAudit(
+  request: NextRequest,
+  userId: string,
+  isNewUser: boolean,
+  providerName: string,
+) {
+  try {
+    const clientIP =
+      request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+      request.headers.get('x-real-ip') ||
+      '127.0.0.1';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    let deviceType: 'web' | 'mobile' | 'tablet' = 'web';
+    let browser = 'unknown';
+    let os = 'unknown';
+    if (userAgent.includes('Mobile')) deviceType = 'mobile';
+    else if (userAgent.includes('Tablet')) deviceType = 'tablet';
+    if (userAgent.includes('Chrome')) browser = 'Chrome';
+    else if (userAgent.includes('Safari')) browser = 'Safari';
+    else if (userAgent.includes('Firefox')) browser = 'Firefox';
+    else if (userAgent.includes('Edge')) browser = 'Edge';
+    if (userAgent.includes('Windows')) os = 'Windows';
+    else if (userAgent.includes('Mac')) os = 'Mac';
+    else if (userAgent.includes('Linux')) os = 'Linux';
+    else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) os = 'iOS';
+    else if (userAgent.includes('Android')) os = 'Android';
+    const deviceName = `${browser} on ${os}`;
+
+    await prisma.operationlog.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId,
+        action: 'auth:login',
+        resource: 'auth/session',
+        ipAddress: clientIP,
+        details: {
+          message: `${providerName}第三方联合${isNewUser ? '注册并' : ''}登录成功`,
+          loginMethod: isNewUser ? 'oauth_register' : 'oauth',
+          provider: providerName,
+          ipAddress: clientIP,
+          deviceName,
+          deviceType,
+          browser,
+          os,
+        },
+      },
+    });
+
+    // 记录登录历史（与密码登录同一数据源，供后台“登录安全历史”统一展示）
+    await prisma.loginhistory.create({
+      data: {
+        id: `lh_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        userId,
+        loginAt: new Date(),
+        ipAddress: clientIP,
+        userAgent,
+        device: deviceName,
+      },
+    });
+  } catch (e) {
+    console.warn('[登录审计] 写入 auth:login 失败（非致命）:', e);
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -183,10 +246,11 @@ export async function GET(request: NextRequest) {
           },
         });
 
+        // 登录审计（第三方来源：微信，严禁写入会话令牌）
+        await writeOAuthLoginAudit(request, user.id, isNewUser, '微信');
         console.log(
           `[微信 Callback] 用户 ${user.id} 登录成功`,
           new Date().toISOString(),
-          `sessionToken: ${sessionToken}`,
         );
 
         // 生成 JWT Token
@@ -197,7 +261,7 @@ export async function GET(request: NextRequest) {
         })
           .setProtectedHeader({ alg: 'HS256' })
           .setExpirationTime('24h')
-          .sign(JWT_SECRET);
+          .sign(getJwtSecretKey());
 
         // 准备用户数据
         const userData = {

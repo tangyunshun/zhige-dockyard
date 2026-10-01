@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
 import {
   User,
@@ -21,9 +21,57 @@ import {
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
+import { getEmailSuggestions } from "@/lib/validators";
+import { useAppContext } from "@/contexts/AppContext";
+
+/**
+ * 严格且优雅的邮箱规范验证函数
+ */
+export function validateEmailFormat(email: string): { valid: boolean; error?: string } {
+  const trimmed = email.trim();
+  if (!trimmed) {
+    return { valid: false, error: "登录邮箱不能为空" };
+  }
+  if (trimmed.length > 100) {
+    return { valid: false, error: "邮箱地址长度不能超过 100 个字符" };
+  }
+  if (/[\u4e00-\u9fa5]/.test(trimmed)) {
+    return { valid: false, error: "邮箱地址不能包含中文字符" };
+  }
+  const atIndex = trimmed.indexOf("@");
+  if (atIndex === -1) {
+    return { valid: false, error: "邮箱缺少 '@' 符号，如 name@example.com" };
+  }
+  if (trimmed.indexOf("@", atIndex + 1) !== -1) {
+    return { valid: false, error: "邮箱地址只能包含一个 '@' 符号" };
+  }
+  const [prefix, domain] = trimmed.split("@");
+  if (!prefix) {
+    return { valid: false, error: "请输入邮箱用户名前缀（'@' 前的部分）" };
+  }
+  if (!/^[a-zA-Z0-9_\.\-\+]+$/.test(prefix)) {
+    return { valid: false, error: "邮箱前缀仅支持英文字母、数字及点号(.)、下划线(_)、减号(-)等常规字符" };
+  }
+  if (!domain) {
+    return { valid: false, error: "请输入邮箱域名后缀（如 qq.com 或 163.com）" };
+  }
+  if (!domain.includes(".")) {
+    return { valid: false, error: "邮箱域名缺少顶级后缀，如 .com 或 .cn" };
+  }
+  const domainParts = domain.split(".");
+  if (domainParts.some((part) => !part || !/^[a-zA-Z0-9\-]+$/.test(part))) {
+    return { valid: false, error: "邮箱域名格式不规范" };
+  }
+  const tld = domainParts[domainParts.length - 1];
+  if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) {
+    return { valid: false, error: "邮箱顶级域名不合法（如 .com, .cn 等）" };
+  }
+  return { valid: true };
+}
 
 export default function UserProfilePage() {
   const toast = useToast();
+  const { setUserState, refreshUserState } = useAppContext();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
@@ -41,12 +89,14 @@ export default function UserProfilePage() {
   const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number | null>(null);
   const [cancelDeletionLoading, setCancelDeletionLoading] = useState(false);
   const [originalPhone, setOriginalPhone] = useState("");
+  const [originalEmail, setOriginalEmail] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [sendingCode, setSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [smsMessage, setSmsMessage] = useState<string | null>(null);
   const [smsDebugCode, setSmsDebugCode] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -59,6 +109,35 @@ export default function UserProfilePage() {
   });
 
   const isPhoneChanged = (formData.phone || "").trim() !== (originalPhone || "").trim();
+  const isEmailChanged = (formData.email || "").trim() !== (originalEmail || "").trim();
+
+  // 邮箱自动补全交互状态（严格与登录页、注册页保持统一）
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
+  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
+
+  // 邮箱输入处理（与登录/注册页 100% 保持一致：只有用户输入 @ 符号后才触发自动补全）
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData((prev) => ({ ...prev, email: value }));
+    if (emailError) setEmailError(null);
+
+    if (value.includes("@")) {
+      const suggestions = getEmailSuggestions(value);
+      setEmailSuggestions(suggestions);
+      setShowEmailSuggestions(suggestions.length > 0);
+    } else {
+      setEmailSuggestions([]);
+      setShowEmailSuggestions(false);
+    }
+  };
+
+  // 选择邮箱建议（与登录/注册页统一）
+  const handleEmailSuggestionClick = (suggestion: string) => {
+    setFormData((prev) => ({ ...prev, email: suggestion }));
+    setEmailSuggestions([]);
+    setShowEmailSuggestions(false);
+    setEmailError(null);
+  };
 
   useEffect(() => {
     if (countdown <= 0) {
@@ -102,13 +181,31 @@ export default function UserProfilePage() {
         const data = await res.json();
         setUserInfo(data.data);
         const serverPhone = data.data.phone || "";
+        const serverEmail = data.data.email || "";
         setOriginalPhone(serverPhone);
+        setOriginalEmail(serverEmail);
+
+        // 同步更新全局 AppContext 与本地缓存，确保页面右上角头像处即刻感知准确邮箱
+        if (serverEmail) localStorage.setItem("userEmail", serverEmail);
+        if (data.data.name) localStorage.setItem("userName", data.data.name);
+        setUserState((prev) => ({
+          ...prev,
+          userInfo: prev.userInfo
+            ? {
+                ...prev.userInfo,
+                name: data.data.name || prev.userInfo.name,
+                email: serverEmail || prev.userInfo.email,
+                avatar: data.data.avatar || prev.userInfo.avatar,
+                phone: serverPhone || prev.userInfo.phone,
+              }
+            : null,
+        }));
         setDeletionCooldownDays(data.deletionCooldownDays || 7);
         setDeletionPending(!!data?.user?.isPendingDeletion);
         setDeletionDaysRemaining(data?.user?.daysRemaining ?? null);
         setFormData({
           name: data.data.name || "",
-          email: data.data.email || "",
+          email: serverEmail,
           phone: serverPhone,
           avatar: data.data.avatar || "",
           bio: data.data.bio || "",
@@ -326,9 +423,20 @@ export default function UserProfilePage() {
       }
     }
 
+    const currentEmailTrimmed = (formData.email || "").trim();
+    if (currentEmailTrimmed) {
+      const emailCheck = validateEmailFormat(currentEmailTrimmed);
+      if (!emailCheck.valid) {
+        setEmailError(emailCheck.error || "邮箱格式不规范");
+        setShowEmailSuggestions(false);
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       setPhoneError(null);
+      setEmailError(null);
       setSmsError(null);
       setNameError(null);
       const authToken = getAuthToken();
@@ -341,25 +449,71 @@ export default function UserProfilePage() {
         },
         body: JSON.stringify({
           ...formData,
+          email: currentEmailTrimmed,
           phone: currentPhoneTrimmed,
           smsCode: isPhoneChanged ? smsCode.trim() : undefined,
         }),
       });
 
       if (res.ok) {
-        toast.success(isPhoneChanged ? "手机号码更换并保存成功" : "个人基本信息已成功更新");
+        const successMsg = isPhoneChanged && isEmailChanged
+          ? "手机号与登录邮箱已更新并保存"
+          : isPhoneChanged
+          ? "手机号码更换并保存成功"
+          : isEmailChanged
+          ? (originalEmail ? "登录邮箱已成功更换" : "登录邮箱绑定成功")
+          : "个人基本信息已成功更新";
+        toast.success(successMsg);
         setOriginalPhone(currentPhoneTrimmed);
+        setOriginalEmail(currentEmailTrimmed);
         setSmsCode("");
         setCountdown(0);
         setSmsMessage(null);
         setSmsDebugCode(null);
         setPhoneError(null);
+        setEmailError(null);
         setSmsError(null);
+
+        // 保存成功后立即同步全局 AppContext 与 localStorage，令页面右上角头像处邮箱即刻生效
+        if (currentEmailTrimmed) {
+          localStorage.setItem("userEmail", currentEmailTrimmed);
+        } else {
+          localStorage.removeItem("userEmail");
+        }
+        if (formData.name.trim()) {
+          localStorage.setItem("userName", formData.name.trim());
+        }
+        setUserState((prev) => ({
+          ...prev,
+          userInfo: prev.userInfo
+            ? {
+                ...prev.userInfo,
+                name: formData.name.trim() || prev.userInfo.name,
+                email: currentEmailTrimmed,
+                phone: currentPhoneTrimmed || prev.userInfo.phone,
+              }
+            : null,
+        }));
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("zhige_user_profile_updated", {
+              detail: {
+                email: currentEmailTrimmed,
+                name: formData.name.trim(),
+                phone: currentPhoneTrimmed,
+              },
+            })
+          );
+        }
+        refreshUserState().catch(() => {});
+
         loadUserInfo();
       } else {
         const error = await res.json();
         const errText = error.error || error.message || "更新个人资料失败";
-        if (errText.includes("手机") || errText.includes("号码")) {
+        if (errText.includes("邮箱")) {
+          setEmailError(errText);
+        } else if (errText.includes("手机") || errText.includes("号码")) {
           setPhoneError(errText);
         } else if (errText.includes("验证码")) {
           setSmsError(errText);
@@ -492,10 +646,10 @@ export default function UserProfilePage() {
             <div className="pt-3 border-t border-slate-100 flex items-center justify-around text-center">
               <div>
                 <div className="text-[11px] text-slate-400 font-medium flex items-center justify-center gap-0.5">
-                  <Crown className="w-3 h-3 text-[#3182ce]" />
+                  <Crown className={`w-3 h-3 ${userInfo?.membershipDisplayName?.includes("皇冠") ? "text-amber-500" : "text-[#3182ce]"}`} />
                   会员等级
                 </div>
-                <div className="text-xs font-bold text-[#3182ce] mt-0.5">
+                <div className={`text-xs font-bold mt-0.5 ${userInfo?.membershipDisplayName?.includes("皇冠") ? "text-amber-600 font-black" : "text-[#3182ce]"}`}>
                   {userInfo?.membershipDisplayName || "普通会员"}
                 </div>
               </div>
@@ -670,7 +824,7 @@ export default function UserProfilePage() {
         {/* 右侧：基本资料编辑 + 身份凭据档案 + 账号注销 */}
         <div className="lg:col-span-8 space-y-4.5">
           {/* 基本信息编辑表单 */}
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} noValidate>
             <div className="bg-white/85 backdrop-blur-xl rounded-2xl p-6 border border-slate-200/80 shadow-2xs">
               <div className="flex items-center justify-between mb-5">
                 <div>
@@ -716,24 +870,96 @@ export default function UserProfilePage() {
                   )}
                 </div>
 
-                {/* 邮箱（作为主键凭证展示保护） */}
-                <div>
+                {/* 登录邮箱输入项（含智能后缀补全与实时格式验证） */}
+                <div className="relative">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-bold text-slate-700">登录邮箱</label>
-                    <span className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
-                      <CheckCircle className="w-3 h-3" /> 已认证主安全凭证
-                    </span>
+                    {isEmailChanged ? (
+                      <span className="text-[11px] text-amber-600 flex items-center gap-1 font-semibold animate-in fade-in">
+                        <AlertTriangle className="w-3 h-3 text-amber-500" /> 更换中 (保存后生效)
+                      </span>
+                    ) : originalEmail ? (
+                      <span className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium">
+                        <CheckCircle className="w-3 h-3 text-emerald-500" /> 已绑定安全登录邮箱
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-amber-600 flex items-center gap-1 font-medium">
+                        <AlertCircle className="w-3 h-3 text-amber-500" /> 未绑定登录邮箱 (建议绑定)
+                      </span>
+                    )}
                   </div>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
-                      type="email"
+                      type="text"
                       value={formData.email}
-                      disabled
-                      className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50/80 text-slate-500 cursor-not-allowed outline-none"
+                      onChange={handleEmailChange}
+                      onFocus={() => {
+                        const val = formData.email || "";
+                        if (val.includes("@")) {
+                          const suggestions = getEmailSuggestions(val);
+                          setEmailSuggestions(suggestions);
+                          setShowEmailSuggestions(suggestions.length > 0);
+                        }
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          setShowEmailSuggestions(false);
+                          const val = (formData.email || "").trim();
+                          if (val) {
+                            const check = validateEmailFormat(val);
+                            if (!check.valid) {
+                              setEmailError(check.error || "邮箱格式不规范");
+                            }
+                          }
+                        }, 200);
+                      }}
+                      className={`w-full pl-9 pr-3 py-2 text-xs rounded-lg border outline-none transition-all ${
+                        emailError
+                          ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
+                          : "border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15"
+                      }`}
+                      placeholder={originalEmail ? "输入新邮箱进行更换" : "请输入要绑定的电子邮箱"}
+                      autoComplete="off"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">登录邮箱作为平台唯一主凭证，如需更换请联系管理员。</p>
+
+                  {/* 邮箱自动补全建议（与登录页、注册页保持统一规范与风格） */}
+                  {showEmailSuggestions && emailSuggestions.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-[#e2e8f0] rounded-lg shadow-lg pointer-events-auto overflow-hidden">
+                      {emailSuggestions.map((suggestion, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleEmailSuggestionClick(suggestion);
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                          }}
+                          className="w-full px-4 py-2 text-left text-xs hover:bg-[#f0f8ff] text-slate-700 flex items-center gap-2 cursor-pointer transition-colors"
+                        >
+                          <Mail className="inline w-3 h-3 text-[#3182ce]" />
+                          <span>{suggestion}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {emailError ? (
+                    <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in duration-200">
+                      <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>{emailError}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {originalEmail
+                        ? "支持自由修改登录邮箱，输入新邮箱并点击保存后即可生效并作为登录凭据。"
+                        : "尚未绑定登录邮箱，输入邮箱并保存后即可使用该邮箱及密码登录系统。"}
+                    </p>
+                  )}
                 </div>
 
                 {/* 手机号 */}

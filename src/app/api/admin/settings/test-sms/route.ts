@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   try {
-    const result = await requireSystemSettingsAdmin(request);
+    const result = await requireSystemSettingsAdmin(request, "system:manage", "system:config_read", "system:maintenance_toggle");
     if (!result.authorized) {
       const status = result.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json(

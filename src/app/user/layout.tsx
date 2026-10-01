@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import {
   User,
@@ -23,8 +22,12 @@ import {
   Briefcase,
   ChevronLeft,
   ChevronRight,
+  KeyRound,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
+import DashboardSidebarNav, {
+  type SidebarNavItem,
+} from "@/components/DashboardSidebarNav";
 
 interface UserInfo {
   id: string;
@@ -34,6 +37,16 @@ interface UserInfo {
   role?: string | null;
   membershipLevel?: string | null;
 }
+
+/** 个人工作台侧边栏分组顺序（按「看数据 → 管资产 → 做协作 → 调设置」递进） */
+const USER_NAV_GROUP_ORDER = [
+  "概览",
+  "我的资产",
+  "团队协作",
+  "开发者",
+  "活动与反馈",
+  "账号设置",
+];
 
 export default function UserDashboardLayout({
   children,
@@ -46,14 +59,8 @@ export default function UserDashboardLayout({
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [menuItems, setMenuItems] = useState<any[]>([]);
+  const [menuItems, setMenuItems] = useState<SidebarNavItem[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [hovered, setHovered] = useState<{
-    label: string;
-    description?: string;
-    top: number;
-    left: number;
-  } | null>(null);
 
   useEffect(() => {
     checkLoginStatus();
@@ -70,91 +77,111 @@ export default function UserDashboardLayout({
       const data = await res.json();
       setUser(data.user);
 
-      // 根据用户角色动态生成菜单
+      // 根据用户角色动态生成菜单（按业务域分组，减少长列表查找成本）
       const isEnterprise = data.user?.membershipLevel === "ENTERPRISE";
-      const baseMenuItems = [
+      const baseMenuItems: SidebarNavItem[] = [
         {
           icon: Zap,
           label: "工作台",
           href: "/user/dashboard",
           description: "数据概览和快捷操作",
-        },
-        {
-          icon: User,
-          label: "个人设置",
-          href: "/user/profile",
-          description: "基本信息、头像管理",
-        },
-        {
-          icon: Shield,
-          label: "账号安全",
-          href: "/user/security",
-          description: "密码修改、账号保护",
-        },
-        {
-          icon: CreditCard,
-          label: "套餐与计费",
-          href: "/user/billing-center",
-          description: "会员套餐、空间扩容、账单管理",
-        },
-        {
-          icon: Coins,
-          label: "我的算力",
-          href: "/user/points",
-          description: "算力点余额、赠送、消耗与充值流水",
-        },
-        {
-          icon: Star,
-          label: "我的评价",
-          href: "/user/reviews",
-          description: "提交使用评价、查看审核进度",
+          group: "概览",
         },
         {
           icon: FolderOpen,
           label: "工作空间",
           href: "/user/workspaces",
           description: "个人/企业空间管理",
+          group: "我的资产",
+        },
+        {
+          icon: KeyRound,
+          label: "空间自带模型",
+          href: "/user/byo-model",
+          description: "为你的空间登记自有模型",
+          group: "我的资产",
         },
         {
           icon: Box,
           label: "我的组件",
           href: "/user/components",
           description: "组件列表、使用统计",
+          group: "我的资产",
         },
         {
-          icon: Activity,
-          label: "操作日志",
-          href: "/user/activities",
-          description: "活动记录、操作历史",
+          icon: Coins,
+          label: "我的算力",
+          href: "/user/points",
+          description: "算力点余额、赠送、消耗与充值流水",
+          group: "我的资产",
+        },
+        {
+          icon: CreditCard,
+          label: "套餐与计费",
+          href: "/user/billing-center",
+          description: "会员套餐、空间扩容、账单管理",
+          group: "我的资产",
         },
         {
           icon: Code2,
           label: "开发者中心",
           href: "/user/developer",
           description: "API Key 管理与开放接口",
+          group: "开发者",
+        },
+        {
+          icon: Activity,
+          label: "操作日志",
+          href: "/user/activities",
+          description: "活动记录、操作历史",
+          group: "活动与反馈",
+        },
+        {
+          icon: Star,
+          label: "我的评价",
+          href: "/user/reviews",
+          description: "提交使用评价、查看审核进度",
+          group: "活动与反馈",
+        },
+        {
+          icon: User,
+          label: "个人设置",
+          href: "/user/profile",
+          description: "基本信息、头像管理",
+          group: "账号设置",
+        },
+        {
+          icon: Shield,
+          label: "账号安全",
+          href: "/user/security",
+          description: "密码修改、账号保护",
+          group: "账号设置",
         },
         {
           icon: Settings,
           label: "偏好设置",
           href: "/user/settings",
           description: "个性化配置",
+          group: "账号设置",
         },
       ];
 
-      // 企业用户额外显示团队管理（锚定在「工作空间」之前，避免菜单顺序变化导致错位）
+      // 企业用户额外显示团队协作两项（锚定在「工作空间」之后，避免菜单顺序变化导致错位）
       if (isEnterprise) {
         const anchorIndex = baseMenuItems.findIndex((m) => m.href === "/user/workspaces");
-        baseMenuItems.splice(anchorIndex >= 0 ? anchorIndex : baseMenuItems.length, 0, {
+        baseMenuItems.splice(anchorIndex >= 0 ? anchorIndex + 1 : baseMenuItems.length, 0, {
           icon: Users,
           label: "团队管理",
           href: "/user/team",
           description: "团队成员、协作管理",
+          group: "团队协作",
         });
-        baseMenuItems.splice(anchorIndex >= 0 ? anchorIndex + 1 : baseMenuItems.length, 0, {
+        baseMenuItems.splice(anchorIndex >= 0 ? anchorIndex + 2 : baseMenuItems.length, 0, {
           icon: Briefcase,
           label: "子账号管理",
           href: "/user/sub-accounts",
           description: "子账号开通与停用",
+          group: "团队协作",
         });
       }
 
@@ -281,71 +308,15 @@ export default function UserDashboardLayout({
           )}
         </div>
 
-        {/* 导航菜单 */}
-        <nav
-          className={`flex-1 ${
-            isCollapsed ? "px-2" : "px-4"
-          } py-6 space-y-1 overflow-y-auto min-h-0`}
-        >
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-
-            if (isCollapsed) {
-              return (
-                <button
-                  key={item.href}
-                  onClick={() => {
-                    setHovered(null);
-                    setIsCollapsed(false);
-                    router.push(item.href);
-                  }}
-                  onMouseEnter={(e) => {
-                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    setHovered({
-                      label: item.label,
-                      description: item.description,
-                      top: r.top + r.height / 2,
-                      left: r.right,
-                    });
-                  }}
-                  onMouseLeave={() => setHovered(null)}
-                  className={`relative w-full flex items-center justify-center p-3 rounded-lg transition-all mb-1 ${
-                    isActive
-                      ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <Icon className="w-5 h-5 shrink-0" />
-                </button>
-              );
-            }
-
-            return (
-              <button
-                key={item.href}
-                onClick={() => router.push(item.href)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  isActive
-                    ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                <div className="text-left min-w-0 flex-1">
-                  <div className="text-sm font-bold truncate">{item.label}</div>
-                  <div
-                    className={`text-xs truncate ${
-                      isActive ? "text-white/80" : "text-slate-400"
-                    }`}
-                  >
-                    {item.description}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </nav>
+        {/* 导航菜单：按业务域分组折叠展示 + 菜单检索，功能变多也能快速定位 */}
+        <DashboardSidebarNav
+          items={menuItems}
+          groupOrder={USER_NAV_GROUP_ORDER}
+          collapsed={isCollapsed}
+          onNavigate={(href) => router.push(href)}
+          onExpand={() => setIsCollapsed(false)}
+          searchPlaceholder="搜索工作台功能…"
+        />
 
         {/* 用户信息 */}
         <div
@@ -499,39 +470,16 @@ export default function UserDashboardLayout({
               </button>
             </div>
 
-            <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
-              {menuItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
-
-                return (
-                  <button
-                    key={item.href}
-                    onClick={() => {
-                      router.push(item.href);
-                      setShowMobileMenu(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                      isActive
-                        ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
-                        : "text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5 shrink-0" />
-                    <div className="text-left min-w-0 flex-1">
-                      <div className="text-sm font-bold truncate">
-                        {item.label}
-                      </div>
-                      <div
-                        className={`text-xs truncate ${isActive ? "text-white/80" : "text-slate-400"}`}
-                      >
-                        {item.description}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </nav>
+            <DashboardSidebarNav
+              items={menuItems}
+              groupOrder={USER_NAV_GROUP_ORDER}
+              collapsed={false}
+              onNavigate={(href) => {
+                router.push(href);
+                setShowMobileMenu(false);
+              }}
+              searchPlaceholder="搜索工作台功能…"
+            />
 
             <div className="p-4 border-t border-slate-200 shrink-0 bg-white">
               <div className="flex items-center gap-3 mb-3">
@@ -595,27 +543,6 @@ export default function UserDashboardLayout({
 
       {/* 退出登录二次确认弹窗 */}
       {confirmDialog}
-
-      {/* 收起态菜单名称悬停提示：portal 渲染到 body，避免被侧边栏 overflow 裁剪 */}
-      {hovered &&
-        createPortal(
-          <div
-            className="fixed z-[9999] pointer-events-none"
-            style={{
-              top: hovered.top,
-              left: hovered.left + 8,
-              transform: "translateY(-50%)",
-            }}
-          >
-            <div className="bg-slate-800 text-white text-xs rounded-lg shadow-lg px-2.5 py-1.5 whitespace-nowrap">
-              <div className="font-bold">{hovered.label}</div>
-              {hovered.description && (
-                <div className="text-slate-300 mt-0.5">{hovered.description}</div>
-              )}
-            </div>
-          </div>,
-          document.body
-        )}
     </div>
   );
 }

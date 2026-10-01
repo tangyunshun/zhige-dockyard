@@ -18,6 +18,7 @@ import {
 import { getAuthToken } from "@/utils/auth";
 import { formatYuanFromPoints } from "@/lib/point-rate";
 import EnterprisePoolManager from "@/components/EnterprisePoolManager";
+import UserRefundRequests from "@/components/UserRefundRequests";
 
 interface PointsData {
   walletBalance: number;
@@ -369,6 +370,9 @@ export default function MyPointsPage() {
           </>
         )}
       </div>
+
+      {/* 算力点退款申请入口：任务扣点后结果不可用时，用户可自助申请退回算力点（需管理员审批） */}
+      <UserRefundRequests />
 
       <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 px-1">
         <FileText className="w-3.5 h-3.5" />

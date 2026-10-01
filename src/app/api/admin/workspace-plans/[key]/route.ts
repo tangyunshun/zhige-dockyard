@@ -64,7 +64,8 @@ function getKey(request: NextRequest, context?: any): string {
 export async function PUT(request: NextRequest, context?: any) {
   const authCheck = await requirePlatformPermission(request, "workspace_plan:update", "workspace_plan:publish");
   if (!authCheck.authorized) {
-    return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
+    // requirePlatformPermission 契约：失败时返回 errorResponse
+    return authCheck.errorResponse || NextResponse.json({ message: "权限不足" }, { status: 403 });
   }
 
   const key = getKey(request, context);
@@ -170,11 +171,14 @@ export async function PUT(request: NextRequest, context?: any) {
  */
 export async function DELETE(request: NextRequest, context?: any) {
   // 空间套餐删除为高危动作，仅限超级管理员
-  const authCheck = await requirePlatformPermission(request, "workspace_plan:update");
+  const authCheck = await requirePlatformPermission(request, "workspace_plan:update", "workspace_plan:status_update");
   if (!authCheck.authorized) {
-    return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
+    // requirePlatformPermission 契约：失败时返回 errorResponse
+    return authCheck.errorResponse || NextResponse.json({ message: "权限不足" }, { status: 403 });
   }
-  if (!authCheck.isSuperAdmin) {
+  // requirePlatformPermission 契约：没有 isSuperAdmin 字段，改为从 user.role 归一化判断（保持"仅超管可删"不变）
+  const operatorRole = String(authCheck.user?.role || "").toUpperCase().trim();
+  if (!["SUPER_ADMIN", "SUPERADMIN", "SUPER_ADMIN_ROLE", "SUPER"].includes(operatorRole)) {
     return NextResponse.json({ message: "空间套餐删除仅限超级管理员操作" }, { status: 403 });
   }
 

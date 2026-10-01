@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 /**
  * 岗位详情 API
@@ -11,6 +12,11 @@ import { isAdminRole, validateUser } from "@/lib/auth";
 // PATCH: 更新岗位
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
   try {
+    // 严格校验岗位更新权限点（无权直接阻断）
+    const permCheck = await requirePlatformPermission(request, "post:update");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限更新岗位" }, { status: 403 });
+    }
     // 验证管理员权限
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
@@ -93,6 +99,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 // DELETE: 删除岗位
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
   try {
+    // 严格校验岗位删除权限点（高危操作，无权直接阻断）
+    const permCheck = await requirePlatformPermission(request, "post:delete");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限删除岗位" }, { status: 403 });
+    }
     // 验证管理员权限
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {

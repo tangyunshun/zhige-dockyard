@@ -3,18 +3,18 @@ import { prisma } from "@/lib/prisma";
 import { SignJWT } from "jose";
 import crypto from "crypto";
 import { sessionCache } from "@/lib/session-cache";
-import { ACCESS_TOKEN_TTL_SECONDS, SESSION_ERROR_CODES } from "@/lib/session-constants";
+import { ACCESS_TOKEN_TTL_SECONDS, ABSOLUTE_TIMEOUT_REMEMBER_MS, SESSION_ERROR_CODES } from "@/lib/session-constants";
 import { toAccountStatus, isLoginBlocked, isFullyBlocked } from "@/lib/account-status";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 // E-06 RT 防重放：记录"上一代已废弃 RT"，若被重放则判定盗用
 // PRD 原意用 Redis；本仓库以 user 表的 refreshTokenPrev 字段等价实现
 export async function POST(request: NextRequest) {
   try {
-    const { refreshToken } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    // 优先取请求体；兼容 httpOnly refresh_token cookie（前端 fetch credentials:"include" 自动携带）
+    let refreshToken: string | undefined = body?.refreshToken;
+    if (!refreshToken) refreshToken = request.cookies.get("refresh_token")?.value || undefined;
 
     if (!refreshToken) {
       return NextResponse.json(
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
         email: true,
         role: true,
         status: true,
+        sessionRememberMe: true, // 显式标记判定「记住我」长会话（与 validateUser 一致，不靠时长推断）
         sessionToken: true,
         sessionExpiresAt: true,
         refreshToken: true,
@@ -110,6 +111,17 @@ export async function POST(request: NextRequest) {
       expiresAt: sessionExpiresAt,
     });
 
+    // 「记住我」长会话（绝对超时长于 24h）：AT 有效期与 cookie 一并持久化为会话剩余时长
+    // （封顶 7 天），使关浏览器后重开时中间件 / 前端凭该长效令牌直接放行（落实「7 天内免登录」）；
+    // 非记住我短会话仍保持 5 分钟短 AT（A-06 安全设计），由前端无感刷新续期。
+    const sessionRemainingMs = Math.max(0, sessionExpiresAt.getTime() - now.getTime());
+    // 与 validateUser 一致：以显式 sessionRememberMe 标记判定「记住我」长会话，
+    // 不靠「剩余时长 > 24h」推断（管理员可配 sessionTimeoutHours > 24h，推断会误判普通会话为记住我）。
+    const isLongSession = user.sessionRememberMe === true;
+    const atTtlSeconds = isLongSession
+      ? Math.max(Math.min(Math.floor(sessionRemainingMs / 1000), Math.floor(ABSOLUTE_TIMEOUT_REMEMBER_MS / 1000)), ACCESS_TOKEN_TTL_SECONDS)
+      : ACCESS_TOKEN_TTL_SECONDS;
+
     // A-06：AT 有效期 5 分钟，前端在过期前静默调用本接口
     const newAccessToken = await new SignJWT({
       userId: user.id,
@@ -119,15 +131,15 @@ export async function POST(request: NextRequest) {
       issuedAt: now.toISOString(),
     })
       .setProtectedHeader({ alg: "HS256" })
-      .setExpirationTime(`${ACCESS_TOKEN_TTL_SECONDS}s`)
-      .sign(JWT_SECRET);
+      .setExpirationTime(`${atTtlSeconds}s`)
+      .sign(getJwtSecretKey());
 
     const response = NextResponse.json({
       success: true,
       token: newAccessToken,
       refreshToken: newRefreshToken,
       // 告知前端 AT 有效期，便于调度提前刷新（A-06 无感刷新）
-      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      expiresIn: atTtlSeconds,
       user: {
         id: user.id,
         email: user.email || "",
@@ -135,12 +147,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // AT cookie 持久化策略与上方 JWT 有效期保持一致（长会话=会话剩余时长，短会话=5 分钟），
+    // 确保中间件 jwtVerify 在「关浏览器再开」时仍认可该长效令牌，直接进入首页。
     response.cookies.set("auth_token", newAccessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: ACCESS_TOKEN_TTL_SECONDS,
+      ...(isLongSession
+        ? { maxAge: Math.max(Math.floor(sessionRemainingMs / 1000), ACCESS_TOKEN_TTL_SECONDS) }
+        : { maxAge: ACCESS_TOKEN_TTL_SECONDS }),
     });
 
     response.cookies.set("refresh_token", newRefreshToken, {

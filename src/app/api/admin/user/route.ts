@@ -9,6 +9,9 @@ const getCleanRole = (role: string | null | undefined): string => {
   if (r === "SUPER_ADMIN" || r === "SUPERADMIN" || r === "SUPER_ADMIN_ROLE" || r === "SUPER") {
     return "SUPER_ADMIN";
   }
+  if (r === "ADMIN" || r === "ADMINISTRATOR" || r === "PLATFORM_ADMIN") {
+    return "ADMIN";
+  }
   return "USER";
 };
 
@@ -418,7 +421,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "不能删除自己" }, { status: 403 });
     }
 
-    // 核心安全红线拦截：只有处于已封禁(banned)状态的用户才允许删除
+    // 核心安全红线拦截：只有处于已封禁(banned)或已注销(deleted)状态的用户才允许删除；
+    // 已注销用户为逻辑删除后的残留数据，允许超管彻底清理。注销中(deleting)处于冷静期，不开放删除
     const targetUser = await prisma.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, status: true, role: true },
@@ -426,9 +430,9 @@ export async function DELETE(request: NextRequest) {
     if (!targetUser) {
       return NextResponse.json({ error: "目标用户不存在" }, { status: 404 });
     }
-    if (targetUser.status !== "banned") {
+    if (targetUser.status !== "banned" && targetUser.status !== "deleted") {
       return NextResponse.json(
-        { error: "平台安全规则拦截：只有已被封禁的用户才允许被删除。请先封禁该用户后再执行删除" },
+        { error: "平台安全规则拦截：只有已被封禁(banned)或已注销(deleted)的用户才允许被删除（已注销用户可清理其残留数据；注销中 deleting 处于冷静期不开放）。请先封禁该用户后再执行删除" },
         { status: 400 }
       );
     }

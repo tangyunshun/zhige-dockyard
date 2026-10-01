@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 import { expireExpiredGrants } from "@/lib/credit-service";
 
 /**
@@ -24,6 +25,14 @@ export async function POST(request: NextRequest) {
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
+    }
+
+    // 细粒度权限：算力点到期清算是资金类高危操作。
+    // 目录中没有 points:* 权限点，按任务要求使用「现有最接近的高危权限」（不做硬编码造键）：
+    // system:manage（平台配置管理）∨ order:refund_approve（资金退款审批）。
+    const permCheck = await requirePlatformPermission(request, "system:manage", "order:refund_approve");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限触发算力到期清算" }, { status: 403 });
     }
     if (!isPlatformAdmin(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可触发清算" }, { status: 403 });

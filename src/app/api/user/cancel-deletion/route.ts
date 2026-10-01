@@ -1,13 +1,10 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify, SignJWT } from "jose";
 import { sessionCache } from "@/lib/session-cache";
 import { maybeFinalizeDeletionIfDue } from "@/lib/account-deletion";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * 撤销账号注销申请API
@@ -37,7 +34,7 @@ export async function POST(request: NextRequest) {
     let userId;
     let deletionStatus;
     try {
-      const { payload } = await jwtVerify(token, JWT_SECRET);
+      const { payload } = await jwtVerify(token, getJwtSecretKey());
       userId = payload.userId as string;
       deletionStatus = payload.deletionStatus as string;
       console.log("[撤销注销] Token payload:", payload);
@@ -144,7 +141,7 @@ export async function POST(request: NextRequest) {
     })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime("24h")
-      .sign(JWT_SECRET);
+      .sign(getJwtSecretKey());
 
     const response = NextResponse.json({
       success: true,

@@ -3,12 +3,9 @@ import fs from "fs";
 import path from "path";
 import { NextRequest } from "next/server";
 import { validateUser } from "@/lib/auth";
-import { jwtVerify } from "jose";
 import { getClientIP } from "@/lib/ip-risk";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
+import { jwtVerify } from "jose";
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * API安全监控工具
@@ -474,7 +471,8 @@ export async function saveAdminStatus(
  */
 export async function requirePlatformAuth(
   request: Request,
-  requiredPermission?: string
+  // 支持单个权限点，或多个权限点（多个时为「任一满足即可」的 OR 语义）
+  requiredPermission?: string | string[]
 ): Promise<{
   authorized: boolean;
   user?: { id: string; email: string; name: string; role: string; status: string };
@@ -501,7 +499,7 @@ export async function requirePlatformAuth(
 
     if (token) {
       try {
-        const { payload } = await jwtVerify(token, JWT_SECRET);
+        const { payload } = await jwtVerify(token, getJwtSecretKey());
         const userId = payload.userId as string;
         const dbUser = await prisma.user.findUnique({
           where: { id: userId },
@@ -538,6 +536,17 @@ export async function requirePlatformAuth(
   const user = authResult.user;
   const platformRole = normalizePlatformRole(user.role);
 
+  // 归一化「所需权限点」：兼容单点与多点写法。
+  // 多点 = OR（任一满足即放行）：用于"细粒度键 ∨ 兼容用的粗粒度键"过渡，
+  // 使权限拆分不破坏存量管理员；单点调用行为与改造前完全一致。
+  const requiredPermissions: string[] = (
+    Array.isArray(requiredPermission)
+      ? requiredPermission
+      : requiredPermission
+        ? [requiredPermission]
+        : []
+  ).filter((p) => typeof p === "string" && p.trim().length > 0);
+
   // 1. SUPER_ADMIN 直接放行全部模块
   if (platformRole === "SUPER_ADMIN") {
     return { authorized: true, user };
@@ -560,7 +569,7 @@ export async function requirePlatformAuth(
       };
     }
 
-    if (!requiredPermission) {
+    if (requiredPermissions.length === 0) {
       return { authorized: true, user }; // 仅要求管理员权限
     }
     let permissions: string[] = [];
@@ -571,7 +580,8 @@ export async function requirePlatformAuth(
       // 仅记录 warning，本次按空权限包处理，绝不默认放开全部权限。
       console.warn("[权限] 读取平台管理员权限包失败，本次按空权限包处理:", permError);
     }
-    if (permissions.includes(requiredPermission)) {
+    // OR 语义：任一所需权限点命中即放行（单点时等价于原有 includes 判断）
+    if (requiredPermissions.some((key) => permissions.includes(key))) {
       return { authorized: true, user };
     }
   }
@@ -580,7 +590,7 @@ export async function requirePlatformAuth(
   return {
     authorized: false,
     errorResponse: new Response(
-      JSON.stringify({ error: "FORBIDDEN" }),
+      JSON.stringify({ error: "FORBIDDEN", required: requiredPermissions }),
       { status: 403, headers: { "Content-Type": "application/json" } }
     ),
   };
@@ -867,13 +877,18 @@ export async function writeAuditLog(
  */
 export async function requirePlatformPermission(
   request: Request,
-  permissionKey: string
+  // 可变参数：传入多个权限点时按「任一满足即可」(OR) 校验。
+  // 这让接口可以写成 requirePlatformPermission(req, "order:detail", "order:read")，
+  // 在权限拆分/灰度期间既支持细粒度键、又保留原有粗粒度键，避免存量管理员被 403。
+  ...permissionKeys: string[]
 ): Promise<{
   authorized: boolean;
   user?: { id: string; email: string; name: string; role: string; status: string };
   errorResponse?: Response;
 }> {
-  return requirePlatformAuth(request, permissionKey);
+  const keys = permissionKeys.filter((k) => typeof k === "string" && k.trim().length > 0);
+  // 0 个/1 个时保持与原实现完全一致的调用形态
+  return requirePlatformAuth(request, keys.length <= 1 ? keys[0] : keys);
 }
 
 /** 归一化角色，兼容历史遗留的 SUPER 写法 */
@@ -894,13 +909,101 @@ function isSuperAdminPlatformRole(role: string | null | undefined): boolean {
  * 既要通过 system:settings 权限点校验，又必须是平台超级管理员，二者缺一不可。
  * 避免运营管理员绕开页面直接调用接口修改 SMTP / 短信网关 / 安全策略等全局配置。
  */
-export async function requireSystemSettingsAdmin(
-  request: Request
+/* ============================================================================
+ * 权限授予策略（业务逻辑集中管控，而非散落的硬编码 if）
+ * ----------------------------------------------------------------------------
+ * 业务规则：**只有超级管理员可以向管理员授予/回收权限**，其他角色一律不行。
+ * 目的：防止非超管仅凭 permission:manage / admin:permission_grant 等权限点自我提权。
+ *
+ * 之所以做成策略对象：
+ *   - 规则集中一处，可审计、可单测、可演进（未来若要开放"受控委派"，只改这里）；
+ *   - 各路由只调用 requirePermissionGrantAuthority()，不再各自写角色判断。
+ * ==========================================================================*/
+export interface PermissionGrantPolicy {
+  /** 允许执行「授予/回收权限」的角色白名单（业务规则：仅超管） */
+  allowedRoles: string[];
+  /**
+   * 是否允许通过「权限点」委派该能力。
+   * 默认 false —— 即 permission:manage / admin:permission_grant 等**不得穿透**，
+   * 这是防止非超管自我提权的关键开关。
+   */
+  allowPermissionDelegation: boolean;
+}
+
+export const PERMISSION_GRANT_POLICY: PermissionGrantPolicy = {
+  allowedRoles: ["SUPER_ADMIN"],
+  allowPermissionDelegation: false,
+};
+
+/**
+ * 校验「权限授予类」操作的操作权（超管专属，策略驱动）
+ * @param actionPermissions 该动作对应的细粒度权限点（声明用途；仅在策略开启委派时才真正生效）
+ */
+export async function requirePermissionGrantAuthority(
+  request: Request,
+  ...actionPermissions: string[]
 ): Promise<{
   authorized: boolean;
   user?: { id: string; email: string; name: string; role: string; status: string };
   errorResponse?: Response;
 }> {
+  // 1) 角色白名单（核心业务规则）：超管直接放行
+  const auth = await requirePlatformAuth(request);
+  if (!auth.authorized || !auth.user) {
+    return auth;
+  }
+  const role = normalizePlatformRole(auth.user.role);
+  if (PERMISSION_GRANT_POLICY.allowedRoles.includes(role)) {
+    return { authorized: true, user: auth.user };
+  }
+
+  // 2) 受控委派（默认关闭）：仅在策略显式开启、且调用方声明了权限点时，持有者才可操作
+  if (PERMISSION_GRANT_POLICY.allowPermissionDelegation && actionPermissions.length > 0) {
+    const delegated = await requirePlatformPermission(request, ...actionPermissions);
+    if (delegated.authorized && delegated.user) {
+      return { authorized: true, user: delegated.user };
+    }
+  }
+
+  // 3) 拒绝：返回策略化提示，便于前端与审计定位
+  return {
+    authorized: false,
+    errorResponse: new Response(
+      JSON.stringify({
+        error: "FORBIDDEN_PERMISSION_GRANT",
+        message: "仅超级管理员可向管理员授予或回收权限",
+        policy: {
+          allowedRoles: PERMISSION_GRANT_POLICY.allowedRoles,
+          delegationEnabled: PERMISSION_GRANT_POLICY.allowPermissionDelegation,
+        },
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    ),
+  };
+}
+
+export async function requireSystemSettingsAdmin(
+  request: Request,
+  // 可选：委派细粒度权限点。
+  // 不传时行为与改造前完全一致（超管 + system:settings 双校验）；
+  // 传入后，持其中任一权限点的**平台管理员**也可访问 —— 这是「有意放权」的开关，
+  // 由于这些权限点默认不授予任何管理员，实际放权需超级管理员在权限配置页显式勾选。
+  ...delegatedPermissions: string[]
+): Promise<{
+  authorized: boolean;
+  user?: { id: string; email: string; name: string; role: string; status: string };
+  errorResponse?: Response;
+}> {
+  // 委派路径（必须放在 system:settings 校验之前，否则未持 system:settings 的管理员永远走不到这里）：
+  // 调用方显式声明了细粒度权限点，且当前用户持有其中之一 → 放行。
+  // 由于这些权限点默认不授予任何管理员，实际放权需超级管理员在权限配置页显式勾选，属「有意放权」。
+  if (delegatedPermissions.length > 0) {
+    const delegated = await requirePlatformPermission(request, ...delegatedPermissions);
+    if (delegated.authorized && delegated.user) {
+      return { authorized: true, user: delegated.user };
+    }
+  }
+
   const authResult = await requirePlatformPermission(request, "system:settings");
   if (!authResult.authorized) {
     return authResult;

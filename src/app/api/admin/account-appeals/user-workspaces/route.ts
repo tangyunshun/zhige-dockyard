@@ -5,7 +5,7 @@ import { requirePlatformPermission } from "@/lib/security";
 export async function GET(request: NextRequest) {
   try {
     // 鉴权：暴露目标用户的账号与空间归属信息，仅限具备用户管理权限的平台管理员查看
-    const authResult = await requirePlatformPermission(request, "user:update");
+    const authResult = await requirePlatformPermission(request, "user:update", "appeal:read");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }

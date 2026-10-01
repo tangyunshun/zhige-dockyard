@@ -905,6 +905,15 @@ function LoginForm() {
         if (data.user?.role) {
           localStorage.setItem("userRole", data.user.role);
         }
+        if (data.user?.email) {
+          localStorage.setItem("userEmail", data.user.email);
+        }
+        if (data.user?.name) {
+          localStorage.setItem("userName", data.user.name);
+        }
+        if (data.user?.avatar) {
+          localStorage.setItem("userAvatar", data.user.avatar);
+        }
         // 存储 sessionToken 用于在线状态判断
         if (data.user?.sessionToken) {
           localStorage.setItem("sessionToken", data.user.sessionToken);
@@ -945,10 +954,12 @@ function LoginForm() {
           try {
             await fetch("/api/auth/touch", {
               method: "POST",
-              signal: AbortSignal.timeout(3000),
+              signal: AbortSignal.timeout(8000),
             });
-          } catch (touchError) {
-            console.warn("/api/auth/touch 调用失败:", touchError);
+          } catch (touchError: any) {
+            if (touchError?.name !== "TimeoutError" && touchError?.name !== "AbortError") {
+              console.warn("/api/auth/touch 调用失败:", touchError?.message || touchError);
+            }
           }
 
           // 预拉取登录后需要强提醒弹窗的未读通知，跳转后由目标页统一展示
@@ -959,7 +970,7 @@ function LoginForm() {
               {
                 headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
                 credentials: "include",
-                signal: AbortSignal.timeout(3000),
+                signal: AbortSignal.timeout(8000),
               },
             );
             if (popupRes.ok) {
@@ -974,8 +985,10 @@ function LoginForm() {
                 sessionStorage.removeItem("pendingLoginNotifications");
               }
             }
-          } catch (popupError) {
-            console.warn("登录弹窗通知预拉取失败:", popupError);
+          } catch (popupError: any) {
+            if (popupError?.name !== "TimeoutError" && popupError?.name !== "AbortError") {
+              console.warn("登录弹窗通知预拉取失败:", popupError?.message || popupError);
+            }
           }
 
           // 智能判断跳转目标

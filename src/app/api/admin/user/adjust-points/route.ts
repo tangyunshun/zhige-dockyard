@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { adjustPoints } from "@/lib/credit-service";
 import { addNotification } from "@/lib/notifications-store";
 
 // POST: 管理员人工调整用户个人空间算力点（赠送/扣除），需要 user:update 权限
@@ -60,29 +61,20 @@ export async function POST(request: NextRequest) {
     const newBalance = current + amount;
     const detail = reason || "后台人工调整算力点";
 
-    await prisma.$transaction(async (tx) => {
-      await tx.workspacequota.update({
-        where: { workspaceId: personalWs.id },
-        data: { tokenBalance: BigInt(newBalance), updatedAt: new Date() },
-      });
-      await tx.pointledger.create({
-        data: {
-          id: crypto.randomUUID(),
-          direction: amount >= 0 ? "IN" : "OUT",
-          type: "MANUAL_ADJUST",
-          // 赠送计入「个人空间赠送」，扣减计入「个人空间扣减」，均不归入空间共享池
-          scope: amount >= 0 ? "PERSONAL_GIFT" : "PERSONAL_DEDUCTION",
-          userId,
-          userEmail: target.email,
-          workspaceId: personalWs.id,
-          workspaceType: "PERSONAL",
-          operatorId: adminId,
-          points: BigInt(Math.abs(amount)),
-          balanceAfter: newBalance,
-          title: detail,
-          createdAt: new Date(),
-        },
-      });
+    // 统一经 credit-service：正数发放会建立分桶（pointgrant），负数逐桶扣减，
+    // 保证「流水行数」与「分桶余额」始终一致，杜绝直改余额导致的账实脱钩。
+    await adjustPoints({
+      // 赠送计入「个人空间赠送」，扣减计入「个人空间扣减」，均不归入空间共享池
+      scope: amount >= 0 ? "PERSONAL_GIFT" : "PERSONAL_DEDUCTION",
+      userId,
+      workspaceId: personalWs.id,
+      points: amount,
+      operatorId: adminId,
+      reason: detail,
+      workspaceType: "PERSONAL",
+      workspaceName: personalWs.name ?? null,
+      // 人工调整无业务单号可幂等，使用一次性键仅用于溯源（重复点击仍会产生两笔流水，属预期）
+      idempotencyKey: `MANUAL_ADJUST:${adminId}:${userId}:${crypto.randomUUID()}`,
     });
 
     await writeAuditLog(

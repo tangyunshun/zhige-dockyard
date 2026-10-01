@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { getAuthToken } from "@/utils/auth";
@@ -44,8 +44,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setWorkspaces(data.workspaces || []);
         setCurrentWorkspaceId(data.currentWorkspaceId);
       }
-    } catch (error) {
-      console.error("Fetch workspaces error:", error);
+    } catch (error: any) {
+      if (error?.name !== "TimeoutError" && error?.name !== "AbortError") {
+        console.error("Fetch workspaces error:", error);
+      } else {
+        console.warn("[WorkspaceContext] 获取空间列表请求超时或中断，已优雅降级");
+      }
     } finally {
       setLoading(false);
     }

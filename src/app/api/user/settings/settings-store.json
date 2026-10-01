@@ -23,5 +23,25 @@
       "browser": true,
       "marketing": false
     }
+  },
+  "cmugq95w200018v57lop5qtm9": {
+    "language": "zh-CN",
+    "theme": "light",
+    "displayDensity": "comfortable",
+    "enableAnimations": true,
+    "defaultWorkspaceId": "auto",
+    "workspaceView": "grid",
+    "sidebarDefaultExpanded": true,
+    "componentSort": "popularity",
+    "codeTheme": "dark",
+    "codeFontSize": "13px",
+    "tabSize": 2,
+    "showLineNumbers": true,
+    "dateFormat": "YYYY-MM-DD",
+    "timeFormat": "24h",
+    "exportFormat": "xlsx",
+    "soundEffects": true,
+    "stealthMode": false,
+    "requireDeleteConfirm": true
   }
 }

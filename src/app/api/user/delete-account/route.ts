@@ -1,13 +1,10 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
 import { requireStepUp } from "@/lib/step-up";
 import { assertCSRF } from "@/lib/csrf";
 import { getDeletionCooldownDays, getDeletionCooldownMs } from "@/lib/account-deletion";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * 用户申请注销账号API（D-02）
@@ -27,7 +24,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userId = payload.userId as string;
 
     const { verifyToken } = await request.json().catch(() => ({}));

@@ -31,6 +31,7 @@ import {
   BookOpen,
   Cpu,
   HelpCircle,
+  Info,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -145,6 +146,32 @@ function LevelBadge({ level, label }: { level: string; label: string }) {
   }
 }
 
+/** 详情抽屉中的一行键值展示（纯展示，不改动数据） */
+function DetailRow({
+  label,
+  value,
+  mono,
+  valueClass,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  valueClass?: string;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold text-slate-400 mb-1">{label}</div>
+      <div
+        className={`text-xs text-slate-700 break-all ${mono ? "font-mono" : ""} ${
+          valueClass || ""
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function PermissionsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -243,6 +270,13 @@ function PermissionsContent() {
   const [batchTargetGroup, setBatchTargetGroup] = useState<string>("");
   const [batchTargetLevel, setBatchTargetLevel] = useState<string>("");
   const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+
+  // 详情抽屉：查看「权限模块详情」或「权限项详情」（只读，不改动任何数据）
+  const [detailView, setDetailView] = useState<{
+    type: "module" | "permission";
+    group?: PermissionGroupItem;
+    perm?: PermissionKeyItem;
+  } | null>(null);
 
   // 全量可用权限 Key 集合（由数据库查询结果动态派生）
   const allAvailableKeys = useMemo(() => {
@@ -1509,6 +1543,15 @@ function PermissionsContent() {
                               >
                                 {isGroupAll ? "取消该组" : "全选该组"}
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => setDetailView({ type: "module", group })}
+                                className="px-2.5 py-1 text-xs font-bold text-slate-500 hover:text-[#3182ce] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1"
+                                title={`查看模块【${group.group}】详情`}
+                              >
+                                <Info className="w-3 h-3" />
+                                <span>详情</span>
+                              </button>
                             </>
                           )}
 
@@ -1617,6 +1660,22 @@ function PermissionsContent() {
                                     >
                                       <Trash2 className="w-2.5 h-2.5" />
                                       <span>删除</span>
+                                    </button>
+                                  )}
+
+                                  {/* 查看权限项详情（只读抽屉） */}
+                                  {!isBatchMode && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDetailView({ type: "permission", perm, group });
+                                      }}
+                                      className="h-6 px-1.5 rounded-[4px] bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-all flex items-center gap-1 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer"
+                                      title="查看此权限项详情"
+                                    >
+                                      <Info className="w-2.5 h-2.5" />
+                                      <span>详情</span>
                                     </button>
                                   )}
 
@@ -2189,6 +2248,127 @@ function PermissionsContent() {
               >
                 我知道了
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 权限模块 / 权限项详情抽屉（只读查看，不改动任何数据） */}
+      {detailView && (
+        <div className="fixed inset-0 z-[60] flex">
+          {/* 遮罩层：点击关闭 */}
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
+            onClick={() => setDetailView(null)}
+          />
+          {/* 右侧抽屉面板 */}
+          <div className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col animate-in slide-in-from-right duration-200">
+            {/* 抽屉头部 */}
+            <div className="shrink-0 px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+              <div className="flex items-center gap-2 min-w-0">
+                <Info className="w-4 h-4 text-[#3182ce] shrink-0" />
+                <h3 className="text-sm font-black text-slate-800 truncate">
+                  {detailView.type === "module" ? "权限模块详情" : "权限项详情"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailView(null)}
+                className="w-7 h-7 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                title="关闭"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 抽屉主体 */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {detailView.type === "module" && detailView.group && (() => {
+                const g = detailView.group;
+                const granted = g.keys.filter((k) => selectedPermissions.includes(k.key)).length;
+                return (
+                  <>
+                    <div className="space-y-3">
+                      <DetailRow label="模块名称" value={g.group} />
+                      <DetailRow label="后台路由" value={g.moduleRoute} mono />
+                      <DetailRow label="权限项数量" value={`${g.keys.length} 项`} />
+                      <DetailRow
+                        label="已授权"
+                        value={`${granted} / ${g.keys.length} 项`}
+                        valueClass={granted > 0 ? "text-[#2b6cb0]" : "text-slate-400"}
+                      />
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-400 mb-1">模块说明</div>
+                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                          {g.description || "（无说明）"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-400 mb-2">
+                        包含权限项（{g.keys.length}）
+                      </div>
+                      <div className="space-y-1.5 max-h-[42vh] overflow-y-auto pr-1">
+                        {g.keys.map((k) => {
+                          const isGranted = selectedPermissions.includes(k.key);
+                          return (
+                            <div
+                              key={k.key}
+                              className="flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-100 bg-white"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-slate-800 truncate">{k.label}</div>
+                                <div className="text-[9px] font-mono text-slate-400 truncate">{k.key}</div>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <LevelBadge level={k.level} label={levelLabelMap[k.level] || k.level} />
+                                <span
+                                  className={`text-[10px] font-black ${
+                                    isGranted ? "text-emerald-600" : "text-slate-300"
+                                  }`}
+                                >
+                                  {isGranted ? "已授权" : "未授权"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {detailView.type === "permission" && detailView.perm && (() => {
+                const p = detailView.perm;
+                const isGranted = selectedPermissions.includes(p.key);
+                return (
+                  <div className="space-y-3">
+                    <DetailRow label="权限名称" value={p.label} />
+                    <DetailRow label="权限点 KEY" value={p.key} mono />
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-400 mb-1">风险等级</div>
+                      <LevelBadge level={p.level} label={levelLabelMap[p.level] || p.level} />
+                    </div>
+                    <DetailRow
+                      label="所属模块"
+                      value={p.moduleName || detailView.group?.group || "—"}
+                    />
+                    <DetailRow
+                      label="当前授权状态"
+                      value={isGranted ? "已授权" : "未授权"}
+                      valueClass={isGranted ? "text-emerald-600" : "text-slate-400"}
+                    />
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-400 mb-1">权限说明</div>
+                      <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                        {p.desc || "（无说明）"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

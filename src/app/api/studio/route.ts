@@ -5,7 +5,6 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { isAdminRole } from "@/lib/auth-admin";
-import { buildComponentResult } from "@/lib/component-result";
 import {
   requireWorkspaceMembership,
   getLogicalWorkspaceRole,
@@ -13,7 +12,6 @@ import {
   writeAuditLog,
 } from "@/lib/security";
 import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
-import { estimateTypicalCallPoints } from "@/lib/pricing-config";
 import { isProbablyBinaryContent, sanitizeTextContent } from "@/lib/text-utils";
 import { scanSensitiveWords } from "@/lib/sensitive-words";
 import {
@@ -31,12 +29,143 @@ import { getAssetPermissions } from "@/lib/asset-permission";
 import { getFileTypeLabel, resolveAssetSize } from "@/lib/file-type";
 import { addNotification } from "@/lib/notifications-store";
 import { generateSmartSummary } from "@/lib/smart-summary";
-import { saveAssetFile, deleteAssetFile } from "@/lib/file-store";
+import { saveAssetFile, deleteAssetFile, readAssetFile } from "@/lib/file-store";
 import { getFileExtension } from "@/lib/file-type";
-import { extractTextFromBuffer } from "@/lib/text-extract";
+
+// 文件/资料文本提取统一走可取消超时入口（内部 AbortController，超时真正终止底层 OCR worker）
+const TEXT_EXTRACT_TIMEOUT_MS = 60000;
+
+async function readDocumentFileText(filePath: string, fileName: string): Promise<string> {
+  try {
+    const buf = await readAssetFile(filePath);
+    return await extractTextFromBufferWithTimeout(buf, fileName, "", TEXT_EXTRACT_TIMEOUT_MS);
+  } catch {
+    return "";
+  }
+}
+import { extractTextFromBufferWithTimeout } from "@/lib/text-extract";
+/** 合同 MIME 白名单匹配（服务端唯一依据：文件扩展名 + 真实 MIME，支持多主材料逐文件校验） */
+function isAcceptedFileMime(accepted: string[], fileName: string, mimeType: string): boolean {
+  const ext = (fileName.split(".").pop() || "").toLowerCase();
+  const extWithDot = "." + ext;
+  const mimeMap: Record<string, string[]> = {
+    txt: ["text/plain"],
+    md: ["text/markdown", "text/plain"],
+    markdown: ["text/markdown", "text/plain"],
+    pdf: ["application/pdf"],
+    docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+    doc: ["application/msword"],
+    png: ["image/png"],
+    jpg: ["image/jpeg"],
+    jpeg: ["image/jpeg"],
+    json: ["application/json", "text/plain"],
+    csv: ["text/csv", "text/plain"],
+  };
+  const mapped = mimeMap[ext] || [];
+  const raw = (mimeType || "").toLowerCase().trim();
+  return accepted.some((m) => {
+    const lower = m.toLowerCase().trim();
+    return (
+      lower === "*" ||
+      lower === "*/*" ||
+      lower === extWithDot ||
+      lower.endsWith(extWithDot) ||
+      mapped.includes(lower) ||
+      (raw !== "" && (lower === raw || (lower.endsWith("/*") && raw.startsWith(lower.slice(0, -1)))))
+    );
+  });
+}
 import { UNLIMITED_TOKEN, isUnlimitedTokenLimit, getMembershipTokenLimit } from "@/lib/quota-token";
-import { consumePoints, InsufficientPointsError } from "@/lib/credit-service";
+import {
+  consumePoints,
+  InsufficientPointsError,
+  IdempotencyStateUnknownError,
+  refundConsumedPoints,
+  getBalanceSummary,
+  type ConsumeResult,
+  type ConsumeDetail,
+  type ConsumeDetailKind,
+} from "@/lib/credit-service";
 import { clearServerCache } from "@/lib/serverCache";
+import {
+  COST_BASELINE_PLACEHOLDER,
+  getComponentCostBaseline,
+  renderCostBaselineText,
+} from "@/lib/component-cost-baseline";
+import { enqueueRefundRecovery } from "@/lib/refund-recovery";
+import { resolveTasksRefundMetaMap } from "@/lib/refund-status";
+import {
+  resolveDefaultDeployment,
+  getPlatformDefaultDeploymentCapabilities,
+  calculateMissingCapabilities,
+  type ResolvedModelPlan,
+} from "@/lib/model-registry";
+import {
+  estimatePoints,
+  splitTokenEstimate,
+  resolvePricingSource,
+  computeDepositTokenBounds,
+} from "@/lib/billing/pricing-center";
+import {
+  isComponentSettlementEnabled,
+  loadBillingConfig,
+} from "@/lib/billing/billing-config";
+import {
+  buildRegistryPricingSnapshot,
+  evaluateSettlementReadiness,
+  type RegistryPricingSnapshot,
+} from "@/lib/model-pricing";
+import {
+  isTokenSettlementFeatureEnabled,
+  createSettlementHold,
+  consumeAndCreateSettlementHold,
+  completeSettlement,
+  releaseSettlementHold,
+  enqueueSettlementRecovery,
+  type CompleteSettlementResult,
+} from "@/lib/token-settlement-service";
+import { extractTaskExecutionMeta } from "@/lib/task-execution-meta";
+import { deriveCatalogComponentReadiness } from "@/lib/component-readiness-view";
+import {
+  deriveCatalogContractView,
+  serializeTaskListItem,
+  serializeTaskDetailItem,
+  deriveTaskContractView,
+  type CatalogContractView,
+  type TaskDetailExecutionMeta,
+} from "@/lib/task-query-helpers";
+import { getDefaultCatalogComponentIds } from "@/lib/workspaceInit";
+import { BATCH_2C } from "@/lib/component-contract/catalog-contracts-c12-c15";
+
+// 受控候选元数据字典（只读依据，严格区分于已发布的数据库激活合同）
+const CANDIDATE_COMPONENTS_MAP = new Map(
+  BATCH_2C.map((item) => [item.componentId.trim().toUpperCase(), { contract: item.contract, analysis: item.analysis }]),
+);
+
+import {
+  createModelAdapter,
+  getModelTimeoutMs,
+  ModelAdapterError,
+  type ModelAdapter,
+  type ModelExecutionUsage,
+  type ModelExecutionResult,
+} from "@/lib/model-adapter";
+import {
+  buildSourceMaterialPrompt,
+  summarizeText,
+  isPrivateDocumentForbidden,
+  shouldRefundOnFailure,
+  ContractValidationError,
+} from "@/lib/component-runtime-utils";
+import { buildResultArtifact, type ResultArtifact } from "@/lib/component-contract/artifact";
+import { validateModelOutput } from "@/lib/component-contract/validators";
+import {
+  getActiveContractSnapshot,
+  ComponentContractError,
+  type ComponentContract,
+  type ComponentContractSnapshot,
+} from "@/lib/component-contract";
+import { extractRequiredCapabilities } from "@/lib/component-contract/capabilities";
 
 // 获取真实用户 ID：统一走 validateUser 的合法 JWT 校验
 // （Authorization Bearer JWT 或 Cookie auth_token 均强制验签，
@@ -173,19 +302,17 @@ async function touchComponentUsage(userId: string, componentId: string, workspac
   }
 }
 
-/**
- * 用户「默认引擎」偏好 ➔ 折算引擎中的厂商 id。
- * zhige（自研）与 custom（自带密钥，按自研等效价）统一走 zhige；deepseek 走 DeepSeek 官方价。
- */
-function resolveEngineProviderId(engine?: string | null): string {
-  return engine === "deepseek" ? "deepseek" : "zhige";
-}
-
 // GET - 获取组件相关信息
-export async function GET(request: NextRequest) {
+export async function runStudioGet(request: NextRequest, deps: StudioExecutionDeps) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const action = searchParams.get("action");
+    // 依赖注入边界（请求级）：生产缺省使用真实单例，测试传入内存 fake
+    const ed: StudioExecutionDeps = deps;
+    const prisma = ed.prisma;
+    const getUserId = ed.getUserId;
+    const requireWorkspaceMembership = ed.requireWorkspaceMembership;
+    const requireWorkspacePermission = ed.requireWorkspacePermission;
 
     // 获取系统组件目录（唯一数据源：component_catalog / component_category 表）。
     // 组件大厅属于公开页面，目录只包含已发布组件元数据，无需登录即可读取。
@@ -236,13 +363,135 @@ export async function GET(request: NextRequest) {
         taskStatsMap.set(key, cur);
       });
 
-      // 附加真实统计，供前端展示（前端禁止再派生任何模拟数值）
+      // 组件合同真实状态（来自 component_contract 表，作为前端诚实化展示的唯一真源）：
+      // 仅查询当前激活合同，得出 lifecycle / 是否 PUBLISHED / requiredCapabilities。
+      const activeContractIds = components
+        .map((c) => c.activeContractId)
+        .filter((id): id is string => Boolean(id));
+      const activeContracts = activeContractIds.length
+        ? await prisma.componentcontract.findMany({
+            where: { id: { in: activeContractIds } },
+            select: { id: true, lifecycle: true, contractVersion: true, contract: true },
+          })
+        : [];
+      const contractInfoMap = new Map<
+        string,
+        {
+          contractVersion: string | null;
+          lifecycle: string | null;
+          requiredCapabilities: string[];
+          inputKind: string | null;
+          textConstraints: unknown;
+          formConstraints: unknown;
+          fileConstraints: unknown;
+          outputKind: string | null;
+          disclaimer: string | null;
+          requireHumanReview: boolean;
+          usesCostBaseline: boolean;
+          fullContract: ComponentContract | null;
+        }
+      >();
+      let anyUsesCostBaseline = false;
+      for (const ac of activeContracts) {
+        const c = ac.contract as
+          | {
+              executionPlan?: { steps?: Array<{ requiredCapabilities?: string[]; promptTemplate?: string }> };
+              input?: { kind?: string; formConstraints?: unknown; fileConstraints?: unknown };
+            }
+          | null;
+        const reqCaps = extractRequiredCapabilities(c);
+        // 合同是否消费「真实历史成本/工时基准」占位符（决定是否需要向前端暴露基准状态）
+        const usesCostBaseline = (c?.executionPlan?.steps ?? []).some(
+          (s) => typeof s?.promptTemplate === "string" && s.promptTemplate.includes(COST_BASELINE_PLACEHOLDER),
+        );
+        if (usesCostBaseline) anyUsesCostBaseline = true;
+        const full = (ac.contract ?? null) as ComponentContract | null;
+        contractInfoMap.set(ac.id, {
+          contractVersion: ac.contractVersion || full?.contractVersion || null,
+          lifecycle: ac.lifecycle,
+          requiredCapabilities: reqCaps,
+          inputKind: (c as ComponentContract | null)?.input?.kind ?? null,
+          textConstraints: (c as ComponentContract | null)?.input?.textConstraints ?? null,
+          formConstraints: (c as ComponentContract | null)?.input?.formConstraints ?? null,
+          fileConstraints: (c as ComponentContract | null)?.input?.fileConstraints ?? null,
+          outputKind: (c as ComponentContract | null)?.output?.kind ?? null,
+          disclaimer: (c as ComponentContract | null)?.qualityPolicy?.disclaimerPolicy?.template ?? null,
+          requireHumanReview: (c as ComponentContract | null)?.qualityPolicy?.requireHumanReview ?? false,
+          usesCostBaseline,
+          fullContract: full,
+        });
+      }
+
+      // 成本基准状态（只读，绝不写入/伪造默认值）：仅在确有合同消费占位符时才查询 systemconfig。
+      // ASSUMPTION = 平台真实历史基准尚未配置，前端必须明确标注「假设估算」，不得显示为真实报价。
+      const costBaselineStatus: "CONFIGURED" | "ASSUMPTION" | null = anyUsesCostBaseline
+        ? (await getComponentCostBaseline())
+          ? "CONFIGURED"
+          : "ASSUMPTION"
+        : null;
+
+      // 读取平台默认模型部署的实际能力（与 resolveDefaultDeployment 判定口径 100% 一致）
+      const platformDepInfo = await getPlatformDefaultDeploymentCapabilities();
+
+      // 附加真实统计与合同状态，供前端展示（前端禁止再派生任何模拟数值）
       const componentsWithStats = components.map((c) => {
         const key = c.id.trim().toUpperCase();
+        const acInfo = c.activeContractId ? contractInfoMap.get(c.activeContractId) : null;
+        const candidateMeta = CANDIDATE_COMPONENTS_MAP.get(key) ?? null;
+
+        // 计算合同所需能力与平台默认部署能力的真实缺口（不得写死为空数组）
+        const missingCapabilities = acInfo
+          ? calculateMissingCapabilities(
+              acInfo.requiredCapabilities,
+              platformDepInfo.capabilities,
+              platformDepInfo.usable,
+            )
+          : [];
+
+        // 通用就绪状态、阻断原因与质量提示派生（纯函数，依据真实数据库合同或受控候选元数据）
+        const readiness = deriveCatalogComponentReadiness({
+          activeContractLifecycle: acInfo?.lifecycle ?? null,
+          activeContract: acInfo?.fullContract ?? null,
+          missingCapabilities,
+          candidateMeta,
+        });
+
+        // 构造标准的只读目录合同视图 CatalogContractView
+        const contractView: CatalogContractView | null = acInfo?.fullContract
+          ? deriveCatalogContractView(acInfo.fullContract, readiness.qualityHints)
+          : null;
+
         return {
           ...c,
           realUsageCount: usageMap.get(key) ?? 0,
           realTaskStats: taskStatsMap.get(key) ?? { total: 0, success: 0 },
+          // 通用只读就绪与审计字段（彻底消除前端按组件 ID 推断）
+          readinessStatus: readiness.readinessStatus,
+          blockingReasons: readiness.blockingReasons,
+          qualityHints: readiness.qualityHints,
+          isCandidateEligible: readiness.isCandidateEligible,
+          // 标准只读目录合同视图（供前端与审计统一使用）
+          contractView,
+          // 合同状态（数据库唯一真源）：无激活合同 -> lifecycle=null；DRAFT/ARCHIVED/PENDING -> 待配置；
+          // 仅 PUBLISHED 视为可执行（contractReady）。未发布候选绝不得伪装为可执行。
+          activeContractLifecycle: acInfo?.lifecycle ?? null,
+          contractVersion: acInfo?.contractVersion ?? null,
+          hasActiveContract: Boolean(c.activeContractId),
+          contractReady: readiness.contractReady,
+          hasPublishedContract: readiness.hasPublishedContract,
+          requiredCapabilities: acInfo?.requiredCapabilities ?? [],
+          missingCapabilities,
+          // 合同输入结构（供前端渲染结构化表单，如 C04 的「汇报对象」）；未激活/无合同时为 null
+          inputContractKind: acInfo?.inputKind ?? null,
+          textConstraints: acInfo?.textConstraints ?? null,
+          formConstraints: acInfo?.formConstraints ?? null,
+          // 合同文件约束（多主材料数量/MIME/大小提示的唯一真源，前端不得硬编码）
+          fileConstraints: acInfo?.fileConstraints ?? null,
+          outputKind: acInfo?.outputKind ?? null,
+          disclaimer: acInfo?.disclaimer ?? null,
+          requireHumanReview: acInfo?.requireHumanReview ?? false,
+          // 成本基准状态：ASSUMPTION=平台真实历史基准未配置（前端必须标注为假设估算）
+          costBaselineStatus: acInfo?.usesCostBaseline ? costBaselineStatus : null,
         };
       });
 
@@ -570,18 +819,38 @@ export async function GET(request: NextRequest) {
         }
       });
 
+      // 批量查询权威退款与账务状态
+      const taskIds = tasks.map((t) => t.id);
+      const taskConfigMap = new Map<string, { chargeAttempted?: boolean | null; status?: string }>();
+      tasks.forEach((t) => {
+        const cfg = t.config && typeof t.config === "object" ? (t.config as Record<string, unknown>) : null;
+        taskConfigMap.set(t.id, {
+          // 三态收口：仅采信明确布尔值，缺失/未知一律保留 null，严禁推断为「已发生扣费」
+          chargeAttempted: typeof cfg?.chargeAttempted === "boolean" ? cfg.chargeAttempted : null,
+          status: t.status,
+        });
+      });
+      const refundMetaMap = await resolveTasksRefundMetaMap(taskIds, prisma, taskConfigMap);
+
+      // 查询当前工作空间基本元数据
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { name: true, type: true },
+      });
+      const wsInfo = { name: ws?.name || "工作空间", type: ws?.type || "PERSONAL" };
+
+      // 任务列表统一脱敏序列化（与 /api/tasks 保持 100% 一致口径，严格剥离原始材料/密钥/堆栈）
       const formattedTasks = tasks.map((t) => {
         const cId = (t.type || "").trim().toUpperCase();
-        // 100% 从数据库 compNameMap (componentcatalog / componentcategory) 动态获取中文名称，拒绝硬编码
         const dbCompName = compNameMap.get(cId) || t.type || "";
-
-        return {
-          ...t,
-          componentId: t.type,
-          componentName: dbCompName,
-          config: t.config ? JSON.parse(JSON.stringify(t.config)) : null,
-          result: t.result ? JSON.parse(JSON.stringify(t.result)) : null,
+        const refundMeta = refundMetaMap.get(t.id) || {
+          refundStatus: "UNKNOWN" as const,
+          refundedPoints: null,
+          // 三态兜底：缺少账务事实时为 null（无法判断），严禁推断为「已发生扣费」
+          chargeAttempted: null,
         };
+
+        return serializeTaskListItem(t, wsInfo, dbCompName, refundMeta);
       });
 
       return NextResponse.json({ success: true, data: formattedTasks });
@@ -617,6 +886,12 @@ export async function GET(request: NextRequest) {
         ...(take ? { take } : {}),
       });
 
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { name: true, type: true },
+      });
+      const wsInfo = { name: ws?.name || "工作空间", type: ws?.type || "PERSONAL" };
+
       const allComponents = await prisma.componentcatalog.findMany({ select: { id: true, name: true } });
       const compNameMap = new Map<string, string>();
       allComponents.forEach((comp) => {
@@ -625,21 +900,94 @@ export async function GET(request: NextRequest) {
         }
       });
 
+      const taskIds = tasks.map((t) => t.id);
+      const taskConfigMap = new Map<string, { chargeAttempted?: boolean | null; status?: string }>();
+      tasks.forEach((t) => {
+        const cfg = t.config && typeof t.config === "object" ? (t.config as Record<string, unknown>) : null;
+        taskConfigMap.set(t.id, {
+          // 三态收口：仅采信明确布尔值，缺失/未知一律保留 null，严禁推断为「已发生扣费」
+          chargeAttempted: typeof cfg?.chargeAttempted === "boolean" ? cfg.chargeAttempted : null,
+          status: t.status,
+        });
+      });
+      const refundMetaMap = await resolveTasksRefundMetaMap(taskIds, prisma, taskConfigMap);
+
       const formattedResults = tasks.map((t) => {
         const cId = (t.type || "").trim().toUpperCase();
         const dbCompName = compNameMap.get(cId) || t.type || "";
-        return {
-          id: t.id,
-          name: t.name,
-          type: t.type,
-          componentName: dbCompName,
-          config: t.config ? JSON.parse(JSON.stringify(t.config)) : null,
-          result: t.result ? JSON.parse(JSON.stringify(t.result)) : null,
-          createdAt: t.createdAt,
+        const refundMeta = refundMetaMap.get(t.id) || {
+          refundStatus: "UNKNOWN" as const,
+          refundedPoints: null,
+          // 三态兜底：缺少账务事实时为 null（无法判断），严禁推断为「已发生扣费」
+          chargeAttempted: null,
         };
+
+        return serializeTaskListItem(t, wsInfo, dbCompName, refundMeta);
       });
 
       return NextResponse.json({ success: true, data: formattedResults });
+    }
+
+    // 获取单条任务成果物详情（按需加载，严格权限校验与安全脱敏）
+    if (action === "task_detail") {
+      const targetTaskId = searchParams.get("taskId") || searchParams.get("id");
+      if (!targetTaskId) {
+        return NextResponse.json({ success: false, error: "缺少 taskId 参数" }, { status: 400 });
+      }
+
+      // 若调用方显式提供了 workspaceId，先对工作空间权限执行前置校验，防止跨空间盲测
+      const explicitWsId = searchParams.get("workspaceId");
+      if (explicitWsId) {
+        const isMemberExplicit = await requireWorkspaceMembership(userId, explicitWsId);
+        if (!isMemberExplicit) {
+          return NextResponse.json({ success: false, error: "越权拦截：您无权查看该工作空间任务成果" }, { status: 403 });
+        }
+      }
+
+      const task = await prisma.componenttask.findUnique({
+        where: { id: targetTaskId },
+      });
+      if (!task) {
+        return NextResponse.json({ success: false, error: "任务记录不存在" }, { status: 404 });
+      }
+      if (!task.tenantId) {
+        return NextResponse.json({ success: false, error: "任务数据异常：缺少租户空间归属" }, { status: 500 });
+      }
+
+      const isMember = await requireWorkspaceMembership(userId, task.tenantId);
+      if (!isMember) {
+        return NextResponse.json({ success: false, error: "越权拦截：您无权查看该任务成果详情" }, { status: 403 });
+      }
+
+      const comp = await prisma.componentcatalog.findUnique({
+        where: { id: task.type },
+        select: { id: true, name: true },
+      });
+
+      const cfg = task.config && typeof task.config === "object" ? (task.config as Record<string, unknown>) : null;
+      const res = task.result && typeof task.result === "object" ? (task.result as Record<string, unknown>) : null;
+
+      const taskConfigMap = new Map<string, { chargeAttempted?: boolean | null; status?: string }>();
+      taskConfigMap.set(task.id, {
+        // 三态收口：仅采信明确布尔值，缺失/未知一律保留 null，严禁推断为「已发生扣费」
+        chargeAttempted: typeof cfg?.chargeAttempted === "boolean" ? cfg.chargeAttempted : null,
+        status: task.status,
+      });
+
+      const refundMap = await resolveTasksRefundMetaMap([task.id], prisma, taskConfigMap);
+      const refundMeta = refundMap.get(task.id) || {
+        refundStatus: "UNKNOWN" as const,
+        refundedPoints: null,
+        chargeAttempted: null,
+      };
+
+      // 统一调用生产安全序列化函数（纯函数，保证路由与测试口径 100% 一致，严格最小化披露）
+      const detailSafeData = serializeTaskDetailItem(task, comp?.name || task.type, refundMeta);
+
+      return NextResponse.json({
+        success: true,
+        data: detailSafeData,
+      });
     }
 
     // 获取指定工作空间下的文件资料
@@ -970,6 +1318,13 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error("Studio API GET error:", error);
+    if (error?.code === "DEFAULT_COMPONENT_SOURCE_MISSING") {
+      return NextResponse.json({
+        success: false,
+        error: "系统默认组件策略缺少已批准数据源",
+        code: "DEFAULT_COMPONENT_SOURCE_MISSING",
+      }, { status: 500 });
+    }
     return NextResponse.json({ 
       success: false, 
       error: "服务器内部错误",
@@ -1073,9 +1428,10 @@ async function getRestrictedComponentIds(workspaceId: string, userId: string): P
     }
   });
 
-  // 兜底：如果全空间绑定记录为空，则取系统默认装配的 5 套件组件
+  // 兜底：如果全空间绑定记录为空，则取数据库中真实标记的已发布默认装配组件
   if (boundComponentMap.size === 0) {
-    ["C01", "C02", "C07", "C11", "C12"].forEach(id => boundComponentMap.set(id.toUpperCase(), id));
+    const defaultIds = await getDefaultCatalogComponentIds();
+    defaultIds.forEach(id => boundComponentMap.set(id.toUpperCase(), id));
   }
 
   const installedComponentIds = Array.from(boundComponentMap.values());
@@ -1225,9 +1581,511 @@ async function getRestrictedComponentIds(workspaceId: string, userId: string): P
   return installedComponentIds;
 }
 
-// POST - 执行组件相关操作
-export async function POST(request: NextRequest) {
+// ===== 请求级依赖注入边界（CORE-3-R3.6） =====
+// POST 处理函数支持可选 deps 参数：生产入口（Next.js 运行时）不传 -> 使用真实单例；
+// 测试入口传入内存 fake。禁止用全局可变变量或测试环境分支实现注入。
+// 该边界仅改变依赖来源、不改变任何执行逻辑（生产中 ed.X 即为真实 X）。
+export interface StudioExecutionDeps {
+  readonly prisma: typeof prisma;
+  readonly getUserId: typeof getUserId;
+  readonly createModelAdapter: typeof createModelAdapter;
+  readonly getActiveContractSnapshot: typeof getActiveContractSnapshot;
+  readonly requireWorkspaceMembership: typeof requireWorkspaceMembership;
+  readonly requireWorkspacePermission: typeof requireWorkspacePermission;
+  readonly getRestrictedComponentIds: typeof getRestrictedComponentIds;
+  readonly getOrCreateQuota: typeof getOrCreateQuota;
+  readonly checkAndResetQuotaCycle: typeof checkAndResetQuotaCycle;
+  readonly resolveDefaultDeployment: typeof resolveDefaultDeployment;
+  readonly touchComponentUsage: typeof touchComponentUsage;
+  readonly writeAuditLog: typeof writeAuditLog;
+  readonly creditService: {
+    consumePoints: typeof consumePoints;
+    consumeAndCreateSettlementHold: typeof consumeAndCreateSettlementHold;
+    refundConsumedPoints: typeof refundConsumedPoints;
+  };
+  readonly refundService: { enqueueRefundRecovery: typeof enqueueRefundRecovery };
+  readonly settlementService: {
+    releaseSettlementHold: typeof releaseSettlementHold;
+    completeSettlement: typeof completeSettlement;
+    enqueueSettlementRecovery: typeof enqueueSettlementRecovery;
+  };
+}
+
+// ============ CORE-3 任务状态机辅助（失败任务持久化 / 退款状态派生 / 僵尸恢复） ============
+// 失败任务必须持久化；退款状态一律由 pointledger / refundrecovery 事实派生，严禁写死。
+// 所有更新均使用 status 条件（仅 RUNNING -> SUCCESS / RUNNING -> FAILED），已终态任务不被覆盖。
+
+const EXECUTION_LEASE_MS = Number(process.env.EXECUTION_LEASE_MS) || 10 * 60 * 1000;
+
+function buildRunningTaskConfig(params: {
+  contractId: string | null;
+  contractVersion: string | null;
+  contractSnapshot: unknown;
+  executionMode: string;
+  materialSummary: string;
+  inputSource: unknown;
+}): Record<string, unknown> {
+  const now = new Date();
+  return {
+    executionMode: params.executionMode,
+    contractId: params.contractId,
+    contractVersion: params.contractVersion,
+    contractSnapshot: params.contractSnapshot as unknown as Prisma.InputJsonValue,
+    startedAt: now,
+    executionLeaseUntil: new Date(now.getTime() + EXECUTION_LEASE_MS),
+    chargeAttempted: false,
+    inputSource: params.inputSource as unknown as Prisma.InputJsonValue,
+    materialSummary: params.materialSummary,
+    // 严禁写入原始 Prompt / API Key / 供应商响应 / 异常堆栈 / 原始 inputMaterial
+  };
+}
+
+async function createRunningTask(
+  prisma: typeof import("@/lib/prisma").prisma,
+  params: { taskId: string; userId: string; workspaceId: string; componentId: string; name: string; config: Record<string, unknown> },
+): Promise<void> {
+  await prisma.componenttask.create({
+    data: {
+      id: params.taskId,
+      name: params.name,
+      type: params.componentId,
+      status: "RUNNING",
+      progress: 0,
+      config: params.config as unknown as Prisma.InputJsonValue,
+      result: { executionMode: params.config.executionMode } as unknown as Prisma.InputJsonValue,
+      userId: params.userId,
+      tenantId: params.workspaceId,
+      isPublished: false,
+      icon: "Zap",
+    },
+  });
+}
+
+/**
+ * 原子状态转换 RUNNING -> FAILED（§二.1）：
+ *  - 必须使用带状态条件的更新 where: { id, status: "RUNNING" }，杜绝「先读后无条件写」冒充原子；
+ *  - 更新 0 行时重新读取任务状态，已是 SUCCESS/FAILED/ARCHIVED 等终态按幂等处理，绝不覆盖；
+ *  - 任务不存在返回 NOT_FOUND（由调用方返回稳定错误 + taskId）；
+ *  - 并发请求不会重复失败、不会覆盖终态。
+ */
+type FailTransitionOutcome =
+  | "FAILED_TRANSITIONED"
+  | "ALREADY_TERMINAL"
+  | "TASK_NOT_FOUND"
+  | "PERSISTENCE_FAILED";
+
+// 导出以供确定性测试直接验证「终态不得被覆盖」等状态机语义（生产行为不变）
+export async function markTaskStatusFailed(
+  prisma: typeof import("@/lib/prisma").prisma,
+  taskId: string,
+  err: { errorCode: string; errorMessage: string; chargeAttempted?: boolean },
+): Promise<FailTransitionOutcome> {
+  let existing: { status: string; config: unknown; result: unknown } | null = null;
   try {
+    existing = await prisma.componenttask.findUnique({
+      where: { id: taskId },
+      select: { status: true, config: true, result: true },
+    });
+  } catch (readErr) {
+    console.error("[TASK_FAIL_READ] 读取任务状态失败，需对账", {
+      taskId,
+      error: (readErr as Error)?.message || String(readErr),
+    });
+    return "PERSISTENCE_FAILED";
+  }
+  if (!existing) return "TASK_NOT_FOUND";
+  if (existing.status !== "RUNNING") return "ALREADY_TERMINAL";
+
+  const cfg = (existing.config as Record<string, unknown>) || {};
+  const baseRes = (existing.result as Record<string, unknown>) || {};
+  const executionMode = (cfg.executionMode as string) || "REAL_MODEL";
+
+  try {
+  const upd = await prisma.componenttask.updateMany({
+    where: { id: taskId, status: "RUNNING" },
+    data: {
+      status: "FAILED",
+      progress: 100,
+      completedAt: new Date(),
+      result: {
+        ...baseRes,
+        executionMode,
+        errorCode: err.errorCode,
+        errorMessage: err.errorMessage,
+        outputData: null,
+        artifacts: [],
+        artifact: null,
+        hasArtifact: false,
+      },
+      // 仅补充 chargeAttempted，保留 contractSnapshot / contractVersion / executionMode 等元数据；
+      // 失败任务不保存原始 inputMaterial / Prompt / 模型响应 / API Key / 堆栈
+      config: { ...cfg, chargeAttempted: err.chargeAttempted ?? null },
+    } as unknown as Prisma.componenttaskUpdateManyMutationInput,
+  });
+
+  if (upd.count === 0) {
+    // 并发竞态或已被其他请求置为终态：重新读取确认，绝不覆盖终态
+    const cur = await prisma.componenttask.findUnique({ where: { id: taskId }, select: { status: true } });
+    return cur ? "ALREADY_TERMINAL" : "TASK_NOT_FOUND";
+  }
+  return "FAILED_TRANSITIONED";
+  } catch (writeErr) {
+    console.error("[TASK_FAIL_WRITE] RUNNING->FAILED 持久化失败，需对账", {
+      taskId,
+      error: (writeErr as Error)?.message || String(writeErr),
+    });
+    return "PERSISTENCE_FAILED";
+  }
+}
+
+// FAILED 持久化安全包装（批次规则 6）：成功返回 null；持久化异常（DB 写入失败）必须返回
+// ACCOUNTING_RECONCILIATION_REQUIRED 并严格记录 taskId + 告警，严禁用 .catch(() => undefined) 吞掉失败任务写库异常，
+// 也不得声称已退款或任务已闭环。
+async function failTaskSafe(
+  prisma: typeof import("@/lib/prisma").prisma,
+  taskId: string,
+  err: { errorCode: string; errorMessage: string; chargeAttempted?: boolean },
+): Promise<NextResponse | null> {
+  const outcome = await markTaskStatusFailed(prisma, taskId, err);
+
+  // FAILED_TRANSITIONED：确认已由 RUNNING 转为 FAILED，调用方方可继续退款/恢复
+  if (outcome === "FAILED_TRANSITIONED") return null;
+
+  // ALREADY_TERMINAL（§二.2）：立即终止失败分支——不得退款、不得创建 refundrecovery、不得重复写 FAILED；
+  // 重新读取当前任务状态与账务事实后以幂等响应返回真实 taskId。若已 SUCCESS，绝不把本次旧请求当失败继续处理。
+  if (outcome === "ALREADY_TERMINAL") {
+    let curStatus: string | null = null;
+    let hasConsume = false;
+    try {
+      const cur = await prisma.componenttask.findUnique({ where: { id: taskId }, select: { status: true } });
+      curStatus = cur?.status ?? null;
+      const led = await prisma.pointledger.findMany({
+        where: { taskId, type: "CONSUME" },
+        select: { id: true },
+      });
+      hasConsume = led.length > 0;
+    } catch (readErr) {
+      console.error("[TERMINAL_REREAD] 重读终态任务失败", { taskId, error: (readErr as Error)?.message });
+    }
+    return NextResponse.json(
+      {
+        success: false,
+        code: "TASK_ALREADY_TERMINAL",
+        taskId,
+        status: curStatus,
+        chargeAttempted: hasConsume,
+        error: `任务已处于终态（${curStatus ?? "未知"}），本次请求按幂等处理，未重复退款、未创建恢复记录。`,
+      },
+      { status: 409 },
+    );
+  }
+
+  // TASK_NOT_FOUND（§二.3）：返回 taskId，绝不声称已失败/已退款/已对账
+  if (outcome === "TASK_NOT_FOUND") {
+    return NextResponse.json(
+      {
+        success: false,
+        code: "TASK_NOT_FOUND",
+        taskId,
+        error: "任务不存在或已被清理，无法完成失败状态转换。",
+      },
+      { status: 404 },
+    );
+  }
+
+  // PERSISTENCE_FAILED（§二.4）：账务事实未知，严禁继续调用退款
+  console.error("[ACCOUNTING_RECONCILIATION_REQUIRED] FAILED 持久化失败，需对账", {
+    taskId,
+    errorCode: err.errorCode,
+  });
+  return NextResponse.json(
+    {
+      success: false,
+      code: "ACCOUNTING_RECONCILIATION_REQUIRED",
+      taskId,
+      error: "任务失败状态写库异常，已触发对账处理，请联系管理员。",
+    },
+    { status: 500 },
+  );
+}
+
+async function safeRefundOnFailure(
+  prisma: typeof import("@/lib/prisma").prisma,
+  params: {
+    userId: string;
+    workspaceId: string;
+    taskId: string;
+    componentId: string;
+    componentName: string;
+    consumeResult: ConsumeResult | null;
+    wsType: string | null;
+    wsName: string | null;
+    refundConsumedPoints: (args: {
+      consumeResult: ConsumeResult;
+      userId: string;
+      workspaceId: string;
+      taskId: string;
+      componentId: string;
+      componentName: string;
+      workspaceType: string | null;
+      workspaceName: string | null;
+    }) => Promise<unknown>;
+    enqueueRefundRecovery: (args: {
+      taskId: string;
+      userId: string;
+      workspaceId: string;
+      consumeIdempotencyKey: string;
+      consumeResult: ConsumeResult;
+      componentId: string;
+      componentName: string;
+      workspaceType: string | null;
+      workspaceName: string | null;
+      error: string;
+    }) => Promise<{ ok: boolean; error?: string }>;
+  },
+): Promise<{ ok: boolean; enqueued?: boolean; error?: string }> {
+  if (!params.consumeResult || !shouldRefundOnFailure(params.consumeResult)) return { ok: true };
+  try {
+    await params.refundConsumedPoints({
+      consumeResult: params.consumeResult,
+      userId: params.userId,
+      workspaceId: params.workspaceId,
+      taskId: params.taskId,
+      componentId: params.componentId,
+      componentName: params.componentName,
+      workspaceType: params.wsType,
+      workspaceName: params.wsName,
+    });
+    return { ok: true };
+  } catch (e) {
+    const errMsg = (e as Error)?.message || String(e);
+    const enqueueRes: { ok: boolean; error?: string } = await params.enqueueRefundRecovery({
+      taskId: params.taskId,
+      userId: params.userId,
+      workspaceId: params.workspaceId,
+      consumeIdempotencyKey: `CONSUME:${params.taskId}`,
+      consumeResult: params.consumeResult,
+      componentId: params.componentId,
+      componentName: params.componentName,
+      workspaceType: params.wsType,
+      workspaceName: params.wsName,
+      error: errMsg,
+    });
+    if (enqueueRes.ok) {
+      return { ok: false, enqueued: true };
+    }
+    return { ok: false, enqueued: false, error: enqueueRes.error };
+  }
+}
+
+// RUNNING 僵尸任务恢复：超过 executionLeaseUntil 的 RUNNING 任务必须进入 FAILED；
+// 若账务存在 CONSUME，则登记退款恢复（幂等键 CONSUME:${taskId}），不得留下永久 RUNNING 僵尸任务。
+async function recoverZombieRunningTasks(
+  prisma: typeof import("@/lib/prisma").prisma,
+  deps: { enqueueRefundRecovery: typeof enqueueRefundRecovery },
+): Promise<number> {
+  const now = Date.now();
+  const running = await prisma.componenttask.findMany({
+    where: { status: "RUNNING" },
+    select: { id: true, userId: true, tenantId: true, type: true, name: true, config: true },
+  });
+  let recovered = 0;
+  for (const t of running) {
+    const cfg = (t.config as Record<string, unknown>) || {};
+    const lease = cfg.executionLeaseUntil ? new Date(cfg.executionLeaseUntil as string).getTime() : 0;
+    if (lease > now) continue;
+    const existing = await prisma.componenttask.findUnique({ where: { id: t.id }, select: { status: true, config: true } });
+    if (!existing || existing.status !== "RUNNING") continue;
+    const mergedCfg = (existing.config as Record<string, unknown>) || {};
+    const executionMode = (mergedCfg.executionMode as string) || "REAL_MODEL";
+    const consumeLedgers = await prisma.pointledger.findMany({
+      where: { taskId: t.id, type: "CONSUME" },
+      select: { id: true, points: true, scope: true },
+    });
+    const chargeAttempted = consumeLedgers.length > 0;
+    const zombieResult = {
+      executionMode,
+      errorCode: "EXECUTION_LEASE_EXPIRED",
+      errorMessage: "任务执行超过租约时限，已转入失败并待对账/退款。",
+      outputData: null,
+      artifacts: [],
+      artifact: null,
+      hasArtifact: false,
+    };
+    // §四.1：僵尸恢复必须使用带状态条件的原子转换 where: { id, status: "RUNNING" }
+    let upd: { count: number };
+    try {
+      upd = await prisma.componenttask.updateMany({
+        where: { id: t.id, status: "RUNNING" },
+        data: {
+          status: "FAILED",
+          progress: 100,
+          completedAt: new Date(),
+          result: zombieResult as unknown as Prisma.InputJsonValue,
+          config: { ...mergedCfg, chargeAttempted } as unknown as Prisma.InputJsonValue,
+        } as unknown as Prisma.componenttaskUpdateManyMutationInput,
+      });
+    } catch (updateErr) {
+      // 严禁吞掉 FAILED 持久化异常：记录 taskId + 告警并跳过（不视为恢复成功）
+      console.error("[ZOMBIE_RECOVERY] RUNNING->FAILED 持久化失败，需对账", {
+        taskId: t.id,
+        error: (updateErr as Error)?.message || String(updateErr),
+      });
+      continue;
+    }
+    if (upd.count === 0) {
+      // §四.2：更新 0 行必须重新读取状态
+      let cur: { status: string } | null = null;
+      try {
+        cur = await prisma.componenttask.findUnique({ where: { id: t.id }, select: { status: true } });
+      } catch (readErr) {
+        console.error("[ZOMBIE_RECOVERY] 重读僵尸任务失败", { taskId: t.id });
+        continue;
+      }
+      if (!cur) {
+        console.error("[ZOMBIE_RECOVERY] TASK_NOT_FOUND", { taskId: t.id });
+        continue;
+      }
+      if (cur.status !== "RUNNING") continue; // 已 SUCCESS/FAILED/ARCHIVED：跳过，绝不创建退款
+      console.error("[ZOMBIE_RECOVERY] 仍为 RUNNING，恢复失败需对账", { taskId: t.id });
+      continue;
+    }
+    if (chargeAttempted) {
+      const details: ConsumeDetail[] = consumeLedgers.map((l) => {
+        const scope = (l.scope as string) || "WORKSPACE";
+        const kind: ConsumeDetailKind =
+          scope === "WALLET"
+            ? "WALLET"
+            : scope === "MEMBER"
+              ? "MEMBER"
+              : scope === "PERSONAL_GIFT"
+                ? "PERSONAL_GIFT"
+                : "WORKSPACE";
+        return {
+          ledgerId: l.id,
+          grantId: "",
+          scope,
+          sourceType: "WORKSPACE",
+          points: Number(l.points),
+          kind,
+        };
+      });
+      const rebuiltConsume: ConsumeResult = {
+        consumed: consumeLedgers.reduce((s, l) => s + Number(l.points), 0),
+        details,
+        ledgerIds: consumeLedgers.map((l) => l.id),
+        skipped: false,
+        unlimited: false,
+        balanceAfter: 0,
+        monthlyTokenUsedIncremented: 0,
+      };
+      try {
+        await deps.enqueueRefundRecovery({
+          taskId: t.id,
+          userId: t.userId || "",
+          workspaceId: t.tenantId || "",
+          consumeIdempotencyKey: `CONSUME:${t.id}`,
+          consumeResult: rebuiltConsume,
+          componentId: t.type,
+          componentName: t.name,
+          error: "超时僵尸任务退款恢复",
+        });
+      } catch (enqErr) {
+        // §四.4：严禁只 console.error 后继续视为恢复成功——必须持久化 ACCOUNTING_RECONCILIATION_REQUIRED
+        console.error("[ZOMBIE_RECOVERY] 退款恢复入队失败，需对账", {
+          taskId: t.id,
+          error: (enqErr as Error)?.message || String(enqErr),
+        });
+        try {
+          await prisma.componenttask.update({
+            where: { id: t.id },
+            data: {
+              result: {
+                ...zombieResult,
+                errorCode: "ACCOUNTING_RECONCILIATION_REQUIRED",
+                errorMessage: "僵尸任务退款恢复入队失败，已扣点未退款，需人工对账。",
+              } as unknown as Prisma.InputJsonValue,
+            },
+          });
+        } catch (persistErr) {
+          console.error("[ZOMBIE_RECOVERY] 对账状态持久化失败", {
+            taskId: t.id,
+            error: (persistErr as Error)?.message || String(persistErr),
+          });
+        }
+        continue; // 绝不计数为已恢复
+      }
+    }
+    recovered++;
+  }
+  return recovered;
+}
+
+export function buildProductionDeps(): StudioExecutionDeps {
+  return {
+    prisma,
+    getUserId,
+    createModelAdapter,
+    getActiveContractSnapshot,
+    requireWorkspaceMembership,
+    requireWorkspacePermission,
+    getRestrictedComponentIds,
+    getOrCreateQuota,
+    checkAndResetQuotaCycle,
+    resolveDefaultDeployment,
+    touchComponentUsage,
+    writeAuditLog,
+    creditService: { consumePoints, consumeAndCreateSettlementHold, refundConsumedPoints },
+    refundService: { enqueueRefundRecovery },
+    settlementService: { releaseSettlementHold, completeSettlement, enqueueSettlementRecovery },
+  };
+}
+
+// 生产入口：Next.js 路由处理器（第二参为框架路由上下文，不用于注入）。
+// 真正的执行逻辑在 runStudioPost，测试可传入内存 fake deps 调用同一处理函数。
+export async function POST(
+  request: NextRequest,
+  _context?: { params: Promise<Record<string, string>> },
+): Promise<NextResponse> {
+  return runStudioPost(request, buildProductionDeps());
+}
+
+export async function GET(
+  request: NextRequest,
+  _context?: { params: Promise<Record<string, string>> },
+): Promise<NextResponse> {
+  return runStudioGet(request, buildProductionDeps());
+}
+
+// 内部实现：请求级依赖注入边界（CORE-3-R3.6）。生产由 POST 传入真实单例，测试传入内存 fake。
+// 该边界仅改变依赖来源、不改变任何执行逻辑（生产中 ed.X 即为真实 X）。
+export async function runStudioPost(request: NextRequest, deps: StudioExecutionDeps) {
+  try {
+    // 依赖注入边界（请求级）：生产缺省使用真实单例，测试传入内存 fake
+    const ed: StudioExecutionDeps = deps;
+    const prisma = ed.prisma;
+    const getUserId = ed.getUserId;
+    const createModelAdapter = ed.createModelAdapter;
+    const getActiveContractSnapshot = ed.getActiveContractSnapshot;
+    const requireWorkspaceMembership = ed.requireWorkspaceMembership;
+    const requireWorkspacePermission = ed.requireWorkspacePermission;
+    const getRestrictedComponentIds = ed.getRestrictedComponentIds;
+    const getOrCreateQuota = ed.getOrCreateQuota;
+    const checkAndResetQuotaCycle = ed.checkAndResetQuotaCycle;
+    const resolveDefaultDeployment = ed.resolveDefaultDeployment;
+    const touchComponentUsage = ed.touchComponentUsage;
+    const writeAuditLog = ed.writeAuditLog;
+    const creditService = ed.creditService;
+    const settlementService = ed.settlementService;
+    const refundService = ed.refundService;
+    const consumePoints = creditService.consumePoints;
+    const consumeAndCreateSettlementHold = creditService.consumeAndCreateSettlementHold;
+    const refundConsumedPoints = creditService.refundConsumedPoints;
+    const enqueueRefundRecovery = refundService.enqueueRefundRecovery;
+    const releaseSettlementHold = settlementService.releaseSettlementHold;
+    const completeSettlement = settlementService.completeSettlement;
+    const enqueueSettlementRecovery = settlementService.enqueueSettlementRecovery;
+
     const userId = await getUserId(request);
     if (!userId) {
       return NextResponse.json({ success: false, error: "未登录" }, { status: 401 });
@@ -1236,7 +2094,32 @@ export async function POST(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const isMultipartRequest =
       (request.headers.get("content-type") || "").includes("multipart/form-data");
-    const body = isMultipartRequest ? {} : await request.json().catch(() => ({}));
+    let body: Record<string, any> = {};
+    let uploadFiles: File[] = [];
+    let multipartForm: FormData | null = null;
+    if (isMultipartRequest) {
+      const form = await request.formData();
+      multipartForm = form;
+      const uploadedFiles: File[] = [];
+      for (const [key, value] of form.entries()) {
+        if (key === "file" && value instanceof File) {
+          uploadedFiles.push(value);
+          continue;
+        }
+        if (typeof value === "string") body[key] = value;
+      }
+      // 多主材料支持：先收集全部上传文件，最终以「激活合同声明的 fileConstraints.maxCount」为唯一裁决依据
+      // （服务端强校验；单文件合同的多文件请求仍会被合同层拒绝，前端限制不能替代服务端校验）
+      uploadFiles = uploadedFiles;
+      if (typeof body.inputSource === "string") {
+        try { body.inputSource = JSON.parse(body.inputSource); } catch { body.inputSource = null; }
+      }
+      if (body.tokens !== undefined && body.tokens !== null && body.tokens !== "") {
+        body.tokens = Number(body.tokens);
+      }
+    } else {
+      body = await request.json().catch(() => ({}));
+    }
     const action = body.action || searchParams.get("action");
     const workspaceId = body.workspaceId || searchParams.get("workspaceId");
     const { componentId, rating, comment, content, parentId, tokens } = body;
@@ -1298,6 +2181,8 @@ export async function POST(request: NextRequest) {
     // 模拟运行（扣减当前空间算力 Token）
     if (action === "simulate") {
       try {
+        // RUNNING 僵尸恢复：每次 simulate 入口顺带扫描并恢复超过租约的 RUNNING 任务（幂等，不阻塞主流程）
+        await recoverZombieRunningTasks(prisma, { enqueueRefundRecovery: refundService.enqueueRefundRecovery });
         if (!workspaceId || !componentId) {
           return NextResponse.json({ 
             success: false, 
@@ -1334,6 +2219,14 @@ export async function POST(request: NextRequest) {
             error: "您当前的岗位在当前企业空间下无此组件的执行权限，请联系管理员"
           }, { status: 403 });
         }
+
+        // 默认组件数据源（componentcatalog.isDefault=true && isPublished=true）仅用于：
+        //   1) 受限组件列表无绑定记录时的数据库兜底（GET catalog 路径）；
+        //   2) 全新空间默认装配自愈（workspaceInit 自检哨兵）。
+        // simulate 执行的是调用方显式指定的 componentId，并经绑定组件集合与权限校验，
+        // 不依赖默认装配集合，因此此处不再无条件校验默认数据源；
+        // 已明确绑定组件的合法执行不会因无关的默认装配配置缺失被错误阻断。
+        // （默认数据源缺失的稳定错误码仍由上述两条真正需要默认组件集合的路径抛出）
 
         // 装配与启用校验：若未装配则自动极速补全装配记录；若显式禁用则拦截
         const binding = await prisma.componentusage.findFirst({
@@ -1375,6 +2268,8 @@ export async function POST(request: NextRequest) {
             previewData: true,
             inputMode: true,
             estimatedModelTokens: true,
+            activeContractId: true,
+            detail: true,
           },
         });
 
@@ -1382,20 +2277,215 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ success: false, error: "未找到对应组件，无法执行" }, { status: 404 });
         }
 
-        // 读取用户默认 AI 引擎（zhige / deepseek / custom），缺省扣点时按对应厂商价折算
-        const userPref = await prisma.userpreference.findFirst({
-          where: { userId },
-          select: { aiEngine: true },
-        });
-        const engine = userPref?.aiEngine || "zhige";
+        // 建立执行合同唯一真源：
+        // 彻底移除对 componentcatalog.detail.executionProfile 的读取，运行时只读取 component_contract 中明确激活的 PUBLISHED 版本！
+        // 严禁“找不到新合同后回落旧 detail”，严禁降级为模拟假数据。
+        const retryTaskId = (typeof body.retryTaskId === "string" && body.retryTaskId) ? body.retryTaskId : null;
+        let targetContractSnapshot: ComponentContractSnapshot;
+        let targetContractId: string;
+        let targetContractVersion: string;
 
-        // 扣点优先级：组件配置的 estimatedModelTokens（每次调用折算的算力点）
-        // → 缺省时按「所选 AI 引擎 × 典型调用(3000 输入 + 1000 输出)」的厂商折算价计算，
-        //   不再写死兜底 5 点，保证不同厂商/模型的成本能被正确覆盖。
-        const deductTokens =
-          comp.estimatedModelTokens && Number(comp.estimatedModelTokens) > 0
-            ? Number(comp.estimatedModelTokens)
-            : await estimateTypicalCallPoints(resolveEngineProviderId(engine));
+        if (retryTaskId) {
+          // 重试模式：始终读取该历史任务保存的不可变快照，绝不读取后来激活的新版本。
+          // 权限边界（必须同时绑定）：id + userId(当前用户) + tenantId(当前空间) + type(当前组件)，
+          // 跨用户 / 跨空间 / 跨组件读取他人任务一律拒绝。
+          const historicalTask = await prisma.componenttask.findFirst({
+            where: {
+              id: retryTaskId,
+              userId,
+              tenantId: workspaceId,
+              type: componentId,
+            },
+            select: { config: true, status: true },
+          });
+          if (!historicalTask) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "TASK_NOT_RETRYABLE",
+                error: "未找到可重试的任务：该任务不存在，或不属于当前用户 / 当前空间 / 当前组件。",
+              },
+              { status: 404 },
+            );
+          }
+
+          // 任务状态必须属于允许重试的状态集合
+          const retryStatus = String(historicalTask.status || "").toUpperCase();
+          const RETRYABLE_STATUSES = new Set([
+            "FAILED",
+            "ERROR",
+            "CANCELLED",
+            "CANCELED",
+            "COMPLETED",
+            "DONE",
+            "SUCCESS",
+            "SUCCEEDED",
+            "ARCHIVED",
+          ]);
+          if (!RETRYABLE_STATUSES.has(retryStatus)) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "TASK_STATUS_NOT_RETRYABLE",
+                error: `任务当前状态 [${historicalTask.status}] 不允许重试。`,
+              },
+              { status: 409 },
+            );
+          }
+
+          const hConfig = (historicalTask.config as Record<string, unknown> | null) || {};
+          if (!hConfig.contractSnapshot || !hConfig.contractId || !hConfig.contractVersion) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "TASK_SNAPSHOT_MISSING",
+                error: "历史任务未包含合法的合同不可变快照，无法执行重试",
+              },
+              { status: 400 },
+            );
+          }
+          targetContractSnapshot = hConfig.contractSnapshot as unknown as ComponentContractSnapshot;
+          targetContractId = String(hConfig.contractId);
+          targetContractVersion = String(hConfig.contractVersion);
+
+          // 快照结构与一致性校验：快照本身必须存在 contract 对象，
+          // 且 snapshot.componentId / contractVersion 必须与任务元数据完全一致（损坏快照一律拒绝）
+          const snap = targetContractSnapshot as unknown as
+            | { snapshotId?: unknown; snapshotCreatedAt?: unknown; contract?: unknown }
+            | null
+            | undefined;
+          const snapContract = snap && typeof snap === "object" ? (snap.contract as Record<string, unknown> | undefined) : undefined;
+          if (!snap || typeof snap !== "object" || !snapContract || typeof snapContract !== "object") {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "TASK_SNAPSHOT_CORRUPTED",
+                error: "历史任务的合同快照结构损坏（缺少 contract 对象），无法执行重试。",
+              },
+              { status: 400 },
+            );
+          }
+          if (snapContract.componentId !== comp.id) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "TASK_SNAPSHOT_COMPONENT_MISMATCH",
+                error: `合同快照所属组件（${String(snapContract.componentId)}）与当前组件（${comp.id}）不一致，拒绝执行。`,
+              },
+              { status: 400 },
+            );
+          }
+          if (String(snapContract.contractVersion) !== targetContractVersion) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "TASK_SNAPSHOT_VERSION_MISMATCH",
+                error: `合同快照版本（${String(snapContract.contractVersion)}）与任务记录版本（${targetContractVersion}）不一致，拒绝执行。`,
+              },
+              { status: 400 },
+            );
+          }
+        } else {
+          // 新任务模式：只读取 component_contract 中明确激活的 PUBLISHED 版本！
+          // 服务端直接调用仓储层，严禁 HTTP 自调用
+          try {
+            const activeResult = await getActiveContractSnapshot(comp.id);
+            targetContractSnapshot = activeResult.snapshot;
+            targetContractId = activeResult.contractId;
+            targetContractVersion = activeResult.contractVersion;
+          } catch (contractErr: unknown) {
+            if (contractErr instanceof ComponentContractError) {
+              let status = 400;
+              let code = contractErr.code;
+              if (contractErr.code === "NO_ACTIVE_CONTRACT") {
+                // 无有效 PUBLISHED 激活合同：统一为明确的生产就绪错误码，绝不降级模拟
+                code = "COMPONENT_CONTRACT_NOT_READY";
+                status = 409;
+              } else if (contractErr.code === "COMPONENT_NOT_FOUND") {
+                status = 404;
+              } else if (
+                contractErr.code === "CONTRACT_ARCHIVED_CANNOT_EXECUTE" ||
+                contractErr.code === "CONTRACT_DRAFT_CANNOT_EXECUTE"
+              ) {
+                status = 409;
+              }
+              return NextResponse.json(
+                { success: false, code, error: contractErr.message },
+                { status },
+              );
+            }
+            throw contractErr;
+          }
+        }
+
+        const activeContract = targetContractSnapshot.contract;
+        if (activeContract.componentId !== comp.id) {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "CONTRACT_BINDING_MISMATCH",
+              error: `组件执行合同绑定不一致（合同=${activeContract.componentId}，组件=${comp.id}），拒绝执行。`,
+            },
+            { status: 400 },
+          );
+        }
+
+        // 组件成本必须来自 componentcatalog 真实字段；空 / 0 / 非法一律拒绝，绝不猜测或回退到固定值
+        const rawCost = Number(comp.estimatedModelTokens);
+        if (!Number.isFinite(rawCost) || rawCost <= 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "COMPONENT_COST_NOT_CONFIGURED",
+              error: "组件算力成本未配置（componentcatalog.estimatedModelTokens 为空或非法），无法执行。请在后台配置真实成本后重试。",
+            },
+            { status: 400 },
+          );
+        }
+        // 扣点口径：一律经算账中心换算（componentcatalog.estimatedModelTokens 是 Token 估算，
+        // 严禁直接当算力点扣）。兼容期规则：换算所需价格未登记的模型，维持既有扣点行为，
+        // 并在返回中标注估算口径、记录待登记清单，绝不静默改变既有组件的扣费数额。
+        const fallbackPoints = rawCost;
+        let deductTokens = fallbackPoints;
+        let billingBasis: "CONVERTED_PRICE" | "ESTIMATED_COMPATIBILITY" = "ESTIMATED_COMPATIBILITY";
+        let pricingEstimateSnapshot: unknown = null;
+        let pendingRegistration: { deploymentId: string; reason: string | null } | null = null;
+        try {
+          const caps = extractRequiredCapabilities(activeContract);
+          if (caps.length > 0) {
+            const plan = await resolveDefaultDeployment({ workspaceId, requiredCapabilities: caps });
+            const steps = Array.isArray((activeContract as any)?.executionPlan?.steps)
+              ? ((activeContract as any).executionPlan.steps as Array<{ maxOutputTokens?: number }>)
+              : [];
+            const maxOut = steps.reduce(
+              (acc, s) => acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
+              0,
+            );
+            const split = splitTokenEstimate({
+              estimatedTotalTokens: rawCost,
+              maxOutputTokens: maxOut > 0 ? maxOut : null,
+            });
+            const est = await estimatePoints({
+              modelDeploymentId: plan.deploymentId,
+              inputTokens: split.inputTokens,
+              outputTokens: split.outputTokens,
+              pricingSource: resolvePricingSource(plan.deploymentId),
+            });
+            pricingEstimateSnapshot = est.snapshot;
+            if (est.basis === "CONVERTED_PRICE" && est.points !== null && est.points > 0) {
+              deductTokens = est.points;
+              billingBasis = "CONVERTED_PRICE";
+            } else {
+              pendingRegistration = { deploymentId: plan.deploymentId, reason: est.blockedReason };
+              console.warn(
+                `[算账中心] 部署 ${plan.deploymentId} 单价未登记，兼容期维持既有估算扣点口径 ${fallbackPoints} 点`,
+              );
+            }
+          }
+        } catch (estimateErr) {
+          // 估价失败不得在此阻断执行：交由后续正式模型裁决抛出稳定错误码，此处维持既有扣点口径
+          console.warn("[算账中心] 估价失败，兼容期维持既有估算扣点口径:", (estimateErr as Error)?.message);
+        }
 
         // 自然月跨月算力配额自动重置
         await checkAndResetQuotaCycle(prisma, workspaceId, userId);
@@ -1405,6 +2495,24 @@ export async function POST(request: NextRequest) {
 
         // 任务 ID 先行生成：作为扣费幂等键与算力流水关联的任务号
         const taskId = crypto.randomUUID();
+
+        // 统一「原路退款」辅助：失败路径调用，按扣点来源分桶幂等退款；
+        // 返回明确状态：退款成功 { ok: true }；退款失败且落库成功 { ok: false, enqueued: true }；双重失败 { ok: false, enqueued: false, error }
+        // 统一「原路退款」辅助：失败路径调用，按扣点来源分桶幂等退款；
+        // 委托模块级 safeRefundOnFailure（退款成功 { ok: true }；退款失败且落库成功 { ok: false, enqueued: true }；双重失败 { ok: false, enqueued: false, error }）
+        const safeRefund = (cr: ConsumeResult): Promise<{ ok: boolean; enqueued?: boolean; error?: string }> =>
+          safeRefundOnFailure(prisma, {
+            userId,
+            workspaceId,
+            taskId,
+            componentId: comp.id,
+            componentName: comp.name || componentId,
+            consumeResult: cr,
+            wsType: ws?.type || null,
+            wsName: ws?.name || null,
+            refundConsumedPoints: creditService.refundConsumedPoints,
+            enqueueRefundRecovery: refundService.enqueueRefundRecovery,
+          });
 
         // 2. 校验成员月度算力额度 (若管理员显式为该成员配置了额度)
         const currentMember = await prisma.workspacemember.findUnique({
@@ -1456,75 +2564,884 @@ export async function POST(request: NextRequest) {
           }, { status: 400 });
         }
 
-        // 统一任务输入契约：以数据库 component_catalog.inputMode 为唯一准绳校验输入来源，
-        // 文本 / 文件 / 空间资料只需满足其一即可，每个任务至多一个主材料。
-        const compInputMode: string = comp.inputMode || "text";
+        // 输入来源解析（以 activeContract.input 为唯一权威依据）
         const reqInputSource = body.inputSource && typeof body.inputSource === "object" ? (body.inputSource as any) : null;
         const reqSourceType: string | undefined = reqInputSource?.sourceType;
         const hasText = inputMaterial.length > 0;
 
+        const inputKind = activeContract.input?.kind || "TEXT";
         let inputError = "";
-        switch (compInputMode) {
-          case "text":
-            if (!hasText && reqSourceType !== "asset") {
-              inputError = "该组件要求文本输入：请粘贴文本材料，或选择空间资料作为主材料。";
+        if (inputKind === "TEXT") {
+          if (!hasText && reqSourceType !== "asset") {
+            inputError = "该组件要求文本输入：请粘贴文本材料，或选择空间资料作为主材料。";
+          }
+        } else if (inputKind === "FILE" || inputKind === "MULTI_FILE") {
+          if (reqSourceType !== "file" && reqSourceType !== "asset") {
+            inputError = "该组件需要上传文件或选择空间资料作为主材料：纯文本粘贴不允许执行。";
+          }
+        } else if (inputKind === "STRUCTURED_FORM") {
+          // 结构化表单：以合同声明字段为唯一依据，服务端强校验必填与 select 选项合法性
+          const formData =
+            body.formData && typeof body.formData === "object" && !Array.isArray(body.formData)
+              ? (body.formData as Record<string, unknown>)
+              : null;
+          if (!formData) {
+            inputError = "该组件需要结构化表单输入：请在 formData 中提供表单字段。";
+          } else {
+            const fields = activeContract.input?.formConstraints?.fields ?? [];
+            for (const fdef of fields) {
+              const v = formData[fdef.name];
+              if (fdef.required && (v === undefined || v === null || String(v).trim() === "")) {
+                inputError = `表单必填字段「${fdef.label || fdef.name}」缺失或为空。`;
+                break;
+              }
+              if (
+                v !== undefined &&
+                v !== null &&
+                fdef.type === "select" &&
+                Array.isArray(fdef.options) &&
+                !fdef.options.includes(String(v))
+              ) {
+                inputError = `表单字段「${fdef.name}」取值不在合法选项列表中。`;
+                break;
+              }
             }
-            break;
-          case "file":
-            if (reqSourceType !== "file" && reqSourceType !== "asset") {
-              inputError = "该组件需要上传文件或选择空间资料作为主材料：纯文本粘贴不允许执行。";
-            }
-            break;
-          case "both":
-          default:
-            if (!hasText && reqSourceType !== "file" && reqSourceType !== "asset") {
-              inputError = "该组件需要文本、文件或空间资料任一作为主材料。";
-            }
-            break;
+          }
+        } else {
+          if (!hasText && reqSourceType !== "file" && reqSourceType !== "asset") {
+            inputError = "该组件需要文本、文件或空间资料任一作为主材料。";
+          }
         }
         if (inputError) {
-          return NextResponse.json({ success: false, error: inputError }, { status: 400 });
+          return NextResponse.json({ success: false, code: "INPUT_REQUIRED", error: inputError }, { status: 400 });
         }
 
-        // 落库用标准化 inputSource 结构
+        // 落库用标准化 inputSource 结构（文件/资料元数据一律以服务端真实读取结果为准）
         const storedInputSource = {
           sourceType: reqSourceType || "text",
           sourceId: (typeof reqInputSource?.sourceId === "string" && reqInputSource.sourceId) ? reqInputSource.sourceId : null,
           fileName: (typeof reqInputSource?.fileName === "string" && reqInputSource.fileName) ? reqInputSource.fileName : null,
           fileSize: typeof reqInputSource?.fileSize === "number" ? reqInputSource.fileSize : null,
+          mimeType: null as string | null,
         };
 
-        // ===== 算力点扣费：按分桶「到期最早优先」扣减，写入算力流水（幂等）=====
-        // 可用额度 = 用户钱包（跨空间通用）+ 当前空间池（企业共享池 / 个人专属赠送）
-        try {
-          await consumePoints({
-            workspaceId,
-            userId,
-            points: deductTokens,
-            componentId: comp.id,
-            componentName: comp.name || componentId,
-            taskId,
-            workspaceType: ws?.type || null,
-            workspaceName: ws?.name || null,
-            idempotencyKey: `CONSUME:${taskId}`,
-          });
-        } catch (consumeErr) {
-          if (consumeErr instanceof InsufficientPointsError) {
-            return NextResponse.json({
-              success: false,
-              code: "POINTS_INSUFFICIENT",
-              error: `算力点余额不足：当前可用 ${consumeErr.available} 点，本次需要 ${consumeErr.required} 点，请充值后再试`,
-            }, { status: 400 });
+        // 已解析的空间资料（用于服务端读取正文；绝不信任客户端传入的 fileName/fileSize/content）
+        let resolvedDoc: {
+          workspaceId: string;
+          visibility: string | null;
+          uploaderId: string | null;
+          originalName: string | null;
+          fileSize: number | null;
+          content: string | null;
+          filePath: string | null;
+        } | null = null;
+
+        // 输入来源安全校验：来源元数据不可信任客户端提交，必须以服务端真实数据为准
+        if (reqSourceType === "file" || reqSourceType === "asset") {
+          if (reqSourceType === "file") {
+            // 文件输入：必须以 multipart 原始上传文件为准，文件名/大小/MIME 全部来自服务端读取
+            if (uploadFiles.length === 0) {
+              return NextResponse.json(
+                { success: false, code: "INPUT_SOURCE_INVALID", error: "文件输入缺少上传文件，请通过 multipart/form-data 上传原始文件" },
+                { status: 400 },
+              );
+            }
+            storedInputSource.sourceId = null;
+            storedInputSource.fileName = uploadFiles.map((f) => f.name || "upload.bin").join("、");
+            storedInputSource.fileSize = uploadFiles.reduce((sum, f) => sum + (typeof f.size === "number" ? f.size : 0), 0);
+            storedInputSource.mimeType = uploadFiles[0]?.type || null;
+
+            // 多主材料合同校验（服务端唯一真源：激活合同的 fileConstraints）
+            const fcUpload = activeContract.input?.fileConstraints;
+            if (fcUpload) {
+              if (typeof fcUpload.minCount === "number" && uploadFiles.length < fcUpload.minCount) {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "INPUT_FILE_COUNT_INVALID",
+                    error: `上传文件数量（${uploadFiles.length}）少于组件合同要求的最小数量（${fcUpload.minCount}）。`,
+                  },
+                  { status: 400 },
+                );
+              }
+              if (typeof fcUpload.maxCount === "number" && uploadFiles.length > fcUpload.maxCount) {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "INPUT_MULTIPLE_NOT_SUPPORTED",
+                    error: `上传文件数量（${uploadFiles.length}）超过组件合同允许的最大数量（${fcUpload.maxCount}）。`,
+                  },
+                  { status: 400 },
+                );
+              }
+              let totalBytes = 0;
+              for (const uf of uploadFiles) {
+                const fname = uf.name || "upload.bin";
+                if (fcUpload.acceptedMimes?.length && !isAcceptedFileMime(fcUpload.acceptedMimes, fname, uf.type || "")) {
+                  return NextResponse.json(
+                    {
+                      success: false,
+                      code: "INPUT_MIME_NOT_ALLOWED",
+                      error: `不支持的文件类型：${fname}（仅允许 ${fcUpload.acceptedMimes.join("、")}）。`,
+                    },
+                    { status: 400 },
+                  );
+                }
+                const sz = typeof uf.size === "number" ? uf.size : 0;
+                if (typeof fcUpload.maxSingleFileBytes === "number" && sz > fcUpload.maxSingleFileBytes) {
+                  return NextResponse.json(
+                    {
+                      success: false,
+                      code: "INPUT_TOO_LARGE",
+                      error: `文件过大：${fname}（${sz} 字节），超过合同单文件上限 ${fcUpload.maxSingleFileBytes} 字节。`,
+                    },
+                    { status: 400 },
+                  );
+                }
+                totalBytes += sz;
+              }
+              if (typeof fcUpload.maxTotalBytes === "number" && totalBytes > fcUpload.maxTotalBytes) {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "INPUT_TOO_LARGE",
+                    error: `文件总大小（${totalBytes} 字节）超过合同允许的总大小限制 ${fcUpload.maxTotalBytes} 字节。`,
+                  },
+                  { status: 400 },
+                );
+              }
+            }
+          } else {
+            // 空间资料：sourceId 必须存在，否则无法校验归属
+            const sourceId = reqInputSource?.sourceId;
+            if (!sourceId) {
+              return NextResponse.json(
+                { success: false, code: "INPUT_SOURCE_INVALID", error: "空间资料来源缺少 sourceId，无法校验归属" },
+                { status: 400 },
+              );
+            }
+            const doc = await prisma.document.findUnique({
+              where: { id: sourceId },
+              select: { workspaceId: true, visibility: true, uploaderId: true, originalName: true, fileSize: true, content: true, filePath: true },
+            });
+            if (!doc || doc.workspaceId !== workspaceId) {
+              return NextResponse.json(
+                { success: false, code: "INPUT_SOURCE_FORBIDDEN", error: "资料不属于当前工作空间，无权访问" },
+                { status: 403 },
+              );
+            }
+            // 私密资料仅上传者本人可访问；即使是空间 OWNER/ADMIN 也不得直接读取其他成员私密资料
+            // （治理/干涉须走独立申诉流程，不在组件执行接口内放行）
+            if (isPrivateDocumentForbidden(doc.visibility, doc.uploaderId, userId)) {
+              return NextResponse.json(
+                { success: false, code: "INPUT_SOURCE_FORBIDDEN", error: "私密资料仅上传者本人可访问" },
+                { status: 403 },
+              );
+            }
+            // 以数据库真实元数据覆盖客户端提交（文件名/大小/来源类型不可信任）
+            if (doc.originalName != null) storedInputSource.fileName = doc.originalName;
+            storedInputSource.fileSize = doc.fileSize;
+            resolvedDoc = doc;
           }
-          throw consumeErr;
         }
 
-        // 服务端感知组件属性（category, contract, previewData, inputMode）生成差异化结果
-        const outputData = buildComponentResult(comp, inputMaterial);
-        const taskStatus = "SUCCESS"; // 模拟执行已完成，服务端判定成功
+        // 服务端真实解析输入文本：file/asset 必须以服务端读取内容为准，客户端 inputMaterial 仅用于 text 模式
+        let serverInputMaterial = inputMaterial;
+        // 结构化表单：按合同字段声明顺序拼装为模型可读材料（服务端以合同字段为准，不信任客户端自由文本）
+        if (inputKind === "STRUCTURED_FORM") {
+          const formData = body.formData as Record<string, unknown>;
+          const fields = activeContract.input?.formConstraints?.fields ?? [];
+          serverInputMaterial = fields.map((f) => `${f.label || f.name}：${String(formData?.[f.name] ?? "")}`).join("\n");
+        }
+        if (reqSourceType === "file") {
+          const fileSize = storedInputSource.fileSize ?? 0;
+          const hardCap = 100 * 1024 * 1024; // 100MB 绝对上限，避免超大文件占用内存
+          if (fileSize > hardCap) {
+            return NextResponse.json(
+              { success: false, code: "INPUT_TOO_LARGE", error: `文件过大（${fileSize} 字节），超过系统上限 ${hardCap} 字节。` },
+              { status: 400 },
+            );
+          }
+          // 多主材料：逐文件提取文本并按上传顺序合并为单一材料（顺序稳定、分隔清晰、标注来源）
+          const extractedParts: string[] = [];
+          const unreadableFiles: string[] = [];
+          for (const uf of uploadFiles) {
+            const fname = uf.name || "upload.bin";
+            const fileBuf = Buffer.from(await uf.arrayBuffer());
+            const extractedOne = await extractTextFromBufferWithTimeout(fileBuf, fname, uf.type || "", TEXT_EXTRACT_TIMEOUT_MS);
+            if (extractedOne && extractedOne.trim()) {
+              // 保留文件名，便于模型区分多份材料的归属（多主材料合同要求自行识别各部分）
+              extractedParts.push(`【材料：${fname}】\n${extractedOne.trim()}`);
+            } else {
+              unreadableFiles.push(fname);
+            }
+          }
+          // 任一文件无法提取文本一律拒绝整单：绝不静默丢弃文件后照常扣费（本次不扣点、不写任务）
+          if (unreadableFiles.length > 0) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "INPUT_TEXT_NOT_EXTRACTED",
+                error: `以下文件未能提取出可分析文本：${unreadableFiles.join("、")}。请确认文件包含文字内容（图片扫描件无法识别）后重新提交，本次不扣费。`,
+              },
+              { status: 400 },
+            );
+          }
+          if (extractedParts.length === 0) {
+            return NextResponse.json(
+              { success: false, code: "INPUT_TEXT_NOT_EXTRACTED", error: "文件未能提取出可分析文本，请确认文件包含文字内容（图片扫描件无法识别）。" },
+              { status: 400 },
+            );
+          }
+          serverInputMaterial = extractedParts.join("\n\n---\n\n");
+        } else if (reqSourceType === "asset") {
+          let extracted = resolvedDoc?.content ? String(resolvedDoc.content) : "";
+          if (!extracted.trim() && resolvedDoc?.filePath) {
+            extracted = await readDocumentFileText(
+              resolvedDoc.filePath,
+              resolvedDoc.originalName || storedInputSource.fileName || "doc",
+            );
+          }
+          if (!extracted || !extracted.trim()) {
+            return NextResponse.json(
+              { success: false, code: "INPUT_TEXT_NOT_EXTRACTED", error: "空间资料未能提取出可分析文本，请确认资料包含文字内容。" },
+              { status: 400 },
+            );
+          }
+          serverInputMaterial = extracted;
+        }
+
+        // 服务端解析后的文本再次清洗，防止二进制脏数据进入模型 / 落库
+        const cleanServerMaterial = sanitizeTextContent(serverInputMaterial);
+        if (isProbablyBinaryContent(cleanServerMaterial)) {
+          return NextResponse.json(
+            { success: false, code: "INPUT_TEXT_NOT_EXTRACTED", error: "输入材料解析后包含不可分析的二进制数据。" },
+            { status: 400 },
+          );
+        }
+
+        // 敏感内容识别（与数据库落库、模型调用保持一致）：一律基于服务端真实文本
+        const sensitivity = scanSensitiveWords(cleanServerMaterial);
+        const effectiveInputMaterial =
+          sensitivity.hasSensitive ? sensitivity.sanitizedText : cleanServerMaterial;
+
+        // ====== 执行分支：仅真实模型（生产严禁模拟执行） ======
+        let executionMode: "REAL_MODEL" = "REAL_MODEL";
+        let realMeta: {
+          providerId: string;
+          modelId: string;
+          inputTokens: number | null;
+          outputTokens: number | null;
+          totalTokens: number | null;
+          estimatedPoints: number;
+          billingMode: string;
+          pricingSnapshot: unknown;
+          latencyMs: number;
+          providerRequestId: string | null;
+          usage: ModelExecutionUsage;
+          artifacts: ResultArtifact[];
+          contractVersion: string;
+          timeoutMs: number;
+        } | null = null;
+        let outputData: any;
+
+        let consumeResult: ConsumeResult | null = null;
+        let settlementFeatureEnabled = false;
+        /** 白名单组件押金点数（最坏情况，扣点前预估）；非白名单/估算模式为 null */
+        let depositPoints: number | null = null;
+        let modelPlanForSettlement: ResolvedModelPlan | null = null;
+        let modelResultForSettlement: ModelExecutionResult | null = null;
+
+        if (activeContract) {
+          // 批次 2 灰度：全局结算 flag 与组件白名单同时满足才启用押金-结算；
+          // 白名单外组件（含 C02）维持估算兼容模式，禁止全局一刀切。
+          const billingCfg = await loadBillingConfig();
+          settlementFeatureEnabled = isComponentSettlementEnabled(comp.id, {
+            globalFlag: isTokenSettlementFeatureEnabled(),
+            whitelist: billingCfg.settlementComponentWhitelist,
+          });
+          // Phase 1：模型必须来自数据库注册表（受 enabled 与空间白名单约束），适配器在执行前按解析结果创建
+          let adapter: ModelAdapter;
+          let modelPlan: ResolvedModelPlan;
+
+          // 1. 输入约束前置业务校验（文本长度约束、文件扩展名与单文件大小约束）
+          if (activeContract.input.textConstraints) {
+            const tc = activeContract.input.textConstraints;
+            if (typeof tc.maxLength === "number" && cleanServerMaterial.length > tc.maxLength) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "INPUT_TOO_LARGE",
+                  error: `输入文本过长（${cleanServerMaterial.length} 字符），超过合同上限 ${tc.maxLength} 字符。`,
+                },
+                { status: 400 },
+              );
+            }
+            if (typeof tc.minLength === "number" && cleanServerMaterial.length < tc.minLength) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "INPUT_TOO_SHORT",
+                  error: `输入文本过短（${cleanServerMaterial.length} 字符），未达合同下限 ${tc.minLength} 字符。`,
+                },
+                { status: 400 },
+              );
+            }
+          }
+
+          // file 来源的 MIME/大小/数量已在来源解析阶段按合同逐文件校验，此处仅处理空间资料(asset)
+          if (activeContract.input.fileConstraints && reqSourceType === "asset" && storedInputSource.fileName) {
+            const fc = activeContract.input.fileConstraints;
+            if (fc.acceptedMimes && fc.acceptedMimes.length > 0) {
+              const ext = (storedInputSource.fileName.split(".").pop() || "").toLowerCase();
+              const extWithDot = "." + ext;
+              const mimeMap: Record<string, string[]> = {
+                txt: ["text/plain"],
+                md: ["text/markdown", "text/plain"],
+                markdown: ["text/markdown", "text/plain"],
+                pdf: ["application/pdf"],
+                docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+                doc: ["application/msword"],
+                png: ["image/png"],
+                jpg: ["image/jpeg"],
+                jpeg: ["image/jpeg"],
+                json: ["application/json", "text/plain"],
+                csv: ["text/csv", "text/plain"],
+              };
+              const mappedMimes = mimeMap[ext] || [];
+              const rawMime = (storedInputSource.mimeType || "").toLowerCase().trim();
+              const ok = fc.acceptedMimes.some((m) => {
+                const lower = m.toLowerCase().trim();
+                return (
+                  lower === "*" ||
+                  lower === "*/*" ||
+                  lower === extWithDot ||
+                  lower.endsWith(extWithDot) ||
+                  mappedMimes.includes(lower) ||
+                  (rawMime !== "" && (lower === rawMime || (lower.endsWith("/*") && rawMime.startsWith(lower.slice(0, -1)))))
+                );
+              });
+              if (!ok) {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "INPUT_MIME_NOT_ALLOWED",
+                    error: `不支持的文件类型：${storedInputSource.fileName}（仅允许 ${fc.acceptedMimes.join("、")}）。`,
+                  },
+                  { status: 400 },
+                );
+              }
+            }
+            if (typeof fc.maxSingleFileBytes === "number" && typeof storedInputSource.fileSize === "number" && storedInputSource.fileSize > fc.maxSingleFileBytes) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "INPUT_TOO_LARGE",
+                  error: `文件过大（${storedInputSource.fileSize} 字节），超过合同单文件上限 ${fc.maxSingleFileBytes} 字节。`,
+                },
+                { status: 400 },
+              );
+            }
+          }
+
+          // 模型策略校验：从数据库注册表解析；未注册/未启用/不在白名单 → MODEL_NOT_ALLOWED（绝不降级模拟）
+          const reqProvider = typeof body.providerId === "string" ? body.providerId : null;
+          const reqModel = typeof body.modelId === "string" ? body.modelId : null;
+          try {
+            // 执行模型唯一裁决：空间默认 -> 平台默认 -> 明确拒绝 MODEL_NOT_ALLOWED。
+            // 严禁 findFirst(orderBy: createdAt) 之类「按创建时间挑一个」的逻辑，严禁环境变量兜底。
+            // 合同声明的能力要求，统一由通用 helper 提取（executionPlan.steps + 兼容合法顶层），
+            // 交由裁决入口逐项校验；严禁组件 ID 特判。
+            const requiredCapabilities = extractRequiredCapabilities(activeContract);
+            const defaultPlan = await resolveDefaultDeployment({ workspaceId, requiredCapabilities });
+
+            // 请求体一旦显式指定 provider/model，必须与裁决结果完全一致（禁止越权指定模型）
+            if (reqProvider || reqModel) {
+              if (reqProvider !== defaultPlan.providerId || reqModel !== defaultPlan.modelId) {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "MODEL_OVERRIDE_NOT_ALLOWED",
+                    error: "当前仅允许使用空间/平台默认模型，不接受自定义 provider/model。",
+                  },
+                  { status: 400 },
+                );
+              }
+            }
+
+            modelPlan = defaultPlan;
+            adapter = await createModelAdapter(modelPlan);
+            modelPlanForSettlement = modelPlan;
+
+            // 前置门禁：若启用了真实结算，必须校验模型定价就绪情况；未就绪直接阻断，不扣点、不调模型
+            if (settlementFeatureEnabled) {
+              if (!modelPlan.pricing || !evaluateSettlementReadiness(modelPlan.pricing, { settlementFeatureEnabled })) {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "SETTLEMENT_NOT_READY",
+                    error: "模型真实结算定价尚未就绪，无法发起任务",
+                  },
+                  { status: 422 },
+                );
+              }
+            }
+          } catch (e) {
+            if (e instanceof ContractValidationError) {
+              return NextResponse.json({ success: false, code: e.code, error: e.message }, { status: e.status });
+            }
+            if (e instanceof ModelAdapterError) {
+              return NextResponse.json({ success: false, code: e.code, error: e.message }, { status: e.status });
+            }
+            throw e;
+          }
+
+          // ====== CORE-3 状态机：所有前置校验（合同/权限/输入/文件/能力/模型部署）已通过，先创建最小安全 RUNNING 任务 ======
+          // 扣点前建立任务，保证任何失败（扣点失败/模型失败/超时/输出校验失败/结果构建失败）都有可持久化的 FAILED 任务与退款追溯。
+          // 仅记录材料长度/来源类别，绝不写入原始输入文本/Prompt/响应，满足「失败任务不得保存原始 inputMaterial」
+          const materialSummary =
+            effectiveInputMaterial && typeof effectiveInputMaterial === "string" && effectiveInputMaterial.trim()
+              ? `输入材料（${effectiveInputMaterial.trim().length} 字符）`
+              : "快捷输入";
+          const runningTaskConfig = buildRunningTaskConfig({
+            contractId: targetContractId || null,
+            contractVersion: targetContractVersion || null,
+            contractSnapshot: targetContractSnapshot || null,
+            executionMode,
+            materialSummary,
+            inputSource: storedInputSource,
+          });
+          await createRunningTask(prisma, {
+            taskId,
+            userId,
+            workspaceId,
+            componentId: comp.id,
+            name: taskName || `${comp.name || componentId} 运行任务`,
+            config: runningTaskConfig,
+          });
+
+          // 预扣算力点与结算单创建（启用结算时走原子单事务，未启用时走既有扣费逻辑）
+          try {
+            if (settlementFeatureEnabled) {
+              const pricingSnapshot = buildRegistryPricingSnapshot({
+                providerId: modelPlan.providerId,
+                modelId: modelPlan.modelId,
+                pricing: modelPlan.pricing,
+              });
+              // 批次 2 押金（hold）：按最坏情况预扣——输入取 max(材料字符÷2, 校准输入均值)（封顶，
+              // 校准值为历史真实 prompt 均值，防中文材料低估导致押金形同虚设）+ 合同 maxOutputTokens；
+              // 押金 ≥ 实扣，实际用量结算后多退少补（completeSettlement），余额永不为负。
+              const maxOutFromContract = Array.isArray((activeContract as any)?.executionPlan?.steps)
+                ? ((activeContract as any).executionPlan.steps as Array<{ maxOutputTokens?: number }>).reduce(
+                    (acc, s) => acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
+                    0,
+                  )
+                : 0;
+              let calibratedInput: number | null = null;
+              try {
+                const calibRow = await prisma.systemconfig.findUnique({
+                  where: { key: "billing_usage_calibration" },
+                  select: { value: true },
+                });
+                const calibJson = calibRow?.value ? JSON.parse(calibRow.value) : null;
+                const cal = calibJson?.[comp.id];
+                if (cal && Number.isFinite(Number(cal.in)) && Number(cal.in) > 0) calibratedInput = Number(cal.in);
+              } catch {
+                calibratedInput = null; // 校准缺失退回字符估算，绝不猜测
+              }
+              const bounds = computeDepositTokenBounds(
+                typeof effectiveInputMaterial === "string" ? effectiveInputMaterial.length : 0,
+                maxOutFromContract > 0 ? maxOutFromContract : null,
+                calibratedInput,
+              );
+              const depositEst = await estimatePoints({
+                modelDeploymentId: modelPlan.deploymentId,
+                inputTokens: bounds.inputTokens,
+                outputTokens: bounds.outputTokens,
+                pricingSource: resolvePricingSource(modelPlan.deploymentId),
+                estimateSource: "DEPOSIT_WORST_CASE",
+              });
+              depositPoints =
+                depositEst.basis === "CONVERTED_PRICE" && depositEst.points !== null && depositEst.points > 0
+                  ? depositEst.points
+                  : Math.max(deductTokens, 1); // 押金兜底 = 预计扣点（绝不 0 押金开跑）
+              const holdRes = await consumeAndCreateSettlementHold({
+                taskId,
+                userId,
+                workspaceId,
+                points: depositPoints,
+                pricingSnapshot,
+                componentId: comp.id,
+                componentName: comp.name || componentId,
+                workspaceType: ws?.type || null,
+                workspaceName: ws?.name || null,
+                idempotencyKey: `CONSUME:${taskId}`,
+              });
+              consumeResult = holdRes.consumeResult;
+            } else {
+              consumeResult = await consumePoints({
+                workspaceId,
+                userId,
+                points: deductTokens,
+                componentId: comp.id,
+                componentName: comp.name || componentId,
+                taskId,
+                workspaceType: ws?.type || null,
+                workspaceName: ws?.name || null,
+                idempotencyKey: `CONSUME:${taskId}`,
+              });
+            }
+          } catch (consumeErr) {
+            if (consumeErr instanceof IdempotencyStateUnknownError) {
+              // 已创建 RUNNING 任务：标记 FAILED（chargeAttempted 视是否存在 CONSUME 流水而定，禁止自动退款，待人工对账）
+              const failRes = await failTaskSafe(prisma, taskId, {
+                errorCode: "IDEMPOTENCY_STATE_UNKNOWN",
+                errorMessage: "该任务已存在扣费流水但无法还原完整消费详情，已禁止自动退款，需人工对账。",
+                chargeAttempted: true,
+              });
+              if (failRes) return failRes;
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "IDEMPOTENCY_STATE_UNKNOWN",
+                  taskId,
+                  error: "该任务已存在扣费流水但无法还原完整消费详情，已禁止自动退款，需人工对账。",
+                },
+                { status: 409 },
+              );
+            }
+            if (consumeErr instanceof InsufficientPointsError) {
+              // 已创建 RUNNING 任务：标记 FAILED（尚未扣点，chargeAttempted=false，无退款）
+              const failRes = await failTaskSafe(prisma, taskId, {
+                errorCode: "POINTS_INSUFFICIENT",
+                errorMessage: `算力点余额不足：当前可用 ${consumeErr.available} 点，本次需要 ${consumeErr.required} 点，请充值后再试`,
+                chargeAttempted: false,
+              });
+              if (failRes) return failRes;
+              return NextResponse.json({
+                success: false,
+                code: "POINTS_INSUFFICIENT",
+                taskId,
+                error: `算力点余额不足：当前可用 ${consumeErr.available} 点，本次需要 ${consumeErr.required} 点，请充值后再试`,
+              }, { status: 400 });
+            }
+
+            // ====== §二.2：扣点未知异常严禁直接 throw，必须按消费事实分流，绝不遗留永久 RUNNING ======
+            // d. 已明确取得 ConsumeResult：先原子落 FAILED，再按 safeRefund 原路退款
+            if (consumeResult) {
+              const failRes = await failTaskSafe(prisma, taskId, {
+                errorCode: "CONSUME_FAILED",
+                errorMessage: "算力点扣减后处理异常，已原路退款。",
+                chargeAttempted: true,
+              });
+              if (failRes) return failRes;
+              const refundOutcome = await safeRefund(consumeResult);
+              if (!refundOutcome.ok) {
+                if (refundOutcome.enqueued) {
+                  return NextResponse.json(
+                    { success: false, code: "REFUND_PENDING", taskId, error: "扣点后处理异常且退款处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                    { status: 500 },
+                  );
+                }
+                return NextResponse.json(
+                  { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "扣点后处理异常且待退款记录落库失败，请联系管理员核对任务对账。" },
+                  { status: 500 },
+                );
+              }
+              return NextResponse.json(
+                { success: false, code: "CONSUME_FAILED", taskId, refundStatus: "REFUNDED", error: "算力点扣减后处理异常，算力点已原路退回。" },
+                { status: 500 },
+              );
+            }
+
+            // a. 查询该 taskId 是否存在真实 CONSUME 流水
+            const consumeLedgers = await prisma.pointledger.findMany({
+              where: { taskId, type: "CONSUME" },
+              select: { id: true, points: true },
+            });
+
+            if (consumeLedgers.length === 0) {
+              // b. 无 CONSUME 且确认未扣点：FAILED + CONSUME_FAILED + chargeAttempted=false + NO_CHARGE
+              const failRes = await failTaskSafe(prisma, taskId, {
+                errorCode: "CONSUME_FAILED",
+                errorMessage: "算力点扣减失败，未发生扣费。",
+                chargeAttempted: false,
+              });
+              if (failRes) return failRes;
+              return NextResponse.json(
+                { success: false, code: "CONSUME_FAILED", taskId, refundStatus: "NO_CHARGE", error: "算力点扣减失败，未发生扣费。" },
+                { status: 500 },
+              );
+            }
+
+            // c. 存在 CONSUME 但无法还原完整消费事实：禁止盲目自动退款，写入可审计恢复记录后待人工对账
+            const failRes = await failTaskSafe(prisma, taskId, {
+              errorCode: "ACCOUNTING_RECONCILIATION_REQUIRED",
+              errorMessage: "该任务已存在扣费流水但无法还原完整消费详情，已禁止自动退款，需人工对账。",
+              chargeAttempted: true,
+            });
+            if (failRes) return failRes;
+            try {
+              await enqueueRefundRecovery({
+                taskId,
+                userId,
+                workspaceId,
+                consumeIdempotencyKey: `CONSUME:${taskId}`,
+                consumeResult: {
+                  consumed: consumeLedgers.reduce((s, l) => s + Number(l.points), 0),
+                  details: [],
+                  ledgerIds: consumeLedgers.map((l) => l.id),
+                  skipped: false,
+                  unlimited: false,
+                  balanceAfter: 0,
+                  monthlyTokenUsedIncremented: 0,
+                },
+                componentId: comp.id,
+                componentName: comp.name || componentId,
+                error: `扣点未知异常且已存在 CONSUME 流水，需人工对账: ${(consumeErr as Error)?.message || "未知异常"}`,
+              });
+            } catch (enqErr) {
+              // 严禁吞掉恢复入队异常：必须记录 taskId + 告警（任务已置 FAILED，待对账）
+              console.error("[CONSUME_UNKNOWN] 退款恢复入队失败，需对账", {
+                taskId,
+                error: (enqErr as Error)?.message || String(enqErr),
+              });
+            }
+            return NextResponse.json(
+              { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "该任务已存在扣费流水但无法还原完整消费详情，已禁止自动退款，需人工对账。" },
+              { status: 500 },
+            );
+          }
+
+          // 组装 Prompt：严格以通用合同 executionPlan.steps 为唯一依据（不记录原文到日志）
+          const primaryStep = activeContract.executionPlan?.steps?.[0];
+          const contractPromptTemplate = primaryStep?.promptTemplate || "请基于以下输入材料执行专业分析并输出规范成果物。";
+          // 合同通过 {{COST_BASELINE}} 声明消费「真实历史成本/工时基准」：
+          // 已配置真实基准则注入真实数据；未配置则回退为显式假设文本（模型必须标注其性质）。
+          let systemPrompt = contractPromptTemplate;
+          if (systemPrompt.includes(COST_BASELINE_PLACEHOLDER)) {
+            const costBaseline = await getComponentCostBaseline();
+            systemPrompt = systemPrompt
+              .split(COST_BASELINE_PLACEHOLDER)
+              .join(renderCostBaselineText(costBaseline));
+          }
+          let modelResult: ModelExecutionResult;
+          try {
+            modelResult = await adapter.execute({
+              providerId: adapter.providerId,
+              modelId: adapter.modelId,
+              systemPrompt,
+              userPrompt: buildSourceMaterialPrompt(effectiveInputMaterial),
+              temperature: 0.5,
+              maxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS) || 2000,
+            });
+            modelResultForSettlement = modelResult;
+          } catch (e) {
+            const failCode = e instanceof ModelAdapterError ? e.code : "MODEL_UPSTREAM_ERROR";
+            const failMsg = e instanceof ModelAdapterError ? e.message : "模型服务调用失败，请稍后重试";
+            // 原子 RUNNING -> FAILED（已终态任务不覆盖）；失败任务保留 contractSnapshot，不保存原始输入/响应/堆栈
+            const failRes = await failTaskSafe(prisma, taskId, {
+              errorCode: failCode,
+              errorMessage: failMsg,
+              chargeAttempted: !!(consumeResult && shouldRefundOnFailure(consumeResult)),
+            });
+            if (failRes) return failRes;
+            // Feature Flag 判定：开启时走结算状态机释放，未开启时保持既有 safeRefund 行为
+            if (settlementFeatureEnabled) {
+              try {
+                await releaseSettlementHold({
+                  taskId,
+                  userId,
+                  workspaceId,
+                  reason: (e as Error)?.message || "模型调用失败",
+                  errorCode: e instanceof ModelAdapterError ? e.code : "MODEL_UPSTREAM_ERROR",
+                  componentId: comp.id,
+                  componentName: comp.name || componentId,
+                  workspaceType: ws?.type || null,
+                  workspaceName: ws?.name || null,
+                });
+              } catch (relErr) {
+                const enq = await enqueueSettlementRecovery({
+                  taskId,
+                  userId,
+                  workspaceId,
+                  recoveryType: "RELEASE_FAILED",
+                  error: `模型调用失败后释放预扣异常: ${(relErr as Error)?.message || "释放失败"}`,
+                });
+                if (!enq.ok) {
+                  return NextResponse.json(
+                    { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "模型调用失败且释放恢复记录入队失败，请联系管理员核对任务对账。" },
+                    { status: 500 },
+                  );
+                }
+                return NextResponse.json(
+                  { success: false, code: "REFUND_PENDING", taskId, error: "模型调用失败且预扣释放处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                  { status: 500 },
+                );
+              }
+            } else {
+              // 模型调用失败 / 超时 / 401 / 429 / 5xx → 原路退款（幂等）
+              const refundOutcome = await safeRefund(consumeResult);
+              if (!refundOutcome.ok) {
+                if (refundOutcome.enqueued) {
+                  return NextResponse.json(
+                    { success: false, code: "REFUND_PENDING", taskId, error: "模型调用失败且算力点退款处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                    { status: 500 },
+                  );
+                } else {
+                  return NextResponse.json(
+                    { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "模型调用失败且待退款记录落库失败，请联系管理员核对任务对账。" },
+                    { status: 500 },
+                  );
+                }
+              }
+            }
+            if (e instanceof ModelAdapterError) {
+              return NextResponse.json({ success: false, code: e.code, error: e.message, taskId }, { status: e.status });
+            }
+            console.error("真实模型调用异常:", (e as Error)?.message);
+            return NextResponse.json({ success: false, code: "MODEL_UPSTREAM_ERROR", error: "模型服务调用失败，请稍后重试", taskId }, { status: 502 });
+          }
+
+          executionMode = "REAL_MODEL";
+          let artifact: ResultArtifact;
+          try {
+            // 合同输出类型 -> 成果物真实类型（穷举映射）。
+            // 未知/缺失输出类型一律明确抛错，由下方 catch 触发退款，绝不猜测或伪装成无关类型。
+            const outKind = activeContract.output?.kind;
+            if (!outKind) {
+              throw new Error("组件合同缺少 output.kind，无法构建成果物");
+            }
+            // 输出结构化 / 隐私边界校验：在写成功 task / 保存成功 artifact 之前拒绝不合规结果并原路退款，
+            // 绝不落成功任务与成功 artifact（DOCUMENT 类合同仅做非空校验，既有结果行为不变）。
+            const validatedOutput = validateModelOutput(activeContract, modelResult.text);
+            artifact = buildResultArtifact({
+              outputKind: outKind,
+              title: `${comp.name || componentId} 成果物`,
+              content: typeof validatedOutput.content === "string" ? validatedOutput.content : JSON.stringify(validatedOutput.content, null, 2),
+              artifactMime: activeContract.output?.artifactMime,
+              schemaVersion: activeContract.output?.schemaVersion,
+              rendererType: activeContract.output?.rendererType,
+              previewable: activeContract.output?.previewable ?? true,
+              downloadable: activeContract.output?.downloadable ?? false,
+            });
+          } catch (buildErr) {
+            // 输出校验失败（MODEL_OUTPUT_INVALID / OUTPUT_VALIDATION_FAILED）与结果生成失败统一走退款路径
+            const failCode =
+              buildErr instanceof ComponentContractError &&
+              (buildErr.code === "MODEL_OUTPUT_INVALID" || buildErr.code === "OUTPUT_VALIDATION_FAILED")
+                ? "MODEL_OUTPUT_INVALID"
+                : "RESULT_BUILD_FAILED";
+            // 原子 RUNNING -> FAILED（已终态任务不覆盖）；失败任务保留 contractSnapshot，不保存原始输入/响应/堆栈
+            const failRes = await failTaskSafe(prisma, taskId, {
+              errorCode: failCode,
+              errorMessage: buildErr instanceof Error ? buildErr.message : "模型结果生成失败，算力点已原路退回。",
+              chargeAttempted: !!(consumeResult && shouldRefundOnFailure(consumeResult)),
+            });
+            if (failRes) return failRes;
+            // 结果生成失败：已扣点必须原路退款，不得发放模型结果
+            if (settlementFeatureEnabled) {
+              try {
+                await releaseSettlementHold({
+                  taskId,
+                  userId,
+                  workspaceId,
+                  reason: "结果生成失败",
+                  errorCode: "RESULT_BUILD_FAILED",
+                  componentId: comp.id,
+                  componentName: comp.name || componentId,
+                  workspaceType: ws?.type || null,
+                  workspaceName: ws?.name || null,
+                });
+              } catch (relErr) {
+                const enq = await enqueueSettlementRecovery({
+                  taskId,
+                  userId,
+                  workspaceId,
+                  recoveryType: "RELEASE_FAILED",
+                  error: `结果生成失败后释放预扣异常: ${(relErr as Error)?.message || "释放失败"}`,
+                });
+                if (!enq.ok) {
+                  return NextResponse.json(
+                    { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "结果生成失败且释放恢复记录入队失败，请联系管理员核对任务对账。" },
+                    { status: 500 },
+                  );
+                }
+                return NextResponse.json(
+                  { success: false, code: "REFUND_PENDING", taskId, error: "结果生成失败且预扣释放处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                  { status: 500 },
+                );
+              }
+            } else {
+              const refundOutcome = await safeRefund(consumeResult);
+              if (!refundOutcome.ok) {
+                if (refundOutcome.enqueued) {
+                  return NextResponse.json(
+                    { success: false, code: "REFUND_PENDING", taskId, error: "结果生成失败且算力点退款处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                    { status: 500 },
+                  );
+                } else {
+                  return NextResponse.json(
+                    { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "结果生成失败且待退款记录落库失败，请联系管理员核对任务对账。" },
+                    { status: 500 },
+                  );
+                }
+              }
+            }
+            // §二.3：执行后失败分支（MODEL_OUTPUT_INVALID / RESULT_BUILD_FAILED）必须统一返回真实 taskId，便于追踪与对账
+            return NextResponse.json(
+              {
+                success: false,
+                code: failCode,
+                taskId,
+                error: buildErr instanceof Error ? buildErr.message : "模型结果生成失败，算力点已原路退回。",
+              },
+              { status: failCode === "MODEL_OUTPUT_INVALID" ? 400 : 500 },
+            );
+          }
+          outputData = { summary: summarizeText(modelResult.text), artifacts: [artifact] };
+          realMeta = {
+            // 记录平台内网一致的 provider/model（合同 + 注册表），避免记录供应商侧别名
+            providerId: modelPlan.providerId,
+            modelId: modelPlan.modelId,
+            inputTokens: modelResult.usage.inputTokens,
+            outputTokens: modelResult.usage.outputTokens,
+            totalTokens: modelResult.usage.totalTokens,
+            estimatedPoints: deductTokens,
+            billingMode: settlementFeatureEnabled ? "REAL_SETTLEMENT" : "ESTIMATED_COMPATIBILITY",
+            // 价格快照：供应商成本与用户售价分离，含版本/来源/生效时间；历史任务快照不可变
+            pricingSnapshot: buildRegistryPricingSnapshot({
+              providerId: modelPlan.providerId,
+              modelId: modelPlan.modelId,
+              pricing: modelPlan.pricing,
+            }),
+            latencyMs: modelResult.latencyMs,
+            providerRequestId: modelResult.providerRequestId ?? null,
+            usage: modelResult.usage,
+            artifacts: [artifact],
+            contractVersion: targetContractVersion,
+            timeoutMs: getModelTimeoutMs(),
+          };
+        } else {
+          // 生产路径严禁产生模拟结果：无有效 PUBLISHED 激活合同时一律拒绝，
+          // 绝不伪造、绝不调用模型、绝不扣算力点、绝不写成功 task、绝不写 artifact。
+          // 已彻底删除全部模拟执行开关与模拟执行路径，任何环境变量都无法恢复生产模拟执行。
+          return NextResponse.json(
+            {
+              success: false,
+              code: "COMPONENT_CONTRACT_NOT_READY",
+              error: "组件尚未配置有效可执行合同（缺少 PUBLISHED 激活合同），无法执行。",
+            },
+            { status: 409 },
+          );
+        }
+
+        const taskStatus = "SUCCESS";
 
         // 事务化处理：扣减 Token + 更新组件统计 + 写入任务历史
-        const taskResult = await prisma.$transaction(async (tx) => {
+        let taskResult: { quota: any; task: any };
+        try {
+          taskResult = await prisma.$transaction(async (tx) => {
           // 确保租户记录存在，避免 componenttask.tenantId 外键约束失败导致 simulate 恒 500
           await tx.tenant.upsert({
             where: { id: workspaceId },
@@ -1532,20 +3449,10 @@ export async function POST(request: NextRequest) {
             create: { id: workspaceId, name: ws?.name || workspaceId, updatedAt: new Date() },
           });
 
-          // 算力点已由 credit-service 在事务外按分桶扣减并写入流水，此处仅回读最新余额
+          // 算力点已由 credit-service 在事务外按分桶扣减并写入流水（含成员月度已用额度 monthlyTokenUsed 的唯一权威写入），此处仅回读最新余额
           const updatedQuota = await tx.workspacequota.findUnique({
             where: { workspaceId },
           });
-
-          // 若存在成员记录，同时更新成员已使用额度
-          if (currentMember) {
-            await tx.workspacemember.update({
-              where: { id: currentMember.id },
-              data: {
-                monthlyTokenUsed: { increment: BigInt(deductTokens) },
-              },
-            }).catch((e) => console.warn("[算力扣费] 成员已用额度自增警告:", e));
-          }
 
           await tx.componentstats.upsert({
             where: { componentId },
@@ -1572,57 +3479,368 @@ export async function POST(request: NextRequest) {
             },
           }).catch((e) => console.warn("[组件调度] componentcatalog usageCount 自增警告:", e));
 
-          const sensitivity = scanSensitiveWords(typeof inputMaterial === "string" ? inputMaterial : "");
-          const effectiveInputMaterial = sensitivity.hasSensitive ? sensitivity.sanitizedText : inputMaterial;
-
-          const rawMaterialStr = typeof effectiveInputMaterial === "string" ? effectiveInputMaterial.trim().replace(/\s+/g, " ") : "";
-          const materialSummary = rawMaterialStr ? (rawMaterialStr.length > 40 ? `${rawMaterialStr.slice(0, 40)}...` : rawMaterialStr) : "快捷输入";
+          // 敏感内容已在分支外统一识别（sensitivity / effectiveInputMaterial 为外层变量），此处直接复用，保持模型调用与落库一致
+          const rawMaterialStr = typeof effectiveInputMaterial === "string" ? effectiveInputMaterial.trim() : "";
+          const materialLen = rawMaterialStr.length;
+          const materialSummary = rawMaterialStr ? `输入材料（${materialLen} 字符）` : "快捷输入";
           const safeDescription = `使用【${comp.name || componentId}】处理任务 (${materialSummary})`.slice(0, 180);
 
-          const task = await tx.componenttask.create({
+          // 成功路径：原子 RUNNING -> SUCCESS（仅允许 RUNNING 终态转换，已终态任务不被旧请求覆盖）
+          const existingTask = await tx.componenttask.findUnique({ where: { id: taskId }, select: { config: true, result: true } });
+          const baseCfg = (existingTask?.config as Record<string, unknown>) || {};
+          const baseRes = (existingTask?.result as Record<string, unknown>) || {};
+          // §三.1/§三.2：成功转换必须用带状态条件的更新 where: { id, status: "RUNNING" }；
+          // 用 updateMany 取 count，避免把并发状态冲突（P2025）误判为写库失败后退款。
+          const upd = await tx.componenttask.updateMany({
+            where: { id: taskId, status: "RUNNING" },
             data: {
-              id: taskId,
               name: taskName || `${comp.name || componentId} 运行任务`,
               description: safeDescription,
-              type: componentId,
               status: taskStatus,
               progress: 100,
-              config: { 
-                inputMaterial: effectiveInputMaterial || "", 
-                tokenCost: deductTokens, 
+              config: {
+                ...baseCfg,
+                inputMaterial: effectiveInputMaterial || "",
+                tokenCost: deductTokens,
+                // 扣点口径标注：CONVERTED_PRICE 经算账中心换算 / ESTIMATED_COMPATIBILITY 兼容期估算口径
+                billingBasis,
+                pricingEstimate: pricingEstimateSnapshot,
+                pendingRegistration,
                 inputSource: storedInputSource,
                 hasSensitive: sensitivity.hasSensitive,
-                foundSensitiveWords: sensitivity.foundWords
-              },
-              result: { outputData: outputData as unknown as Prisma.InputJsonValue },
+                foundSensitiveWords: sensitivity.foundWords,
+                executionMode,
+                contractId: targetContractId || null,
+                contractVersion: targetContractVersion || null,
+                contractSnapshot: (targetContractSnapshot || null) as unknown as Prisma.InputJsonValue,
+                chargeAttempted: true,
+                ...(realMeta
+                  ? {
+                      providerId: realMeta.providerId,
+                      modelId: realMeta.modelId,
+                      inputTokens: realMeta.inputTokens,
+                      outputTokens: realMeta.outputTokens,
+                      totalTokens: realMeta.totalTokens,
+                      estimatedPoints: realMeta.estimatedPoints,
+                      billingMode: realMeta.billingMode,
+                      pricingSnapshot: realMeta.pricingSnapshot as any,
+                      latencyMs: realMeta.latencyMs,
+                      providerRequestId: realMeta.providerRequestId,
+                      contractVersion: realMeta.contractVersion || targetContractVersion || null,
+                      timeoutMs: realMeta.timeoutMs,
+                      actualPoints: null,
+                      // 批次 2：押金-结算试点元数据（押金点数与模式标注，供任务详情/对账追溯）
+                      depositPoints: depositPoints,
+                      settlementMode: settlementFeatureEnabled ? "PILOT_HOLD_SETTLE" : "ESTIMATED_COMPATIBILITY",
+                    }
+                  : {}),
+              } as unknown as Prisma.InputJsonValue,
+              result: {
+                ...baseRes,
+                outputData: outputData as unknown as Prisma.InputJsonValue,
+                executionMode,
+                contractId: targetContractId || null,
+                contractVersion: targetContractVersion || null,
+                ...(realMeta
+                  ? {
+                      provider: { id: realMeta.providerId, modelId: realMeta.modelId },
+                      usage: realMeta.usage,
+                      artifacts: realMeta.artifacts,
+                      contractVersion: realMeta.contractVersion || targetContractVersion || null,
+                    }
+                  : {}),
+              } as unknown as Prisma.InputJsonValue,
               userId,
               tenantId: workspaceId,
               completedAt: new Date(),
               isPublished: false,
               icon: "Zap",
               updatedAt: new Date(),
-            }
+            },
           });
 
-          return { quota: updatedQuota, task };
-        });
+          if (upd.count === 0) {
+            // §三.2：0 行（并发状态冲突）必须重新读取任务，按真实状态幂等分流，绝不退款
+            const cur = await tx.componenttask.findUnique({
+              where: { id: taskId },
+              select: { status: true, config: true, result: true },
+            });
+            if (!cur) return { quota: updatedQuota, task: null, outcome: "TASK_NOT_FOUND" as const };
+            if (cur.status === "SUCCESS") return { quota: updatedQuota, task: cur, outcome: "IDEMPOTENT_SUCCESS" as const };
+            if (cur.status === "FAILED") return { quota: updatedQuota, task: cur, outcome: "IDEMPOTENT_FAILED" as const };
+            // 仍为 RUNNING：确属数据库写库失败，交由外层 catch 走 TASK_WRITE_FAILED（扣点后退款）
+            throw new Error("TASK_WRITE_FAILED_TRANSITION");
+          }
+          const task = await tx.componenttask.findUnique({ where: { id: taskId } });
+          return { quota: updatedQuota, task, outcome: "SUCCESS_TRANSITIONED" as const };
+          });
+        } catch (taskErr) {
+          // 扣点成功后任务写库失败：若已进入真实 Token 结算状态机，必须走结算状态机释放，严禁调用旧退款 safeRefund 导致重复退款
+          if (settlementFeatureEnabled) {
+            try {
+              // 任务仍为 RUNNING：原子标记 FAILED（保留合同快照），随后释放预扣
+              const failRes = await failTaskSafe(prisma, taskId, {
+                errorCode: "TASK_WRITE_FAILED",
+                errorMessage: "任务结果保存失败，预扣算力点已全额原路释放。",
+                chargeAttempted: true,
+              });
+              if (failRes) return failRes;
+              await releaseSettlementHold({
+                taskId,
+                userId,
+                workspaceId,
+                reason: "任务结果保存失败",
+                errorCode: "TASK_WRITE_FAILED",
+                componentId: comp.id,
+                componentName: comp.name || componentId,
+                workspaceType: ws?.type || null,
+                workspaceName: ws?.name || null,
+              });
+              return NextResponse.json(
+                { success: false, code: "TASK_WRITE_FAILED", taskId, error: "任务结果保存失败，预扣算力点已全额原路释放。" },
+                { status: 500 },
+              );
+            } catch (relErr) {
+              const enq = await enqueueSettlementRecovery({
+                taskId,
+                userId,
+                workspaceId,
+                recoveryType: "RELEASE_FAILED",
+                error: `任务保存失败后释放预扣异常: ${(relErr as Error)?.message || "释放失败"}`,
+              });
+              if (!enq.ok) {
+                return NextResponse.json(
+                  { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "任务保存失败且释放恢复记录入队失败，请联系管理员核对任务对账。" },
+                  { status: 500 },
+                );
+              }
+              return NextResponse.json(
+                { success: false, code: "REFUND_PENDING", taskId, error: "任务保存失败且预扣释放处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                { status: 500 },
+              );
+            }
+          }
 
-        // 记录真实的使用率日志
-        await touchComponentUsage(userId, componentId, workspaceId);
+          // 未启用真实结算状态机时（结算关闭）：任务仍为 RUNNING，先原子标记 FAILED 再原路退款
+          const failRes = await failTaskSafe(prisma, taskId, {
+            errorCode: "TASK_WRITE_FAILED",
+            errorMessage: "任务结果保存失败，算力点已原路退回。",
+            chargeAttempted: !!(consumeResult && shouldRefundOnFailure(consumeResult)),
+          });
+          if (failRes) return failRes;
+          if (consumeResult && shouldRefundOnFailure(consumeResult)) {
+            const refundOutcome = await safeRefund(consumeResult);
+            if (!refundOutcome.ok) {
+              if (refundOutcome.enqueued) {
+                return NextResponse.json(
+                  { success: false, code: "REFUND_PENDING", taskId, error: "任务结果保存失败且算力点退款处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                  { status: 500 },
+                );
+              } else {
+                return NextResponse.json(
+                  { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "任务结果保存失败且待退款记录落库失败，请联系管理员核对任务对账。" },
+                  { status: 500 },
+                );
+              }
+            }
+            return NextResponse.json(
+              { success: false, code: "TASK_WRITE_FAILED", taskId, error: "任务结果保存失败，算力点已原路退回。" },
+              { status: 500 },
+            );
+          }
+          // §二.3：未取得可退款消费事实时也必须返回稳定错误码 + taskId，严禁让异常逃逸成无 taskId 的响应
+          return NextResponse.json(
+            { success: false, code: "TASK_WRITE_FAILED", taskId, error: "任务结果保存失败，请联系管理员核对任务对账。" },
+            { status: 500 },
+          );
+        }
+
+        // §三.2/§三.3：成功路径并发幂等分流——在结算/成功响应之前拦截，
+        // 严禁把并发状态冲突误判为写库失败后退款，也严禁对已 FAILED 任务重复退款。
+        const successOutcome = (taskResult as { outcome?: string } | undefined)?.outcome;
+        if (successOutcome === "IDEMPOTENT_FAILED") {
+          const curRes = ((taskResult as any)?.task?.result || {}) as Record<string, unknown>;
+          return NextResponse.json(
+            {
+              success: false,
+              code: "TASK_ALREADY_FAILED",
+              taskId,
+              status: "FAILED",
+              errorCode: curRes.errorCode ?? null,
+              error: "任务此前已判定失败，本次请求按幂等处理，未重复退款、未重复创建恢复记录。",
+            },
+            { status: 409 },
+          );
+        }
+        if (successOutcome === "TASK_NOT_FOUND") {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "TASK_NOT_FOUND",
+              taskId,
+              error: "任务不存在或已被清理，无法完成成功状态转换。",
+            },
+            { status: 404 },
+          );
+        }
+
+        // 任务落库成功后，若开启真实结算状态机，执行最终结算（多退少补）
+        let settlementOutcome: CompleteSettlementResult | null = null;
+        if (settlementFeatureEnabled && modelPlanForSettlement?.pricing && modelResultForSettlement) {
+          try {
+            settlementOutcome = await completeSettlement({
+              taskId,
+              userId,
+              workspaceId,
+              usage: modelResultForSettlement.usage,
+              pricingSnapshot: realMeta?.pricingSnapshot as RegistryPricingSnapshot | undefined,
+              componentId: comp.id,
+              componentName: comp.name || componentId,
+              workspaceType: ws?.type || null,
+              workspaceName: ws?.name || null,
+            });
+
+            if (settlementOutcome && settlementOutcome.status !== "SETTLED") {
+              await prisma.componenttask.update({
+                where: { id: taskId },
+                data: {
+                  description: `${taskResult.task.description || ""} [结算异常:${settlementOutcome.status}]`,
+                },
+              }).catch((err: unknown) => console.warn("[结算标记] 更新任务备注失败:", err));
+            }
+          } catch (settleErr) {
+            console.error("[真实结算异常] completeSettlement 执行失败:", settleErr);
+            const enq = await enqueueSettlementRecovery({
+              taskId,
+              userId,
+              workspaceId,
+              recoveryType: "SETTLEMENT_FAILED",
+              error: `真实结算 completeSettlement 异常: ${(settleErr as Error)?.message || "结算失败"}`,
+              usage: modelResultForSettlement.usage,
+              pricingSnapshot: realMeta?.pricingSnapshot as RegistryPricingSnapshot | undefined,
+            });
+            if (!enq.ok) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "ACCOUNTING_RECONCILIATION_REQUIRED",
+                  taskId,
+                  error: "任务已执行但真实用量结算失败且恢复记录入队失败，请联系管理员核对账目。",
+                },
+                { status: 500 }
+              );
+            }
+          }
+        }
+
+        // 记录真实的使用率日志（非核心统计，失败不得影响已成功任务）
+        await touchComponentUsage(userId, componentId, workspaceId).catch((e) =>
+          console.warn("[组件使用记录] 非阻断式写入失败:", e),
+        );
 
         // 写入高危审计日志（非阻断式）
         await writeAuditLog(userId, "component:execute", { componentId, tokens: deductTokens }, workspaceId).catch((e) => console.warn("写入审计日志非阻断式提示:", e));
 
+        // 返回执行人的真实可用余额（不无条件读取 workspacequota.tokenBalance）
+        let tokenBalanceForResponse: number;
+        if (ws?.type === "ENTERPRISE" && currentMember?.role === "MEMBER") {
+          // 企业普通成员：返回其在本空间的独立余额
+          const m = await prisma.workspacemember.findUnique({
+            where: { userId_workspaceId: { userId, workspaceId } },
+            select: { tokenBalance: true },
+          });
+          tokenBalanceForResponse = m ? Number(m.tokenBalance) : 0;
+        } else if (ws?.type === "ENTERPRISE") {
+          // 其他企业成员（OWNER/ADMIN）：返回企业共享池余额
+          tokenBalanceForResponse = taskResult.quota ? Number(taskResult.quota.tokenBalance) : 0;
+        } else {
+          // 个人空间：返回个人空间实际可用余额（钱包 + 个人赠送池）
+          const bal = await getBalanceSummary(userId, workspaceId);
+          tokenBalanceForResponse = bal.unlimited ? Number(UNLIMITED_TOKEN) : (bal.available ?? 0);
+        }
+
+        // Feature Flag 开启真实结算时：路由绝不在结算失败/复核时返回普通 success
+        if (settlementFeatureEnabled) {
+          if (!settlementOutcome || settlementOutcome.status !== "SETTLED") {
+            const isReview = settlementOutcome?.status === "REQUIRES_REVIEW";
+            const billingStatus = settlementOutcome?.status || "PENDING_RECOVERY";
+            return NextResponse.json({
+              success: false,
+              code: isReview ? "BILLING_REQUIRES_REVIEW" : "SETTLEMENT_PENDING",
+              billingStatus,
+              taskId,
+              tokenBalance: tokenBalanceForResponse,
+              cost: settlementOutcome ? Number(settlementOutcome.actualPricePoints) : deductTokens,
+              actualPoints: settlementOutcome ? Number(settlementOutcome.actualPricePoints) : null,
+              settlementStatus: billingStatus,
+              executionMode,
+              model: realMeta ? realMeta.modelId : null,
+              billingMode: realMeta ? realMeta.billingMode : "REAL_SETTLEMENT",
+              error: isReview
+                ? "任务已执行完成，但计费结算转入人工复核，请关注账单中心审核进度"
+                : "任务已执行完成，但用量结算处理中，已进入恢复队列",
+              contractVersion: targetContractVersion || null,
+              ...(realMeta
+                ? {
+                    provider: { id: realMeta.providerId, modelId: realMeta.modelId },
+                    usage: {
+                      inputTokens: realMeta.inputTokens,
+                      outputTokens: realMeta.outputTokens,
+                      totalTokens: realMeta.totalTokens,
+                    },
+                    artifacts: realMeta.artifacts,
+                    latencyMs: realMeta.latencyMs,
+                  }
+                : {}),
+              task: {
+                id: taskResult.task.id,
+                name: taskResult.task.name,
+                status: taskResult.task.status,
+                result: taskResult.task.result,
+                tokens: deductTokens,
+                executionMode,
+                createdAt: taskResult.task.createdAt,
+              },
+            }, { status: 202 });
+          }
+        }
+
         return NextResponse.json({
           success: true,
-          tokenBalance: taskResult.quota ? Number(taskResult.quota.tokenBalance) : 0,
-          cost: deductTokens,
+          tokenBalance: tokenBalanceForResponse,
+          cost: settlementOutcome ? Number(settlementOutcome.actualPricePoints) : deductTokens,
+          executionMode,
+          model: realMeta ? realMeta.modelId : null,
+          billingMode: settlementFeatureEnabled && settlementOutcome?.status === "SETTLED"
+            ? "REAL_SETTLEMENT"
+            : (realMeta ? realMeta.billingMode : "ESTIMATED_COMPATIBILITY"),
+          estimatedPoints: realMeta ? realMeta.estimatedPoints : deductTokens,
+          depositPoints: depositPoints,
+          settlementMode: settlementFeatureEnabled ? "PILOT_HOLD_SETTLE" : "ESTIMATED_COMPATIBILITY",
+          actualPoints: settlementOutcome ? Number(settlementOutcome.actualPricePoints) : null,
+          settlementStatus: settlementOutcome ? settlementOutcome.status : null,
+          contractVersion: targetContractVersion || null,
+          ...(realMeta
+            ? {
+                provider: { id: realMeta.providerId, modelId: realMeta.modelId },
+                usage: {
+                  inputTokens: realMeta.inputTokens,
+                  outputTokens: realMeta.outputTokens,
+                  totalTokens: realMeta.totalTokens,
+                },
+                artifacts: realMeta.artifacts,
+                latencyMs: realMeta.latencyMs,
+              }
+            : {}),
           task: {
             id: taskResult.task.id,
             name: taskResult.task.name,
             status: taskResult.task.status,
             result: taskResult.task.result,
             tokens: deductTokens,
+            executionMode,
+            estimatedPoints: deductTokens,
+            estimatedModelTokens: Number(comp.estimatedModelTokens),
             createdAt: taskResult.task.createdAt,
           },
         });
@@ -1653,7 +3871,8 @@ export async function POST(request: NextRequest) {
       let targetWorkspaceId = workspaceId || "";
 
       if (isMultipart) {
-        const formData = await request.formData();
+        // 复用顶层已解析的 FormData（请求体只能被消费一次）
+        const formData = multipartForm ?? (await request.formData());
         const file = formData.get("file");
         title = String(formData.get("title") || (file as any)?.name || "");
         type = String(formData.get("type") || "");
@@ -1680,10 +3899,8 @@ export async function POST(request: NextRequest) {
 
         const imageExts = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"];
         const isImage = (file as any).type?.startsWith("image/") || imageExts.includes(fileExt || "");
-        content = await Promise.race([
-          extractTextFromBuffer(buffer, originalName || "", (file as any).type || ""),
-          new Promise<string>((resolve) => setTimeout(() => resolve(""), 60000)),
-        ]).catch(() => "");
+        // 统一走可取消超时入口：超时会真正终止 OCR worker，避免资料导入卡死
+        content = await extractTextFromBufferWithTimeout(buffer, originalName || "", (file as any).type || "", TEXT_EXTRACT_TIMEOUT_MS);
         if (!summary) {
           if (content) {
             summary = generateSmartSummary(content, originalName).overview;
@@ -3371,14 +5588,35 @@ export async function POST(request: NextRequest) {
     // 归档任务记录（仅变更 status 为 ARCHIVED，保留在数据库中）
     if (action === "archive_task" || action === "archive-task") {
       const targetTaskId = body.taskId || searchParams.get("taskId");
-      const targetWsId = workspaceId || body.workspaceId || searchParams.get("workspaceId");
+      let targetWsId = workspaceId || body.workspaceId || searchParams.get("workspaceId");
 
-      if (!targetTaskId || !targetWsId) {
+      if (!targetTaskId) {
         return NextResponse.json({
           success: false,
-          error: "缺少必要的 workspaceId 或 taskId 参数"
+          error: "缺少必要的 taskId 参数"
         }, { status: 400 });
       }
+
+      // 先查询任务真实所属工作空间，杜绝客户端伪造 workspaceId 越权归档
+      const existingTask = await prisma.componenttask.findUnique({
+        where: { id: targetTaskId },
+        select: { id: true, tenantId: true, status: true },
+      });
+
+      if (!existingTask) {
+        return NextResponse.json({
+          success: false,
+          error: "未找到对应任务记录"
+        }, { status: 404 });
+      }
+
+      if (targetWsId && targetWsId !== existingTask.tenantId) {
+        return NextResponse.json({
+          success: false,
+          error: "任务所属工作空间与请求参数不一致"
+        }, { status: 400 });
+      }
+      targetWsId = existingTask.tenantId;
 
       const isMember = await requireWorkspaceMembership(userId, targetWsId);
       if (!isMember) {
@@ -3386,17 +5624,6 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "越权警告：您不属于该工作空间，无权归档任务"
         }, { status: 403 });
-      }
-
-      const existingTask = await prisma.componenttask.findFirst({
-        where: { id: targetTaskId, tenantId: targetWsId }
-      });
-
-      if (!existingTask) {
-        return NextResponse.json({
-          success: false,
-          error: "未在该工作空间中找到对应任务"
-        }, { status: 404 });
       }
 
       await prisma.componenttask.update({
@@ -3805,8 +6032,15 @@ export async function POST(request: NextRequest) {
       error: "缺少 action 参数" 
     }, { status: 400 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Studio API POST error:", error);
+    if (error?.code === "DEFAULT_COMPONENT_SOURCE_MISSING") {
+      return NextResponse.json({
+        success: false,
+        error: "系统默认组件策略缺少已批准数据源",
+        code: "DEFAULT_COMPONENT_SOURCE_MISSING",
+      }, { status: 500 });
+    }
     return NextResponse.json({ 
       success: false, 
       error: "服务器内部错误",

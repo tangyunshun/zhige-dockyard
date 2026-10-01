@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { requireAnyPlatformPermission } from "@/lib/admin-permission-utils";
 import { addNotification } from "@/lib/notifications-store";
-import { TESTIMONIAL_GROUP_COUNT } from "@/lib/testimonial-service";
+import { TESTIMONIAL_GROUP_COUNT, TESTIMONIAL_PERMISSIONS } from "@/lib/testimonial-service";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,10 @@ function clampGroupNo(value: unknown): number {
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requirePlatformPermission(request, "content:publish");
+    const auth = await requireAnyPlatformPermission(request, [
+      TESTIMONIAL_PERMISSIONS.audit,
+      TESTIMONIAL_PERMISSIONS.read,
+    ]);
     if (!auth.authorized) {
       const status = auth.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json(
@@ -43,7 +47,8 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
-    const submitterMap: Record<string, { name: string | null; email: string }> = {};
+    // email 在 user 表中可为 null，类型需与数据库一致（不改变返回值内容）
+    const submitterMap: Record<string, { name: string | null; email: string | null }> = {};
     for (const u of submitters) {
       submitterMap[u.id] = { name: u.name, email: u.email };
     }
@@ -68,7 +73,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requirePlatformPermission(request, "content:publish");
+    const auth = await requirePlatformPermission(request, TESTIMONIAL_PERMISSIONS.audit);
     if (!auth.authorized) {
       const status = auth.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json(

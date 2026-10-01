@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 
 /**
  * 统一管理员鉴权：返回 null 表示通过，否则返回错误响应
@@ -23,6 +24,11 @@ async function requireAdmin(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    // 细粒度权限：content:stage_read
+    const permCheck = await requirePlatformPermission(request, "content:stage_read", "content:stage_manage");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限查看组件阶段" }, { status: 403 });
+    }
     const denied = await requireAdmin(request);
     if (denied) return denied;
 
@@ -240,6 +246,15 @@ export async function GET(request: NextRequest) {
 // POST - 创建阶段分类
 export async function POST(request: NextRequest) {
   try {
+    // 细粒度权限：content:stage_manage ∨ content:stage_publish
+    const permCheck = await requirePlatformPermission(
+      request,
+      "content:stage_manage",
+      "content:stage_publish"
+    );
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限维护组件阶段" }, { status: 403 });
+    }
     const denied = await requireAdmin(request);
     if (denied) return denied;
 
@@ -362,6 +377,15 @@ export async function PATCH(request: NextRequest) {
 // DELETE - 删除阶段分类（名下仍有组件时禁止删除）
 export async function DELETE(request: NextRequest) {
   try {
+    // 细粒度权限：content:stage_manage（高危删除操作）
+    const permCheck = await requirePlatformPermission(
+      request,
+      "content:stage_manage",
+      "content:stage_publish"
+    );
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限删除组件阶段" }, { status: 403 });
+    }
     const denied = await requireAdmin(request);
     if (denied) return denied;
 

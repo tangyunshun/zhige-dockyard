@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import Link from "next/link";
 import Pagination from "@/components/Pagination";
+import { OperationLogDetails } from "@/app/admin/components/OperationLogDetails";
+import { getAuthToken } from "@/utils/auth";
 import {
   Search,
   RefreshCw,
@@ -30,9 +32,18 @@ import {
   LogOut,
   KeyRound,
   Ban,
+  MapPin,
+  Monitor,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { exportToExcel } from "@/utils/excel-export";
+import { sanitizeAuditDetails, resolveAuditSummary, formatDetailValue } from "@/lib/log-details";
+import {
+  setAuditDicts,
+  lookupFieldLabel,
+  lookupValueLabel,
+  lookupWordLabel,
+} from "@/lib/audit-dictionaries";
 
 interface OperationLog {
   id: string;
@@ -50,135 +61,26 @@ interface OperationLog {
     avatar: string | null;
     role: string | null;
   } | null;
+  /**
+   * 关联目标用户 / 目标组件：
+   * 由后端审计字典按需回填，部分日志为空，故声明为可选字段（补齐类型定义，不改任何展示逻辑）。
+   */
+  targetUser?: { id?: string; name?: string | null; email?: string | null } | null;
+  targetComponent?: { id?: string; name?: string | null } | null;
+  // 后端审计字典返回的中文语义字段（与 /admin/logs 完全一致）
+  actionZh?: string | null;
+  actionBadge?: { label: string; bg: string; text: string; border: string } | null;
+  resourceZh?: string | null;
 }
 
-// 操作类型（真实 action 值）→ 中文文案 / 配色（简洁 Badge，与主系统一致）
-// 已覆盖全系统所有真实落库 action，彻底消除“其他操作 / 其他”失真
-const ACTION_META: Record<string, { label: string; color: string }> = {
-  // —— 用户与账号 ——
-  "user:create": { label: "创建用户", color: "bg-emerald-100 text-emerald-600" },
-  "user:update": { label: "修改用户资料", color: "bg-blue-100 text-[#2b6cb0]" },
-  "user:delete": { label: "删除用户", color: "bg-red-100 text-red-600" },
-  "user:ban": { label: "封禁用户账号", color: "bg-red-100 text-red-600" },
-  "user:unban": { label: "解封用户账号", color: "bg-emerald-100 text-emerald-600" },
-  "user:reset_session": { label: "重置会话", color: "bg-amber-100 text-amber-600" },
-  "ACCOUNT_DELETION_REQUESTED": { label: "注销申请", color: "bg-amber-100 text-amber-600" },
-  "ACCOUNT_DELETED": { label: "账号销毁", color: "bg-red-100 text-red-600" },
-  // —— 认证与安全 ——
-  "auth:login": { label: "登录系统", color: "bg-purple-100 text-[#805ad5]" },
-  "auth:logout": { label: "退出登录", color: "bg-slate-100 text-slate-700" },
-  "SESSION_TIMEOUT_LOGOUT": { label: "超时自动退出", color: "bg-amber-100 text-amber-700" },
-  "Password:Change": { label: "修改密码", color: "bg-blue-100 text-[#2b6cb0]" },
-  "SecuritySetting:Update": { label: "安全设置变更", color: "bg-blue-100 text-[#2b6cb0]" },
-  "ADMIN_FORCE_LOGOUT": { label: "管理员强制下线", color: "bg-red-100 text-red-600" },
-  "SESSION_CONFLICT_LOGOUT": { label: "账号自动退出登录", color: "bg-amber-100 text-amber-600" },
-  "DEVICE_KICKED_OFFLINE": { label: "设备自动下线", color: "bg-amber-100 text-amber-600" },
-  "cross_region_verify": { label: "跨区域验证", color: "bg-blue-100 text-[#2b6cb0]" },
-  "SECURITY_DIAGNOSIS": { label: "安全诊断", color: "bg-indigo-100 text-[#5a67d8]" },
-  "APIKey:Create": { label: "创建密钥", color: "bg-emerald-100 text-emerald-600" },
-  "APIKey:Delete": { label: "删除密钥", color: "bg-red-100 text-red-600" },
-  "CONFIGURE_ADMIN_PERMISSIONS": { label: "配置管理员权限", color: "bg-indigo-100 text-[#5a67d8]" },
-  "RESET_ALL_DEFAULT_PERMISSIONS_IN_DB": { label: "重置默认权限", color: "bg-amber-100 text-amber-600" },
-  "DELETE_PERMISSIONS_FROM_DB": { label: "删除权限配置", color: "bg-red-100 text-red-600" },
-  // —— 工作空间协同 ——
-  "workspace:create": { label: "创建空间", color: "bg-emerald-100 text-emerald-600" },
-  "workspace:update": { label: "更新空间", color: "bg-blue-100 text-[#2b6cb0]" },
-  "workspace:delete": { label: "删除空间", color: "bg-red-100 text-red-600" },
-  "CREATE_ENTERPRISE_WORKSPACE": { label: "创建企业空间", color: "bg-indigo-100 text-[#5a67d8]" },
-  "JOIN_WORKSPACE": { label: "加入空间", color: "bg-emerald-100 text-emerald-600" },
-  "LEAVE_WORKSPACE": { label: "退出空间", color: "bg-amber-100 text-amber-600" },
-  "UPDATE_MEMBER_ROLE": { label: "调整成员角色", color: "bg-blue-100 text-[#2b6cb0]" },
-  "WORKSPACE_KICK": { label: "移出成员", color: "bg-red-100 text-red-600" },
-  "UPGRADE_WORKSPACE": { label: "升级空间", color: "bg-indigo-100 text-[#5a67d8]" },
-  "UPGRADE_WORKSPACE_PLAN": { label: "变更空间套餐", color: "bg-indigo-100 text-[#5a67d8]" },
-  "CONFIGURE_SOLUTION": { label: "配置解决方案", color: "bg-blue-100 text-[#2b6cb0]" },
-  "SET_RESTRICTED_COMPONENTS": { label: "设置受限组件", color: "bg-blue-100 text-[#2b6cb0]" },
-  "SAVE_CUSTOM_POSITIONS": { label: "保存自定义布局", color: "bg-blue-100 text-[#2b6cb0]" },
-  // —— 研发组件中心 ——
-  "component:create": { label: "创建组件", color: "bg-emerald-100 text-emerald-600" },
-  "component:update": { label: "更新组件", color: "bg-blue-100 text-[#2b6cb0]" },
-  "component:delete": { label: "删除组件", color: "bg-red-100 text-red-600" },
-  "component:publish": { label: "上架组件", color: "bg-emerald-100 text-emerald-600" },
-  "component:request_publish": { label: "申请上架组件", color: "bg-blue-100 text-[#2b6cb0]" },
-  "component:approve": { label: "审核通过组件", color: "bg-emerald-100 text-emerald-600" },
-  "component:reject": { label: "审核驳回组件", color: "bg-amber-100 text-amber-600" },
-  "component:execute": { label: "运行组件", color: "bg-purple-100 text-[#805ad5]" },
-  "BIND_COMPONENT": { label: "绑定组件", color: "bg-blue-100 text-[#2b6cb0]" },
-  "UNBIND_COMPONENT": { label: "解绑组件", color: "bg-amber-100 text-amber-600" },
-  "users:batch-action": { label: "批量处理用户", color: "bg-blue-100 text-[#2b6cb0]" },
-  "user:batch_action": { label: "批量处理用户", color: "bg-blue-100 text-[#2b6cb0]" },
-  // —— 知识库 ——
-  "KNOWLEDGE_PUBLISH": { label: "发布知识", color: "bg-emerald-100 text-emerald-600" },
-  "KNOWLEDGE_SUBMIT": { label: "提交知识", color: "bg-blue-100 text-[#2b6cb0]" },
-  "KNOWLEDGE_APPROVE": { label: "审核通过知识", color: "bg-emerald-100 text-emerald-600" },
-  "KNOWLEDGE_REJECT": { label: "驳回知识", color: "bg-amber-100 text-amber-600" },
-  // —— 任务 ——
-  "ARCHIVE_TASK": { label: "归档任务", color: "bg-amber-100 text-amber-600" },
-  "DELETE_TASK": { label: "删除任务", color: "bg-red-100 text-red-600" },
-  // —— 资料资产 ——
-  "asset:remove_private": { label: "移除私密资料", color: "bg-red-100 text-red-600" },
-  "asset:remove": { label: "移除公开资料", color: "bg-red-100 text-red-600" },
-  "asset:removal_request": { label: "资料删除申请", color: "bg-amber-100 text-amber-600" },
-  "asset:removal_approve": { label: "删除申请通过", color: "bg-emerald-100 text-emerald-600" },
-  "asset:removal_reject": { label: "删除申请驳回", color: "bg-amber-100 text-amber-600" },
-  "asset:removal_record_delete": { label: "彻底删除资料", color: "bg-red-100 text-red-600" },
-  "asset:private_review_request": { label: "私密资料治理要求", color: "bg-blue-100 text-[#2b6cb0]" },
-  "asset:upload": { label: "上传资料", color: "bg-cyan-100 text-cyan-600" },
-  "asset:approve": { label: "审核通过公开资料", color: "bg-emerald-100 text-emerald-600" },
-  "asset:reject": { label: "审核驳回公开申请", color: "bg-amber-100 text-amber-600" },
-  "asset:restore": { label: "恢复已移除资料", color: "bg-blue-100 text-[#2b6cb0]" },
-  // —— 会员与计费 ——
-  "MEMBERSHIP_UPGRADE": { label: "会员升级", color: "bg-indigo-100 text-[#5a67d8]" },
-  "system:settings": { label: "系统设置", color: "bg-indigo-100 text-[#5a67d8]" },
-  "PING_TEST": { label: "网关连通测试", color: "bg-slate-100 text-slate-700" },
-  // —— 算力与配额治理 ——
-  "quota:recycle": { label: "算力配额回收", color: "bg-amber-100 text-amber-600" },
-  "quota:pool_threshold": { label: "调整算力阈值", color: "bg-blue-100 text-[#2b6cb0]" },
-  "quota:threshold": { label: "调整算力阈值", color: "bg-blue-100 text-[#2b6cb0]" },
-  // —— 空间成员协同 ——
-  "member:leave": { label: "成员退出空间", color: "bg-amber-100 text-amber-600" },
-  "workspace:recycle": { label: "空间资源回收", color: "bg-amber-100 text-amber-600" },
-  // —— 资料资产补充动作 ——
-  "asset:restore_request": { label: "申请资料恢复", color: "bg-amber-100 text-amber-600" },
-  "asset:publish_direct": { label: "直接公开资料", color: "bg-emerald-100 text-emerald-600" },
-  "asset:request_publish": { label: "申请公开资料", color: "bg-blue-100 text-[#2b6cb0]" },
-  "asset:batch_delete": { label: "批量删除资料", color: "bg-red-100 text-red-600" },
-  "asset:batch_remove": { label: "批量下架资料", color: "bg-red-100 text-red-600" },
-  "asset:batch_publish_direct": { label: "批量直接公开", color: "bg-emerald-100 text-emerald-600" },
-  "asset:batch_request_publish": { label: "批量申请公开", color: "bg-blue-100 text-[#2b6cb0]" },
-  // —— 认证与特权补充 ——
-  "sso:revoke": { label: "解除三方绑定", color: "bg-amber-100 text-amber-600" },
-  "stepup:issued": { label: "二次身份认证", color: "bg-indigo-100 text-[#5a67d8]" },
-  "user:force_logout": { label: "强制违规下线", color: "bg-red-100 text-red-600" },
-  "user:reset_password": { label: "重置用户密码", color: "bg-amber-100 text-amber-600" },
-  "user:batch_kick": { label: "批量强制下线", color: "bg-red-100 text-red-600" },
-  // —— 审计与导出 ——
-  "audit:clean_expired": { label: "清理过期日志", color: "bg-amber-100 text-amber-600" },
-  "audit:delete": { label: "删除审计记录", color: "bg-red-100 text-red-600" },
-  "export:excel": { label: "导出Excel报表", color: "bg-emerald-100 text-emerald-600" },
-  "export:json": { label: "导出JSON数据", color: "bg-blue-100 text-[#2b6cb0]" },
-  // —— 申诉工单与风控 ——
-  "appeal:deleted": { label: "删除申诉工单", color: "bg-red-100 text-red-600" },
-  "appeal:account_unban_approved": { label: "审核通过解封申诉", color: "bg-emerald-100 text-emerald-600" },
-  "appeal:account_unban_rejected": { label: "审核驳回解封申诉", color: "bg-amber-100 text-amber-700" },
-  "appeal:workspace_unban_approved": { label: "审核通过空间申诉", color: "bg-emerald-100 text-emerald-600" },
-  "appeal:workspace_unban_rejected": { label: "审核驳回空间申诉", color: "bg-amber-100 text-amber-700" },
-};
-
-// 未知 action 的智能中文翻译器：彻底杜绝英文暴露，按中文词根精准转译
+// 操作类型中文与配色全部来自后端数据库字典（auditDicts.actions + actionBadge）。
+// 此处仅保留「后端未返回时的兜底转译」，前端不再内置任何 action 字典。
 function translateActionToChinese(action: string): string {
   if (!action) return "系统常规操作";
 
-  // 1. 精确匹配字典
-  if (ACTION_META[action]?.label) return ACTION_META[action].label;
-
-  // 2. 忽略大小写及分隔符查找
   const lower = action.toLowerCase().replace(/[-_:]/g, "");
-  for (const [k, v] of Object.entries(ACTION_META)) {
-    if (k.toLowerCase().replace(/[-_:]/g, "") === lower) return v.label;
-  }
 
-  // 3. 业务域中文解析
+  // 业务域中文解析
   let domain = "系统";
   if (lower.includes("appeal")) domain = "申诉工单";
   else if (lower.includes("user") || lower.includes("account")) domain = "用户";
@@ -301,7 +203,6 @@ function actionMeta(action: string, rawDetails?: any) {
   if (action === "user:batch_kick") {
     return { label: "管理员批量下线", color: "bg-red-100 text-red-600" };
   }
-  if (ACTION_META[action]) return ACTION_META[action];
   return { label: translateActionToChinese(action), color: "bg-slate-100 text-slate-700" };
 }
 
@@ -329,251 +230,57 @@ function resourceLabel(resource: string | null) {
   return "系统";
 }
 
-// 枚举值 → 中文（状态 / 角色 / 系统动作等）
-const STATUS_LABELS: Record<string, string> = {
-  active: "正常",
-  banned: "已封禁",
-  suspended: "已停用",
-  inactive: "未激活",
-  deleted: "已删除",
-  pending: "待处理审核",
-  approved: "审核通过",
-  rejected: "审核驳回",
-  archived: "已归档",
-  canceled: "用户已撤销",
-  cancelled: "用户已撤销",
-};
+// 后端字典驱动（与 /admin/logs 完全一致）：优先使用数据库返回的 actionZh / actionBadge / resourceZh，
+// 前端不得以内置字典覆盖后端语义，保证展示一致。
+function renderActionLabel(log: OperationLog): string {
+  return log.actionZh || actionMeta(log.action, log.details).label;
+}
+function renderActionMeta(
+  log: OperationLog
+): { label: string; color: string; badge?: { label: string; bg: string; text: string; border: string } } {
+  const label = log.actionZh || actionMeta(log.action, log.details).label;
+  const badge = log.actionBadge ?? undefined;
+  const color = badge
+    ? `${badge.bg} ${badge.text} ${badge.border}`
+    : "bg-slate-100 text-slate-700";
+  return { label, color, badge };
+}
+function renderResourceLabel(log: OperationLog): string {
+  return log.resourceZh || resourceLabel(log.resource);
+}
 
-const ROLE_LABELS: Record<string, string> = {
-  user: "普通用户",
-  admin: "系统管理员",
-  super_admin: "超级管理员",
-  "super-admin": "超级管理员",
-  superadmin: "超级管理员",
-  member: "空间成员",
-  owner: "空间拥有者",
-  viewer: "访客成员",
-  creator: "创作者",
-  project_manager: "项目经理",
-  developer: "研发人员",
-  component_manager: "组件管理员",
-  knowledge_manager: "知识库管理员",
-  componentmanager: "组件管理员",
-  knowledgemanager: "知识库管理员",
-};
+// 字段名 / 字段值 / 词根的中文映射全部来自数据库字典（system_config.audit_display_dict），
+// 由 /api/admin/operation-logs 的 auditDicts 下发；前端不再内置任何业务字典。
 
-const PLAN_LABELS: Record<string, string> = {
-  STANDARD: "标准版",
-  ENTERPRISE: "企业版",
-  PRO: "专业版",
-  FREE: "免费版",
-};
-
-const VISIBILITY_LABELS: Record<string, string> = {
-  PRIVATE: "私有保密",
-  PUBLIC: "公开共享",
-  INTERNAL: "内部可见",
-};
-
-const WORKSPACE_TYPE_LABELS: Record<string, string> = {
-  ENTERPRISE: "企业型",
-  STANDARD: "标准型",
-  PERSONAL: "个人型",
-};
-
-// 字段值中文转译字典（杜绝任何底层英文暴露）
-const VALUE_TRANSLATIONS: Record<string, string> = {
-  admin_forced: "管理员强制执行",
-  admin_force: "管理员强制执行",
-  admin_kick: "管理员强制执行",
-  manual_kick: "手动下线设备",
-  kick_all_others: "注销其他所有设备",
-  kick_device: "注销指定设备",
-  conflict: "异地登录会话冲突登出",
-  timeout: "长时间未操作会话过期",
-  self: "用户自主操作",
-  BRONZE: "铜牌会员",
-  SILVER: "银牌会员",
-  GOLD: "金牌会员",
-  PLATINUM: "白金会员",
-  DIAMOND: "钻石会员",
-  FREE: "免费版",
-  STANDARD: "标准版",
-  ENTERPRISE: "企业版",
-  PRO: "专业版",
-  active: "正常活跃",
-  banned: "已被封禁",
-  suspended: "已停用冻结",
-  inactive: "已停用 (未激活)",
-  deleted: "已删除",
-  true: "是",
-  false: "否",
-  MONTH: "按月计费 (月付)",
-  YEAR: "按年计费 (年付)",
-  QUARTER: "按季计费 (季付)",
-  ONCE: "单次付费",
-  ONE_TIME: "单次付费",
-  WEEK: "按周计费",
-  DAY: "按天计费",
-  WECHAT_PAY: "微信支付",
-  WECHAT: "微信支付",
-  ALIPAY: "支付宝支付",
-  STRIPE: "国际信用卡支付",
-  BALANCE: "账户余额支付",
-  PAID: "已支付成功",
-  UNPAID: "待支付",
-  REFUNDED: "已全额退款",
-  PENDING: "待处理审核",
-  APPROVED: "审核通过",
-  REJECTED: "审核驳回",
-  ARCHIVED: "已归档保存",
-  SUCCESS: "执行成功",
-  FAILED: "执行失败",
-  explicit: "管理员手动指定",
-  all: "全选当前筛选目标",
-  unban: "解除账号封禁",
-  ban: "违规封禁账号",
-  kick: "强制安全下线",
-  reset_pwd: "重置登录密码",
-  reset_password: "重置登录密码",
-  reset_session: "重置登录会话",
-  delete: "删除账号",
-  PUBLIC: "公开共享",
-  PRIVATE: "私有保密",
-  INTERNAL: "内部可见",
-  github: "GitHub 授权登录",
-  qq: "QQ 快捷登录",
-  sms: "短信验证码登录",
-  password: "账号密码登录",
-};
-
+// 字段值 → 中文：完全来自数据库字典（system_config.audit_display_dict.values）
 function transStatus(v: any) {
   if (v === null || v === undefined) return "—";
-  return STATUS_LABELS[String(v).toLowerCase()] || VALUE_TRANSLATIONS[String(v)] || String(v);
+  return lookupValueLabel(v) || String(v);
 }
 function transRole(v: any) {
   if (v === null || v === undefined) return "—";
-  return ROLE_LABELS[String(v).toLowerCase()] || String(v);
+  return lookupValueLabel(v) || String(v);
 }
 function transPlan(v: any) {
   if (v === null || v === undefined) return "—";
-  return PLAN_LABELS[String(v).toUpperCase()] || String(v);
+  return lookupValueLabel(v) || String(v);
 }
 function transVisibility(v: any) {
   if (v === null || v === undefined) return "—";
-  return VISIBILITY_LABELS[String(v).toUpperCase()] || String(v);
+  return lookupValueLabel(v) || String(v);
 }
 function transWorkspaceType(v: any) {
   if (v === null || v === undefined) return "—";
-  return WORKSPACE_TYPE_LABELS[String(v).toUpperCase()] || String(v);
+  return lookupValueLabel(v) || String(v);
 }
 
-// 常见字段键名的全量中文映射字典
-const FIELD_LABEL_MAP: Record<string, string> = {
-  deviceName: "终端设备名称",
-  deviceType: "设备平台类型",
-  platform: "操作系统环境",
-  browser: "浏览器环境",
-  kickAllOthers: "注销其他设备会话",
-  targetUserId: "目标用户",
-  kickedUserId: "受影响用户",
-  userId: "用户账号标识",
-  bannedUntil: "封禁截止时间",
-  reason: "操作原因",
-  banReason: "封禁案由",
-  name: "名称",
-  tokens: "消耗算力点",
-  componentId: "关联组件",
-  componentName: "组件名称",
-  action: "执行动作",
-  workspaceName: "工作空间名称",
-  workspacePlan: "空间套餐",
-  workspaceType: "空间类型",
-  workspaceVisibility: "空间可见性",
-  invitationCode: "空间邀请码",
-  role: "账号角色",
-  newRole: "变更后角色",
-  oldRole: "原角色",
-  fromType: "变更前空间类型",
-  toType: "变更后空间类型",
-  fromLevel: "原会员等级",
-  toLevel: "目标会员等级",
-  boundAt: "绑定时间",
-  unboundAt: "解绑时间",
-  archivedAt: "任务归档时间",
-  deletedAt: "数据删除时间",
-  deletedCount: "物理删除记录数",
-  restrictedIds: "受限组件范围",
-  positions: "自定义界面布局",
-  knowledgeId: "知识条目",
-  taskId: "协同任务",
-  sourceTaskId: "来源研发任务",
-  solution: "行业解决方案",
-  type: "操作模式",
-  title: "标题名称",
-  documentId: "系统文档",
-  assetId: "资料资产",
-  assetIds: "批量资料列表",
-  appealId: "申诉工单编号",
-  appealIds: "申诉工单编号",
-  statuses: "当前工单状态",
-  businessTypes: "申诉业务类型",
-  targetUserIds: "目标用户",
-  comment: "审核处理意见",
-  reviewComment: "审核意见说明",
-  reviewer: "审核处理人",
-  count: "影响数据量",
-  amount: "配额变动额度",
-  operation: "敏感操作标识",
-  provider: "三方授权源",
-  openid: "三方账号标识",
-  unionid: "统一平台标识",
-  updates: "业务变更明细",
-  status: "业务状态",
-  initialStatus: "初始业务状态",
-  isCurrent: "是否当前终端",
-  message: "处理说明",
-  orderId: "关联订单编号",
-  orderNo: "订单业务流水号",
-  billingCycle: "计费周期",
-  paymentMethod: "支付结算方式",
-  paymentStatus: "支付状态",
-  price: "支付金额",
-  totalPrice: "订单总金额",
-  discount: "优惠抵扣额度",
-  duration: "订阅生效时长",
-  expiresAt: "服务到期时间",
-  autoRenew: "自动续订状态",
-  scope: "操作执行范围",
-  failedCount: "失败数量",
-  skippedCount: "跳过数量",
-  skippedSample: "跳过项说明",
-  totalSelected: "已选目标总数",
-  processedCount: "成功处理数",
-  isPublic: "公开上架状态",
-  isPublished: "公开上架状态",
-  published: "公开上架状态",
-  publish: "公开上架状态",
-  enabled: "启用生效状态",
-  maintenanceMode: "全站维护模式",
-  threshold: "算力预警阈值",
-  recycleCount: "配额回收数量",
-  success: "执行状态",
-  error: "异常报错内容",
-  componentCatalog: "组件所属分类",
-  category: "所属类别",
-  version: "组件版本号",
-  description: "组件描述",
-  oldSessionToken: "原会话凭据 (已踢下线)",
-  newSessionToken: "新会话凭据 (当前有效)",
-  sessionToken: "会话认证凭证",
-  refreshToken: "刷新会话令牌",
-};
-
-// 智能键名通用转译器：若在静态字典中查不到，基于驼峰及下划线分词并匹配通用词根库，彻底杜绝任何英文键名裸露，杜绝硬编码
+// 智能键名通用转译器：优先查数据库字段字典（audit_display_dict.fields），
+// 查不到时基于驼峰/下划线分词并匹配数据库词根字典（audit_display_dict.words），
+// 彻底杜绝英文键名裸露，且不在前端内置任何业务词条。
 function translateFieldKeyToChinese(rawKey: string): string {
-  if (!rawKey) return "业务属性";
-  if (FIELD_LABEL_MAP[rawKey]) return FIELD_LABEL_MAP[rawKey];
+  if (!rawKey) return "业务参数";
+  const mappedField = lookupFieldLabel(rawKey);
+  if (mappedField) return mappedField;
 
   // 1. 去除常见前后缀并按驼峰/下划线分词
   const rawWords = rawKey
@@ -600,105 +307,6 @@ function translateFieldKeyToChinese(rawKey: string): string {
   if (normKey === "status") return "当前工单状态";
   if (normKey === "operator_id" || normKey === "operator") return "经办人账号";
 
-  const WORD_MAP: Record<string, string> = {
-    appeal: "申诉工单",
-    business: "业务",
-    evidence: "举证材料",
-    user: "用户",
-    account: "账号",
-    member: "成员",
-    role: "角色",
-    perm: "权限",
-    permission: "权限",
-    pwd: "密码",
-    password: "密码",
-    phone: "手机号",
-    email: "邮箱",
-    avatar: "头像",
-    name: "名称",
-    title: "标题",
-    nick: "昵称",
-    nickname: "昵称",
-    status: "状态",
-    state: "状态",
-    type: "类型",
-    mode: "模式",
-    time: "时间",
-    date: "日期",
-    at: "时间",
-    created: "创建",
-    updated: "更新",
-    archived: "归档",
-    deleted: "删除",
-    unbound: "解绑",
-    bound: "绑定",
-    expired: "过期",
-    expires: "到期",
-    count: "数量",
-    num: "数量",
-    total: "总计",
-    amount: "额度",
-    tokens: "算力点",
-    token: "算力点",
-    quota: "配额",
-    threshold: "阈值",
-    price: "金额",
-    cost: "费用",
-    fee: "费用",
-    pay: "支付",
-    payment: "支付",
-    method: "方式",
-    order: "订单",
-    cycle: "周期",
-    billing: "计费",
-    plan: "套餐",
-    level: "等级",
-    workspace: "空间",
-    space: "空间",
-    component: "组件",
-    catalog: "分类",
-    category: "分类",
-    version: "版本",
-    desc: "描述",
-    description: "描述",
-    doc: "文档",
-    document: "文档",
-    asset: "资料",
-    knowledge: "知识",
-    task: "任务",
-    source: "来源",
-    target: "目标",
-    reason: "原因",
-    comment: "审核意见",
-    review: "审核",
-    message: "说明",
-    msg: "说明",
-    device: "设备",
-    platform: "平台",
-    browser: "浏览器",
-    ip: "IP地址",
-    url: "网络链接",
-    publish: "公开上架",
-    published: "公开上架",
-    public: "公开上架",
-    enable: "启用",
-    enabled: "启用",
-    disable: "停用",
-    disabled: "停用",
-    active: "活跃",
-    inactive: "未激活",
-    is: "是否",
-    has: "是否具备",
-    from: "变更前",
-    to: "变更后",
-    old: "原",
-    new: "新",
-    session: "会话",
-    provider: "登录源",
-    scope: "执行范围",
-    filter: "筛选条件",
-  };
-
   const hasSessionWord = words.includes("session");
   const translatedParts: string[] = [];
   for (const w of words) {
@@ -708,9 +316,9 @@ function translateFieldKeyToChinese(rawKey: string): string {
       translatedParts.push("凭据");
       continue;
     }
-    if (WORD_MAP[w]) {
-      translatedParts.push(WORD_MAP[w]);
-    }
+    // 词根中文来自数据库字典（audit_display_dict.words）
+    const wordLabel = lookupWordLabel(w);
+    if (wordLabel) translatedParts.push(wordLabel);
   }
 
   if (translatedParts.length > 0) {
@@ -718,10 +326,12 @@ function translateFieldKeyToChinese(rawKey: string): string {
     return deduplicated.join("");
   }
 
-  return "业务属性";
+  // 未知键统一显示为「业务参数」，杜绝裸露英文键名
+  return "业务参数";
 }
 
-// 智能值通用转译器：若在静态字典中查不到，基于业务规则、枚举、实体关联和词根匹配进行翻译，彻底杜绝英文暴露与机器乱码，杜绝硬编码
+// 智能值通用转译器：优先查数据库字典（audit_display_dict.values），
+// 查不到再基于业务规则、枚举、实体关联进行格式化，彻底杜绝英文暴露与机器乱码，前端不内置任何业务词条。
 function translateValueToChinese(key: string, val: any, fullLog?: any): string {
   if (val === null || val === undefined || val === "") return "—";
 
@@ -842,52 +452,63 @@ function translateValueToChinese(key: string, val: any, fullLog?: any): string {
 
   const strVal = String(val).trim();
 
-  // 6. 静态词典精确翻译
-  if (VALUE_TRANSLATIONS[strVal]) return VALUE_TRANSLATIONS[strVal];
-  if (VALUE_TRANSLATIONS[strVal.toLowerCase()]) return VALUE_TRANSLATIONS[strVal.toLowerCase()];
-  if (VALUE_TRANSLATIONS[strVal.toUpperCase()]) return VALUE_TRANSLATIONS[strVal.toUpperCase()];
-  if (STATUS_LABELS[strVal.toLowerCase()]) return STATUS_LABELS[strVal.toLowerCase()];
-  if (ROLE_LABELS[strVal.toLowerCase()]) return ROLE_LABELS[strVal.toLowerCase()];
-  if (PLAN_LABELS[strVal.toUpperCase()]) return PLAN_LABELS[strVal.toUpperCase()];
-  if (VISIBILITY_LABELS[strVal.toUpperCase()]) return VISIBILITY_LABELS[strVal.toUpperCase()];
-  if (WORKSPACE_TYPE_LABELS[strVal.toUpperCase()]) return WORKSPACE_TYPE_LABELS[strVal.toUpperCase()];
+  // 6. 数据库字典精确翻译（登录方式 / 状态 / 角色 / 套餐 / 可见性 / 支付 / 类型 / 处理态等）
+  const mappedValue = lookupValueLabel(strVal);
+  if (mappedValue) return mappedValue;
 
-  // 7. 英文词汇降级转译（常见状态、工单生命周期与动词）
-  const lower = strVal.toLowerCase();
-  if (lower === "success" || lower === "ok" || lower === "succeeded") return "执行成功";
-  if (lower === "failed" || lower === "fail" || lower === "error") return "执行失败";
-  if (lower === "pending") return "等待审核中";
-  if (lower === "processing") return "正在处理中";
-  if (lower === "approved") return "审核通过";
-  if (lower === "rejected") return "审核驳回";
-  if (lower === "archived") return "已归档";
-  if (lower === "canceled" || lower === "cancelled") return "用户已撤销";
-  if (lower === "ban_recorded") return "违规封禁留痕";
-  if (lower === "system") return "平台全局系统域";
-  if (lower === "manual") return "用户主动操作";
-  if (lower === "auto" || lower === "automatic") return "系统自动处理";
+  // 7. 技术型字段（路径 / 规则 / 资源 / 模块标识）：技术路径→系统路径，其余内部标识→内部标识
+  const lkLower = String(key || "").toLowerCase();
+  if (lkLower === "pathprefix" || lkLower === "path" || lkLower === "filepath") {
+    return "系统路径";
+  }
+  if (["ruleid", "resourcekey", "moduleid", "fingerprint", "requestid", "traceid", "correlationid"].includes(lkLower)) {
+    if (/^[\\/]/.test(strVal) || strVal.includes("/")) return "系统路径";
+    return "内部标识";
+  }
 
-  // 8. 若为超长机器 ID（长于 18 且纯英数），转为人类易读说明，杜绝直接暴露裸机器长串
+  // 9. 若为超长机器 ID（纯英数，18 位以上），转为人类易读说明，杜绝直接暴露裸机器长串
   if (/^[a-z0-9]{18,}$/i.test(strVal)) {
     return "系统业务唯一标识";
   }
 
-  return strVal;
+  // 10. 未知全大写枚举 / 拉丁技术值统一脱敏为「系统内部标识」，杜绝裸露英文
+  if (/^[A-Z][A-Z0-9_]{1,}$/.test(strVal)) return "系统内部标识";
+
+  // 11. 路径 / URL 形态统一中性化为「系统路径」，避免裸露内部路径
+  if (/^https?:\/\//i.test(strVal) || /^[\\/][\w./\\-]+$/.test(strVal)) return "系统路径";
+
+  // 12. 兜底统一交由共享脱敏规则处理：未知拉丁技术值中性化，同时保护用户内容 / IP / 日期，
+  //     确保 /admin/logs 与 /admin/operation-logs 对同一 details 展示完全一致
+  return formatDetailValue(strVal, key);
 }
 
 // 把 details 解析为全量纯中文 [中文标签, 中文值] 列表（支持关联数据库实体）
 function parseDetails(details: any, fullLog?: any): { label: string; value: string }[] {
-  let obj: any = details;
-  if (typeof details === "string") {
-    if (!details.trim()) return [];
+  // 统一脱敏：任何展示入口都基于脱敏后的 details
+  const safeDetails = sanitizeAuditDetails(details);
+  let obj: any = safeDetails;
+  if (typeof safeDetails === "string") {
+    if (!safeDetails.trim()) return [];
     try {
-      obj = JSON.parse(details);
+      obj = JSON.parse(safeDetails);
     } catch {
-      return [{ label: "记录内容", value: details }];
+      return [{ label: "记录内容", value: safeDetails }];
     }
   }
   if (obj === null || obj === undefined) return [];
   if (typeof obj !== "object") return [{ label: "记录内容", value: String(obj) }];
+
+  // 历史语义纠正：本地 IP 却写成“异地登录”的错误 message 不得继续展示
+  if (typeof obj.message === "string") {
+    const { summary: neutralSummary } = resolveAuditSummary({
+      action: fullLog?.action,
+      ipAddress: fullLog?.ipAddress,
+      details: obj,
+    });
+    if (neutralSummary && neutralSummary !== obj.message) {
+      obj = { ...obj, message: neutralSummary };
+    }
+  }
 
   // 1. 批量操作智能收敛：杜绝零碎无意义的计数器堆叠与 [object Object]，输出两到三项清晰明了的业务结论
   const isBatch =
@@ -973,6 +594,12 @@ function parseDetails(details: any, fullLog?: any): { label: string; value: stri
       key === "processedCount" ||
       key === "skippedCount" ||
       key === "failedCount" ||
+      // 严禁展示会话令牌类敏感字段（UUID session token / refresh token）
+      key === "oldSessionToken" ||
+      key === "newSessionToken" ||
+      key === "sessionToken" ||
+      key === "refreshToken" ||
+      key === "token" ||
       (key === "id" && (obj.name || obj.componentName || obj.title || obj.componentId || obj.targetComponentId))
     ) {
       continue;
@@ -1018,7 +645,7 @@ function parseDetails(details: any, fullLog?: any): { label: string; value: stri
 
 // 列表行内的一句话可读摘要（让管理员无需展开即看懂）
 function describeLog(log: OperationLog): string {
-  const meta = actionMeta(log.action, log.details);
+  const meta = renderActionMeta(log);
   const d = parseDetails(log.details, log);
   const get = (k: string) => d.find((r) => r.label === k)?.value || "";
 
@@ -1028,6 +655,15 @@ function describeLog(log: OperationLog): string {
       detailsObj = JSON.parse(detailsObj);
     } catch {}
   }
+
+  // 统一摘要字段：优先采用后端写入的 message，确保 /admin/logs 与 /admin/operation-logs
+  // 对同一条日志展示完全一致的描述；对历史「本地 IP 却写成异地登录」的错误语义做中性化纠正。
+  const { summary: unifiedSummary } = resolveAuditSummary({
+    action: log.action,
+    ipAddress: log.ipAddress,
+    details: log.details,
+  });
+  if (unifiedSummary) return unifiedSummary;
 
   switch (log.action) {
     case "users:batch-action":
@@ -1237,8 +873,11 @@ function describeLog(log: OperationLog): string {
     case "user:batch_kick":
       return `管理员批量将用户下线${get("受影响用户数") ? `（共 ${get("受影响用户数")} 人）` : ""}`;
     case "SESSION_CONFLICT_LOGOUT":
+      // 旧会话被新登录顶替（真实跨设备/跨网冲突），原因明确到设备或网络
+      return "账号在另一设备或网络登录，原会话被新登录顶替下线";
     case "DEVICE_KICKED_OFFLINE":
-      return "账号多端登录会话更替，原终端会话自动安全退出";
+      // 设备数量达到上限，系统替换最旧设备会话
+      return "设备数量达到上限，最旧设备会话被自动替换下线";
     case "SECURITY_DIAGNOSIS":
       return "执行账户安全诊断评估";
     case "APIKey:Create":
@@ -1304,13 +943,13 @@ function buildCsv(rows: OperationLog[]): string {
     lines.push(
       [
         formatTime(r.createdAt),
-        actionMeta(r.action).label,
-        resourceLabel(r.resource),
+        renderActionLabel(r),
+        renderResourceLabel(r),
         describeLog(r),
         r.user?.name || "未知用户",
         r.user?.email || "—",
         r.ipAddress || "—",
-        JSON.stringify(r.details ?? {}),
+        JSON.stringify(sanitizeAuditDetails(r.details ?? {})),
       ]
         .map(csvEscape)
         .join(",")
@@ -1328,7 +967,9 @@ export default function OperationLogsPage() {
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [stats, setStats] = useState({ total: 0, today: 0, highRisk: 0 });
+  const [stats, setStats] = useState({ total: 0, today: 0, highRisk: 0, activeUsers: 0 });
+  // 操作类型下拉选项：完全来自数据库字典（audit_action_dict）
+  const [actionOptions, setActionOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [retention, setRetention] = useState<{ years: number; days: number; description: string } | null>(null);
 
   // 筛选条件
@@ -1346,6 +987,19 @@ export default function OperationLogsPage() {
   const [detailLog, setDetailLog] = useState<any | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
+
+  // 融合原「系统日志」页面：Tab 切换（操作审计流水 / 登录安全历史）+ 行内展开详情
+  const [activeTab, setActiveTab] = useState<"operation" | "login">("operation");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // 登录安全历史（原「系统日志」页面能力，仅新增不改动）
+  const [histories, setHistories] = useState<any[]>([]);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginPage, setLoginPage] = useState(1);
+  const [loginTotal, setLoginTotal] = useState(0);
+  const [loginKeyword, setLoginKeyword] = useState("");
+  const [loginStartDate, setLoginStartDate] = useState("");
+  const [loginEndDate, setLoginEndDate] = useState("");
 
   // 打开详情并实时从数据库查询单条完整数据（含关联实体）
   const openDetailModal = async (log: OperationLog) => {
@@ -1367,9 +1021,9 @@ export default function OperationLogsPage() {
     }
   };
 
-  // 危险操作确认弹窗（单删 / 批量删 / 合规出清）
+  // 危险操作确认弹窗（单删 / 批量删）
   const [confirm, setConfirm] = useState<null | {
-    kind: "single" | "batch" | "purge";
+    kind: "single" | "batch";
     ids?: string[];
     title: string;
     message: string;
@@ -1404,6 +1058,9 @@ export default function OperationLogsPage() {
       if (!response.ok) throw new Error(result.error || "获取操作日志失败");
 
       const data = result.data;
+      // 审计字典全部来自数据库（system_config: audit_action_dict / audit_resource_dict / audit_display_dict）
+      if (data.auditDicts) setAuditDicts(data.auditDicts);
+      if (Array.isArray(data.actionOptions)) setActionOptions(data.actionOptions);
       setTotal(data.total || 0);
       const tp = Math.max(1, Number(data.totalPages) || 1);
       if (page > tp) {
@@ -1411,7 +1068,7 @@ export default function OperationLogsPage() {
         return;
       }
       setLogs(data.logs || []);
-      setStats(data.stats || { total: 0, today: 0, highRisk: 0 });
+      setStats(data.stats || { total: 0, today: 0, highRisk: 0, activeUsers: 0 });
       if (data.retentionPolicy) setRetention(data.retentionPolicy);
       // 数据刷新后修正选中状态
       setSelectedIds((prev) => prev.filter((id) => (data.logs || []).some((l: OperationLog) => l.id === id)));
@@ -1445,7 +1102,8 @@ export default function OperationLogsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const handleCopyDetails = (id: string, details: any) => {
     try {
-      const text = typeof details === "string" ? details : JSON.stringify(details, null, 2);
+      const safe = sanitizeAuditDetails(details);
+      const text = typeof safe === "string" ? safe : JSON.stringify(safe, null, 2);
       navigator.clipboard.writeText(text);
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
@@ -1469,7 +1127,55 @@ export default function OperationLogsPage() {
     setPage(1);
   };
 
-  // —— 复选框逻辑 ——
+  // —— 登录安全历史：加载与操作（融合原「系统日志」页面能力） ——
+  const loadLoginHistories = async (
+    p: number = loginPage,
+    keyword: string = loginKeyword,
+    start: string = loginStartDate,
+    end: string = loginEndDate,
+  ) => {
+    setLoginLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) });
+      if (keyword.trim()) params.set("keyword", keyword.trim());
+      if (start) params.set("startDate", start);
+      if (end) params.set("endDate", end);
+      const res = await fetch(`/api/admin/login-histories?${params}`, {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("加载登录历史失败");
+      const result = await res.json();
+      if (result.success && result.data) {
+        const rows = result.data.histories || [];
+        setHistories(rows);
+        setLoginTotal(result.data.total || 0);
+        setSelectedIds((prev) => prev.filter((id) => rows.some((h: any) => h.id === id)));
+      }
+    } catch {
+      showError("加载登录历史失败");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // Tab 切换：清空选择/展开态，登录 Tab 首次进入自动加载
+  const switchTab = (tab: "operation" | "login") => {
+    setActiveTab(tab);
+    setSelectedIds([]);
+    setSelectAll(false);
+    setExpandedId(null);
+    if (tab === "login") {
+      setLoginPage(1);
+      loadLoginHistories(1);
+    }
+  };
+
+  // —— 复选框逻辑（按当前 Tab 的行集合选择） ——
+  const currentRows: Array<{ id: string }> = activeTab === "operation" ? logs : histories;
+  const allPageSelected = currentRows.length > 0 && currentRows.every((r) => selectedIds.includes(r.id));
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
@@ -1478,23 +1184,35 @@ export default function OperationLogsPage() {
     });
   };
   const toggleSelectAll = () => {
-    setSelectedIds((prev) => (prev.length === logs.length ? [] : logs.map((l) => l.id)));
-    setSelectAll((p) => !p);
+    if (allPageSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !currentRows.some((r) => r.id === id)));
+      setSelectAll(false);
+    } else {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...currentRows.map((r) => r.id)])));
+      setSelectAll(true);
+    }
   };
 
-  // —— 删除：单条 / 批量 / 合规出清 ——
+  // —— 删除：单条 / 批量（按当前 Tab 路由到对应接口；3 年超期由系统自动出清，不提供手动操作） ——
   const executeDelete = async () => {
     if (!confirm) return;
     setBusy(true);
     try {
+      const endpoint =
+        activeTab === "operation"
+          ? "/api/admin/operation-logs"
+          : "/api/admin/login-histories";
       const body: any = {};
       if (confirm.kind === "single" && confirm.ids) body.id = confirm.ids[0];
       else if (confirm.kind === "batch") body.ids = confirm.ids;
-      else if (confirm.kind === "purge") body.cleanExpired = true;
 
-      const res = await fetch("/api/admin/operation-logs", {
+      const res = await fetch(endpoint, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        credentials: "include",
         body: JSON.stringify(body),
       });
       const result = await res.json();
@@ -1503,7 +1221,12 @@ export default function OperationLogsPage() {
       setConfirm(null);
       setSelectedIds([]);
       setSelectAll(false);
-      fetchLogs();
+
+      if (activeTab === "operation") {
+        fetchLogs();
+      } else {
+        loadLoginHistories(loginPage);
+      }
     } catch (err: any) {
       showError(err.message || "删除失败");
     } finally {
@@ -1547,8 +1270,8 @@ export default function OperationLogsPage() {
           sheetName: "操作审计日志",
           columns: [
             { header: "操作时间", formatter: (_, r) => formatTime(r.createdAt), width: 22 },
-            { header: "操作类型", formatter: (_, r) => actionMeta(r.action, r.details).label, width: 16 },
-            { header: "涉及资源域", formatter: (_, r) => resourceLabel(r.resource), width: 14 },
+            { header: "操作类型", formatter: (_, r) => renderActionLabel(r), width: 16 },
+            { header: "涉及资源域", formatter: (_, r) => renderResourceLabel(r), width: 14 },
             { header: "操作描述", formatter: (_, r) => describeLog(r), width: 36 },
             { header: "操作人姓名", formatter: (_, r) => r.user?.name || "未知用户", width: 16 },
             { header: "操作人邮箱", formatter: (_, r) => r.user?.email || "—", width: 24 },
@@ -1557,7 +1280,7 @@ export default function OperationLogsPage() {
             { header: "源IP地址", formatter: (_, r) => r.ipAddress || "—", width: 22 },
             {
               header: "详细参数(JSON)",
-              formatter: (_, r) => (typeof r.details === "object" ? JSON.stringify(r.details, null, 2) : String(r.details || "—")),
+              formatter: (_, r) => JSON.stringify(sanitizeAuditDetails(r.details ?? {}), null, 2),
               width: 38,
             },
           ],
@@ -1569,15 +1292,15 @@ export default function OperationLogsPage() {
           JSON.stringify(
             rows.map((r) => ({
               操作时间: formatTime(r.createdAt),
-              操作类型: actionMeta(r.action, r.details).label,
-              涉及资源域: resourceLabel(r.resource),
+              操作类型: renderActionLabel(r),
+              涉及资源域: renderResourceLabel(r),
               操作描述: describeLog(r),
               操作人姓名: r.user?.name || "未知用户",
               操作人邮箱: r.user?.email || "—",
               操作人角色: transRole(r.user?.role),
               操作人UID: r.userId,
               源IP地址: r.ipAddress || "—",
-              详细参数: r.details ?? {},
+              详细参数: sanitizeAuditDetails(r.details ?? {}),
             })),
             null,
             2
@@ -1619,16 +1342,18 @@ export default function OperationLogsPage() {
       sub: "涉及用户/数据销毁记录",
     },
     {
-      label: "当前页追溯数",
-      value: logs.length,
-      icon: Database,
+      label: "参与操作人员",
+      value: stats.activeUsers,
+      icon: UserIcon,
       accent: "bg-[#805ad5]/10",
       iconColor: "text-[#805ad5]",
-      sub: `当前呈现第 ${page} 页记录`,
+      sub: "当前筛选范围内去重操作人数",
     },
   ];
 
-  const allActionOptions = Object.entries(ACTION_META).map(([value, m]) => ({ value, label: m.label }));
+  const allActionOptions = actionOptions;
+  // 导出范围：已勾选则导出勾选项，否则导出当前筛选结果（单一导出口，避免功能重复）
+  const exportScope: "selected" | "filtered" = selectedIds.length > 0 ? "selected" : "filtered";
 
   return (
     <div className="space-y-6 pb-12 text-left font-sans">
@@ -1648,18 +1373,21 @@ export default function OperationLogsPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">
-              全方位追踪记录平台所有特权指令、高危删除、用户处罚与配置变更，保障系统合规与责任闭环
+              全方位追踪记录平台所有特权指令、高危删除、用户处罚与配置变更，并统一留存登录安全历史，保障系统合规与责任闭环
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
             <button
-              onClick={fetchLogs}
-              disabled={loading || busy}
+              onClick={() => {
+                if (activeTab === "operation") fetchLogs();
+                else loadLoginHistories(loginPage);
+              }}
+              disabled={loading || loginLoading || busy}
               className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
-              <span>刷新审计流</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${loading || loginLoading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
+              <span>刷新</span>
             </button>
             <Link
               href="/admin"
@@ -1710,26 +1438,36 @@ export default function OperationLogsPage() {
             </div>
           </div>
         </div>
-        <button
-          onClick={() =>
-            setConfirm({
-              kind: "purge",
-              title: "执行 3 年合规出清",
-              message:
-                "将立即物理删除所有超过 3 年（1095 天）的历史操作审计日志，此操作不可恢复。是否继续？",
-            })
-          }
-          disabled={busy}
-          className="shrink-0 h-10 px-4 bg-white/15 hover:bg-white/25 border border-white/30 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          <span>一键执行 3 年合规出清</span>
-        </button>
       </div>
 
       {/* 筛选栏 + 表格 卡片 */}
       <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 shadow-sm overflow-hidden">
-        {/* 筛选栏 */}
+        {/* Tab 切换：操作审计流水 / 登录安全历史 */}
+        <div className="px-5 sm:px-6 pt-5">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-200/50 rounded-xl w-fit">
+            <button
+              onClick={() => switchTab("operation")}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
+                activeTab === "operation" ? "bg-white text-[#2b6cb0] shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <ScrollText className="w-3.5 h-3.5 text-[#2b6cb0]" />
+              <span>操作审计流水</span>
+            </button>
+            <button
+              onClick={() => switchTab("login")}
+              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
+                activeTab === "login" ? "bg-white text-[#2b6cb0] shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-[#2b6cb0]" />
+              <span>登录安全历史</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 筛选栏（操作审计流水） */}
+        {activeTab === "operation" && (
         <div className="p-5 sm:p-6 border-b border-slate-100 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {/* 操作类型 */}
@@ -1801,7 +1539,7 @@ export default function OperationLogsPage() {
             {/* 时间区间选择与快捷标签 */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-600">时间窗口</label>
+                <label className="text-xs font-bold text-slate-600">查询时间</label>
                 <div className="flex items-center gap-1 text-[10px] font-bold">
                   <button onClick={() => handleSetQuickDate(0)} className="text-[#3182ce] hover:underline cursor-pointer">今日</button>
                   <span className="text-slate-300">·</span>
@@ -1850,30 +1588,137 @@ export default function OperationLogsPage() {
                 共检索到 <span className="font-bold text-slate-700">{total}</span> 条日志
               </span>
               <div className="h-4 w-px bg-slate-200" />
+              {/* 统一导出口：有勾选则导出勾选项，否则导出当前筛选结果（避免重复入口） */}
               <button
-                onClick={() => handleExport("excel", "filtered")}
+                onClick={() => handleExport("excel", exportScope)}
                 disabled={busy || loading}
                 className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/90 hover:bg-emerald-100/80 text-emerald-700 text-xs font-bold px-3.5 h-9 rounded-xl transition-all cursor-pointer disabled:opacity-50 shadow-2xs active:scale-95"
-                title="导出当前筛选结果为 Excel 表格 (.xlsx)"
+                title={exportScope === "selected" ? "导出勾选的记录为 Excel 表格 (.xlsx)" : "导出当前筛选结果为 Excel 表格 (.xlsx)"}
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>导出 Excel</span>
+                <span>{exportScope === "selected" ? `导出选中 Excel (${selectedIds.length})` : "导出 Excel"}</span>
               </button>
               <button
-                onClick={() => handleExport("json", "filtered")}
+                onClick={() => handleExport("json", exportScope)}
                 disabled={busy || loading}
                 className="flex items-center gap-1.5 bg-blue-50 border border-blue-200/90 hover:bg-blue-100/80 text-[#2b6cb0] text-xs font-bold px-3.5 h-9 rounded-xl transition-all cursor-pointer disabled:opacity-50 shadow-2xs active:scale-95"
-                title="导出当前筛选结果为 JSON 结构化数据 (.json)"
+                title={exportScope === "selected" ? "导出勾选的记录为 JSON 文件 (.json)" : "导出当前筛选结果为 JSON 结构化数据 (.json)"}
               >
                 <FileJson className="w-3.5 h-3.5 text-[#3182ce]" />
-                <span>导出 JSON</span>
+                <span>{exportScope === "selected" ? `导出选中 JSON (${selectedIds.length})` : "导出 JSON"}</span>
               </button>
             </div>
           </div>
         </div>
+        )}
 
-        {/* 错误提示 */}
-        {error && (
+        {/* 筛选栏（登录安全历史） */}
+        {activeTab === "login" && (
+          <div className="p-5 sm:p-6 border-b border-slate-100 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              <div className="lg:col-span-2">
+                <label className="block text-xs font-bold text-slate-600 mb-1.5">登录用户检索</label>
+                <div className="relative">
+                  <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={loginKeyword}
+                    onChange={(e) => setLoginKeyword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (setLoginPage(1), loadLoginHistories(1, loginKeyword, loginStartDate, loginEndDate))}
+                    placeholder="按用户名或邮箱搜索..."
+                    className="w-full border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-600">查询时间</label>
+                  <div className="flex items-center gap-1 text-[10px] font-bold">
+                    <button
+                      onClick={() => {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setDate(end.getDate());
+                        setLoginStartDate(start.toISOString().split("T")[0]);
+                        setLoginEndDate(end.toISOString().split("T")[0]);
+                      }}
+                      className="text-[#3182ce] hover:underline cursor-pointer"
+                    >
+                      今日
+                    </button>
+                    <span className="text-slate-300">·</span>
+                    <button
+                      onClick={() => {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setDate(end.getDate() - 7);
+                        setLoginStartDate(start.toISOString().split("T")[0]);
+                        setLoginEndDate(end.toISOString().split("T")[0]);
+                      }}
+                      className="text-[#3182ce] hover:underline cursor-pointer"
+                    >
+                      近7天
+                    </button>
+                    <span className="text-slate-300">·</span>
+                    <button
+                      onClick={() => {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setDate(end.getDate() - 30);
+                        setLoginStartDate(start.toISOString().split("T")[0]);
+                        setLoginEndDate(end.toISOString().split("T")[0]);
+                      }}
+                      className="text-[#3182ce] hover:underline cursor-pointer"
+                    >
+                      近30天
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input
+                    type="date"
+                    value={loginStartDate}
+                    onChange={(e) => setLoginStartDate(e.target.value)}
+                    className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
+                  />
+                  <input
+                    type="date"
+                    value={loginEndDate}
+                    onChange={(e) => setLoginEndDate(e.target.value)}
+                    className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setLoginPage(1); loadLoginHistories(1, loginKeyword, loginStartDate, loginEndDate); }}
+                  disabled={loginLoading || busy}
+                  className="flex items-center gap-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:opacity-50 text-white text-xs font-bold px-5 h-9 rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>执行查询</span>
+                </button>
+                <button
+                  onClick={() => { setLoginKeyword(""); setLoginStartDate(""); setLoginEndDate(""); setLoginPage(1); loadLoginHistories(1, "", "", ""); }}
+                  className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold px-4 h-9 rounded-xl shadow-2xs transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>重置条件</span>
+                </button>
+              </div>
+              <span className="text-xs text-slate-400 font-medium">
+                共检索到 <span className="font-bold text-slate-700">{loginTotal}</span> 条登录记录
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 错误提示（操作审计） */}
+        {activeTab === "operation" && error && (
           <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl p-3">
             {error}
           </div>
@@ -1884,34 +1729,19 @@ export default function OperationLogsPage() {
           <div className="mx-6 mt-4 bg-[#3182ce]/5 border border-[#3182ce]/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs font-bold text-[#2b6cb0]">
               <CheckSquare className="w-4 h-4" />
-              已勾选 <span className="text-[#3182ce]">{selectedIds.length}</span> 条审计记录
+              已勾选 <span className="text-[#3182ce]">{selectedIds.length}</span> 条
+              {activeTab === "operation" ? "审计记录" : "登录记录"}
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleExport("excel", "selected")}
-                disabled={busy}
-                className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 text-xs font-bold px-3 h-8 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                title="导出勾选的记录为 Excel 表格"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>导出选中 (Excel)</span>
-              </button>
-              <button
-                onClick={() => handleExport("json", "selected")}
-                disabled={busy}
-                className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-[#2b6cb0] hover:bg-blue-100 text-xs font-bold px-3 h-8 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                title="导出勾选的记录为 JSON 文件"
-              >
-                <FileJson className="w-3.5 h-3.5 text-[#3182ce]" />
-                <span>导出选中 (JSON)</span>
-              </button>
               <button
                 onClick={() =>
                   setConfirm({
                     kind: "batch",
                     ids: selectedIds,
-                    title: "批量删除审计日志",
-                    message: `即将永久删除选中的 ${selectedIds.length} 条操作审计日志，此操作不可恢复。是否继续？`,
+                    title: activeTab === "operation" ? "批量删除审计日志" : "批量删除登录历史",
+                    message: `即将永久删除选中的 ${selectedIds.length} 条${
+                      activeTab === "operation" ? "操作审计日志" : "登录安全历史记录"
+                    }，此操作不可恢复。是否继续？`,
                   })
                 }
                 disabled={busy}
@@ -1933,7 +1763,8 @@ export default function OperationLogsPage() {
           </div>
         )}
 
-        {/* 表格 */}
+        {/* 表格（操作审计流水） */}
+        {activeTab === "operation" ? (
         <div className="relative overflow-x-auto">
           <table className="w-full min-w-[1320px]">
             <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
@@ -1991,17 +1822,18 @@ export default function OperationLogsPage() {
                 </tr>
               ) : (
                 logs.map((log) => {
-                  const meta = actionMeta(log.action, log.details);
+                  const meta = renderActionMeta(log);
                   const ResIcon = resourceIcon(log.resource);
                   const checked = selectedIds.includes(log.id);
                   return (
+                    <Fragment key={log.id}>
                     <tr
-                      key={log.id}
-                      className={`group hover:bg-white/60 transition-all duration-300 ${
+                      onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
+                      className={`group cursor-pointer hover:bg-white/60 transition-all duration-300 ${
                         checked ? "bg-[#3182ce]/5" : ""
                       }`}
                     >
-                      <td className="sticky left-0 z-10 bg-white px-4 py-4">
+                      <td className="sticky left-0 z-10 bg-white px-4 py-4" onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => toggleSelect(log.id)} className="cursor-pointer" title="选择此条">
                           {checked ? (
                             <CheckSquare className="w-4 h-4 text-[#3182ce]" />
@@ -2033,6 +1865,7 @@ export default function OperationLogsPage() {
                           <div className="min-w-0 max-w-[150px]">
                             <Link
                               href={`/admin/users?search=${encodeURIComponent(log.user?.email || log.user?.name || log.userId)}`}
+                              onClick={(e) => e.stopPropagation()}
                               className="text-sm font-bold text-slate-800 hover:text-[#3182ce] hover:underline transition-colors truncate block"
                               title="前往用户画像中心查看该用户"
                             >
@@ -2048,7 +1881,7 @@ export default function OperationLogsPage() {
                         <div className="flex items-center gap-1.5">
                           <ResIcon className="w-4 h-4 text-slate-400 shrink-0" />
                           <span className="truncate whitespace-nowrap">
-                            {resourceLabel(log.resource)}
+                            {renderResourceLabel(log)}
                           </span>
                         </div>
                       </td>
@@ -2063,7 +1896,7 @@ export default function OperationLogsPage() {
                       <td className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap">
                         {formatTime(log.createdAt)}
                       </td>
-                      <td className="sticky right-0 z-10 bg-white px-6 py-4 text-right min-w-[120px] shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.08)]">
+                      <td className="sticky right-0 z-10 bg-white px-6 py-4 text-right min-w-[120px] shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.08)]" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                           <button
                             onClick={() => openDetailModal(log)}
@@ -2089,25 +1922,163 @@ export default function OperationLogsPage() {
                         </div>
                       </td>
                     </tr>
+                    {expandedId === log.id && (
+                      <tr className="bg-slate-50/40">
+                        <td colSpan={8} className="p-0">
+                          <OperationLogDetails log={log} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })
               )}
             </tbody>
           </table>
         </div>
-
-        {/* 分页 */}
-        {!loading && total > 0 && (
-          <div className="px-6 py-4 border-t border-slate-200 bg-gradient-to-r from-slate-50/50 to-transparent">
-            <Pagination
-              currentPage={page}
-              totalItems={total}
-              pageSize={PAGE_SIZE}
-              onPageChange={(p) => setPage(p)}
-              itemLabel="条操作日志"
-            />
+        ) : (
+          /* 登录安全历史表格（融合原「系统日志」页面） */
+          <div className="relative overflow-x-auto">
+            <table className="w-full min-w-[1100px]">
+              <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-4 text-left text-xs font-bold text-slate-500 whitespace-nowrap w-12">
+                    <button onClick={toggleSelectAll} className="cursor-pointer" title="全选当前页">
+                      {allPageSelected ? (
+                        <CheckSquare className="w-4 h-4 text-[#3182ce]" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">登录用户</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">登录时间</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">真实登录 IP</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">地理归属地</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">客户端设备与系统</th>
+                  <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap min-w-[100px]">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loginLoading ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-20 text-center">
+                      <div className="w-16 h-16 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-slate-600 font-medium">加载中...</p>
+                    </td>
+                  </tr>
+                ) : histories.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-20 text-center">
+                      <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                        <Clock className="w-8 h-8 text-slate-400" />
+                      </div>
+                      <p className="text-slate-500 font-medium text-sm">暂无登录安全历史记录</p>
+                    </td>
+                  </tr>
+                ) : (
+                  histories.map((history) => {
+                    const checked = selectedIds.includes(history.id);
+                    return (
+                      <tr
+                        key={history.id}
+                        className={`hover:bg-white/60 transition-all duration-300 ${
+                          checked ? "bg-[#3182ce]/5" : ""
+                        }`}
+                      >
+                        <td className="px-4 py-4">
+                          <button onClick={() => toggleSelect(history.id)} className="cursor-pointer" title="选择此条">
+                            {checked ? (
+                              <CheckSquare className="w-4 h-4 text-[#3182ce]" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-300 hover:text-slate-500" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {history.user?.avatar ? (
+                              <img src={history.user.avatar} alt="" className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
+                            ) : (
+                              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs font-black shadow-xs shrink-0">
+                                {(history.user?.name || "U").charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0 max-w-[150px]">
+                              <div className="text-sm font-bold text-slate-800 truncate">{history.user?.name || "未知用户"}</div>
+                              <div className="text-xs text-slate-500 font-medium truncate">{history.user?.email || "未留邮箱"}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap">
+                          {formatTime(history.loginAt)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600 font-medium whitespace-nowrap">
+                          {!history.ipAddress || history.ipAddress.includes("127.0.0.1")
+                            ? "127.0.0.1 (本地局域网)"
+                            : history.ipAddress.replace(/^::ffff:/, "")}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 font-medium whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>{history.location || "本地局域专网"}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 font-medium whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <Monitor className="w-3.5 h-3.5 text-[#2b6cb0] shrink-0" />
+                            <span>{history.device || "Windows 终端 · Web 浏览器"}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <button
+                            onClick={() =>
+                              setConfirm({
+                                kind: "single",
+                                ids: [history.id],
+                                title: "删除该条登录历史",
+                                message: "即将永久删除这条登录安全历史记录，此操作不可恢复。是否继续？",
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-all active:scale-95 cursor-pointer bg-red-600 hover:bg-red-700 text-white border border-red-600 shadow-xs"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-white" />
+                            <span>删除</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         )}
+
+        {/* 分页 */}
+        {activeTab === "operation"
+          ? (!loading && total > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200 bg-gradient-to-r from-slate-50/50 to-transparent">
+                <Pagination
+                  currentPage={page}
+                  totalItems={total}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(p) => setPage(p)}
+                  itemLabel="条操作日志"
+                />
+              </div>
+            ))
+          : (!loginLoading && loginTotal > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200 bg-gradient-to-r from-slate-50/50 to-transparent">
+                <Pagination
+                  currentPage={loginPage}
+                  totalItems={loginTotal}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={(p) => { setLoginPage(p); loadLoginHistories(p); }}
+                  itemLabel="条登录记录"
+                />
+              </div>
+            ))}
       </div>
 
       {/* 详情模态框：与系统标准审计弹窗统一 */}
@@ -2124,7 +2095,7 @@ export default function OperationLogsPage() {
                 <div>
                   <div className="text-base font-black">操作审计详情</div>
                   <div className="text-[11px] text-white/75 flex items-center gap-1.5">
-                    <span>审计流水详情 · {actionMeta(detailLog.action, detailLog.details).label}</span>
+                    <span>审计流水详情 · {renderActionLabel(detailLog)}</span>
                     {detailLoading && (
                       <span className="inline-flex items-center gap-1 text-[10px] bg-white/20 px-1.5 py-0.5 rounded text-white font-medium">
                         <RefreshCw className="w-3 h-3 animate-spin" />
@@ -2142,8 +2113,8 @@ export default function OperationLogsPage() {
             <div className="p-6 overflow-y-auto space-y-5">
               {/* 基本信息 */}
               <Section title="基本信息">
-                <Field label="操作类型" value={actionMeta(detailLog.action, detailLog.details).label} />
-                <Field label="资源域" value={resourceLabel(detailLog.resource)} />
+                <Field label="操作类型" value={renderActionLabel(detailLog)} />
+                <Field label="资源域" value={renderResourceLabel(detailLog)} />
                 <Field label="发生时刻" value={formatTime(detailLog.createdAt)} />
                 {detailLog.workspace && (
                   <Field
@@ -2239,7 +2210,10 @@ export default function OperationLogsPage() {
                   </div>
                 ) : showRawJson ? (
                   <pre className="text-[11px] leading-relaxed bg-slate-900 text-slate-100 rounded-xl p-4 overflow-x-auto whitespace-pre-wrap break-all">
-{typeof detailLog.details === "string" ? detailLog.details : JSON.stringify(detailLog.details ?? {}, null, 2)}
+{(() => {
+  const safe = sanitizeAuditDetails(detailLog.details ?? {});
+  return typeof safe === "string" ? safe : JSON.stringify(safe, null, 2);
+})()}
                   </pre>
                 ) : (
                   (() => {

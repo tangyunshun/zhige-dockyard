@@ -1,13 +1,6 @@
 /** @type {import('next').NextConfig} */
 // Force Turbopack Reload Stamp: 2026-09-05-post-sync-v1
 
-// 自动生成并同步无变形的立体 1:1 比例 Icon 资源
-// 说明：脚本内部已做「内容一致则不写入」判断，不会因重写文件而触发整图重编译
-try {
-  require('./scripts/generate_real_icon.js');
-} catch (e) {
-  console.error("生成图标失败:", e);
-}
 
 const nextConfig = {
   // 开发态关闭严格模式：StrictMode 会把每个组件渲染 / effect 执行两次，

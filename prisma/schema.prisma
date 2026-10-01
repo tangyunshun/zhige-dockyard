@@ -77,6 +77,8 @@ model user {
   lastLoginAt                                              DateTime?             @map("last_login_at")
   sessionExpiresAt                                         DateTime?             @map("session_expires_at")
   sessionToken                                             String?               @map("session_token")
+  /// 会话策略：登录时勾选「7天内免登录」为 true。该会话豁免 10 分钟空闲超时（A-01），仅受 7 天绝对超时（A-02）约束
+  sessionRememberMe                                        Boolean               @default(false) @map("session_remember_me")
   deletionRequestedAt                                      DateTime?             @map("deletion_requested_at")
   /// 僵尸用户标记：每日定时扫描将「超 1 年未登录且从未产生有效数据」的用户置位，供后台筛选与清理
   isZombie                                                 Boolean              @default(false) @map("is_zombie")
@@ -1011,7 +1013,8 @@ model componentcatalog {
   icon            String
   tags            Json // string[]
   isPremium       Boolean   @default(false)
-  /// 预估模型 Token 消耗（AI 实际 token 数，属用量度量，非计费货币；换算成算力点成本请走 point-rate）
+  /// 预估模型 Token 消耗（AI 实际 token 数）：属「用量度量单位」，不是算力点、更不是计费货币。
+  /// 严禁把该值直接当作应扣算力点；所有扣点必须经算账中心 src/lib/billing/pricing-center.ts 换算。
   estimatedModelTokens Int       @default(0) @map("estimatedTokens")
   previewData     Json // { inputMock, outputMock, roiText }
   businessTags    Json? // string[]
@@ -1027,11 +1030,36 @@ model componentcatalog {
   usageCount      Int       @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  activeContractId String?  @map("active_contract_id")
+  activeContract   componentcontract? @relation("ActiveContractForCatalog", fields: [activeContractId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ComponentCatalog_activeContractId_fkey")
+  contracts       componentcontract[] @relation("ComponentToContracts")
 
+  @@index([activeContractId], map: "ComponentCatalog_activeContractId_idx")
   @@index([category], map: "ComponentCatalog_category_idx")
   @@index([isPublished], map: "ComponentCatalog_isPublished_idx")
   @@index([sortOrder], map: "ComponentCatalog_sortOrder_idx")
   @@map("component_catalog")
+}
+
+// 通用组件合同版本表（不可变版本行）
+model componentcontract {
+  id              String    @id @default(cuid())
+  componentId     String    @map("component_id")
+  contractVersion String    @map("contract_version") // 语义化版本号，如 "1.0.0", "1.1.0"
+  lifecycle       String    @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  description     String?   @db.Text
+  contract        Json      // 完整经过 validateComponentContract 校验的 ComponentContract JSON
+  publishedAt     DateTime? @map("published_at")
+  publishedBy     String?   @map("published_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  component       componentcatalog @relation("ComponentToContracts", fields: [componentId], references: [id], onDelete: Restrict, map: "ComponentContract_componentId_fkey")
+  activeForCatalogs componentcatalog[] @relation("ActiveContractForCatalog")
+
+  @@unique([componentId, contractVersion], map: "ComponentContract_componentId_contractVersion_key")
+  @@index([componentId, lifecycle], map: "ComponentContract_componentId_lifecycle_idx")
+  @@map("component_contract")
 }
 
 // 组件分类表：阶段分类的显示名/主题色/组件范围。
@@ -1243,7 +1271,302 @@ model pointledger {
   @@index([createdAt], map: "PointLedger_createdAt_idx")
 }
 
-/// 线下充值工单（对公转账 / 合同结算），审批通过后确认收款再自动入账，形成闭环
+/// 模型失败退款恢复记录：记录待退款的完整消费事实，支持管理员查询与幂等重试
+/// 仅记录账务与任务标识，不记录原始材料 / Prompt / API Key
+model refundrecovery {
+  id                    String   @id
+  taskId                String
+  userId                String
+  workspaceId           String
+  /// 消费幂等键（CONSUME:{taskId}），重试时用于再次重建消费结果
+  consumeIdempotencyKey String
+  /// 消费流水 ID 列表（JSON 数组），用于审计与对账
+  consumeLedgerIds      Json
+  /// 消费明细（各来源分桶），用于重建 ConsumeResult 执行原路退款
+  details               Json
+  /// 本次应退款点数
+  points                BigInt   @default(0)
+  /// 需要回滚的月度用量增量
+  monthlyUsedRollback   BigInt   @default(0)
+  /// PENDING | PROCESSING | SETTLED | FAILED | REQUIRES_REVIEW
+  status                String   @default("PENDING")
+  retryCount            Int      @default(0)
+  lastError             String?  @db.Text
+  processingStartedAt   DateTime?
+  leaseUntil            DateTime?
+  /// 租约 fencing token：每次认领生成并校验，阻止旧 Worker 覆盖新 Worker 状态
+  claimToken            String?   @unique(map: "RefundRecovery_claimToken_key")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([taskId, consumeIdempotencyKey], map: "RefundRecovery_taskId_key_key")
+  @@index([status], map: "RefundRecovery_status_idx")
+  @@index([userId], map: "RefundRecovery_userId_idx")
+}
+
+/// 用户自助退款申请：用户对「已扣费且成功」的任务申请退还算力点，必须经管理员审批后才真正退点。
+/// 本表仅记录申请事实与审批结论；真实退点一律由账务层生成 REFUND 流水，
+/// 杜绝出现「页面显示已退款但无任何账款流水」的虚假状态（refundLedgerId 为唯一可追溯凭证）。
+model refundrequest {
+  id           String   @id
+  taskId       String
+  userId       String
+  workspaceId  String?
+  componentId  String?
+  /// 申请退还的点数（取该任务实际扣除点数）
+  points       Int      @default(0)
+  /// 用户填写的申请原因
+  reason       String   @db.Text
+  /// PENDING（待审批）| APPROVED（已同意并已退点）| REJECTED（已驳回）
+  status       String   @default("PENDING")
+  /// 审批人 userId（管理员 / 超级管理员）
+  adminId      String?
+  /// 审批意见（驳回时必填）
+  adminRemark  String?  @db.Text
+  /// 退点成功后生成的账款流水 ID；为空表示尚未产生真实退款流水
+  refundLedgerId String?
+  createdAt    DateTime @default(now())
+  resolvedAt   DateTime?
+
+  /// 同一用户对同一任务只能有一条申请，幂等防重复
+  @@unique([taskId, userId], map: "RefundRequest_taskId_userId_key")
+  @@index([status, createdAt], map: "RefundRequest_status_createdAt_idx")
+  @@index([userId, createdAt], map: "RefundRequest_userId_createdAt_idx")
+}
+/// 模型供应商（服务端直连配置；API Key 不入库，仅保存环境变量名）
+model modelprovider {
+  id          String   @id
+  /// 供应商名称（平台**稳定标识**，也是合同与 modeldeployment 中的 providerId）：创建后禁止修改
+  name        String   @unique(map: "ModelProvider_name_key")
+  /// 对接协议：本期仅 OPENAI_COMPATIBLE
+  protocol    String   @default("OPENAI_COMPATIBLE")
+  /// 服务端直连地址（不向前端下发完整密钥信息）
+  baseUrl     String
+  /// API Key 所在环境变量名（禁止把密钥明文写入数据库）
+  apiKeyEnv   String   @default("MODEL_API_KEY")
+  /// API Key 密文（AES-256-GCM，base64）：后台直接录入密钥时落库；为空时回退到 apiKeyEnv 对应环境变量
+  apiKeyCipher String?
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// 该供应商下的模型部署（外键引用 name：providerId 的语义即供应商平台标识 name）
+  deployments modeldeployment[]
+
+  @@index([enabled], map: "ModelProvider_enabled_idx")
+}
+
+/// 具体模型部署（含上下文限制与价格配置）
+model modeldeployment {
+  id            String   @id
+  /// 供应商平台标识 = modelprovider.name（数据库外键固化该语义），合同中的 providerId 同义
+  providerId    String
+  /// 平台内模型标识（合同中的 modelId）
+  modelId       String
+  /// 供应商侧真实模型名（调用时实际下发）
+  upstreamModel String
+  displayName   String   @default("")
+  /// 上下文上限（tokens）
+  contextLimit  Int      @default(32000)
+  /// 模型能力声明（规范化 JSON 字符串数组）。
+  /// 取值必须来自抽象能力白名单（如 TEXT_GENERATION / STRUCTURED_OUTPUT / VISION / LONG_CONTEXT / FILE_ANALYSIS），
+  /// 严禁写入具体厂商或模型名；contextLimit 不得作为能力替代表达。
+  capabilities  Json     @default("[]")
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /// 价格（唯一真源 modelpricing）；删除部署时级联删除，避免价格孤儿
+  pricing       modelpricing?
+  /// 时段价格覆盖（删除部署时级联删除）
+  periods      modelpricingperiod[]
+  /// 所属供应商（外键锁定 providerId → modelprovider.name，禁止悬挂引用）
+  provider      modelprovider @relation(fields: [providerId], references: [name], onDelete: Restrict, onUpdate: Restrict, map: "ModelDeployment_providerId_fkey")
+  /// 被空间模型策略引用为默认模型（RESTRICT：被引用时数据库层面禁止删除）
+  defaultInPolicies workspace_model_policy[]
+
+  @@unique([providerId, modelId], map: "ModelDeployment_providerId_modelId_key")
+  @@index([providerId], map: "ModelDeployment_providerId_idx")
+  @@index([enabled], map: "ModelDeployment_enabled_idx")
+}
+
+/// 模型价格（供应商成本与用户售价分开保存；单位：微元 / 100 万 Token，1 微元 = 1e-6 元）
+/// 说明：不使用「整数分/1K」作为唯一单位，以支持低价模型（如 0.2 分/1K = 2 元/百万 = 2_000_000 微元）与元/百万小数。
+model modelpricing {
+  id          String   @id
+  deploymentId String  @unique(map: "ModelPricing_deploymentId_key")
+  currency    String   @default("CNY")
+
+  /// 正式外键级联：删除模型部署时同事务级联删除对应价格，杜绝价格孤儿
+  deployment  modeldeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, map: "ModelPricing_deploymentId_fkey")
+
+  /// —— 供应商成本（平台侧支出）——
+  costInputMicrosPerMillion      Int?
+  costOutputMicrosPerMillion     Int?
+  costCacheReadMicrosPerMillion  Int?
+  costCacheWriteMicrosPerMillion Int?
+
+  /// —— 用户售价（对外扣点依据，与成本分离）——
+  priceInputMicrosPerMillion      Int?
+  priceOutputMicrosPerMillion     Int?
+  priceCacheReadMicrosPerMillion  Int?
+  priceCacheWriteMicrosPerMillion Int?
+
+  /// 价格来源：UNVERIFIED 未验证 | OBSERVED_ONLY 仅观测数据 | VERIFIED 供应商价目表已确认
+  priceSource String @default("UNVERIFIED")
+  /// 价格状态：UNCONFIGURED 未配置 | FREE 明确免费 | OBSERVED_ONLY | VERIFIED
+  priceStatus String @default("UNCONFIGURED")
+  /// 价格来源（计费口径）：PLATFORM 平台模型注册表 | USER_BYOK 用户自带模型（按官方价折算后收服务费）
+  priceOrigin String @default("PLATFORM")
+  /// 平台加价率（基点，1bp = 0.01%）；非空时覆盖全局加价系数 k（按模型覆盖）
+  markupRateBps Int?
+  /// 价格版本（每次改价递增）
+  priceVersion Int @default(1)
+  /// 价格生效时间
+  effectiveFrom DateTime?
+
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// 模型时段价格（在「主流价」modelpricing 之上叠加的时段覆盖价）
+/// 生效规则（周计划 + 日期区间，二选一或叠加）：
+///   - 周计划：weekdays（1=周一..7=周日，逗号分隔，null=每天）+ startTime/endTime（HH:mm，每天窗口）
+///   - 日期区间：startDate/endDate（含当日，用于节日/自定义绝对区间）
+/// 结算时按当前时钟+日期挑「enabled 且命中且 priority 最高」的时段价；无命中则回退主流价。
+model modelpricingperiod {
+  id          String  @id @default(uuid())
+  deploymentId String
+  deployment  modeldeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, map: "ModelPricingPeriod_deploymentId_fkey")
+
+  /// 时段名称（管理员自定义，如「闲时」「国庆」）
+  name String
+  /// 类型：IDLE 闲时 | PEAK 高峰 | HOLIDAY 节日 | CUSTOM 自定义（仅用于排序与展示）
+  kind String @default("CUSTOM")
+  /// 是否启用（禁用后结算忽略该时段）
+  enabled Boolean @default(true)
+  /// 优先级（数值大者优先；同级按 HOLIDAY>PEAK>IDLE>CUSTOM）
+  priority Int @default(0)
+
+  /// 周计划：星期几（1=周一..7=周日），逗号分隔；null=每天
+  weekdays String?
+  /// 每天起止时间 HH:mm（周计划窗口用，不支持跨天）
+  startTime String?
+  endTime   String?
+
+  /// 日期区间（节日/自定义绝对区间用，含当日）
+  startDate DateTime?
+  endDate   DateTime?
+
+  /// —— 供应商成本（平台侧支出）——
+  costInputMicrosPerMillion      Int?
+  costOutputMicrosPerMillion     Int?
+  costCacheReadMicrosPerMillion  Int?
+  costCacheWriteMicrosPerMillion Int?
+
+  /// —— 用户售价（对外扣点依据）——
+  priceInputMicrosPerMillion      Int?
+  priceOutputMicrosPerMillion     Int?
+  priceCacheReadMicrosPerMillion  Int?
+  priceCacheWriteMicrosPerMillion Int?
+
+  priceSource String @default("UNVERIFIED")
+  priceStatus String @default("UNCONFIGURED")
+  markupRateBps Int?
+  priceVersion Int @default(1)
+  /// 快照展示用：取 startDate
+  effectiveFrom DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deploymentId])
+}
+
+/// 模型成本观测数据（如「综合有效成本」），**仅用于成本分析与运营报表，不得作为输入/输出官方单价**
+model modelcostobservation {
+  id                              String   @id
+  providerId                      String
+  modelId                         String
+  /// 观测口径：OBSERVED_BLENDED_COST
+  metric                          String   @default("OBSERVED_BLENDED_COST")
+  currency                        String   @default("USD")
+  totalTokens                     Int
+  inputTokens                     Int
+  outputTokens                    Int
+  cacheTokens                     Int
+  nonCacheTokens                  Int
+  requestCount                    Int
+  /// 总费用（微美元，1 微美元 = 1e-6 美元）
+  totalCostMicrosUsd              Int
+  /// 综合有效成本（微美元 / 100 万 Token，含缓存）
+  effectiveCostPerMillionMicrosUsd Int
+  /// 不含缓存的综合成本（微美元 / 100 万 Token）
+  nonCacheCostPerMillionMicrosUsd  Int
+  note                            String?  @db.Text
+  createdAt                       DateTime @default(now())
+
+  @@index([providerId, modelId], map: "ModelCostObservation_provider_model_idx")
+}
+
+/// 空间模型策略：默认模型与允许模型白名单
+model workspace_model_policy {
+  id          String   @id
+  workspaceId String   @unique(map: "WorkspaceModelPolicy_workspaceId_key")
+  /// 默认模型部署 ID（外键 RESTRICT：被引用时数据库层面禁止删除该部署）
+  defaultDeploymentId   String?
+  /// 允许的部署 ID 列表（JSON 数组；非空时启用白名单限制）
+  /// 注意：JSON 无法建立数据库外键，其引用完整性由 model-registry-lock 的命名锁 + 接口校验共同保证
+  allowedDeploymentIds  Json     @default("[]")
+  defaultDeployment     modeldeployment? @relation(fields: [defaultDeploymentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "WorkspaceModelPolicy_defaultDeploymentId_fkey")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// 空间自带模型（BYO：Bring Your Own Model）
+/// 由空间所有者/管理员配置，覆盖该空间的默认执行模型；平台仍按此处配置的价格向用户收费。
+/// API Key 以 AES-256-GCM 密文落库（apiKeyCipher），明文密钥绝不写入数据库。
+/// 一个空间至多一条有效 BYO 配置（workspaceId 唯一）。
+model workspace_byo_model {
+  id            String   @id @default(uuid())
+  workspaceId   String   @unique(map: "WorkspaceByoModel_workspaceId_key")
+  /// 展示名（同时作为调用时下发的 upstreamModel）
+  label         String
+  /// 对接协议：本期仅 OPENAI_COMPATIBLE
+  protocol      String   @default("OPENAI_COMPATIBLE")
+  /// 服务端直连地址
+  baseUrl       String
+  /// API Key 密文（AES-256-GCM base64）
+  apiKeyCipher  String
+  /// 模型能力声明（规范化 JSON 字符串数组，取值须来自抽象能力白名单）
+  capabilities  Json     @default("[]")
+  /// 上下文上限（tokens）
+  contextLimit  Int      @default(32000)
+  /// 是否启用（禁用则回落到空间/平台默认模型）
+  enabled       Boolean  @default(true)
+  /// —— 厂商官方单价（微元 / 100 万 Token）——【商业化方案 B】
+  /// BYO 下平台不承担厂商成本，此处登记的是「厂商官方单价」，不是平台售价。
+  /// 对外扣点 = 官方单价折算点数 ×（1 + 服务费费率 billing.byokServiceRateBps，默认 15%）。
+  /// 未登记（NULL）时算账中心（src/lib/billing/pricing-center.ts）一律阻断估价，绝不猜测默认价。
+  priceInputMicrosPerMillion   Int?
+  priceOutputMicrosPerMillion  Int?
+  priceStatus   String   @default("UNCONFIGURED")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceId], map: "WorkspaceByoModel_workspaceId_idx")
+}
+/// 模型注册表「引用完整性」串行锁（单行单例）。
+/// 通过 SELECT ... FOR UPDATE 获取：InnoDB 行锁由数据库持有至事务 COMMIT/ROLLBACK 自动释放，
+/// 因此保护边界必然覆盖到「提交完成」，不存在「提交前提前释放锁」的窗口
+/// （这是相对 MySQL 命名锁 GET_LOCK/RELEASE_LOCK 的关键区别：后者需手工释放，无法与 COMMIT 对齐）。
+model registrylock {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
+
 model tokenrechargeorder {
   id            String    @id
   orderNo       String    @unique(map: "TokenRechargeOrder_orderNo_key")
@@ -1448,3 +1771,82 @@ model notificationgroupmember {
   @@index([groupId], map: "NotificationGroupMember_groupId_idx")
   @@index([userId], map: "NotificationGroupMember_userId_idx")
 }
+
+// Phase 2A: 真实 Token 结算预扣记录表
+model tokensettlementhold {
+  id                          String          @id
+  taskId                      String          @unique(map: "TokenSettlementHold_taskId_key")
+  userId                      String
+  workspaceId                 String
+  holdPoints                  BigInt
+  monthlyTokenUsedIncremented BigInt          @default(0)
+  status                      String          @default("HELD") // HELD | SETTLED | RELEASED | REQUIRES_REVIEW
+  idempotencyKey              String          @unique(map: "TokenSettlementHold_idempotencyKey_key")
+  holdDetails                 Json            // 预扣分桶明细（用于原路释放与差额对齐）
+  expiresAt                   DateTime
+  statusChangedAt             DateTime        @default(now())
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+  tokensettlement             tokensettlement?
+
+  @@index([userId, status], map: "TokenSettlementHold_userId_status_idx")
+  @@index([workspaceId, status], map: "TokenSettlementHold_workspaceId_status_idx")
+  @@index([status, expiresAt], map: "TokenSettlementHold_status_expiresAt_idx")
+}
+
+// Phase 2A: 真实 Token 结算流水与审计表
+model tokensettlement {
+  id                          String              @id
+  taskId                      String              @unique(map: "TokenSettlement_taskId_key")
+  userId                      String
+  workspaceId                 String
+  status                      String              @default("HOLD") // HOLD | SETTLED | RELEASED | REQUIRES_REVIEW
+  holdPoints                  BigInt
+  monthlyTokenUsedIncremented BigInt              @default(0)
+  actualPricePoints           BigInt              @default(0)
+  releasedPoints              BigInt              @default(0)
+  supplementPoints            BigInt              @default(0)
+  inputTokens                 BigInt              @default(0)
+  outputTokens                BigInt              @default(0)
+  cacheReadTokens             BigInt              @default(0)
+  cacheWriteTokens            BigInt              @default(0)
+  costMicros                  BigInt?
+  userPriceMicros             BigInt?
+  pricingSnapshot             Json                // 任务发生时绑定的价格快照（历史不可变）
+  settlementVersion           Int                 @default(1)
+  errorCode                   String?
+  auditMessage                String?             @db.Text
+  settledAt                   DateTime?
+  releasedAt                  DateTime?
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
+  tokensettlementhold         tokensettlementhold @relation(fields: [taskId], references: [taskId], onDelete: Cascade, map: "TokenSettlement_taskId_fkey")
+
+  @@index([userId, createdAt], map: "TokenSettlement_userId_createdAt_idx")
+  @@index([workspaceId, createdAt], map: "TokenSettlement_workspaceId_createdAt_idx")
+  @@index([status], map: "TokenSettlement_status_idx")
+}
+
+// Phase 2A: 真实 Token 结算异常与超时恢复记录表
+model tokensettlementrecovery {
+  id                  String    @id
+  taskId              String    @unique(map: "TokenSettlementRecovery_taskId_key")
+  userId              String
+  workspaceId         String
+  status              String    @default("PENDING") // PENDING | PROCESSING | SETTLED | RELEASED | REQUIRES_REVIEW
+  recoveryType        String    // SETTLEMENT_FAILED | RELEASE_FAILED | EXPIRED_HOLD_REAP | TASK_WRITE_FAILED
+  retryCount          Int       @default(0)
+  lastError           String?   @db.Text
+  usage               Json?
+  pricingSnapshot     Json?
+  settlementVersion   Int?
+  processingStartedAt DateTime?
+  leaseUntil          DateTime?
+  claimToken          String?   @unique(map: "TokenSettlementRecovery_claimToken_key")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status, leaseUntil], map: "TokenSettlementRecovery_status_leaseUntil_idx")
+  @@index([userId], map: "TokenSettlementRecovery_userId_idx")
+}
+

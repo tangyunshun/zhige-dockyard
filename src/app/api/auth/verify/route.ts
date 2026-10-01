@@ -1,10 +1,7 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +13,7 @@ export async function GET(request: NextRequest) {
     const token = authHeader.replace("Bearer ", "");
     
     // 验证 token
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userId = payload.userId as string;
     
     // 验证用户是否存在且状态正常

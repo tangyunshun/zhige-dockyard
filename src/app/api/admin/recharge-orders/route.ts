@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { grantPoints } from "@/lib/credit-service";
 
 /**
@@ -23,6 +24,11 @@ function isPlatformAdmin(role?: string | null): boolean {
 
 export async function GET(request: NextRequest) {
   try {
+    // 细粒度权限：order:detail ∨ 兼容 order:read
+    const permCheck = await requirePlatformPermission(request, "order:detail", "order:read");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限查看充值订单" }, { status: 403 });
+    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
@@ -109,6 +115,17 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    // 细粒度权限（按订单动作细分）：order:manage ∨ order:audit ∨ order:refund_approve ∨ order:refund_apply
+    const permCheck = await requirePlatformPermission(
+      request,
+      "order:manage",
+      "order:audit",
+      "order:refund_approve",
+      "order:refund_apply"
+    );
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限处理充值订单" }, { status: 403 });
+    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
@@ -210,6 +227,26 @@ export async function PATCH(request: NextRequest) {
         remark: reviewNote || order.remark || `对公充值工单 ${order.orderNo} 已确认收款`,
         idempotencyKey: `OFFLINE_ORDER:${order.orderNo}`,
       });
+
+      // 操作日志：管理员确认线下充值收款并入账必须留痕（金额 / 点数 / 工单 / 操作人 / 流水号）
+      await writeAuditLog(
+        auth.user.id,
+        "billing:recharge_order_confirm",
+        {
+          orderNo: order.orderNo,
+          orderId: order.id,
+          points,
+          amountCents: Number(order.amountCents || 0),
+          scope: order.scope,
+          workspaceId: order.workspaceId,
+          applicantId: order.applicantId,
+          ledgerId: grant.ledgerId,
+          reviewNote: reviewNote || null,
+        },
+        null,
+        null,
+        request,
+      );
 
       // 财务账单留痕
       const billingModel = (prisma as any).billing_record || (prisma as any).billingrecord;

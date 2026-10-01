@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       data: {
         sessionToken: null,
         sessionExpiresAt: null,
+        sessionRememberMe: false, // 强制下线时复位「7天内免登录」标记，防脏状态残留
         refreshToken: null,
         refreshTokenExpiresAt: null,
         refreshTokenPrev: null,

@@ -1,0 +1,18 @@
+-- 本迁移已重构为「空操作（no-op）」，请务必阅读以下说明。
+--
+-- 历史问题：
+--   本迁移最初直接在迁移内执行「业务数据初始化」——向 component_contract 插入 C07 的 1.0.0 合同，
+--   并 UPDATE component_catalog.active_contract_id 指向它。
+--   但该 INSERT 依赖 component_catalog 中已存在 C07 组件行（外键 ComponentContract_componentId_fkey），
+--   而 C07 组件行是通过手工/脚本方式建库的，并未写入任何迁移。
+--   因此在全新数据库（含 prisma migrate dev 用于漂移检测的 shadow database）上按顺序重放全部迁移时，
+--   本迁移会因外键约束失败（MySQL 1452 / Prisma P3006+P3018），进而阻塞所有后续新迁移的生成。
+--
+-- 修复方式（消除根因，而非简单标记为已执行）：
+--   1. 将原本的数据初始化语句移出迁移体系，改为独立的、可重复执行的一次性脚本：
+--      scripts/seed-c07-active-contract.ts
+--      该脚本由「已存在组件数据的环境」按需执行，并保留原 SQL 的防护条件
+--      （仅当 active_contract_id 为空时才绑定），因此不会把已升级的更高版本合同打回 1.0.0。
+--   2. 本迁移文件仅保留说明注释，不再包含任何 DDL/DML。
+--      由于原始语句纯粹是数据操作（不含任何表结构变更），置空后不会与任何环境的 schema 产生漂移，
+--      历史迁移链得以在全新数据库上干净重放，后续新迁移可正常生成。

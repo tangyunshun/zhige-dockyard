@@ -49,6 +49,60 @@ export interface ComponentDefinition {
 }
 
 /**
+ * 统一目录契约响应字段接口（由后端 /api/studio?action=catalog 严格驱动下发）
+ * 供 ComponentDispatcherPanelNew, WorkspaceInternalLayoutV3, ComponentBrowser, 任务创建入口等统一复用，
+ * 严禁在前端使用 as any 或组件 ID 特判弥补字段缺口。
+ */
+export interface CatalogContractFields {
+  // 合同真实状态（来自 component_contract 表，前端诚实化唯一真源，不得硬编码完成态）
+  activeContractLifecycle?: string | null; // PUBLISHED | DRAFT | ARCHIVED | null(无激活合同)
+  hasActiveContract?: boolean;
+  contractReady?: boolean;        // 仅 PUBLISHED 激活合同为可执行
+  hasPublishedContract?: boolean;
+  requiredCapabilities?: string[];
+  // 服务端返回的通用只读就绪、阻断与质量限制字段（由后端唯一裁决与派生，前端严禁按 ID 特判）
+  readinessStatus?: "EXECUTABLE" | "UNCONFIGURED" | "BLOCKED" | "NOT_EXECUTABLE";
+  blockingReasons?: string[];
+  qualityHints?: string[];
+  isCandidateEligible?: boolean;
+  // 合同纯数据驱动的输入输出与审核契约字段（服务端真实下发，彻底消除前端 as any 断言）
+  inputContractKind?: string | null;
+  textConstraints?: {
+    required?: boolean;
+    minLength?: number;
+    maxLength?: number;
+    placeholder?: string;
+  } | null;
+  fileConstraints?: {
+    required?: boolean;
+    minCount?: number;
+    maxCount: number;
+    acceptedMimes: string[];
+    maxSingleFileBytes: number;
+    maxTotalBytes: number;
+  } | null;
+  formConstraints?: {
+    fields?: Array<{ name: string; label?: string; type: string; required: boolean; options?: string[] }>;
+  } | null;
+  costBaselineStatus?: string | null;
+  outputKind?: string | null;
+  disclaimer?: string | null;
+  requireHumanReview?: boolean;
+  contractVersion?: string | null;
+  contractView?: import("@/lib/task-query-helpers").CatalogContractView | null;
+}
+
+// 保证 ComponentDefinition 完整继承目录契约字段并保持既有结构兼容
+export interface ComponentDefinition extends CatalogContractFields {}
+
+/** 统一组件目录 API 响应类型（由 /api/studio?action=catalog 返回） */
+export interface CatalogApiResponse {
+  success: boolean;
+  components: ComponentDefinition[];
+  categories: Record<string, CategoryDetails>;
+}
+
+/**
  * 组件输入方式（与数据库 component_catalog.inputMode 字段对应）
  * - text: 仅支持直接输入/粘贴文字
  * - file: 仅支持上传文档，由系统从文件中解析文字内容

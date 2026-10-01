@@ -60,6 +60,16 @@ import { useToast } from "@/components/Toast";
 import SiteRoutePicker from "@/components/admin/SiteRoutePicker";
 import { EmailInput } from "@/components/EmailInput";
 
+/**
+ * 第三方登录「认证模式」展示名。
+ * 原代码引用了未定义的 AUTH_MODE_LABEL，这里按系统真实使用的值补齐声明（未知值由调用处回退为「自定义」）。
+ */
+const AUTH_MODE_LABEL: Record<string, string> = {
+  qrcode: "扫码登录",
+  redirect: "网页跳转",
+  hybrid: "扫码/跳转双模",
+};
+
 export interface NavLinkItem {
   label: string;
   url: string;

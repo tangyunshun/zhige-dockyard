@@ -301,6 +301,8 @@ export default function DeveloperCenterPage() {
             {[
               { method: "GET", path: "/api/open/v1/me", desc: "获取当前账号概要信息与算力余额" },
               { method: "GET", path: "/api/open/v1/workspaces", desc: "获取当前账号可访问的工作空间列表" },
+              { method: "GET", path: "/api/open/v1/components", desc: "获取平台已上架的组件目录（只读）" },
+              { method: "GET", path: "/api/open/v1/tasks", desc: "获取本人最近发起的组件任务列表（可用 ?limit=1~100）" },
             ].map((ep) => (
               <div
                 key={ep.path}

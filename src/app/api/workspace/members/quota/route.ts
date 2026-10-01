@@ -3,8 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { requireWorkspaceMembership } from "@/lib/security";
+import { requireWorkspaceMembership, writeAuditLog } from "@/lib/security";
 import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
+import { transferPoints } from "@/lib/credit-service";
 
 /**
  * GET /api/workspace/members/quota
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. 成员资格校验
-    const isMember = await requireWorkspaceMembership(auth.user.id, workspaceId);
+    const isMember = await requireWorkspaceMembership(auth.user!.id, workspaceId);
     if (!isMember) {
       return NextResponse.json({ error: "越权警告：您非该工作空间成员" }, { status: 403 });
     }
@@ -33,17 +34,19 @@ export async function GET(request: NextRequest) {
     // 2. 检查请求者是否具备管理员/所有者权限
     const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
     const requesterMember = await prisma.workspacemember.findUnique({
-      where: { userId_workspaceId: { userId: auth.user.id, workspaceId } },
+      where: { userId_workspaceId: { userId: auth.user!.id, workspaceId } },
+      // 普通成员视图需回显自身 user 信息（原查询缺 include）
+      include: { user: { select: { name: true, email: true, avatar: true } } },
     });
 
-    const isOwner = ws?.ownerId === auth.user.id || requesterMember?.role === "OWNER";
+    const isOwner = ws?.ownerId === auth.user!.id || requesterMember?.role === "OWNER";
     const isAdmin = requesterMember?.role === "ADMIN";
     const canManageQuota = isOwner || isAdmin;
     // 普通成员（非所有者/管理员）：仅可见自身算力点数据，不可见空间共享池总额
     const isMemberOnly = !isOwner && !isAdmin && requesterMember?.role === "MEMBER";
 
     // 3. 返回数据前，调用跨自然月重置预检
-    await checkAndResetQuotaCycle(prisma, workspaceId, auth.user.id);
+    await checkAndResetQuotaCycle(prisma, workspaceId, auth.user!.id);
 
     // 4. 查询空间的全局算力池（若不存在则自动执行自愈初始化）
     let quota = await prisma.workspacequota.findUnique({
@@ -111,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     // 普通成员视图：只返回自身额度与独立余额，隐藏空间共享池总额
     if (isMemberOnly && requesterMember) {
-      const self = serializedMembers.find((m) => m.userId === auth.user.id) || {
+      const self = serializedMembers.find((m) => m.userId === auth.user!.id) || {
         id: requesterMember.id,
         userId: requesterMember.userId,
         role: requesterMember.role,
@@ -186,18 +189,18 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. 成员资格校验
-    const isMember = await requireWorkspaceMembership(auth.user.id, workspaceId);
+    const isMember = await requireWorkspaceMembership(auth.user!.id, workspaceId);
     if (!isMember) {
       return NextResponse.json({ error: "越权警告：您非该工作空间成员" }, { status: 403 });
     }
 
     // 2. 检查请求者是否为 OWNER 或 ADMIN
     const requesterMember = await prisma.workspacemember.findUnique({
-      where: { userId_workspaceId: { userId: auth.user.id, workspaceId } },
+      where: { userId_workspaceId: { userId: auth.user!.id, workspaceId } },
     });
     const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
 
-    const isOwner = ws?.ownerId === auth.user.id || requesterMember?.role === "OWNER";
+    const isOwner = ws?.ownerId === auth.user!.id || requesterMember?.role === "OWNER";
     const isAdmin = requesterMember?.role === "ADMIN";
 
     if (!isOwner && !isAdmin) {
@@ -207,6 +210,8 @@ export async function POST(request: NextRequest) {
     // 3. 校验 targetUserId 必须属于该 workspace
     const targetMember = await prisma.workspacemember.findUnique({
       where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+      // 需要读取成员 user 信息写流水（原查询缺 include，导致 targetMember.user 不存在）
+      include: { user: { select: { name: true, email: true, avatar: true } } },
     });
 
     if (!targetMember) {
@@ -249,7 +254,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. 事务内：更新成员上限 + 成员独立余额转入/转回共享池 + 写成员归属流水
+    // 6. 事务内：仅更新成员月度上限。
+    //    共享池 ↔ 成员独立余额的转移与流水**不在本事务内**——由下方 credit-service.transferPoints
+    //    在自身事务中执行（池侧走分桶扣减/建桶，两腿各写 pointledger），
+    //    原因是 credit-service 自管事务无法嵌入本 $transaction。
     const updated = await prisma.$transaction(async (tx) => {
       const updatedMember = await tx.workspacemember.update({
         where: { id: targetMember.id },
@@ -263,69 +271,66 @@ export async function POST(request: NextRequest) {
         select: { name: true, type: true },
       });
       const operator = await tx.user.findUnique({
-        where: { id: auth.user.id },
+        where: { id: auth.user!.id },
         select: { name: true, email: true },
       });
       const operatorName = operator?.name || operator?.email || "管理员";
 
-      if (diff !== 0) {
-        if (diff > 0) {
-          // 共享池 → 成员独立余额
-          if (!poolUnlimited) {
-            await tx.workspacequota.update({
-              where: { workspaceId },
-              data: { tokenBalance: { decrement: BigInt(diff) }, updatedAt: new Date() },
-            });
-          }
-          await tx.workspacemember.update({
-            where: { id: targetMember.id },
-            data: { tokenBalance: { increment: BigInt(diff) }, updatedAt: new Date() },
-          });
-        } else {
-          // 成员独立余额 → 共享池（回收）
-          const reclaim = BigInt(-diff);
-          await tx.workspacemember.update({
-            where: { id: targetMember.id },
-            data: { tokenBalance: { decrement: reclaim }, updatedAt: new Date() },
-          });
-          if (!poolUnlimited) {
-            await tx.workspacequota.update({
-              where: { workspaceId },
-              data: { tokenBalance: { increment: reclaim }, updatedAt: new Date() },
-            });
-          }
-        }
-
-        const afterMember = await tx.workspacemember.findUnique({ where: { id: targetMember.id } });
-        await tx.pointledger.create({
-          data: {
-            id: crypto.randomUUID(),
-            direction: diff > 0 ? "IN" : "OUT",
-            type: "MANUAL_ADJUST",
-            scope: "WORKSPACE",
-            userId: targetMember.userId,
-            userEmail: targetMember.user?.email ?? null,
-            workspaceId,
-            workspaceType: wsInfo?.type ?? null,
-            workspaceName: wsInfo?.name ?? null,
-            operatorId: auth.user.id,
-            points: BigInt(Math.abs(diff)),
-            balanceAfter: BigInt(afterMember ? Number(afterMember.tokenBalance) : 0),
-            paymentMethod: "MANUAL",
-            title:
-              diff > 0
-                ? `管理员分配算力（${operatorName}）`
-                : `管理员回收算力额度（${operatorName}）`,
-            remark:
-              diff > 0
-                ? `由空间管理员从共享池分配 ${Math.abs(diff)} 算力点至成员独立余额`
-                : `成员独立余额回收 ${Math.abs(diff)} 算力点至共享池`,
-          },
-        });
-      }
+      // 注意：共享池 ↔ 成员独立余额的转移不在本事务内直改余额，
+      // 统一交由 credit-service.transferPoints（分桶一致 + 双流水 + 单事务）执行，见下方调用。
 
       return updatedMember;
     });
+
+    // 共享池 ↔ 成员独立余额转移：统一经 credit-service.transferPoints
+    // （池侧走分桶扣减 / 建桶入账，杜绝「余额与分桶脱钩」；双流水 + 单事务）
+    if (diff !== 0) {
+      if (poolUnlimited) {
+        // 无限额度池（余额为 -1 哨兵值，非真实数值）：不得对其做任何增减，
+        // 否则哨兵被破坏会导致全链路把该空间误判为「巨额欠费」。此场景的成员分配语义待定。
+        console.warn(
+          `[members/quota] 空间 ${workspaceId} 为无限额度池，跳过本次 ${Math.abs(diff)} 点转移（哨兵值保护）`,
+        );
+      } else {
+        const wsForLedger = await prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { name: true, type: true },
+        });
+        await transferPoints({
+          workspaceId,
+          userId: targetMember.userId,
+          points: Math.abs(diff),
+          direction: diff > 0 ? "POOL_TO_MEMBER" : "MEMBER_TO_POOL",
+          operatorId: auth.user!.id,
+          reason:
+            diff > 0
+              ? `由空间管理员从共享池分配 ${Math.abs(diff)} 算力点至成员独立余额`
+              : `成员独立余额回收 ${Math.abs(diff)} 算力点至共享池`,
+          workspaceType: wsForLedger?.type ?? null,
+          workspaceName: wsForLedger?.name ?? null,
+          userEmail: targetMember.user?.email ?? null,
+          // 人工分配无业务单号可幂等，一次性键仅用于溯源
+          idempotencyKey: `MEMBER_QUOTA:${workspaceId}:${targetMember.userId}:${crypto.randomUUID()}`,
+        });
+      }
+    }
+
+    // 操作日志：成员算力额度调整（共享池 ↔ 成员独立余额）必须留痕，含方向与点数
+    if (diff !== 0) {
+      await writeAuditLog(
+        auth.user!.id,
+        "workspace:member_quota_adjust",
+        {
+          workspaceId,
+          memberUserId: targetMember.userId,
+          diff,
+          direction: diff > 0 ? "POOL_TO_MEMBER" : "MEMBER_TO_POOL",
+        },
+        null,
+        null,
+        request,
+      );
+    }
 
     return NextResponse.json({
       success: true,

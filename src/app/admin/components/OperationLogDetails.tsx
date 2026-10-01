@@ -4,6 +4,8 @@ import {
   translateDetailKey,
   formatDetailValue,
   parseLogDetails,
+  sanitizeAuditDetails,
+  resolveAuditSummary,
 } from "@/lib/log-details";
 
 interface EnrichedTarget {
@@ -17,6 +19,8 @@ interface EnrichedTarget {
 
 interface OperationLogDetailsProps {
   log: {
+    action?: string | null;
+    ipAddress?: string | null;
     details?: unknown;
     parsedDetails?: unknown;
     targetUser?: EnrichedTarget | null;
@@ -27,14 +31,22 @@ interface OperationLogDetailsProps {
 }
 
 // 操作审计日志「细节」可读化展示组件：优先呈现人类摘要，再列出结构化字段与关联实体。
-// 真实数据全部来自后端日志，本组件只做中文转译与排版，不伪造任何内容。
+// 真实数据全部来自后端日志，本组件只做中文转译、敏感字段脱敏与排版，不伪造任何内容。
 export function OperationLogDetails({ log }: OperationLogDetailsProps) {
-  const parsed =
-    (log.parsedDetails as Record<string, unknown> | string | null) ??
-    parseLogDetails(log.details);
+  // 统一脱敏：所有展示入口都基于脱敏后的 details，杜绝 token / password / secret 泄露
+  const sanitized = sanitizeAuditDetails(
+    (log.parsedDetails as unknown) ?? log.details,
+  );
+  const parsed = parseLogDetails(sanitized);
   const isObject = parsed && typeof parsed === "object";
   const detailObj = isObject ? (parsed as Record<string, unknown>) : null;
-  const summary = typeof detailObj?.message === "string" ? detailObj.message : null;
+
+  // 统一摘要：对历史“本地 IP 却写成异地登录”的错误语义做中性化纠正
+  const { summary, historicalSemanticsUnverified } = resolveAuditSummary({
+    action: log.action,
+    ipAddress: log.ipAddress,
+    details: sanitized,
+  });
 
   // 关联实体 ID 字段合并为一处「操作对象」展示，避免与明细字段重复
   const entityIdKeys = new Set([
@@ -73,7 +85,14 @@ export function OperationLogDetails({ log }: OperationLogDetailsProps) {
           <span className="shrink-0 mt-0.5 px-2 py-0.5 rounded bg-[#3182ce]/10 text-[#2b6cb0] border border-[#3182ce]/20 text-[11px] font-bold">
             操作摘要
           </span>
-          <p className="text-sm font-semibold text-slate-800 leading-relaxed">{summary}</p>
+          <p className="text-sm font-semibold text-slate-800 leading-relaxed">
+            {summary}
+            {historicalSemanticsUnverified && (
+              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold align-middle">
+                历史数据语义待复核
+              </span>
+            )}
+          </p>
         </div>
       )}
 
@@ -115,7 +134,7 @@ export function OperationLogDetails({ log }: OperationLogDetailsProps) {
                 {translateDetailKey(key)}：
               </dt>
               <dd className="text-xs text-slate-700 font-mono break-all">
-                {formatDetailValue(value)}
+                {formatDetailValue(value, key)}
               </dd>
             </div>
           ))}

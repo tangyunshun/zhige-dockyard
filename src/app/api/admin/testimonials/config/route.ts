@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
-import { getRotationState, setActiveGroup, setRotationMode } from "@/lib/testimonial-service";
+import {
+  TESTIMONIAL_PERMISSIONS,
+  getRotationState,
+  setActiveGroup,
+  setRotationMode,
+} from "@/lib/testimonial-service";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +17,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requirePlatformPermission(request, "content:publish");
+    const auth = await requirePlatformPermission(request, TESTIMONIAL_PERMISSIONS.manage);
     if (!auth.authorized) {
       const status = auth.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json(

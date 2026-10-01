@@ -83,7 +83,8 @@ async function getLoadedWorkspaces(componentIds: string[]) {
       ownerId: true,
       workspacemember: {
         where: {
-          role: { in: ["OWNER", "ADMIN", "MEMBER", "CREATOR"] },
+          // workspacemember_role 枚举只有 OWNER/ADMIN/MEMBER/VIEWER 等合法值，不存在 CREATOR
+          role: { in: ["OWNER", "ADMIN", "MEMBER"] },
         },
         select: {
           userId: true,
@@ -104,8 +105,8 @@ async function getLoadedWorkspaces(componentIds: string[]) {
     }
 
     // 优先选取 OWNER / ADMIN，若为个人空间则所有成员均属于空间归属人
-    const managers = ws.workspacemember.filter((m) =>
-      ws.type === "PERSONAL" || m.role === "OWNER" || m.role === "ADMIN" || m.role === "CREATOR"
+    const managers = ws.workspacemember.filter(
+      (m) => ws.type === "PERSONAL" || m.role === "OWNER" || m.role === "ADMIN"
     );
     managers.forEach((m) => affectedUserIdSet.add(m.userId));
 

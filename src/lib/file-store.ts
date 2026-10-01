@@ -14,12 +14,12 @@ export function sanitizeFileExt(ext?: string | null): string {
 }
 
 export function resolveAssetAbsolute(relativePath: string): string {
-  const root = path.resolve(UPLOAD_ROOT);
-  const target = path.resolve(root, relativePath.replace(/^assets[\\/]/, ""));
-  if (!target.startsWith(root + path.sep)) {
-    throw new Error("INVALID_ASSET_PATH");
-  }
-  return target;
+  const clean = relativePath
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^(?:uploads\/)?(?:assets\/)?/, "")
+    .replace(/^(\.\.[\/\\])+/, "");
+  return path.join(process.cwd(), "uploads", "assets", clean);
 }
 
 export async function saveAssetFile(
@@ -29,13 +29,14 @@ export async function saveAssetFile(
   ext?: string | null,
 ): Promise<{ filePath: string; size: number; mimeType: string }> {
   const safeExt = sanitizeFileExt(ext);
-  const dir = path.join(UPLOAD_ROOT, workspaceId);
+  const safeWsId = (workspaceId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const dir = path.join(process.cwd(), "uploads", "assets", safeWsId);
   await fs.mkdir(dir, { recursive: true });
   const fileName = `${crypto.randomUUID()}${safeExt ? "." + safeExt : ""}`;
-  const absolute = path.join(dir, fileName);
+  const absolute = path.join(process.cwd(), "uploads", "assets", safeWsId, fileName);
   await fs.writeFile(absolute, buffer);
   return {
-    filePath: `assets/${workspaceId}/${fileName}`,
+    filePath: `assets/${safeWsId}/${fileName}`,
     size: buffer.length,
     mimeType: inferMimeType(originalName, safeExt),
   };
@@ -44,14 +45,24 @@ export async function saveAssetFile(
 export async function deleteAssetFile(relativePath?: string | null): Promise<void> {
   if (!relativePath) return;
   try {
-    await fs.unlink(resolveAssetAbsolute(relativePath));
+    const clean = relativePath
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "")
+      .replace(/^(?:uploads\/)?(?:assets\/)?/, "")
+      .replace(/^(\.\.[\/\\])+/, "");
+    await fs.unlink(path.join(process.cwd(), "uploads", "assets", clean));
   } catch {
     // 文件不存在时静默忽略，避免删除流程被历史脏数据阻断
   }
 }
 
 export async function readAssetFile(relativePath: string): Promise<Buffer> {
-  return fs.readFile(resolveAssetAbsolute(relativePath));
+  const clean = relativePath
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^(?:uploads\/)?(?:assets\/)?/, "")
+    .replace(/^(\.\.[\/\\])+/, "");
+  return fs.readFile(path.join(process.cwd(), "uploads", "assets", clean));
 }
 
 function inferMimeType(name: string, ext: string): string {

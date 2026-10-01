@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { iconMap } from "@/components/ComponentShowcase";
@@ -50,13 +51,15 @@ import {
   Layout,
   ShieldAlert,
   Briefcase,
-  PenLine
+  PenLine,
+  AlertTriangle,
+  RefreshCw
 } from "lucide-react";
 
 // 引入统一侧滑分发控制面板
 import ComponentDispatcherPanel from "./ComponentDispatcherPanelNew";
 import { formatYuanFromPoints, POINT_RATE_TEXT } from "@/lib/point-rate";
-import { UNIT_EXPLAIN_HINT } from "@/lib/model-rate";
+import { UNIT_EXPLAIN_HINT } from "@/lib/point-rate";
 
 // 应用阶段分组配置：名称/颜色/顺序一律由数据库 component_category 表（经 AppContext 加载）驱动，
 // 代码中不再硬编码任何阶段分组数据。
@@ -155,6 +158,8 @@ export default function ComponentBrowser({
     resetWorkspaceData,
     componentCatalog,
     componentCategories,
+    catalogError,
+    refreshComponentCatalog,
   } = useAppContext();
   // 组件信息来自数据库（component_catalog 表）
   const COMPONENTS = componentCatalog || [];
@@ -180,6 +185,9 @@ export default function ComponentBrowser({
     }
     return { stageConfigs: configs, categoryToStageId: catToId };
   }, [componentCategories]);
+
+  // 研发阶段数量来自数据库 component_category 的动态分组结果（stageConfigs），不写死固定数字
+  const stageCount = Object.keys(stageConfigs).length;
 
   const [isMounted, setIsMounted] = useState(false);
   const [clientLoggedIn, setClientLoggedIn] = useState(false);
@@ -499,6 +507,8 @@ export default function ComponentBrowser({
   };
 
   const handleOpenDispatcher = (componentId: string) => {
+    // 允许打开分发面板查看组件规格契约与质量限制提示；
+    // 真实执行门禁由分发面板内部 strict 校验（未发布组件按钮 disabled，拦截物理执行）。
     setDispatcherCompId(componentId);
     setIsDispatcherOpen(true);
   };
@@ -585,14 +595,14 @@ export default function ComponentBrowser({
         `[INFO] 识别文件格式：${uploadedFile.name.split('.').pop()?.toUpperCase() || 'UNKNOWN'} (大小: ${(uploadedFile.size / 1024).toFixed(1)} KB)...`,
         `[INFO] 正在分析文档内容与数据结构...`,
         `[INFO] 正在分析您的需求描述内容：“${smartPrompt}”...`,
-        `[INFO] 正在与大厅 ${COMPONENTS.length || 60} 个应用组件进行功能适配度比对...`,
+        `[INFO] 正在与大厅 ${COMPONENTS.length} 个应用组件进行功能适配度比对...`,
         `[INFO] 正在检查当前空间的组件权限限制...`,
         `[SUCCESS] 推荐组件匹配分析已完成。`
       ]
       : [
         `[INFO] 未检测到上传文档，直接基于需求描述进行分析匹配...`,
         `[INFO] 正在解析您的需求描述内容：“${smartPrompt}”...`,
-        `[INFO] 正在与大厅 ${COMPONENTS.length || 60} 个应用组件进行功能适配度比对...`,
+        `[INFO] 正在与大厅 ${COMPONENTS.length} 个应用组件进行功能适配度比对...`,
         `[INFO] 正在检查当前空间的组件权限限制...`,
         `[SUCCESS] 推荐组件匹配分析已完成。`
       ];
@@ -764,26 +774,28 @@ export default function ComponentBrowser({
             以标准化“数据契约组件”一键装配软件工程全流程
           </h2>
           <p className="text-xs text-slate-600 leading-relaxed font-semibold">
-            专为个人和企业级用户研发提供 10 大应用阶段的效能资产包。直接查阅下方货架组件的输入/输出数据契约协议，一键装配引进，实现极速开发。系统支持数据契约流转，可根据上下游接口协议自动适配组件。
+            {stageCount > 0
+              ? `专为个人和企业级用户研发提供 ${stageCount} 大应用阶段的效能资产包。直接查阅下方货架组件的输入/输出数据契约协议，一键装配引进，实现极速开发。系统支持数据契约流转，可根据上下游接口协议自动适配组件。`
+              : "效能资产包正在从数据库载入研发阶段与组件分组；若长时间为空，请刷新页面重试。"}
           </p>
 
-          {/* 核心效能能力高亮标签组 */}
+          {/* 核心效能能力高亮标签组 (客观工程能力描述，绝不包含未经真实压测的确定性假数据) */}
           <div className="flex flex-wrap gap-2.5 pt-1">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-100 rounded-lg text-xs font-bold text-slate-700 shadow-sm hover:border-[#3182ce] hover:text-[#3182ce] transition-all">
               <Target className="w-3.5 h-3.5 text-blue-500" />
-              <span>标书自检提效 85%+</span>
+              <span>标书智能结构化自检</span>
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-100 rounded-lg text-xs font-bold text-slate-700 shadow-sm hover:border-[#3182ce] hover:text-[#3182ce] transition-all">
               <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
-              <span>API 自动生成 3.5倍</span>
+              <span>API 代码契约自动生成</span>
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-100 rounded-lg text-xs font-bold text-slate-700 shadow-sm hover:border-[#3182ce] hover:text-[#3182ce] transition-all">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>单测对齐率 92.4%</span>
+              <span>单元测试自动化覆盖</span>
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-100 rounded-lg text-xs font-bold text-slate-700 shadow-sm hover:border-[#3182ce] hover:text-[#3182ce] transition-all">
               <ShieldCheck className="w-3.5 h-3.5 text-red-500" />
-              <span>安全漏洞审计 99.8%</span>
+              <span>安全合规与漏洞审计</span>
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-100 rounded-lg text-xs font-bold text-slate-700 shadow-sm hover:border-[#3182ce] hover:text-[#3182ce] transition-all">
               <Workflow className="w-3.5 h-3.5 text-purple-500" />
@@ -795,6 +807,29 @@ export default function ComponentBrowser({
 
       {/* 研发布局中枢与主内容 */}
       <div className="flex flex-col gap-6">
+
+        {/* 全局 API 错误状态横幅 (API 异常时不展示空白成功页面，提供重试入口) */}
+        {catalogError && (
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-rose-900">组件目录加载失败</h4>
+                <p className="text-xs text-rose-700/90 mt-0.5 font-mono">{catalogError}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => refreshComponentCatalog()}
+              className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl shadow-xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>重试加载</span>
+            </button>
+          </div>
+        )}
 
         {/* 顶部：当前空间工作台监视中枢 (横向宽幅扁平布局) */}
         {isLoggedIn && (
@@ -1121,9 +1156,15 @@ export default function ComponentBrowser({
                     </div>
                     <span className="text-xs font-black text-slate-800">方式二：自主精细化筛选</span>
                   </div>
-                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                    按 10 大研发阶段可视化查看、一键收藏和装配 {COMPONENTS.length || 60} 个精品效能组件，适合有明确目标、需自主挑选和快捷装配的应用场景。
-                  </p>
+                  {COMPONENTS.length > 0 && stageCount > 0 ? (
+                    <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                      按 {stageCount} 大研发阶段可视化查看、一键收藏和装配 {COMPONENTS.length} 个精品效能组件，适合有明确目标、需自主挑选和快捷装配的应用场景。
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-400 font-semibold leading-relaxed">
+                      组件库暂未上架可用组件或研发阶段分组为空，暂无组件可装配；请稍后再来查看。
+                    </p>
+                  )}
                 </div>
 
                 <div className="mt-4 flex items-center justify-between relative z-10 pt-2 border-t border-slate-100/60">
@@ -1182,7 +1223,7 @@ export default function ComponentBrowser({
                 </section>
               )}
 
-              {/* 🌐 全栈 10 大应用阶段可视化步骤链路地图 (Workflow Step Chain) */}
+              {/* 🌐 全栈应用阶段可视化步骤链路地图 (Workflow Step Chain)：阶段数量由数据库动态分组决定 */}
               <section className="bg-white rounded-2xl p-5 border border-[#e2e8f0]/80 shadow-sm space-y-4" id="catalog">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3 pl-1">
                   <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
@@ -1361,8 +1402,27 @@ export default function ComponentBrowser({
                 const activeStageId = selectedStage === -1 ? 1 : selectedStage;
                 const currentStage = stages.find((s) => s.id === activeStageId) || stages[0] || null;
 
-                // 组件目录尚未从数据库加载完成时，渲染加载占位，避免访问 undefined 崩溃
+                // 组件目录尚未从数据库加载完成时，优先展示明确的错误状态或加载占位
                 if (!currentStage || !currentStage.components || currentStage.components.length === 0) {
+                  if (catalogError) {
+                    return (
+                      <div className="bg-white border border-rose-200 rounded-2xl p-10 text-center shadow-sm space-y-3">
+                        <AlertTriangle className="w-8 h-8 text-rose-500 block mx-auto animate-bounce" />
+                        <div>
+                          <p className="text-xs font-black text-rose-800">组件目录加载失败</p>
+                          <p className="text-xs text-rose-600/90 mt-1 font-mono">{catalogError}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => refreshComponentCatalog()}
+                          className="px-3.5 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>重试加载</span>
+                        </button>
+                      </div>
+                    );
+                  }
                   return (
                     <div className="bg-white border border-[#e2e8f0]/80 rounded-2xl p-10 text-center shadow-sm">
                       <Activity className="w-8 h-8 text-slate-400 block mx-auto mb-3 animate-pulse" />
@@ -2094,16 +2154,23 @@ export default function ComponentBrowser({
         </main>
       </div>
 
-      {/* 🚀 侧滑分发矩阵面板 Drawer */}
-      <ComponentDispatcherPanel
-        isOpen={isDispatcherOpen}
-        onClose={() => setIsDispatcherOpen(false)}
-        componentId={dispatcherCompId}
-        onNavigateToWorkspace={(wsId, compId) => {
-          setIsDispatcherOpen(false);
-          onSelectComponent(compId, wsId); // 触发 Studio 主路由转场重定向
-        }}
-      />
+      {/* 🚀 侧滑分发矩阵面板 Drawer
+          通过 createPortal 渲染到 body：若内联在页面树中，fixed 定位会被带
+          transform/动画/backdrop-blur 的祖先劫持，并被 overflow-hidden/滚动容器裁切，
+          导致弹窗头部被顶部导航遮挡（见 studio 页截图问题） */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <ComponentDispatcherPanel
+            isOpen={isDispatcherOpen}
+            onClose={() => setIsDispatcherOpen(false)}
+            componentId={dispatcherCompId}
+            onNavigateToWorkspace={(wsId, compId) => {
+              setIsDispatcherOpen(false);
+              onSelectComponent(compId, wsId); // 触发 Studio 主路由转场重定向
+            }}
+          />,
+          document.body,
+        )}
 
       {/* 🔔 解除装配前"使用中"检测结果弹窗 */}
       {unbindModal && (

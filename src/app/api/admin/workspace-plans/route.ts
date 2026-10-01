@@ -40,7 +40,8 @@ export async function GET(request: NextRequest) {
     // 严格校验空间套餐列表查看权限（无权直接阻断）
     const authCheck = await requirePlatformPermission(request, "workspace_plan:read");
     if (!authCheck.authorized) {
-      return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ message: "权限不足" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -104,7 +105,8 @@ export async function POST(request: NextRequest) {
     // 严格校验空间套餐创建权限（无权直接阻断）
     const authCheck = await requirePlatformPermission(request, "workspace_plan:create");
     if (!authCheck.authorized) {
-      return NextResponse.json({ message: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ message: "权限不足" }, { status: 403 });
     }
 
     const body = await request.json();

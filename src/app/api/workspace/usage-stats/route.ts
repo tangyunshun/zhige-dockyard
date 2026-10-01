@@ -52,11 +52,21 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // 获取组件目录真实 Token 消耗基准（estimatedModelTokens），用于统计真实算力消耗
-    const catalogTokens = await prisma.componentcatalog.findMany({
-      select: { id: true, estimatedModelTokens: true },
+    // 真实算力点消耗：唯一真源为 pointledger 的 CONSUME 流水。
+    // 严禁再用 componentcatalog.estimatedModelTokens（Token 用量估算）当点数累加展示——
+    // 那是估算值不是实扣值，两者口径不同。
+    const taskIds = componentTasks.map((t: any) => t.id).filter(Boolean);
+    const consumeLedgers = taskIds.length
+      ? await prisma.pointledger.findMany({
+          where: { type: "CONSUME", taskId: { in: taskIds } },
+          select: { taskId: true, points: true },
+        })
+      : [];
+    const consumedByTask = new Map<string, number>();
+    consumeLedgers.forEach((l) => {
+      if (!l.taskId) return;
+      consumedByTask.set(l.taskId, (consumedByTask.get(l.taskId) ?? 0) + Number(l.points));
     });
-    const tokenBaseMap = new Map(catalogTokens.map((c) => [c.id, Number(c.estimatedModelTokens)]));
 
     // 任务状态归一化：兼容 simulate(SUCCESS/FAILED)、use(completed 小写) 等实际写入状态
     const isCompletedStatus = (s: string) => ["COMPLETED", "SUCCESS", "DONE", "completed", "succeeded"].includes(s);
@@ -144,8 +154,9 @@ export async function GET(request: NextRequest) {
     startOfMonth.setHours(0, 0, 0, 0);
 
     const monthlyTasks = componentTasks.filter((t: any) => new Date(t.createdAt) >= startOfMonth);
+    // 按任务实扣流水汇总（无流水则计 0，绝不回退到估算值）
     const calcTokens = (tasks: any[]) =>
-      tasks.reduce((sum: number, t: any) => sum + (tokenBaseMap.get(t.type) ?? 0), 0);
+      tasks.reduce((sum: number, t: any) => sum + (consumedByTask.get(t.id) ?? 0), 0);
     const monthlyTokens = calcTokens(monthlyTasks);
     const totalTokens = calcTokens(componentTasks);
 

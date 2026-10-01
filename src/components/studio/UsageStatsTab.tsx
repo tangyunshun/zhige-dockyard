@@ -35,7 +35,7 @@ interface TaskRecord {
   name: string;
   componentId: string;
   componentName: string;
-  tokenUsed: number;
+  pointsCost: number;
   status: "SUCCESS" | "FAILED" | "RUNNING" | "UNKNOWN";
   time: string;
 }
@@ -207,8 +207,8 @@ export default function UsageStatsTab({
   }, [recentTasks, selectedComponentIds, selectedStatus, linkedDate, dateMode, startDate, endDate]);
 
   // 计算 KPIs
-  const totalTokensUsedCalculated = useMemo(() => {
-    return filteredTasks.reduce((acc, t) => acc + (t.tokenUsed || 5), 0);
+  const totalPointsCostCalculated = useMemo(() => {
+    return filteredTasks.reduce((acc, t) => acc + (t.pointsCost || 0), 0);
   }, [filteredTasks]);
 
   const successTasksCount = useMemo(() => filteredTasks.filter(t => t.status === "SUCCESS").length, [filteredTasks]);
@@ -224,7 +224,7 @@ export default function UsageStatsTab({
   const trendPointsData = useMemo(() => {
     return datesList.map(item => {
       const dayTasks = filteredTasks.filter(t => t.time && t.time.startsWith(item.isoDate));
-      const tokens = dayTasks.reduce((acc, t) => acc + (t.tokenUsed || 5), 0);
+      const tokens = dayTasks.reduce((acc, t) => acc + (t.pointsCost || 0), 0);
       return {
         label: item.label,
         isoDate: item.isoDate,
@@ -250,7 +250,7 @@ export default function UsageStatsTab({
         };
       }
       map[cid].calls += 1;
-      map[cid].tokens += t.tokenUsed || 5;
+      map[cid].tokens += t.pointsCost || 0;
     });
     return Object.values(map).sort((a, b) => b.calls - a.calls || b.tokens - a.tokens).slice(0, 5);
   }, [filteredTasks, boundComps]);
@@ -265,7 +265,7 @@ export default function UsageStatsTab({
       if (!map[catKey]) {
         map[catKey] = { name: catName, tokens: 0, calls: 0 };
       }
-      map[catKey].tokens += t.tokenUsed || 5;
+      map[catKey].tokens += t.pointsCost || 0;
       map[catKey].calls += 1;
     });
     return Object.values(map).sort((a, b) => b.tokens - a.tokens).slice(0, 5);
@@ -659,10 +659,13 @@ export default function UsageStatsTab({
           <div className="p-3.5 bg-amber-50/40 border border-amber-100/80 rounded-xl text-left">
             <span className="text-xs font-bold text-slate-600 block">算力扣减点数消耗</span>
             <span className="text-2xl font-black font-mono text-amber-600 block mt-2">
-              {totalTokensUsedCalculated.toLocaleString()} <span className="text-xs font-normal text-slate-500">点</span>
+              {totalPointsCostCalculated.toLocaleString()} <span className="text-xs font-normal text-slate-500">点</span>
             </span>
             <span className="text-[11px] font-bold text-slate-400 block mt-1">
-              费用折合: {formatYuanFromPoints(totalTokensUsedCalculated)}
+              费用折合: {formatYuanFromPoints(totalPointsCostCalculated)}
+            </span>
+            <span className="text-[10px] font-bold text-slate-400 block mt-1">
+              ESTIMATED_COMPATIBILITY：按预估算力点扣减，未按真实 Token 精确结算
             </span>
           </div>
 
@@ -743,7 +746,7 @@ export default function UsageStatsTab({
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs">
               {top5CategoryRanking.length > 0 ? (
                 top5CategoryRanking.map((cat, idx) => {
-                  const pct = totalTokensUsedCalculated > 0 ? Math.round((cat.tokens / totalTokensUsedCalculated) * 100) : 0;
+                  const pct = totalPointsCostCalculated > 0 ? Math.round((cat.tokens / totalPointsCostCalculated) * 100) : 0;
                   const rankColors = ["text-amber-600 bg-amber-50 border-amber-200", "text-slate-600 bg-slate-100 border-slate-200", "text-orange-600 bg-orange-50 border-orange-200", "text-slate-500 bg-slate-50 border-slate-200", "text-slate-500 bg-slate-50 border-slate-200"];
                   return (
                     <div key={cat.name} className="p-2 bg-slate-50/80 rounded-lg border border-slate-200/60 space-y-1">

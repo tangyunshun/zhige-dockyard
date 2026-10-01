@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { resolveEffectiveMembershipLevel } from "@/lib/user-entitlement";
 import { VALIDATE_ERROR_TO_SESSION_CODE } from "@/lib/session-constants";
 import {
   maybeFinalizeDeletionIfDue,
@@ -118,27 +119,35 @@ export async function GET(request: NextRequest) {
     const hasCustomPassword = !!(user.password && !user.password.startsWith("oauth_"));
     const needsProfileCompletion = isOAuthUser && (!hasCustomPassword || !user.email || !user.phone);
 
-    // 返回用户信息 - 简单可靠
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        avatar: user.avatar,
-        status: user.status,
-        adminStatus, // 管理员后台管理特权生效状态 (active | inactive)
-        membershipLevel: user.membershipLevel,
-        deletionDaysRemaining,
-        deletionCooldownDays,
-        isOAuthUser,
-        hasCustomPassword,
-        needsProfileCompletion,
+    // 返回用户信息 - 简单可靠（禁用客户端强缓存以保证实时同步）
+    return NextResponse.json(
+      {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          avatar: user.avatar,
+          status: user.status,
+          adminStatus, // 管理员后台管理特权生效状态 (active | inactive)
+          // 超级管理员默认按最高会员等级（皇冠版）展示，其余按数据库存储值
+          membershipLevel: resolveEffectiveMembershipLevel(user.role, user.membershipLevel),
+          deletionDaysRemaining,
+          deletionCooldownDays,
+          isOAuthUser,
+          hasCustomPassword,
+          needsProfileCompletion,
+        },
+        passwordExpired,
+        permissions,
       },
-      passwordExpired,
-      permissions,
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      }
+    );
   } catch (error) {
     console.error("Auth me error:", error);
     return NextResponse.json({ error: "认证失败" }, { status: 401 });

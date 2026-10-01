@@ -15,7 +15,7 @@ import { requireSystemSettingsAdmin } from "@/lib/security";
  */
 export async function POST(request: NextRequest) {
   try {
-    const result = await requireSystemSettingsAdmin(request);
+    const result = await requireSystemSettingsAdmin(request, "system:manage", "system:config_read");
     if (!result.authorized) {
       const status = result.errorResponse?.status === 401 ? 401 : 403;
       return NextResponse.json(

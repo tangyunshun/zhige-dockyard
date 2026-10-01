@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -18,6 +17,7 @@ import {
   X,
   Crown,
   Coins,
+  Cpu,
   Package,
   Boxes,
   Building2,
@@ -34,22 +34,39 @@ import {
   ReceiptText,
   ChevronLeft,
   ChevronRight,
-  Cpu,
   Quote,
+  Scale,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
 import { AdminPermissionProvider } from "@/contexts/AdminPermissionContext";
 import LoginNotificationPopup from "@/components/LoginNotificationPopup";
+import DashboardSidebarNav from "@/components/DashboardSidebarNav";
 
 interface AdminMenuItem {
   icon: any;
   label: string;
   href: string;
   description: string;
+  /** 侧边栏分组名（按业务域归类，减少长列表查找成本） */
+  group?: string;
   superAdminOnly?: boolean;
   requiredPermission?: string;
+  /** 任一权限满足即可见（用于融合页承载多数据源时的菜单可见性判定） */
+  requiredPermissions?: string[];
 }
+
+/** 后台侧边栏分组顺序（按「日常运营 → 商业财务 → 内容 → 系统治理」递进） */
+const ADMIN_NAV_GROUP_ORDER = [
+  "概览",
+  "用户与风控",
+  "空间与组织",
+  "内容与组件",
+  "财务与订单",
+  "系统运维",
+  "权限与安全",
+  "扩展模块",
+];
 
 const adminMenuItems: AdminMenuItem[] = [
   {
@@ -57,12 +74,14 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "后台总览",
     href: "/admin",
     description: "系统概览和统计数据",
+    group: "概览",
   },
   {
     icon: Users,
     label: "用户管理",
     href: "/admin/users",
     description: "用户列表、角色变更与审核",
+    group: "用户与风控",
     requiredPermission: "user:read",
   },
   {
@@ -70,13 +89,24 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "风控与审核",
     href: "/admin/account-appeals",
     description: "平台安全风控管控与全域审核中枢",
+    group: "用户与风控",
     requiredPermission: "user:update",
+  },
+  {
+    icon: Cpu,
+    label: "空间模型策略",
+    href: "/admin/workspaces/model-policy",
+    description: "按工作空间配置默认模型与可用模型白名单",
+    group: "空间与组织",
+    // 与接口鉴权对齐：system:manage / model:read / model:manage 任一即可查看（写入由接口额外校验）
+    requiredPermissions: ["system:manage", "model:read", "model:manage"],
   },
   {
     icon: FolderKanban,
     label: "工作空间管理",
     href: "/admin/workspaces",
     description: "工作空间审查与资源配额",
+    group: "空间与组织",
     requiredPermission: "workspace:read",
   },
   {
@@ -84,13 +114,15 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "空间套餐管理",
     href: "/admin/workspace/plans",
     description: "配置企业空间套餐价格与配额",
-    requiredPermission: "workspace:plan_manage",
+    group: "空间与组织",
+    requiredPermission: "workspace_plan:read",
   },
   {
     icon: Briefcase,
     label: "岗位管理",
     href: "/admin/posts",
     description: "平台官方标准岗位库与一键分发",
+    group: "空间与组织",
     requiredPermission: "post:read",
   },
   {
@@ -98,46 +130,15 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "组件管理",
     href: "/admin/components",
     description: "功能组件上架与下架控制",
+    group: "内容与组件",
     requiredPermission: "component:read",
-  },
-  {
-    icon: Crown,
-    label: "会员套餐管理",
-    href: "/admin/membership",
-    description: "配置空间套餐计费策略",
-  },
-  {
-    icon: Coins,
-    label: "算力加油包管理",
-    href: "/admin/membership/token-packs",
-    description: "后台维护与上下架充值算力包",
-  },
-  {
-    icon: Banknote,
-    label: "充值工单审批",
-    href: "/admin/finance/recharge-orders",
-    description: "对公转账 / 合同结算充值工单审批与确认到账",
-    requiredPermission: "order:read",
-  },
-  {
-    icon: ReceiptText,
-    label: "算力总账",
-    href: "/admin/finance/points",
-    description: "平台算力点发放、消耗、对账与到期清算",
-    requiredPermission: "order:read",
-  },
-  {
-    icon: ClipboardList,
-    label: "订单管理",
-    href: "/admin/orders",
-    description: "查看并维护用户支付订单",
-    requiredPermission: "order:read",
   },
   {
     icon: Package,
     label: "组件阶段管理",
     href: "/admin/content",
     description: "维护平台组件的阶段大纲",
+    group: "内容与组件",
     requiredPermission: "content:read",
   },
   {
@@ -145,13 +146,15 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "用户评价",
     href: "/admin/testimonials",
     description: "维护首页用户评价与每周轮换",
-    requiredPermission: "content:read",
+    group: "内容与组件",
+    requiredPermission: "user_reviews:read",
   },
   {
     icon: FileText,
     label: "文档管理",
     href: "/admin/documents",
     description: "平台使用手册与用户指南",
+    group: "内容与组件",
     requiredPermission: "document:read",
   },
   {
@@ -159,34 +162,95 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "通知公告",
     href: "/admin/notifications",
     description: "全局系统广播及运维通知",
+    group: "内容与组件",
     requiredPermission: "announcement:read",
+  },
+  {
+    icon: Crown,
+    label: "会员套餐管理",
+    href: "/admin/membership",
+    description: "配置空间套餐计费策略",
+    group: "财务与订单",
+  },
+  {
+    icon: Coins,
+    label: "算力加油包管理",
+    href: "/admin/membership/token-packs",
+    description: "后台维护与上下架充值算力包",
+    group: "财务与订单",
+  },
+  {
+    icon: Banknote,
+    label: "充值工单审批",
+    href: "/admin/finance/recharge-orders",
+    description: "对公转账 / 合同结算充值工单审批与确认到账",
+    group: "财务与订单",
+    requiredPermission: "order:read",
+  },
+  {
+    icon: ReceiptText,
+    label: "算力总账",
+    href: "/admin/finance/points",
+    description: "平台算力点发放、消耗、对账与到期清算",
+    group: "财务与订单",
+    requiredPermission: "order:read",
+  },
+  {
+    icon: Scale,
+    label: "结算人工复核",
+    href: "/admin/finance/settlements",
+    description: "待复核异常结算单核定扣减与退款释放",
+    group: "财务与订单",
+    requiredPermission: "order:read",
+  },
+  {
+    icon: Scale,
+    label: "退款申请审批",
+    href: "/admin/finance/refund-requests",
+    description: "审批用户提交的算力点退款申请（同意即真实退点入账）",
+    group: "财务与订单",
+    requiredPermission: "order:read",
+  },
+  {
+    icon: ClipboardList,
+    label: "订单管理",
+    href: "/admin/orders",
+    description: "查看并维护用户支付订单",
+    group: "财务与订单",
+    requiredPermission: "order:read",
   },
   {
     icon: ClipboardList,
     label: "审计日志",
     href: "/admin/operation-logs",
-    description: "系统高危操作审计记录",
-    requiredPermission: "audit:read",
-  },
-  {
-    icon: FileText,
-    label: "系统日志",
-    href: "/admin/logs",
-    description: "操作日志与登录历史审计",
-    requiredPermission: "audit:read",
+    description: "操作审计流水与登录历史审计",
+    group: "系统运维",
+    // 融合页同时承载「操作审计流水」与「登录安全历史」：具备任一相关只读权限即可进入
+    requiredPermissions: ["audit_log:read", "audit:operation_read", "audit:login_read"],
   },
   {
     icon: HeartPulse,
     label: "系统状态",
     href: "/admin/system-status",
     description: "各微服务健康状况监控",
+    group: "系统运维",
     requiredPermission: "system:health_read",
   },
   {
     icon: Cpu,
-    label: "算力计价",
-    href: "/admin/ai-pricing",
-    description: "AI 厂商 token 折算与毛利率测算",
+    label: "模型注册表",
+    href: "/admin/models",
+    description: "AI 模型供应商与模型部署：价格、能力、启用状态与平台默认模型",
+    group: "系统运维",
+    // 可读名单与接口鉴权完全对齐：持有任一模型相关权限即可进入（接口侧同样强制校验，前端隐藏不构成安全边界）
+    requiredPermissions: ["system:manage", "model:read", "model:manage"],
+  },
+  {
+    icon: Wrench,
+    label: "维护模式",
+    href: "/admin/maintenance",
+    description: "开关系统临时停机维护模式",
+    group: "系统运维",
     superAdminOnly: true,
   },
   {
@@ -194,6 +258,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "系统设置",
     href: "/admin/settings",
     description: "全局配置、第三方集成与安全",
+    group: "权限与安全",
     superAdminOnly: true,
   },
   {
@@ -201,6 +266,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "管理员管理",
     href: "/admin/administrators",
     description: "配置平台运维管理员名单",
+    group: "权限与安全",
     superAdminOnly: true,
   },
   {
@@ -208,13 +274,16 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "权限配置",
     href: "/admin/permissions",
     description: "普通管理员模块权限分配",
+    group: "权限与安全",
     superAdminOnly: true,
   },
   {
-    icon: Wrench,
-    label: "维护模式",
-    href: "/admin/maintenance",
-    description: "开关系统临时停机维护模式",
+    icon: ShieldAlert,
+    label: "接口权限设置",
+    href: "/admin/permissions/api-rules",
+    description: "高危安全配置：仅超级管理员可维护",
+    group: "权限与安全",
+    // 高危安全配置：菜单仅对超管展示（接口侧同样强制校验，前端隐藏不构成安全边界）
     superAdminOnly: true,
   },
 ];
@@ -235,15 +304,13 @@ export default function AdminLayout({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
+  /** 后台「注册功能模块」生成的动态菜单项（来自 /api/admin/nav-modules，无需改代码即可出现） */
+  const [dynamicNavModules, setDynamicNavModules] = useState<
+    { id: string; label: string; href: string; description: string; requiredPermission: string }[]
+  >([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
   // 管理员待办角标（待审核申诉 + 待审批充值工单），展示在「后台总览」菜单项旁
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
-  const [hovered, setHovered] = useState<{
-    label: string;
-    description?: string;
-    top: number;
-    left: number;
-  } | null>(null);
 
   const getCleanRole = (role: string | null | undefined): string => {
     if (!role) return "USER";
@@ -260,7 +327,7 @@ export default function AdminLayout({
   const cleanRole = getCleanRole(user?.role);
   const isSuperAdmin = cleanRole === "SUPER_ADMIN";
 
-  const displayedMenuItems = adminMenuItems.filter((item) => {
+  const filteredStaticMenuItems = adminMenuItems.filter((item) => {
     if (item.superAdminOnly) {
       return isSuperAdmin;
     }
@@ -271,8 +338,25 @@ export default function AdminLayout({
     if (item.requiredPermission && !isSuperAdmin) {
       return permissions.includes(item.requiredPermission);
     }
+    if (item.requiredPermissions?.length && !isSuperAdmin) {
+      return item.requiredPermissions.some((p) => permissions.includes(p));
+    }
     return true;
   });
+
+  // 动态菜单：后台「注册功能模块」后自动出现（服务端已按权限过滤并校验页面真实存在）。
+  // 与硬编码菜单重复的 href 以硬编码项为准（保留更精细的图标与排序）。
+  const dynamicMenuItems = dynamicNavModules
+    .filter((m) => !adminMenuItems.some((i) => i.href === m.href))
+    .map((m) => ({
+      icon: Boxes,
+      label: m.label,
+      href: m.href,
+      description: m.description || "自定义功能模块",
+      group: "扩展模块",
+    }));
+
+  const displayedMenuItems = [...filteredStaticMenuItems, ...dynamicMenuItems];
 
   useEffect(() => {
     checkAdminPermission();
@@ -308,13 +392,18 @@ export default function AdminLayout({
       const isSuperUser = getCleanRole(user.role) === "SUPER_ADMIN";
       
       // 强校验当前超级管理员专属高危路由的可访问性
+      // 说明：接口权限设置（/admin/permissions/api-rules）同为超管专属高危配置，
+      // 这里显式列出并用「路径段边界」匹配，避免再被 /admin/permissions 前缀"顺带"覆盖而产生歧义。
       const superOnlyPaths = [
         "/admin/settings",
         "/admin/administrators",
         "/admin/permissions",
+        "/admin/permissions/api-rules",
         "/admin/maintenance"
       ];
-      const isSuperOnlyPath = superOnlyPaths.some(p => pathname.startsWith(p));
+      const isSuperOnlyPath = superOnlyPaths.some(
+        (p) => pathname === p || pathname.startsWith(p + "/")
+      );
       if (isSuperOnlyPath && !isSuperUser) {
         router.replace("/admin");
         return;
@@ -330,9 +419,15 @@ export default function AdminLayout({
       }
 
       // 验证子模块动态权限的可访问性
-      const currentItem = adminMenuItems.find(item => pathname === item.href || pathname.startsWith(item.href + "/"));
-      if (currentItem && currentItem.requiredPermission && !isSuperUser) {
-        if (!permissions.includes(currentItem.requiredPermission)) {
+      const currentItem = [...adminMenuItems, ...dynamicNavModules].find(
+        (item) => pathname === item.href || pathname.startsWith(item.href + "/")
+      );
+      if (currentItem && !isSuperUser) {
+        const required = [
+          ...(currentItem.requiredPermission ? [currentItem.requiredPermission] : []),
+          ...((currentItem as AdminMenuItem).requiredPermissions || []),
+        ];
+        if (required.length > 0 && !required.some((p) => permissions.includes(p))) {
           router.replace("/admin");
         }
       }
@@ -350,6 +445,17 @@ export default function AdminLayout({
       const data = await res.json();
       setUser(data.user);
       setPermissions(data.permissions || []);
+
+      // 拉取「注册功能模块」生成的动态菜单（失败静默降级为仅显示硬编码菜单）
+      try {
+        const navRes = await fetch("/api/admin/nav-modules", { cache: "no-store" });
+        if (navRes.ok) {
+          const navData = await navRes.json();
+          setDynamicNavModules(Array.isArray(navData?.items) ? navData.items : []);
+        }
+      } catch {
+        // 忽略：不影响后台正常渲染
+      }
 
       // 使用清洗后的标准角色进行验证
       const currentCleanRole = getCleanRole(data.user?.role);
@@ -372,9 +478,12 @@ export default function AdminLayout({
         "/admin/settings",
         "/admin/administrators",
         "/admin/permissions",
+        "/admin/permissions/api-rules",
         "/admin/maintenance"
       ];
-      const isSuperOnlyPath = superOnlyPaths.some(p => pathname.startsWith(p));
+      const isSuperOnlyPath = superOnlyPaths.some(
+        (p) => pathname === p || pathname.startsWith(p + "/")
+      );
       if (isSuperOnlyPath && !isSuperUser) {
         router.replace("/admin");
         return;
@@ -573,89 +682,16 @@ export default function AdminLayout({
           )}
         </div>
 
-        {/* 导航菜单 */}
-        <nav
-          className={`flex-1 ${
-            isCollapsed ? "px-2" : "px-4"
-          } py-6 space-y-1 overflow-y-auto min-h-0`}
-        >
-          {displayedMenuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-
-            if (isCollapsed) {
-              return (
-                <button
-                  key={item.href}
-                  onClick={() => {
-                    setHovered(null);
-                    setIsCollapsed(false);
-                    router.push(item.href);
-                  }}
-                  onMouseEnter={(e) => {
-                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    setHovered({
-                      label:
-                        item.href === "/admin" && pendingTaskCount > 0
-                          ? `${item.label}（${pendingTaskCount} 项待办）`
-                          : item.label,
-                      description: item.description,
-                      top: r.top + r.height / 2,
-                      left: r.right,
-                    });
-                  }}
-                  onMouseLeave={() => setHovered(null)}
-                  className={`w-full flex items-center justify-center p-3 rounded-lg transition-all mb-1 ${
-                    isActive
-                      ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="relative">
-                    <Icon className="w-5 h-5 shrink-0" />
-                    {item.href === "/admin" && pendingTaskCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 font-bold text-center">
-                        {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              );
-            }
-
-            return (
-              <button
-                key={item.href}
-                onClick={() => router.push(item.href)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  isActive
-                    ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                <div className="text-left min-w-0">
-                  <div className="text-sm font-bold truncate">{item.label}</div>
-                  <div
-                    className={`text-xs truncate ${
-                      isActive ? "text-white/80" : "text-slate-400"
-                    }`}
-                  >
-                    {item.description}
-                  </div>
-                </div>
-                {item.href === "/admin" && pendingTaskCount > 0 && (
-                  <span
-                    className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shadow-sm"
-                    title={`${pendingTaskCount} 项待处理事项`}
-                  >
-                    {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+        {/* 导航菜单：按业务域分组折叠展示 + 菜单检索，功能变多也能快速定位 */}
+        <DashboardSidebarNav
+          items={displayedMenuItems}
+          groupOrder={ADMIN_NAV_GROUP_ORDER}
+          collapsed={isCollapsed}
+          onNavigate={(href) => router.push(href)}
+          onExpand={() => setIsCollapsed(false)}
+          badge={{ href: "/admin", count: pendingTaskCount }}
+          searchPlaceholder="搜索后台功能…"
+        />
 
         {/* 用户信息 */}
         <div
@@ -826,44 +862,17 @@ export default function AdminLayout({
               </button>
             </div>
 
-            <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto min-h-0">
-              {displayedMenuItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
-
-                return (
-                  <button
-                    key={item.href}
-                    onClick={() => {
-                      router.push(item.href);
-                      setShowMobileMenu(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                      isActive
-                        ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white shadow-lg shadow-[#3182ce]/30"
-                        : "text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5 shrink-0" />
-                    <div className="text-left min-w-0">
-                      <div className="text-sm font-bold truncate">
-                        {item.label}
-                      </div>
-                      <div
-                        className={`text-xs truncate ${isActive ? "text-white/80" : "text-slate-400"}`}
-                      >
-                        {item.description}
-                      </div>
-                    </div>
-                    {item.href === "/admin" && pendingTaskCount > 0 && (
-                      <span className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shadow-sm">
-                        {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
+            <DashboardSidebarNav
+              items={displayedMenuItems}
+              groupOrder={ADMIN_NAV_GROUP_ORDER}
+              collapsed={false}
+              onNavigate={(href) => {
+                router.push(href);
+                setShowMobileMenu(false);
+              }}
+              badge={{ href: "/admin", count: pendingTaskCount }}
+              searchPlaceholder="搜索后台功能…"
+            />
 
             <div className="p-4 border-t border-slate-200 shrink-0 bg-white">
               <div className="flex items-center gap-3 mb-3">
@@ -945,26 +954,6 @@ export default function AdminLayout({
           否则勾选了「登录时强提醒弹窗」的通知在管理员登录后不会弹出 */}
       <LoginNotificationPopup />
 
-      {/* 收起态菜单名称悬停提示：portal 渲染到 body，避免被侧边栏 overflow 裁剪 */}
-      {hovered &&
-        createPortal(
-          <div
-            className="fixed z-[9999] pointer-events-none"
-            style={{
-              top: hovered.top,
-              left: hovered.left + 8,
-              transform: "translateY(-50%)",
-            }}
-          >
-            <div className="bg-slate-800 text-white text-xs rounded-lg shadow-lg px-2.5 py-1.5 whitespace-nowrap">
-              <div className="font-bold">{hovered.label}</div>
-              {hovered.description && (
-                <div className="text-slate-300 mt-0.5">{hovered.description}</div>
-              )}
-            </div>
-          </div>,
-          document.body
-        )}
     </div>
   );
 }

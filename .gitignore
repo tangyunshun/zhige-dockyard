@@ -1,69 +1,49 @@
+# Dependencies
 node_modules/
-/generated/prisma
+/.pnp
+.pnp.js
 
-# Build outputs
+# Production build outputs
 .next/
 out/
 build/
 dist/
 
-# Debug
+# Environment files (strictly ignored, never commit!)
+.env
+.env.*
+!.env.example
+
+# User uploads & binary assets
+uploads/
+
+# Debug and runtime logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea/
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# Turbopack & Cache
+.turbo/
+.system_generated/
 
-# Environment variables
-.env*.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Logs (仅忽略项目根目录下的 logs 输出目录，避免误伤 src 内的页面/路由源码目录)
-/logs
-*.log
-
-# Testing
-coverage
-.nyc_output
-
-# Misc
-.vercel
-backup/
-public/uploads/
-
-
-# Local environment variables
-.env
-
-# TypeScript build info
+# 本地工具 / IDE 数据（保留在本地，不入库）
+.codebuddy/
 *.tsbuildinfo
 
-# Local debug / temp outputs
-dev.err
-tsc_out.txt
-tsc-out.txt
-COMMIT_MSG.txt
+# 临时调试产物
+*.err
+nul
 
-# Test evidence artifacts
-.p2a-evidence/
-.p2b-evidence/
-
-# User runtime uploads (data, not source)
-uploads/
-
-# Local IDE / agent workspace data (not source)
-.codebuddy/
-
-# Local build/diagnostic logs
-prisma_gen.txt
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/

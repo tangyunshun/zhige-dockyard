@@ -21,7 +21,7 @@ const COOLDOWN_DAYS_MAX = 90;
  * 必须是平台超级管理员且具备 system:settings 权限点。
  */
 async function assertAdmin(request: NextRequest): Promise<{ ok: true; adminId: string } | { ok: false; status: number; message: string }> {
-  const result = await requireSystemSettingsAdmin(request);
+  const result = await requireSystemSettingsAdmin(request, "system:manage", "system:config_read");
   if (!result.authorized || !result.user) {
     const status = result.errorResponse?.status === 401 ? 401 : 403;
     return {

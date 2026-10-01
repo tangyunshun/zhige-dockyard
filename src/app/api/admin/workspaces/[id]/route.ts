@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 import { requirePlatformPermission } from "@/lib/security";
+import { toJsonSafe } from "@/lib/json-safe";
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +12,8 @@ export async function GET(
     // 严格校验工作空间详情查阅权限（workspace:detail 或 workspace:read）
     const authCheck = await requirePlatformPermission(request, "workspace:detail", "workspace:read");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { id: workspaceId } = await params;
@@ -100,7 +102,8 @@ export async function GET(
     const { workspacemember, ...workspaceBase } = workspace;
     const isEnterprise = workspace.type === "ENTERPRISE";
 
-    return NextResponse.json({
+    return NextResponse.json(
+      toJsonSafe({
       success: true,
       data: {
         workspace: {
@@ -110,6 +113,8 @@ export async function GET(
             ...m,
             monthlyTokenLimit: m.monthlyTokenLimit ? Number(m.monthlyTokenLimit) : null,
             monthlyTokenUsed: Number(m.monthlyTokenUsed || 0),
+            // tokenBalance 为 BigInt，显式转换，避免 NextResponse.json 序列化报错（500）
+            tokenBalance: Number(m.tokenBalance || 0),
           })),
           _count: {
             workspacemember: workspace._count.workspacemember,
@@ -128,7 +133,8 @@ export async function GET(
           components: componentList,
         },
       },
-    });
+      })
+    );
   } catch (error) {
     console.error("Get workspace detail error:", error);
     return NextResponse.json(
@@ -146,7 +152,8 @@ export async function PATCH(request: NextRequest) {
     // 严格校验工作空间状态更新权限（无权直接阻断）
     const authCheck = await requirePlatformPermission(request, "workspace:status_update");
     if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.error }, { status: authCheck.status });
+      // requirePlatformPermission 契约：失败时返回 errorResponse
+      return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

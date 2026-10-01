@@ -7,6 +7,7 @@ import {
   getWorkspacePlanByKey,
 } from "@/lib/workspace-plan-service";
 import { mergeLimits } from "@/lib/limit-utils";
+import { resolveEffectiveWorkspacePlan } from "@/lib/user-entitlement";
 
 const generateId = (prefix: string) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
@@ -82,7 +83,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "无权访问此工作空间套餐信息" }, { status: 403 });
     }
 
-    const currentConfig = await getWorkspacePlanByKey(workspace.plan);
+    const currentConfig = await getWorkspacePlanByKey(
+      resolveEffectiveWorkspacePlan(authResult.user!.role, workspace.plan),
+    );
 
     // 从数据库实时统计各项运行时数据，确保数据 100% 来源真实库表
     // 1. 真实已加入成员数 (workspacemember)
@@ -252,124 +255,129 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. 更新空间套餐与配额快照（团队资源扩容包语义：一次购买、长期生效）
-    await prisma.workspace.update({
-      where: { id: workspaceId },
-      data: {
-        plan: targetConfig.key,
-        quota: {
-          maxComponents: targetConfig.maxComponents,
-          maxMembers: targetConfig.maxMembers,
-          maxStorage: targetConfig.maxStorage,
-          maxApiCalls: targetConfig.maxApiCalls,
-          features: targetConfig.features,
-        },
-        updatedAt: new Date(),
-      },
-    });
-
-    // 2. 同步 workspacequota 的硬性限额（存储单位由 MB 转换为字节）
-    //    扩容包不附赠月算力：tokenBalance 保持不变，算力统一由「会员等级(月度保底) + 算力加油包(即时充值)」提供。
-    //    存储/调用上限 = max(扩容包额度, 该空间绑定的会员等级基础保底)，两类权益叠加且互不缩水。
-    const existingWsq = workspace.workspacequotaId
-      ? await prisma.workspacequota.findUnique({ where: { id: workspace.workspacequotaId } })
-      : null;
-
-    let baseLevel:
-      | { maxStorage: bigint; maxApiCalls: bigint; tokenLimit: bigint }
-      | null = null;
-    if (existingWsq?.membershipLevelId) {
-      baseLevel = await prisma.membershiplevel.findFirst({
-        where: {
-          OR: [
-            { id: existingWsq.membershipLevelId },
-            { name: existingWsq.membershipLevelId },
-          ],
-        },
-        select: { maxStorage: true, maxApiCalls: true, tokenLimit: true },
-      });
-    }
-
-    const planStorageBytes = storageMbToBytes(targetConfig.maxStorage);
-    const finalStorageLimit = baseLevel
-      ? mergeLimits(planStorageBytes, baseLevel.maxStorage)
-      : planStorageBytes;
-    const finalApiCallsLimit = baseLevel
-      ? mergeLimits(targetConfig.maxApiCalls, baseLevel.maxApiCalls)
-      : targetConfig.maxApiCalls;
-
-    if (workspace.workspacequotaId) {
-      await prisma.workspacequota.update({
-        where: { id: workspace.workspacequotaId },
-        data: {
-          storageLimit: BigInt(finalStorageLimit),
-          apiCallsLimit: BigInt(finalApiCallsLimit),
-          updatedAt: new Date(),
-        },
-      });
-    } else {
-      // 历史空间可能缺失配额记录，此处仅做结构性补齐：余额一律 0 起步，不赠送任何免费算力
-      //（免费额度只来自注册福利按月 100 或充值/购买；会员升级后也不自动发放等级 tokenLimit）
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { membershipLevel: true },
-      });
-      await prisma.workspacequota.create({
-        data: {
-          id: generateId("wsq"),
-          workspaceId,
-          membershipLevelId: user?.membershipLevel || "FREE",
-          tokenBalance: BigInt(0),
-          storageLimit: BigInt(finalStorageLimit),
-          apiCallsLimit: BigInt(finalApiCallsLimit),
-          updatedAt: new Date(),
-        },
-      });
-    }
-
-    // 3. 记录操作日志，便于审计与运营追溯
+    // 1~4. 原子化写入：套餐/配额/日志/账单要么全部成功、要么全部回滚。
+    //    （历史缺陷：四步串行非事务写入，任一步失败会留下「plan 已升级但账单/日志缺失」
+    //     的半成功脏状态，导致前端再次点击时命中「当前已是该套餐」的矛盾提示）
     const logId = generateId("op");
-    await prisma.operationlog.create({
-      data: {
-        id: logId,
-        userId,
-        workspaceId,
-        action: "UPGRADE_WORKSPACE_PLAN",
-        resource: "Workspace",
-        details: {
-          workspaceName: workspace.name,
-          fromPlan: currentPlan,
-          toPlan: targetConfig.key,
-          planName: targetConfig.name,
+    await prisma.$transaction(async (tx) => {
+      // 1. 更新空间套餐与配额快照（团队资源扩容包语义：一次购买、长期生效）
+      await tx.workspace.update({
+        where: { id: workspaceId },
+        data: {
+          plan: targetConfig.key,
+          quota: {
+            maxComponents: targetConfig.maxComponents,
+            maxMembers: targetConfig.maxMembers,
+            maxStorage: targetConfig.maxStorage,
+            maxApiCalls: targetConfig.maxApiCalls,
+            features: targetConfig.features,
+          },
+          updatedAt: new Date(),
         },
-      },
-    });
+      });
 
-    // 4. 写入账单流水，使计费中心可查询到真实交易记录（金额单位：分）
-    // 注：当前为系统内即时开通，未接入支付网关，故直接记为 SUCCESS；
-    // 接入真实支付后应改为 PENDING，并由支付回调改为 SUCCESS。
-    await prisma.billingrecord.create({
-      data: {
-        id: generateId("bil"),
-        userId,
-        workspaceId,
-        type: "PLAN_UPGRADE",
-        title: `空间「${workspace.name}」扩容至${targetConfig.name}（团队资源扩容包·一次性）`,
-        amount: targetConfig.priceMonthly,
-        currency: "CNY",
-        status: "SUCCESS",
-        channel: "SYSTEM",
-        referenceId: logId,
-        metadata: {
-          workspaceName: workspace.name,
-          fromPlan: currentPlan,
-          toPlan: targetConfig.key,
-          planName: targetConfig.name,
-          billingModel: "ONE_TIME", // 一次性扩容（原订阅制月付/年付已下线）
-          originalPriceYearly: targetConfig.priceYearly,
+      // 2. 同步 workspacequota 的硬性限额（存储单位由 MB 转换为字节）
+      //    扩容包不附赠月算力：tokenBalance 保持不变，算力统一由「会员等级(月度保底) + 算力加油包(即时充值)」提供。
+      //    存储/调用上限 = max(扩容包额度, 该空间绑定的会员等级基础保底)，两类权益叠加且互不缩水。
+      const existingWsq = workspace.workspacequotaId
+        ? await tx.workspacequota.findUnique({ where: { id: workspace.workspacequotaId } })
+        : null;
+
+      let baseLevel:
+        | { maxStorage: bigint; maxApiCalls: bigint; tokenLimit: bigint }
+        | null = null;
+      if (existingWsq?.membershipLevelId) {
+        baseLevel = await tx.membershiplevel.findFirst({
+          where: {
+            OR: [
+              { id: existingWsq.membershipLevelId },
+              { name: existingWsq.membershipLevelId },
+            ],
+          },
+          select: { maxStorage: true, maxApiCalls: true, tokenLimit: true },
+        });
+      }
+
+      const planStorageBytes = storageMbToBytes(targetConfig.maxStorage);
+      const finalStorageLimit = baseLevel
+        ? mergeLimits(planStorageBytes, baseLevel.maxStorage)
+        : planStorageBytes;
+      const finalApiCallsLimit = baseLevel
+        ? mergeLimits(targetConfig.maxApiCalls, baseLevel.maxApiCalls)
+        : targetConfig.maxApiCalls;
+
+      if (workspace.workspacequotaId) {
+        await tx.workspacequota.update({
+          where: { id: workspace.workspacequotaId },
+          data: {
+            storageLimit: BigInt(finalStorageLimit),
+            apiCallsLimit: BigInt(finalApiCallsLimit),
+            updatedAt: new Date(),
+          },
+        });
+      } else {
+        // 历史空间可能缺失配额记录，此处仅做结构性补齐：余额一律 0 起步，不赠送任何免费算力
+        //（免费额度只来自注册福利按月 100 或充值/购买；会员升级后也不自动发放等级 tokenLimit）
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { membershipLevel: true },
+        });
+        await tx.workspacequota.create({
+          data: {
+            id: generateId("wsq"),
+            workspaceId,
+            membershipLevelId: user?.membershipLevel || "FREE",
+            tokenBalance: BigInt(0),
+            storageLimit: BigInt(finalStorageLimit),
+            apiCallsLimit: BigInt(finalApiCallsLimit),
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      // 3. 记录操作日志，便于审计与运营追溯
+      await tx.operationlog.create({
+        data: {
+          id: logId,
+          userId,
+          workspaceId,
+          action: "UPGRADE_WORKSPACE_PLAN",
+          resource: "Workspace",
+          details: {
+            workspaceName: workspace.name,
+            fromPlan: currentPlan,
+            toPlan: targetConfig.key,
+            planName: targetConfig.name,
+          },
         },
-        updatedAt: new Date(),
-      },
+      });
+
+      // 4. 写入账单流水，使计费中心可查询到真实交易记录（金额单位：分）
+      // 注：当前为系统内即时开通，未接入支付网关，故直接记为 SUCCESS；
+      // 接入真实支付后应改为 PENDING，并由支付回调改为 SUCCESS。
+      await tx.billingrecord.create({
+        data: {
+          id: generateId("bil"),
+          userId,
+          workspaceId,
+          type: "PLAN_UPGRADE",
+          title: `空间「${workspace.name}」扩容至${targetConfig.name}（团队资源扩容包·一次性）`,
+          amount: targetConfig.priceMonthly,
+          currency: "CNY",
+          status: "SUCCESS",
+          channel: "SYSTEM",
+          referenceId: logId,
+          metadata: {
+            workspaceName: workspace.name,
+            fromPlan: currentPlan,
+            toPlan: targetConfig.key,
+            planName: targetConfig.name,
+            billingModel: "ONE_TIME", // 一次性扩容（原订阅制月付/年付已下线）
+            originalPriceYearly: targetConfig.priceYearly,
+          },
+          updatedAt: new Date(),
+        },
+      });
     });
 
     return NextResponse.json({

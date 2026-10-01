@@ -24,10 +24,7 @@ import {
   REGISTER_GIFT_MONTHS,
 } from "@/lib/credit-service";
 import { addNotification } from "@/lib/notifications-store";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 export async function POST(request: NextRequest) {
   try {
@@ -311,7 +308,7 @@ export async function POST(request: NextRequest) {
       })
         .setProtectedHeader({ alg: "HS256" })
         .setExpirationTime("1h") // 1小时后过期
-        .sign(JWT_SECRET);
+        .sign(getJwtSecretKey());
 
       const response = NextResponse.json({
         success: true,
@@ -356,6 +353,24 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const clientIP = getClientIP(request);
 
+    // 统一解析登录设备信息（供挤线冲突判定与设备登记共用，严禁写入会话令牌）
+    const userAgent = request.headers.get("user-agent") || "unknown";
+    let deviceType: "web" | "mobile" | "tablet" = "web";
+    let browser = "unknown";
+    let os = "unknown";
+    if (userAgent.includes("Mobile")) deviceType = "mobile";
+    else if (userAgent.includes("Tablet")) deviceType = "tablet";
+    if (userAgent.includes("Chrome")) browser = "Chrome";
+    else if (userAgent.includes("Safari")) browser = "Safari";
+    else if (userAgent.includes("Firefox")) browser = "Firefox";
+    else if (userAgent.includes("Edge")) browser = "Edge";
+    if (userAgent.includes("Windows")) os = "Windows";
+    else if (userAgent.includes("Mac")) os = "Mac";
+    else if (userAgent.includes("Linux")) os = "Linux";
+    else if (userAgent.includes("iPhone") || userAgent.includes("iPad")) os = "iOS";
+    else if (userAgent.includes("Android")) os = "Android";
+    const deviceName = `${browser} on ${os}`;
+
     // 检查密码是否过期：读取系统设置中管理员动态配置的轮换周期（天），杜绝硬编码常量
     const effectiveExpiryDays = dynamicSecurity.passwordExpireDays || 90;
     let passwordExpired = false;
@@ -395,7 +410,7 @@ export async function POST(request: NextRequest) {
       })
         .setProtectedHeader({ alg: "HS256" })
         .setExpirationTime("5m")
-        .sign(JWT_SECRET);
+        .sign(getJwtSecretKey());
 
       return NextResponse.json({
         success: false,
@@ -418,8 +433,7 @@ export async function POST(request: NextRequest) {
       ? new Date(now.getTime() + ABSOLUTE_TIMEOUT_REMEMBER_MS) // 7 天
       : new Date(now.getTime() + dynamicSessionTimeoutMs); // 系统设置动态时长
 
-    // 检查是否存在旧会话且未过期（挤线检测）
-    // 关键防御：只有当用户拥有真实历史登录记录且具备未过期有效 sessionToken 时，才属于真实的多端挤线互踢
+    // 检查是否存在旧会话且未过期（挤线检测前提）
     const hasExistingSession = Boolean(
       user.lastLoginAt &&
       user.sessionToken &&
@@ -427,8 +441,62 @@ export async function POST(request: NextRequest) {
       new Date(user.sessionExpiresAt) > now
     );
 
-    // 记录审计日志
+    // 真实跨端/跨网冲突判定（基于「当前活跃设备」而非设备列表中是否存在同型号设备）：
+    // 1) 仅取当前活跃设备（isCurrent=true），且必须在后续重置 isCurrent 之前读取；
+    // 2) 同一活跃设备（类型/浏览器/设备名一致，且 IP 同为本地或完全一致）重复登录不算冲突；
+    // 3) 无法确认旧会话所属设备时，一律不写冲突日志，杜绝误导性的“异地登录”；
+    // 4) 若本次登录会触发设备数上限替换，则交由 DEVICE_KICKED_OFFLINE 单独记录，避免同一次替换落两条日志。
+    const isLocalIp = (ip?: string | null) => {
+      if (!ip) return true;
+      const s = String(ip).trim().replace(/^::ffff:/, "");
+      if (!s || s === "127.0.0.1" || s === "::1" || s === "localhost" || s.startsWith("127.")) return true;
+      if (s.startsWith("192.168.") || s.startsWith("10.")) return true;
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(s)) return true;
+      return false;
+    };
+    const sameDeviceIdentity = (d: { deviceName?: string | null; deviceType?: string | null; browser?: string | null }) =>
+      d.deviceType === deviceType && d.browser === browser && d.deviceName === deviceName;
+    const sameNetwork = (d: { ipAddress?: string | null }) =>
+      isLocalIp(d.ipAddress) || isLocalIp(clientIP) || d.ipAddress === clientIP;
+
+    let isRealConflict = false;
+    let conflictReason = "";
+
     if (hasExistingSession) {
+      // 设备策略与全量设备（用于设备上限互斥判定）
+      const devicePolicy = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { deviceLimit: true, allowMultiDevice: true },
+      });
+      const maxDevices = devicePolicy?.allowMultiDevice ? devicePolicy?.deviceLimit || 3 : 1;
+
+      const allDevices = await prisma.userdevice.findMany({
+        where: { userId: user.id },
+        orderBy: { lastAccessTime: "asc" },
+      });
+      // 当前活跃设备（必须在重置 isCurrent 之前读取）
+      const activeDevice = allDevices.find((d) => d.isCurrent) || null;
+
+      // 是否会发生设备上限替换：排除「同一设备」后仍达到上限
+      const otherDevices = allDevices.filter((d) => !sameDeviceIdentity(d));
+      const deviceLimitWillKick = otherDevices.length >= maxDevices;
+
+      if (activeDevice && !deviceLimitWillKick) {
+        if (!sameDeviceIdentity(activeDevice)) {
+          // 旧活跃会话确实属于另一台设备
+          isRealConflict = true;
+          conflictReason = "在另一台设备";
+        } else if (!sameNetwork(activeDevice)) {
+          // 同一设备但处于另一公网网络
+          isRealConflict = true;
+          conflictReason = "网络环境已变化";
+        }
+      }
+      // activeDevice 为空（无法确认旧会话设备）或设备上限将替换时，不写 SESSION_CONFLICT_LOGOUT
+    }
+
+    // 记录会话冲突审计（仅真实冲突，严禁写入会话令牌）
+    if (isRealConflict) {
       await prisma.operationlog.create({
         data: {
           id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
@@ -437,14 +505,17 @@ export async function POST(request: NextRequest) {
           resource: "auth/session",
           ipAddress: clientIP,
           details: {
-            message: "检测到账号异地登录，执行挤线强制下线",
-            oldSessionToken: user.sessionToken,
-            newSessionToken: sessionToken,
+            message: `检测到账号${conflictReason}登录，原会话已被新登录顶替下线`,
+            reason: conflictReason,
+            deviceName,
+            deviceType,
+            browser,
+            os,
             ipAddress: clientIP,
           },
         },
       });
-      console.log(`[挤线检测] 用户 ${user.id} 的旧会话已被挤掉`);
+      console.log(`[挤线检测] 用户 ${user.id} 因${conflictReason}触发旧会话挤下线`);
     }
 
     // 内存清除该用户的旧 session 并注册新 session
@@ -472,9 +543,10 @@ export async function POST(request: NextRequest) {
         lockedUntil: null,
         lastLoginAt: now,  // 必须设置为当前时间
         lastActivityAt: now, // 初始化活跃时间，避免登录后立即被空闲超时判定
-        lastForcedLogoutAt: hasExistingSession ? now : null, // 如果有旧会话，标记为强制下线
+        lastForcedLogoutAt: isRealConflict ? now : null, // 仅真实跨端/跨网冲突时标记强制下线
         sessionToken,
         sessionExpiresAt,
+        sessionRememberMe: rememberMe === true, // 「7天内免登录」显式标记：validateUser 据此豁免空闲超时
         refreshToken,
         refreshTokenExpiresAt,
       },
@@ -671,7 +743,7 @@ export async function POST(request: NextRequest) {
     })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime(expiresIn)
-      .sign(JWT_SECRET);
+      .sign(getJwtSecretKey());
 
 
 
@@ -707,42 +779,8 @@ export async function POST(request: NextRequest) {
     });
 
     // 设备登录处理（场景37：设备数限制）
+    // 设备信息已在登录入口统一解析（deviceType/browser/os/deviceName 为外层变量）
     try {
-      const userAgent = request.headers.get("user-agent") || "unknown";
-
-      // 解析设备信息
-      let deviceType: "web" | "mobile" | "tablet" = "web";
-      let browser = "unknown";
-      let os = "unknown";
-
-      if (userAgent.includes("Mobile")) {
-        deviceType = "mobile";
-      } else if (userAgent.includes("Tablet")) {
-        deviceType = "tablet";
-      }
-
-      if (userAgent.includes("Chrome")) {
-        browser = "Chrome";
-      } else if (userAgent.includes("Safari")) {
-        browser = "Safari";
-      } else if (userAgent.includes("Firefox")) {
-        browser = "Firefox";
-      } else if (userAgent.includes("Edge")) {
-        browser = "Edge";
-      }
-
-      if (userAgent.includes("Windows")) {
-        os = "Windows";
-      } else if (userAgent.includes("Mac")) {
-        os = "Mac";
-      } else if (userAgent.includes("Linux")) {
-        os = "Linux";
-      } else if (userAgent.includes("iPhone") || userAgent.includes("iPad")) {
-        os = "iOS";
-      } else if (userAgent.includes("Android")) {
-        os = "Android";
-      }
-
       // 获取用户的设备限制与单设备开关（B-04 并发设备数限制）
       const currentUser = await prisma.user.findUnique({
         where: { id: user.id },
@@ -822,6 +860,27 @@ export async function POST(request: NextRequest) {
       // 设备登录处理失败不影响主流程，只记录日志
       console.error("[设备登录] 处理失败:", deviceError);
     }
+
+    // 记录登录成功审计（统一 action=auth:login，按登录来源区分 loginMethod，严禁写入会话令牌）
+    // 置于设备处理之外，确保每次成功登录都可靠落审计。
+    await prisma.operationlog.create({
+      data: {
+        id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+        userId: user.id,
+        action: "auth:login",
+        resource: "auth/session",
+        ipAddress: clientIP,
+        details: {
+          message: "账号密码登录成功",
+          loginMethod: "password",
+          ipAddress: clientIP,
+          deviceName,
+          deviceType,
+          browser,
+          os,
+        },
+      },
+    }).catch((e) => console.warn("[登录审计] 写入 auth:login 失败（非致命）:", e));
 
     // 使用 response.cookies.set 设置 Cookie（Next.js App Router 正确方式）
     // 记住我：勾选→持久化 Cookie（关浏览器仍有效）；不勾选→会话级 Cookie（关浏览器即失效）

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateUser, isAdminRole } from "@/lib/auth";
+import { requirePlatformPermission } from "@/lib/security";
 import {
   getSubmittedPostsFromDB,
   reviewSubmittedPost,
@@ -12,6 +13,11 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   try {
+    // 严格校验岗位提交审核查看权限点（无权直接阻断）
+    const permCheck = await requirePlatformPermission(request, "post:read");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权查看岗位提交" }, { status: 403 });
+    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user || !isAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "FORBIDDEN_NOT_ADMIN" }, { status: 403 });
@@ -47,6 +53,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // 严格校验岗位提交审核权限点（无权直接阻断）
+    const permCheck = await requirePlatformPermission(request, "post:update");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限审核岗位提交" }, { status: 403 });
+    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user || !isAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "FORBIDDEN_NOT_ADMIN" }, { status: 403 });

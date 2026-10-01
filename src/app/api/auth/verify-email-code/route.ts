@@ -1,10 +1,7 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { verifySmsCode } from "@/lib/sms-store";
 import { SignJWT } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * 验证邮箱验证码（用于找回密码等场景）
@@ -34,7 +31,7 @@ export async function POST(request: NextRequest) {
     const resetToken = await new SignJWT({ email, purpose: "reset_password" })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime("5m")
-      .sign(JWT_SECRET);
+      .sign(getJwtSecretKey());
 
     return NextResponse.json({
       success: true,

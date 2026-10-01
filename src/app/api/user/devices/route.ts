@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * 获取用户设备列表（支持每页10条分页）
@@ -16,7 +13,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userId = payload.userId as string;
 
     const page = Math.max(1, parseInt(request.nextUrl.searchParams.get("page") || "1"));
@@ -62,7 +59,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userId = payload.userId as string;
 
     const body = await request.json().catch(() => ({}));
@@ -113,6 +110,7 @@ export async function DELETE(request: NextRequest) {
         data: {
           lastForcedLogoutAt: new Date(),
           sessionToken: null,
+          sessionRememberMe: false, // 登出当前设备时复位「7天内免登录」标记，防脏状态残留
           refreshToken: null,
           refreshTokenExpiresAt: null,
         },
@@ -144,7 +142,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userId = payload.userId as string;
 
     const { deviceId, isCurrent } = await request.json();

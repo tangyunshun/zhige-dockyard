@@ -1,0 +1,41 @@
+[
+  {
+    "componentId": "C01",
+    "contractVersion": "0.1.0-sample",
+    "inputKind": "TEXT_AND_FILES",
+    "outputKind": "DOCUMENT",
+    "rendererType": "MARKDOWN_DOCUMENT",
+    "artifactMime": "text/markdown",
+    "schemaVersion": "1.0",
+    "requiredCapabilities": ["TEXT_GENERATION", "FILE_ANALYSIS"],
+    "failureRefundPolicy": "REFUND_ON_FAILURE",
+    "textConstraints": { "required": true, "minLength": 1, "maxLength": 200000 },
+    "fileConstraints": {
+      "required": false,
+      "minCount": 0,
+      "maxCount": 5,
+      "acceptedMimes": [".pdf", ".docx", ".txt"],
+      "maxSingleFileBytes": 20971520,
+      "maxTotalBytes": 52428800
+    }
+  },
+  {
+    "componentId": "C07",
+    "contractVersion": "0.1.0-sample",
+    "inputKind": "MULTI_FILE",
+    "outputKind": "DOCUMENT",
+    "rendererType": "MARKDOWN_DOCUMENT",
+    "artifactMime": "text/markdown",
+    "schemaVersion": "1.0",
+    "requiredCapabilities": ["TEXT_GENERATION", "STRUCTURED_OUTPUT", "FILE_ANALYSIS"],
+    "failureRefundPolicy": "REFUND_ON_FAILURE",
+    "fileConstraints": {
+      "required": true,
+      "minCount": 1,
+      "maxCount": 8,
+      "acceptedMimes": [".txt", ".md", ".docx", ".pdf"],
+      "maxSingleFileBytes": 20971520,
+      "maxTotalBytes": 20971520
+    }
+  }
+]

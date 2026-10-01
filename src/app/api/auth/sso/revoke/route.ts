@@ -1,11 +1,6 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify } from "jose";
 import { createHmac, createHash } from "crypto";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
 
 function verifySSOSignature(provider: string, body: any, signature: string): boolean {
   try {
@@ -146,6 +141,7 @@ export async function POST(request: NextRequest) {
       data: {
         sessionToken: null,
         sessionExpiresAt: null,
+        sessionRememberMe: false, // 会话销毁时复位「7天内免登录」标记
         refreshToken: null,
         refreshTokenExpiresAt: null,
         lastForcedLogoutAt: new Date(),

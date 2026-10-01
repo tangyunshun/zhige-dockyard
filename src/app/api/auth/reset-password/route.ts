@@ -1,12 +1,9 @@
-﻿﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { jwtVerify } from "jose";
 import { consumeSmsCode } from "@/lib/sms-store";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * 重置密码接口（P0-1 修复）
@@ -39,7 +36,7 @@ export async function POST(request: NextRequest) {
     // 2. 校验 resetToken
     let payload: any;
     try {
-      ({ payload } = await jwtVerify(resetToken, JWT_SECRET));
+      ({ payload } = await jwtVerify(resetToken, getJwtSecretKey()));
     } catch {
       return NextResponse.json(
         { message: "重置凭证无效或已过期，请重新获取验证码" },
@@ -94,6 +91,7 @@ export async function POST(request: NextRequest) {
         password: hashedPassword,
         sessionToken: null,
         sessionExpiresAt: null,
+        sessionRememberMe: false, // 会话销毁时复位「7天内免登录」标记
         refreshToken: null,
         refreshTokenPrev: null,
         lastForcedLogoutAt: new Date(),

@@ -56,6 +56,7 @@ interface AppContextType {
   // 预置岗位定义（唯一数据源：数据库 position 表，经 /api/studio?action=catalog 加载）
   presetPositions: PositionDefinition[];
   catalogLoaded: boolean;
+  catalogError: string | null;
   refreshComponentCatalog: () => Promise<void>;
   
   // 数据更新与网络同步函数
@@ -108,15 +109,20 @@ const getInitialLoginState = (): Pick<UserState, "isLoggedIn" | "userInfo"> => {
       role = "Admin";
     }
     
+    const userEmail = localStorage.getItem("userEmail") || "";
+    const userName = localStorage.getItem("userName") || "用户";
+    const userAvatar = localStorage.getItem("userAvatar") || "";
+    const userMembershipLevel = localStorage.getItem("userMembershipLevel") || "FREE";
+
     return {
       isLoggedIn: true,
       userInfo: {
         id: userId,
-        name: "用户",
-        email: "",
-        avatar: "",
+        name: userName,
+        email: userEmail,
+        avatar: userAvatar,
         role,
-        membershipLevel: "FREE",
+        membershipLevel: userMembershipLevel,
       },
     };
   }
@@ -148,9 +154,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [internalComponentCatalog, setInternalComponentCatalog] = useState<ComponentDefinition[]>([]);
   const [presetPositions, setPresetPositions] = useState<PositionDefinition[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const refreshComponentCatalog = useCallback(async () => {
     try {
+      setCatalogError(null);
       const authToken = getAuthToken();
       const res = await fetch("/api/studio?action=catalog", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
@@ -170,10 +178,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           });
           setComponentCategories(cats);
           setCatalogLoaded(true);
+          setCatalogError(null);
+        } else {
+          setCatalogError(data.message || data.error || "组件目录响应数据格式异常");
+          setCatalogLoaded(true);
         }
+      } else {
+        setCatalogError(`组件目录服务响应异常 (${res.status})`);
+        setCatalogLoaded(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("加载组件目录失败:", err);
+      setCatalogError(err?.message || "网络请求失败，无法连接到组件服务");
+      setCatalogLoaded(true);
     }
   }, []);
 
@@ -406,6 +423,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const meReq = dedupeFetch("/api/auth/me", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
+        cache: "no-store",
       });
       const listReq = authToken
         ? dedupeFetch("/api/workspace/list", {
@@ -443,16 +461,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         let role: "SuperAdmin" | "Admin" | "User" = "User";
-        const rawRole = data.user.role || "User";
-        if (rawRole === "SuperAdmin" || rawRole === "SUPER_ADMIN" || rawRole === "super_admin") {
+        const rawRole = String(data.user.role || "").trim();
+        const upper = rawRole.toUpperCase();
+        const superAdminList = ["SUPER_ADMIN", "SUPERADMIN", "superadmin", "super_admin", "Superadmin", "Super_admin"];
+        const adminList = ["ADMIN", "admin", "Admin", "ADMINISTRATOR", "PLATFORM_ADMIN"];
+        if (superAdminList.includes(rawRole) || upper === "SUPER_ADMIN" || upper === "SUPERADMIN") {
           role = "SuperAdmin";
-        } else if (rawRole === "Admin" || rawRole === "ADMIN" || rawRole === "admin") {
+        } else if (adminList.includes(rawRole) || upper === "ADMIN" || upper === "ADMINISTRATOR") {
           role = "Admin";
         }
         
         // 更新 localStorage
         localStorage.setItem("userId", data.user.id);
         localStorage.setItem("userRole", role);
+        if (data.user.email) {
+          localStorage.setItem("userEmail", data.user.email);
+        } else {
+          localStorage.removeItem("userEmail");
+        }
+        if (data.user.name) localStorage.setItem("userName", data.user.name);
+        if (data.user.avatar) localStorage.setItem("userAvatar", data.user.avatar);
+        if (data.user.membershipLevel) localStorage.setItem("userMembershipLevel", data.user.membershipLevel);
 
         // 关键防御：当用户正停留在 /workspace/[id] 页面（已由 loadWorkspace 明确设置当前空间）时，
         // 保留 prev.currentWorkspaceId。否则 refreshUserState 晚到的响应用服务器 lastWorkspaceId
@@ -485,6 +514,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("userId");
         localStorage.removeItem("userRole");
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("userEmail");
+        localStorage.removeItem("userName");
+        localStorage.removeItem("userAvatar");
+        localStorage.removeItem("userMembershipLevel");
         
         setUserState({
           isLoggedIn: false,
@@ -493,8 +526,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           currentWorkspaceId: null,
         });
       }
-    } catch (error) {
-      console.error("Refresh user state error:", error);
+    } catch (error: any) {
+      if (error?.name !== "TimeoutError" && error?.name !== "AbortError") {
+        console.error("Refresh user state error:", error);
+      } else {
+        console.warn("[AppContext] 刷新用户状态请求超时或中断，保持当前状态");
+      }
       // 网络错误时保持现有状态
     } finally {
       setIsLoading(false);
@@ -572,6 +609,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         internalComponentCatalog,
         presetPositions,
         catalogLoaded,
+        catalogError,
         refreshComponentCatalog,
         refreshFavorites,
         refreshRecentUsed,

@@ -1,19 +1,19 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
-
-// 管理员角色列表
+// 管理员与超级管理员角色列表（严格对齐规范）
 const ADMIN_ROLES = [
-  "admin",
-  "super_admin",
-  "superadmin",
-  "ADMIN",
-  "SUPERADMIN",
   "SUPER_ADMIN",
+  "SUPERADMIN",
+  "superadmin",
+  "super_admin",
+  "Superadmin",
+  "Super_admin",
+  "ADMIN",
+  "admin",
+  "Admin",
 ];
 
 export interface AuthenticatedUser {
@@ -47,7 +47,7 @@ export async function validateAdmin(request: NextRequest): Promise<{
 
   try {
     // 验证 JWT Token
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userId = payload.userId as string;
 
     // 从数据库获取用户信息
@@ -116,7 +116,7 @@ export async function validateUser(authHeader: string | null): Promise<{
   const token = authHeader.replace("Bearer ", "");
 
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
     const userId = payload.userId as string;
 
     // 验证用户是否在数据库中存储

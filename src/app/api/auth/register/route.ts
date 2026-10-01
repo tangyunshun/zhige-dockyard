@@ -5,12 +5,7 @@ import { grantNewUserGift } from "@/lib/credit-service";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
-import { SignJWT } from "jose";
 import crypto from "crypto";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production"
-);
 
 /**
  * 注册成功处理：向审计日志表写入新用户注册记录，不预设会话字段（保持纯净未登录态，交由登录中心签发真实会话）

@@ -31,7 +31,18 @@ export async function GET(request: NextRequest) {
     }
 
     if (role) {
-      where.role = role;
+      const cleanRole = role.toUpperCase().trim();
+      if (cleanRole === "SUPER_ADMIN" || cleanRole === "SUPERADMIN") {
+        where.role = {
+          in: ["SUPER_ADMIN", "SUPERADMIN", "superadmin", "super_admin", "Superadmin", "Super_admin"],
+        };
+      } else if (cleanRole === "ADMIN") {
+        where.role = {
+          in: ["ADMIN", "admin", "Admin"],
+        };
+      } else {
+        where.role = role;
+      }
     }
 
     if (accountStatus) {

@@ -77,6 +77,19 @@ function hasValidSession(u: CandidateUser, now: number): boolean {
   return new Date(u.sessionExpiresAt).getTime() > now;
 }
 
+/** 在线判定（与用户列表 GET /api/admin/users 严格对齐：10 分钟内有活动或登录视为在线） */
+const ONLINE_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+function isOnlineNow(u: CandidateUser, now: number): boolean {
+  if (!hasValidSession(u, now)) return false;
+  const latestActionTime = u.lastActivityAt
+    ? new Date(u.lastActivityAt).getTime()
+    : u.lastLoginAt
+      ? new Date(u.lastLoginAt).getTime()
+      : 0;
+  return latestActionTime > 0 && now - latestActionTime <= ONLINE_IDLE_TIMEOUT_MS;
+}
+
 /** 根据动作类型，将候选用户分类为「可执行」或「跳过」，并给出跳过原因 */
 function classify(
   action: ActionType,
@@ -93,14 +106,17 @@ function classify(
       if (u.status !== "banned") return { processable: false, reason: "该用户未被封禁" };
       return { processable: true };
     case "kick":
+      // 批量强制下线针对「存在有效（未过期）会话」的用户即可生效：与单行强制下线、
+      // 列表 hasSession 口径严格一致。空闲超过 10 分钟但会话未过期的用户同样会被清会话踢下线，
+      // 否则其会话仍可继续使用，等同于「没真把人踢掉」。仅无有效会话（已退出/过期/已被踢）才跳过。
       if (!hasValidSession(u, now))
         return { processable: false, reason: "该用户当前无有效会话，无需下线" };
       return { processable: true };
     case "delete":
-      if (u.status !== "banned") {
+      if (u.status !== "banned" && u.status !== "deleted") {
         return {
           processable: false,
-          reason: "该用户未被封禁。根据平台安全规范，只有已被封禁的用户才允许被删除",
+          reason: "该用户未被封禁或已注销。根据平台安全规范，只有已被封禁(banned)或已注销(deleted)的用户才允许被删除（注销中 deleting 处于冷静期不开放）",
         };
       }
       return { processable: true };
@@ -119,7 +135,20 @@ function buildFilterWhere(filters: Filters): Record<string, unknown> {
       { phone: { contains: filters.search } },
     ];
   }
-  if (filters.role) where.role = filters.role;
+  if (filters.role) {
+    const cleanRole = filters.role.toUpperCase().trim();
+    if (cleanRole === "SUPER_ADMIN" || cleanRole === "SUPERADMIN") {
+      where.role = {
+        in: ["SUPER_ADMIN", "SUPERADMIN", "superadmin", "super_admin", "Superadmin", "Super_admin"],
+      };
+    } else if (cleanRole === "ADMIN") {
+      where.role = {
+        in: ["ADMIN", "admin", "Admin"],
+      };
+    } else {
+      where.role = filters.role;
+    }
+  }
   if (filters.accountStatus) where.status = filters.accountStatus;
   if (filters.membershipLevel) where.membershipLevel = filters.membershipLevel;
   return where;
@@ -250,10 +279,17 @@ export async function POST(request: NextRequest) {
     const now = Date.now();
     const skipped: { id: string; name: string; reason: string }[] = [];
     const processableIds: string[] = [];
+    // 可执行明细（含在线标记）：供前端 dryRun 预览解释「离线但会话未过期」的用户也会被处理
+    const processable: { id: string; name: string; online: boolean }[] = [];
     for (const u of safe) {
       const r = classify(action, u, now);
       if (r.processable) {
         processableIds.push(u.id);
+        processable.push({
+          id: u.id,
+          name: u.name || u.email || u.id,
+          online: isOnlineNow(u, now),
+        });
       } else {
         skipped.push({
           id: u.id,
@@ -276,6 +312,7 @@ export async function POST(request: NextRequest) {
         processableCount,
         skippedCount,
         skipped,
+        processable,
       });
     }
 
@@ -287,6 +324,7 @@ export async function POST(request: NextRequest) {
     const SESSION_CLEAR_DATA = {
       sessionToken: null,
       sessionExpiresAt: null,
+      sessionRememberMe: false, // 强制下线时复位「7天内免登录」标记，防脏状态残留
       refreshToken: null,
       refreshTokenExpiresAt: null,
       refreshTokenPrev: null,

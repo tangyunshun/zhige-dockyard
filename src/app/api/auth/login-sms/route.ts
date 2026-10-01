@@ -5,10 +5,7 @@ import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 import crypto from "crypto";
 import { sessionCache } from "@/lib/session-cache";
 import { maybeFinalizeDeletionIfDue } from "@/lib/account-deletion";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "your-secret-key-change-in-production",
-);
+import { getJwtSecretKey } from "@/lib/jwt-config";
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,7 +106,7 @@ export async function POST(request: NextRequest) {
       })
         .setProtectedHeader({ alg: "HS256" })
         .setExpirationTime("1h")
-        .sign(JWT_SECRET);
+        .sign(getJwtSecretKey());
 
       const response = NextResponse.json({
         success: true,
@@ -179,8 +176,26 @@ export async function POST(request: NextRequest) {
       ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
       : new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    // 检查是否存在活跃的旧会话（挤线检测）
-    // 关键防御：只有当用户拥有真实历史登录记录且具备未过期有效 sessionToken 时，才属于真实的多端挤线互踢
+    // 解析登录设备信息（供挤线冲突判定，严禁写入会话令牌）
+    const clientIP = request.headers.get("x-forwarded-for")?.split(",")[0].trim() || request.headers.get("x-real-ip") || "unknown";
+    const userAgent = request.headers.get("user-agent") || "unknown";
+    let deviceType: "web" | "mobile" | "tablet" = "web";
+    let browser = "unknown";
+    let os = "unknown";
+    if (userAgent.includes("Mobile")) deviceType = "mobile";
+    else if (userAgent.includes("Tablet")) deviceType = "tablet";
+    if (userAgent.includes("Chrome")) browser = "Chrome";
+    else if (userAgent.includes("Safari")) browser = "Safari";
+    else if (userAgent.includes("Firefox")) browser = "Firefox";
+    else if (userAgent.includes("Edge")) browser = "Edge";
+    if (userAgent.includes("Windows")) os = "Windows";
+    else if (userAgent.includes("Mac")) os = "Mac";
+    else if (userAgent.includes("Linux")) os = "Linux";
+    else if (userAgent.includes("iPhone") || userAgent.includes("iPad")) os = "iOS";
+    else if (userAgent.includes("Android")) os = "Android";
+    const deviceName = `${browser} on ${os}`;
+
+    // 检查是否存在活跃的旧会话（挤线检测前提）
     const hasExistingSession = Boolean(
       user.lastLoginAt &&
       user.sessionToken &&
@@ -188,23 +203,165 @@ export async function POST(request: NextRequest) {
       new Date(user.sessionExpiresAt) > now
     );
 
-    // 记录审计日志
-    if (hasExistingSession) {
+    // 真实跨端/跨网冲突判定（基于当前活跃设备 isCurrent=true，杜绝“设备列表同型号”误判）：
+    // 同一活跃设备（类型/浏览器/设备名一致，且 IP 同为本地或完全一致）重复登录不算冲突；
+    // 无法确认旧会话所属设备时，一律不写冲突日志，杜绝误导性的“异地登录”。
+    const isLocalIp = (ip?: string | null) => {
+      if (!ip) return true;
+      const s = String(ip).trim().replace(/^::ffff:/, "");
+      if (!s || s === "127.0.0.1" || s === "::1" || s === "localhost" || s.startsWith("127.")) return true;
+      if (s.startsWith("192.168.") || s.startsWith("10.")) return true;
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(s)) return true;
+      return false;
+    };
+    const sameDeviceIdentity = (d: { deviceName?: string | null; deviceType?: string | null; browser?: string | null }) =>
+      d.deviceType === deviceType && d.browser === browser && d.deviceName === deviceName;
+    const sameNetwork = (d: { ipAddress?: string | null }) =>
+      isLocalIp(d.ipAddress) || isLocalIp(clientIP) || d.ipAddress === clientIP;
+
+    // 设备策略与全量设备（必须在后续重置 isCurrent 之前读取）
+    const devicePolicy = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { deviceLimit: true, allowMultiDevice: true },
+    });
+    const maxDevices = devicePolicy?.allowMultiDevice ? devicePolicy?.deviceLimit || 3 : 1;
+    const allDevices = await prisma.userdevice.findMany({
+      where: { userId: user.id },
+      orderBy: { lastAccessTime: "asc" },
+    });
+    const activeDevice = allDevices.find((d) => d.isCurrent) || null;
+    // 是否会发生设备上限替换：排除同一设备后仍达到上限（与密码登录口径一致）
+    const otherDevices = allDevices.filter((d) => !sameDeviceIdentity(d));
+    const deviceLimitWillKick = otherDevices.length >= maxDevices;
+
+    let isRealConflict = false;
+    let conflictReason = "";
+    // 若本次登录会触发设备上限替换，则交由 DEVICE_KICKED_OFFLINE 单独记录，避免同一替换落两条日志
+    if (hasExistingSession && activeDevice && !deviceLimitWillKick) {
+      if (!sameDeviceIdentity(activeDevice)) {
+        isRealConflict = true;
+        conflictReason = "在另一台设备";
+      } else if (!sameNetwork(activeDevice)) {
+        isRealConflict = true;
+        conflictReason = "网络环境已变化";
+      }
+    }
+    // 无活跃设备记录 / 设备上限将替换 → 不写 SESSION_CONFLICT_LOGOUT
+
+    // 会话冲突审计（仅真实冲突，严禁写入会话令牌）
+    if (isRealConflict) {
       await prisma.operationlog.create({
         data: {
           id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
           userId: user.id,
           action: "SESSION_CONFLICT_LOGOUT",
           resource: "auth/session",
-          ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
-          details: JSON.stringify({
-            message: "短信验证登录挤退旧会话",
-            oldSessionToken: user.sessionToken,
-            newSessionToken: sessionToken,
-          }),
+          ipAddress: clientIP,
+          details: {
+            message: `检测到账号${conflictReason}登录，原会话已被新登录顶替下线`,
+            reason: conflictReason,
+            deviceName,
+            deviceType,
+            browser,
+            os,
+            ipAddress: clientIP,
+          },
         },
       });
-      console.log(`[挤线检测] 短信登录：用户 ${user.id} 的旧会话已被挤掉`);
+      console.log(`[挤线检测] 短信登录：用户 ${user.id} 因${conflictReason}触发旧会话挤下线`);
+    }
+
+    // 登录成功审计（统一 action=auth:login，按登录来源区分 loginMethod，严禁写入会话令牌）
+    await prisma.operationlog.create({
+      data: {
+        id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+        userId: user.id,
+        action: "auth:login",
+        resource: "auth/session",
+        ipAddress: clientIP,
+        details: {
+          message: "短信验证码登录成功",
+          loginMethod: "sms",
+          ipAddress: clientIP,
+          deviceName,
+          deviceType,
+          browser,
+          os,
+        },
+      },
+    }).catch((e) => console.warn("[登录审计] 短信登录写入 auth:login 失败（非致命）:", e));
+
+    // 记录登录历史（与密码登录同一数据源，供后台“登录安全历史”统一展示）
+    await prisma.loginhistory.create({
+      data: {
+        id: "lh_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+        userId: user.id,
+        loginAt: now,
+        ipAddress: clientIP,
+        userAgent: request.headers.get("user-agent") || "unknown",
+        device: deviceName,
+      },
+    }).catch((e) => console.warn("[登录历史] 短信登录写入失败（非致命）:", e));
+
+    // 设备登录处理（与密码登录一致：同一设备替换旧记录，新设备写入并置为当前）
+    try {
+      // 复位该用户其他设备的 isCurrent
+      await prisma.userdevice.updateMany({
+        where: { userId: user.id, isCurrent: true },
+        data: { isCurrent: false },
+      });
+
+      // 查询现有设备（按最近访问时间升序）
+      const existingDevices = await prisma.userdevice.findMany({
+        where: { userId: user.id },
+        orderBy: { lastAccessTime: "asc" },
+      });
+
+      // 同一设备重复/重新登录：直接移除旧记录，绝不误报“设备被踢下线”
+      const sameDeviceIndex = existingDevices.findIndex(
+        (d) => d.browser === browser && d.deviceType === deviceType && d.deviceName === deviceName
+      );
+      if (sameDeviceIndex !== -1) {
+        const matched = existingDevices.splice(sameDeviceIndex, 1)[0];
+        await prisma.userdevice.delete({ where: { id: matched.id } });
+      }
+
+      // 达到设备上限时替换最旧设备（仅记录 DEVICE_KICKED_OFFLINE，不与冲突日志重复）
+      while (existingDevices.length >= maxDevices) {
+        const oldestDevice = existingDevices.shift();
+        if (!oldestDevice) break;
+        await prisma.userdevice.delete({ where: { id: oldestDevice.id } });
+        await prisma.operationlog.create({
+          data: {
+            id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+            userId: user.id,
+            action: "DEVICE_KICKED_OFFLINE",
+            resource: "auth/device",
+            ipAddress: clientIP,
+            details: {
+              type: "DEVICE_LIMIT_REPLACED",
+              message: `设备达到登录上限，旧设备(${oldestDevice.deviceName || "旧设备"})已自动退出登录`,
+              deviceId: oldestDevice.id,
+            },
+          },
+        });
+      }
+
+      // 写入新设备记录并置为当前设备
+      await prisma.userdevice.create({
+        data: {
+          id: "dev_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+          userId: user.id,
+          deviceName,
+          deviceType,
+          browser,
+          os,
+          ipAddress: clientIP || "127.0.0.1",
+          isCurrent: true,
+        },
+      });
+    } catch (deviceError) {
+      console.error("[设备登录] 短信登录设备处理失败:", deviceError);
     }
 
     // 内存踢除并注册新 session
@@ -229,9 +386,10 @@ export async function POST(request: NextRequest) {
         lastActivityAt: now,
         loginAttempts: 0,
         lockedUntil: null,
-        lastForcedLogoutAt: hasExistingSession ? now : null,
+        lastForcedLogoutAt: isRealConflict ? now : null,
         sessionToken,
         sessionExpiresAt,
+        sessionRememberMe: rememberMe === true, // 「7天内免登录」显式标记：validateUser 据此豁免空闲超时
         refreshToken,
         refreshTokenExpiresAt,
       },
@@ -247,7 +405,7 @@ export async function POST(request: NextRequest) {
     })
       .setProtectedHeader({ alg: 'HS256' })
       .setExpirationTime(rememberMe ? '7d' : '24h')
-      .sign(JWT_SECRET);
+      .sign(getJwtSecretKey());
 
     // 准备用户数据
     const userData = {

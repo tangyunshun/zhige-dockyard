@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 import { requirePlatformPermission } from "@/lib/security";
+import { toJsonSafe } from "@/lib/json-safe";
 
 export async function GET(request: NextRequest) {
   try {
@@ -304,6 +305,9 @@ export async function GET(request: NextRequest) {
             ...m,
             monthlyTokenLimit: m.monthlyTokenLimit ? Number(m.monthlyTokenLimit) : null,
             monthlyTokenUsed: Number(m.monthlyTokenUsed || 0),
+            // tokenBalance 在成员表里是 BigInt：必须显式转 number，
+            // 否则 NextResponse.json 序列化时抛错，导致整个列表接口 500
+            tokenBalance: Number(m.tokenBalance || 0),
           })),
         };
       }),
@@ -340,20 +344,23 @@ export async function GET(request: NextRequest) {
       0,
     );
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        workspaces: filteredWorkspaces,
-        total: allWorkspacesWithComponentCount.length, // 显示所有工作空间总数，不受筛选影响
-        page,
-        totalPages: Math.ceil(filteredWorkspaces.length / limit),
-        stats: {
-          totalComponentCount,
-          pendingCount,
-          totalMembers,
+    // toJsonSafe：兜底递归转换 BigInt，避免任何遗漏字段导致整接口 500
+    return NextResponse.json(
+      toJsonSafe({
+        success: true,
+        data: {
+          workspaces: filteredWorkspaces,
+          total: total, // 筛选后的真实总数（受 search/type 影响），供前端分页与计数使用
+          page,
+          totalPages: Math.ceil(total / limit),
+          stats: {
+            totalComponentCount,
+            pendingCount,
+            totalMembers,
+          },
         },
-      },
-    });
+      })
+    );
   } catch (error) {
     console.error("Get workspaces error:", error);
     return NextResponse.json(

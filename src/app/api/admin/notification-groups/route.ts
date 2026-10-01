@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
 // 创建自定义群组
 export async function POST(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request, "announcement:publish");
+    const guard = await requireAdmin(request, "announcement:create");
     if (guard.error) return guard.error;
 
     const body = await request.json();
@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request, "announcement:publish");
+    const guard = await requireAdmin(request, "announcement:update");
     if (guard.error) return guard.error;
 
     const body = await request.json();
@@ -289,7 +289,7 @@ export async function PATCH(request: NextRequest) {
 // 删除群组（仅自定义群组可删，系统角色群组随角色存在）
 export async function DELETE(request: NextRequest) {
   try {
-    const guard = await requireAdmin(request, "announcement:publish");
+    const guard = await requireAdmin(request, "announcement:delete");
     if (guard.error) return guard.error;
 
     const groupId = new URL(request.url).searchParams.get("id");

@@ -75,27 +75,19 @@ export default function AdminPreferencesPage() {
     }
   };
 
-  const getEngineBadge = (engine: string) => {
-    const badges: Record<string, string> = {
-      zhige: "bg-gradient-to-r from-[#10b981] to-[#059669] text-white",
-      openai: "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white",
-      azure: "bg-gradient-to-r from-[#8b5cf6] to-[#805ad5] text-white",
-    };
-
-    const labels: Record<string, string> = {
-      zhige: "智歌引擎",
-      openai: "OpenAI",
-      azure: "Azure",
-    };
-
-    return (
-      <span
-        className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg ${badges[engine] || "bg-gradient-to-r from-slate-400 to-slate-500 text-white"}`}
-      >
-        {labels[engine] || engine.toUpperCase()}
-      </span>
-    );
-  };
+  /**
+   * 历史字段展示（只读）：
+   * userpreference.aiEngine 已弃用——真实执行模型由「组件执行合同 + 模型注册表 + 空间模型策略」决定，
+   * 该字段不再参与任何计费或模型选择，此处仅作为历史数据保留可查。
+   */
+  const getEngineBadge = (engine: string) => (
+    <span
+      className="px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg bg-gradient-to-r from-slate-400 to-slate-500 text-white"
+      title="已弃用字段：真实执行模型由组件执行合同 + 模型注册表（modelprovider/modeldeployment）+ 空间模型策略决定"
+    >
+      历史字段：{engine}（已弃用）
+    </span>
+  );
 
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -121,7 +113,7 @@ export default function AdminPreferencesPage() {
             用户偏好管理
           </h1>
           <p className="text-sm text-slate-600 font-medium">
-            引擎配置与模型偏好设置
+            对话引导语与生成参数（模型由「模型注册表 / 空间模型策略」统一管理，用户不可自选）
           </p>
         </div>
       </div>
@@ -146,7 +138,9 @@ export default function AdminPreferencesPage() {
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#10b981]/20 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="text-sm text-slate-600 font-bold">知阁引擎</div>
+              <div className="text-sm text-slate-600 font-bold" title="userpreference.aiEngine 已弃用，仅历史统计">
+                历史字段：zhige（已弃用）
+              </div>
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center shadow-lg">
                 <Server className="w-5 h-5 text-white" />
               </div>
@@ -162,7 +156,9 @@ export default function AdminPreferencesPage() {
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#f59e0b]/20 to-transparent rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
           <div className="relative">
             <div className="flex items-center justify-between mb-4">
-              <div className="text-sm text-slate-600 font-bold">OpenAI</div>
+              <div className="text-sm text-slate-600 font-bold" title="userpreference.aiEngine 已弃用，仅历史统计">
+                历史字段：openai（已弃用）
+              </div>
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#f59e0b] to-[#d97706] flex items-center justify-center shadow-lg">
                 <Sliders className="w-5 h-5 text-white" />
               </div>
@@ -206,10 +202,10 @@ export default function AdminPreferencesPage() {
                     用户
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    引擎配置
+                    历史引擎字段（已弃用）
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    模型
+                    历史模型字段（已弃用）
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">
                     Temperature

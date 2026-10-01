@@ -5,7 +5,7 @@ import { requirePlatformPermission } from "@/lib/security";
 export async function GET(request: NextRequest) {
   try {
     // 鉴权：申诉数据包含用户账号、封禁原因与申诉材料，仅限具备风控审核权限的管理员查看
-    const authResult = await requirePlatformPermission(request, "user:update");
+    const authResult = await requirePlatformPermission(request, "user:update", "appeal:read", "appeal:manage");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }

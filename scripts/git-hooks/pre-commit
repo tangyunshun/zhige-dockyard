@@ -1,0 +1,20 @@
+#!/bin/sh
+# 提交前钩子：权限接线自检
+# 目的：新增后台模块/权限点后，若「代码使用了不存在的权限点」则拒绝提交，避免权限漏洞合入。
+# 安装：npm run hooks:install （npm install 时也会自动执行 prepare 安装）
+# 临时跳过：git commit --no-verify
+#
+# 注意：本钩子只读取本地源码 + 权限目录，不依赖开发服务器。
+
+echo "[pre-commit] 正在执行权限接线自检 (npm run check:permissions) ..."
+
+if npm run --silent check:permissions; then
+  echo "[pre-commit] 权限接线自检通过 ✅"
+  exit 0
+fi
+
+echo ""
+echo "[pre-commit] ❌ 权限接线自检未通过，已阻止本次提交。"
+echo "             请按上方提示修正（通常是：代码引用了权限目录中不存在的权限点）。"
+echo "             如确需临时跳过：git commit --no-verify"
+exit 1

@@ -130,19 +130,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 累计历史算力消耗（真实统计）：各组件使用次数 × 组件目录 estimatedModelTokens 基准
-    const usageTokenBase = await prisma.componentcatalog.findMany({
-      select: { id: true, estimatedModelTokens: true },
-    });
-    const usageTokenMap = new Map(usageTokenBase.map((c) => [c.id, Number(c.estimatedModelTokens)]));
-    const usageRows = await prisma.componentusage.findMany({
-      where: workspaceIdParam ? { workspaceId: workspaceIdParam } : { userId },
-      select: { componentId: true },
-    });
-    const totalUsedTokens = usageRows.reduce(
-      (sum, r) => sum + (usageTokenMap.get(r.componentId) ?? 0),
-      0
-    );
+    // 累计历史算力点消耗（真实统计）：唯一真源为 pointledger 的 CONSUME 流水。
+    // 严禁再用 componentcatalog.estimatedModelTokens（Token 用量估算）× 使用次数累加——
+    // 那是估算口径，与实扣点数不是同一个量。
+    const consumeAgg = await prisma.pointledger
+      .aggregate({
+        where: {
+          type: "CONSUME",
+          ...(workspaceIdParam ? { workspaceId: workspaceIdParam } : { userId }),
+        },
+        _sum: { points: true },
+      })
+      .catch(() => ({ _sum: { points: null } }));
+    const totalUsedTokens = Number(consumeAgg?._sum?.points ?? 0);
 
     // 历史遗留字段：resetAt 来自旧「月度自动补额」模型，新代码不再据此向用户展示“重置日”
     const resetAt = workspaceQuotaRecord?.resetAt

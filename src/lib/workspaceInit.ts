@@ -1,6 +1,53 @@
 import { prisma } from "./prisma";
 import crypto from "crypto";
 import { serverCacheGet, serverCacheSet, clearServerCache } from "./serverCache";
+ 
+/**
+ * 纯函数：将 componentcatalog 数据库记录列表映射并筛选为已批准的默认组件 ID 数组。
+ * 绝无硬编码，杜绝由组件编号范围推导。
+ */
+export function mapDefaultCatalogRecordsToIds(
+  records: Array<{ id: string; isDefault?: boolean | null; isPublished?: boolean | null }>,
+): string[] {
+  if (!Array.isArray(records)) return [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const r of records) {
+    if (r && typeof r.id === "string" && r.isDefault === true && r.isPublished === true) {
+      const trimmed = r.id.trim();
+      const upper = trimmed.toUpperCase();
+      if (trimmed && !seen.has(upper)) {
+        seen.add(upper);
+        result.push(trimmed);
+      }
+    }
+  }
+  return result;
+}
+
+export class DefaultComponentSourceMissingError extends Error {
+  readonly code = "DEFAULT_COMPONENT_SOURCE_MISSING";
+  constructor(message = "默认装配策略缺少已批准数据源 (DEFAULT_COMPONENT_SOURCE_MISSING)") {
+    super(message);
+    this.name = "DefaultComponentSourceMissingError";
+  }
+}
+
+/**
+ * 获取系统已批准的默认装配组件 ID 列表（唯一真实数据库来源）。
+ * 若发现 componentcatalog.isDefault 在当前数据库中不存在有效配置，立即停止并抛出稳定错误码，绝不写库、绝不回退硬编码。
+ */
+export async function getDefaultCatalogComponentIds(): Promise<string[]> {
+  const records = await prisma.componentcatalog.findMany({
+    where: { isDefault: true, isPublished: true },
+    select: { id: true, isDefault: true, isPublished: true },
+  });
+  const ids = mapDefaultCatalogRecordsToIds(records);
+  if (ids.length === 0) {
+    throw new DefaultComponentSourceMissingError();
+  }
+  return ids;
+}
 
 /**
  * 统计指定工作空间的"已装配组件数"。
@@ -115,12 +162,8 @@ export async function ensureDefaultComponents(workspaceId: string, userId?: stri
     }
 
     const existingIds = new Set(existingUsages.map(u => u.componentId));
-    // 默认装配组件列表：一律从 component_catalog.isDefault 标记读取（不再硬编码组件 ID）
-    const defaultCatalog = await prisma.componentcatalog.findMany({
-      where: { isDefault: true },
-      select: { id: true },
-    });
-    const targetDefaultIds = defaultCatalog.map(c => c.id);
+    // 默认装配组件列表：一律从 component_catalog.isDefault 权威数据源读取（绝无源码字面量硬编码）
+    const targetDefaultIds = await getDefaultCatalogComponentIds();
     const missingIds = targetDefaultIds.filter(id => !existingIds.has(id));
 
     // 4. 全新空间（无任何真实装配记录）：兜底补全默认 5 套件组件
@@ -145,6 +188,13 @@ export async function ensureDefaultComponents(workspaceId: string, userId?: stri
       clearServerCache();
     }
   } catch (error) {
+    if (
+      error instanceof DefaultComponentSourceMissingError ||
+      (error && typeof error === "object" && (error as { code?: string }).code === "DEFAULT_COMPONENT_SOURCE_MISSING")
+    ) {
+      // 默认组件数据源缺失致命错误：严禁吞错假装成功，严禁写入伪造默认组件，必须向调用方与 API 层传播阻断
+      throw error;
+    }
     console.error(`[自愈哨兵] 初始化空间 ${workspaceId} 默认组件失败:`, error);
   }
 }

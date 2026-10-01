@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     // 细粒度平台权限校验：announcement:delete
-    const authCheck = await requirePlatformPermission(request, "announcement:delete");
+    const authCheck = await requirePlatformPermission(request, "announcement:delete", "announcement:revoke");
     if (!authCheck.authorized) {
       return authCheck.errorResponse || NextResponse.json({ error: "权限不足，仅管理员可删除推送历史记录" }, { status: 403 });
     }

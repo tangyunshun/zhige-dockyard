@@ -195,6 +195,8 @@ export default function GlobalHeader() {
       isActive = pathname === "/security";
     } else if (key === "pricing") {
       isActive = pathname === "/pricing";
+    } else if (key === "models") {
+      isActive = pathname === "/models";
     }
 
     return `transition-all duration-200 cursor-pointer h-[60px] flex items-center relative text-xs sm:text-sm ${
@@ -257,6 +259,12 @@ export default function GlobalHeader() {
                 价格方案
               </button>
               <button 
+                onClick={() => handleNavClick("/models", true)} 
+                className={getTabClass("models")}
+              >
+                模型定价
+              </button>
+              <button 
                 onClick={() => handleNavClick("/docs")} 
                 className={getTabClass("docs")}
               >
@@ -289,6 +297,12 @@ export default function GlobalHeader() {
                 className={getTabClass("pricing")}
               >
                 价格方案
+              </button>
+              <button 
+                onClick={() => handleNavClick("/models")} 
+                className={getTabClass("models")}
+              >
+                模型定价
               </button>
               <button 
                 onClick={() => handleNavClick("/docs")} 

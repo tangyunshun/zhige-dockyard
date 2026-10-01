@@ -141,8 +141,8 @@ export async function GET(request: NextRequest) {
 // POST: 管理员发布/推送系统通知（支持全员广播或指定用户单发）
 export async function POST(request: NextRequest) {
   try {
-    // 细粒度平台权限校验：announcement:publish
-    const authCheck = await requirePlatformPermission(request, "announcement:publish");
+    // 细粒度平台权限校验：announcement:create（发布全站广播公告）
+    const authCheck = await requirePlatformPermission(request, "announcement:create");
     if (!authCheck.authorized) {
       return authCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
@@ -367,6 +367,16 @@ export async function POST(request: NextRequest) {
 // PATCH: 管理员协助更新调整用户的通知偏好设置
 export async function PATCH(request: NextRequest) {
   try {
+    // 细粒度平台权限校验：announcement:update ∨ 兼容 announcement:create / announcement:delete
+    const permCheck = await requirePlatformPermission(
+      request,
+      "announcement:update",
+      "announcement:create",
+      "announcement:delete"
+    );
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "权限不足" }, { status: 403 });
+    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });

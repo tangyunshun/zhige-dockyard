@@ -63,6 +63,14 @@ const CONFIG_KEYS = [
   // 灾备与快照归档
   "last_db_backup_time",
   "last_db_backup_info",
+  // 商业化计费（BILLING-1 算账中心：全部存 systemconfig，后台可调，禁止写死代码）
+  "billing.markupCoefficientBps",
+  "billing.byokServiceRateBps",
+  "billing.freeMonths",
+  "billing.freePointsPerMonth",
+  "billing.refundReviewThresholdCents",
+  "billing.minPointsPerTask",
+  "billing_usage_calibration",
 ];
 
 const DEFAULT_CONFIGS: Record<string, string> = {
@@ -72,6 +80,14 @@ const DEFAULT_CONFIGS: Record<string, string> = {
   logo: "/logo.png",
   copyright: "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1",
   icpNumber: "京ICP备 2026000000 号-1",
+  // 商业化计费（算账中心）：k=2.0 / BYOK 服务费 15% / 免费 3 个月每月 100 点 / 退款审核阈值 500 元
+  "billing.markupCoefficientBps": "20000",
+  "billing.byokServiceRateBps": "1500",
+  "billing.freeMonths": "3",
+  "billing.freePointsPerMonth": "100",
+  "billing.refundReviewThresholdCents": "50000",
+  "billing.minPointsPerTask": "5",
+  "billing_usage_calibration": "{}",
   smtpHost: "smtp.zhige.com",
   smtpPort: "587",
   smtpUser: "service@zhige.com",
@@ -144,7 +160,7 @@ const DEFAULT_CONFIGS: Record<string, string> = {
  * 必须是平台超级管理员且具备 system:settings 权限点。
  */
 async function assertAdmin(request: NextRequest): Promise<{ ok: true; adminId: string; adminName: string } | { ok: false; status: number; message: string }> {
-  const result = await requireSystemSettingsAdmin(request);
+  const result = await requireSystemSettingsAdmin(request, "system:manage", "system:config_read", "system:update", "system:maintenance_toggle", "system:read");
   if (!result.authorized || !result.user) {
     // 区分 401 / 403，便于前端给出准确提示
     const status = result.errorResponse?.status === 401 ? 401 : 403;

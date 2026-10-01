@@ -282,9 +282,10 @@ export async function GET() {
 
     // 2.3 从数据库读取最新已发布的组件模块（实现数据库级业务扩展无需改代码）
     try {
-      const components = await prisma.component.findMany({
-        where: { status: "PUBLISHED" },
-        select: { id: true, name: true, description: true, type: true },
+      // 组件已发布数据存放在 componentcatalog 模型（原 prisma.component 模型不存在，属历史笔误）
+      const components = await prisma.componentcatalog.findMany({
+        where: { isPublished: true },
+        select: { id: true, name: true, description: true, category: true },
         take: 12,
         orderBy: { updatedAt: "desc" },
       });
@@ -294,7 +295,7 @@ export async function GET() {
         allRoutesMap.set(compUrl, {
           label: `${comp.name}`,
           url: compUrl,
-          description: comp.description || `已发布的 ${comp.type || "组件"} 模块`,
+          description: comp.description || `已发布的 ${comp.category || "组件"} 模块`,
           category: "动态已发布工程组件",
           icon: "Component",
           badge: "数据库组件",

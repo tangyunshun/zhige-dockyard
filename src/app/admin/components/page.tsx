@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
+import { isValidComponentCost } from "@/lib/component-cost";
 import {
   Search,
   Plus,
@@ -366,7 +367,7 @@ export default function AdminComponentsPage() {
     tags: "",
     sortOrder: 0,
     isPublished: true,
-    estimatedModelTokens: 5,
+    estimatedModelTokens: 0,
     errors: {},
   });
 
@@ -795,7 +796,7 @@ export default function AdminComponentsPage() {
       tags: "需求, 自动化",
       sortOrder: 0,
       isPublished: true,
-      estimatedModelTokens: 5,
+      estimatedModelTokens: 0,
       errors: {},
     });
     setShowCreateModal(true);
@@ -817,7 +818,7 @@ export default function AdminComponentsPage() {
       tags: component.tags || "",
       sortOrder: component.sortOrder,
       isPublished: component.isPublished,
-      estimatedModelTokens: component.estimatedModelTokens || 5,
+      estimatedModelTokens: component.estimatedModelTokens || 0,
       errors: {},
     });
     setEditingComponent(component);
@@ -844,8 +845,14 @@ export default function AdminComponentsPage() {
       newErrors.category = "请选择领域分类";
     }
 
+    // 算力成本必须是合法正整数，否则禁止保存（不得自动使用 5 等兜底值）
+    if (!isValidComponentCost(formData.estimatedModelTokens)) {
+      newErrors.estimatedModelTokens = "请配置真实算力成本（合法正整数）";
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setFormData({ ...formData, errors: newErrors });
+      if (newErrors.estimatedModelTokens) toast.error("请配置真实算力成本");
       return;
     }
 
@@ -1207,6 +1214,15 @@ export default function AdminComponentsPage() {
                   <span>导出 Excel</span>
                 </button>
 
+                <Link
+                  href="/admin/components/contracts"
+                  className="inline-flex items-center gap-1.5 px-4 h-10 bg-blue-50 hover:bg-blue-100 text-[#2b6cb0] font-bold rounded-xl text-xs transition-all duration-200 cursor-pointer shadow-2xs border border-blue-200/80 active:scale-95 whitespace-nowrap"
+                  title="进入组件合同不可变版本配置中枢"
+                >
+                  <FileCode className="w-3.5 h-3.5 text-[#2b6cb0]" />
+                  <span>合同配置</span>
+                </Link>
+
                 {canCreate && (
                   <button
                     onClick={openCreateModal}
@@ -1480,7 +1496,7 @@ export default function AdminComponentsPage() {
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-600 bg-white">
                     {components.map((component) => {
                       const isPub = component.isPublished;
-                      const estimatedModelTokens = component.estimatedModelTokens || 5;
+                      const estimatedModelTokens = component.estimatedModelTokens || 0;
 
                       return (
                         <tr
@@ -1574,6 +1590,16 @@ export default function AdminComponentsPage() {
                                     <Eye className="w-3 h-3 text-slate-500" />
                                     <span>详情</span>
                                   </button>
+
+                                  {/* 合同配置中枢 */}
+                                  <Link
+                                    href={`/admin/components/contracts?componentId=${component.id}`}
+                                    className="px-2.5 py-1 bg-blue-50 text-[#3182ce] hover:bg-[#3182ce] hover:text-white rounded-lg font-bold text-[11px] transition-all cursor-pointer inline-flex items-center gap-1"
+                                    title="管理该组件的不可变版本合同"
+                                  >
+                                    <FileCode className="w-3 h-3" />
+                                    <span>合同</span>
+                                  </Link>
 
                                   {/* 已上架状态：仅允许【下架】！严格禁止上架状态直接编辑 */}
                                   {isPub ? (
@@ -1757,7 +1783,7 @@ export default function AdminComponentsPage() {
                 </div>
                 <div className="p-3 bg-amber-50/60 border border-amber-100 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-amber-600 uppercase">分配所需算力点数</div>
-                  <div className="text-xs font-black text-slate-800">{detailComp.estimatedModelTokens || 5} 算力点 (折合 ¥{((detailComp.estimatedModelTokens || 5) * 0.01).toFixed(2)} 元)</div>
+                  <div className="text-xs font-black text-slate-800">{detailComp.estimatedModelTokens || 0} 算力点 (折合 ¥{((detailComp.estimatedModelTokens || 0) * 0.01).toFixed(2)} 元)</div>
                 </div>
               </div>
 
@@ -1918,13 +1944,13 @@ export default function AdminComponentsPage() {
                     </label>
                     <input
                       type="number"
-                      min={1}
+                      min={0}
                       max={100}
                       value={formData.estimatedModelTokens}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          estimatedModelTokens: parseInt(e.target.value) || 1,
+                          estimatedModelTokens: parseInt(e.target.value) || 0,
                         })
                       }
                       className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-mono font-bold transition-all bg-slate-50/50 focus:bg-white"

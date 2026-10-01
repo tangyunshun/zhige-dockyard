@@ -194,7 +194,10 @@ export default function SolutionsPage() {
       const fetchWorkspaceSolutions = async () => {
         try {
           const authToken = getAuthToken();
-          const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+          // 显式声明为 Record<string,string>，避免 fetch 的 HeadersInit 重载匹配失败（行为不变）
+          const headers: Record<string, string> = authToken
+            ? { Authorization: `Bearer ${authToken}` }
+            : {};
 
           // 1) 结构化权威来源
           let dbConfigs: Record<string, string> = {};

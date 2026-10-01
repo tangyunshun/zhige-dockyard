@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Home, LayoutGrid, Boxes, User, Plus } from "lucide-react";
+import { Home, LayoutGrid, Boxes, User, Tag } from "lucide-react";
 import { useDevice } from "@/contexts/DeviceContext";
 import { useAppContext } from "@/contexts/AppContext";
 
@@ -22,6 +22,7 @@ export default function MobileBottomNav() {
     { key: "home", label: "首页", icon: Home, href: "/" },
     { key: "hub", label: "空间", icon: LayoutGrid, href: "/workspace-hub" },
     { key: "studio", label: "组件", icon: Boxes, href: "/studio" },
+    { key: "pricing", label: "定价", icon: Tag, href: "/models" },
     { key: "user", label: "我的", icon: User, href: "/user/dashboard" },
   ];
 

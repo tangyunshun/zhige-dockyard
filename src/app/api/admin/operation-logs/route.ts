@@ -7,17 +7,19 @@ import {
   translateResource,
   normalizeIpAddress,
 } from "@/lib/audit-dict";
+import { sanitizeAuditDetails } from "@/lib/log-details";
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员权限包
-    const authResult = await requirePlatformPermission(request, "audit:read");
+    // 验证管理员权限包（细粒度键 audit:operation_read ∨ 兼容原有 audit_log:read）
+    const authResult = await requirePlatformPermission(request, "audit:operation_read", "audit_log:read");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
 
     // 从数据库 system_config 获取最新审计字典（若无自动插入标准初始种子）
-    const { actionDict, resourceDict, actionOptions } = await getAuditDictionariesFromDb();
+    const { actionDict, resourceDict, fieldDict, valueDict, wordDict, actionOptions } =
+      await getAuditDictionariesFromDb();
 
     const { searchParams } = new URL(request.url);
     const detailId = searchParams.get("id");
@@ -116,6 +118,9 @@ export async function GET(request: NextRequest) {
         success: true,
         data: {
           ...log,
+          // 读取即脱敏：token / password / secret 等敏感字段绝不返回前端
+          details: sanitizeAuditDetails(log.details),
+          parsedDetails: sanitizeAuditDetails(parsedDetails),
           actionZh: actMeta.label,
           actionBadge: actMeta,
           resourceZh: resZh,
@@ -183,7 +188,7 @@ export async function GET(request: NextRequest) {
       console.warn("[日志生命周期] 自动清理3年前操作日志非致命提醒:", err);
     });
 
-    const [logs, total, todayCount, highRiskCount] = await Promise.all([
+    const [logs, total, todayCount, highRiskCount, activeUserGroups] = await Promise.all([
       prisma.operationlog.findMany({
         where,
         skip,
@@ -211,7 +216,9 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // 高危操作数（注销删除 / 移出成员 / 封禁 / 异地挤线 / 超时登出 / 设备踢出 / 强制下线等）
+      // 高危删除/数据销毁类操作数：仅统计真正造成数据销毁或敏感封禁的操作。
+      // 注意：普通超时退出(SESSION_TIMEOUT_LOGOUT)、挤线退出(SESSION_CONFLICT_LOGOUT)、
+      // 设备上限替换(DEVICE_KICKED_OFFLINE)、强制下线(user:reset_session) 均非数据销毁，不计入。
       prisma.operationlog.count({
         where: {
           ...where,
@@ -219,18 +226,19 @@ export async function GET(request: NextRequest) {
             in: [
               "ACCOUNT_DELETED",
               "WORKSPACE_KICK",
-              "SESSION_CONFLICT_LOGOUT",
-              "SESSION_TIMEOUT_LOGOUT",
-              "DEVICE_KICKED_OFFLINE",
               "user:ban",
               "user:delete",
-              "user:reset_session",
               "workspace:delete",
               "component:delete",
               "component:ban",
             ],
           },
         },
+      }),
+      // 参与操作人员：当前筛选范围内去重后的操作发起人数
+      prisma.operationlog.groupBy({
+        by: ["userId"],
+        where,
       }),
     ]);
 
@@ -293,11 +301,13 @@ export async function GET(request: NextRequest) {
 
       return {
         ...log,
+        // 读取即脱敏：token / password / secret 等敏感字段绝不返回前端
+        details: sanitizeAuditDetails(log.details),
+        parsedDetails: sanitizeAuditDetails(d),
         actionZh: actMeta.label,
         actionBadge: actMeta,
         resourceZh: resZh,
         ipAddress: cleanIp,
-        parsedDetails: d,
         targetUser: targetUserId ? userMap.get(targetUserId) || null : null,
         targetComponent: componentId ? compMap.get(componentId) || null : null,
       };
@@ -314,11 +324,15 @@ export async function GET(request: NextRequest) {
         auditDicts: {
           actions: actionDict,
           resources: resourceDict,
+          fields: fieldDict,
+          values: valueDict,
+          words: wordDict,
         },
         stats: {
           total,
           today: todayCount,
           highRisk: highRiskCount,
+          activeUsers: activeUserGroups.length,
         },
         retentionPolicy: {
           years: 3,
@@ -339,34 +353,18 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 删除操作日志（支持单条、批量、以及3年生命周期出清）
+// 删除操作日志（支持单条、批量删除；3 年超期由系统自动出清，不提供手动操作）
 export async function DELETE(request: NextRequest) {
   try {
-    const authResult = await requirePlatformPermission(request, "audit:read");
+    const authResult = await requirePlatformPermission(request, "audit_log:read");
     if (!authResult.authorized) {
       return authResult.errorResponse!;
     }
 
     const body = await request.json().catch(() => ({}));
-    const { id, ids, cleanExpired } = body;
+    const { id, ids } = body;
 
-    // 模式 1：出清 3 年前历史超期日志
-    if (cleanExpired) {
-      const threeYearsAgo = new Date();
-      threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
-
-      const result = await prisma.operationlog.deleteMany({
-        where: { createdAt: { lt: threeYearsAgo } },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `合规生命周期出清成功：已清理 3 年前历史日志共 ${result.count} 条。`,
-        count: result.count,
-      });
-    }
-
-    // 模式 2：批量删除
+    // 批量删除
     if (Array.isArray(ids) && ids.length > 0) {
       const result = await prisma.operationlog.deleteMany({
         where: { id: { in: ids } },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { resolveComponentCost } from "@/lib/component-cost";
 
 function normalizeTags(tags: unknown): string {
   if (Array.isArray(tags)) return tags.join(",");
@@ -115,13 +116,14 @@ export async function GET(request: NextRequest) {
 async function handleUpsert(request: NextRequest, isUpdate: boolean) {
   const body = await request.json();
   const { name, description, type, icon, category, tags, isPublished } = body;
-  const requiredPermission = isUpdate
+  const requiredPermissions = isUpdate
     ? isPublished !== undefined
-      ? "component:publish"
-      : "component:update"
-    : "component:create";
+      ? // 上下架/发布：细粒度 component:status_update ∨ 原有 component:publish
+        ["component:publish", "component:status_update"]
+      : ["component:update"]
+    : ["component:create"];
 
-  const authResult = await requirePlatformPermission(request, requiredPermission);
+  const authResult = await requirePlatformPermission(request, ...requiredPermissions);
   if (!authResult.authorized) {
     return authResult.errorResponse!;
   }
@@ -147,6 +149,13 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     return NextResponse.json({ error: `功能职责描述最多 ${MAX_DESCRIPTION_LENGTH} 字` }, { status: 400 });
   }
 
+  // 服务端强校验：算力成本必须是合法正整数（前端校验不能作为唯一防线）。
+  // 新建必填；更新仅在显式携带时校验并写入，未携带则保持数据库原值，绝不重置为 0
+  const costDecision = resolveComponentCost(body.estimatedModelTokens, isUpdate);
+  if (!costDecision.ok) {
+    return NextResponse.json({ error: costDecision.message }, { status: 400 });
+  }
+
   const data: any = {
     name,
     description,
@@ -159,10 +168,11 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     contract: body.contract ?? null,
     keywords: Array.isArray(body.keywords) ? body.keywords : undefined,
     isPremium: body.isPremium ?? false,
-    estimatedModelTokens: body.estimatedModelTokens ?? 0,
     previewData: body.previewData ?? { inputMock: "", outputMock: "", roiText: "" },
     sortOrder: body.sortOrder ?? 0,
     isPublished: isPublished !== undefined ? isPublished : true,
+    // 仅在显式提供成本时写入，避免更新非成本字段时把原成本覆盖为 0
+    ...(costDecision.provided ? { estimatedModelTokens: costDecision.value } : {}),
   };
 
   let component;
@@ -207,7 +217,8 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     });
     await writeAuditLog(
       userId,
-      requiredPermission,
+      // 更新动作的审计 action：取本次权限数组的主要动作（上下架时为首个权限 component:publish）
+      requiredPermissions[0],
       { id: componentId, name: component.name, updates: body },
       null,
       null,
@@ -224,7 +235,7 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
         icon: icon || "package",
         tags: tagList,
         isPremium: body.isPremium ?? false,
-        estimatedModelTokens: body.estimatedModelTokens ?? 0,
+        estimatedModelTokens: costDecision.value,
         previewData: data.previewData,
         inputMode: body.inputMode || "text",
         accept: body.accept ?? null,
@@ -238,7 +249,8 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     });
     await writeAuditLog(
       userId,
-      requiredPermission,
+      // 创建动作的审计 action：明确使用 component:create
+      "component:create",
       { id: component.id, name: component.name },
       null,
       null,
