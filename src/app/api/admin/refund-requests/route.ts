@@ -20,25 +20,31 @@ export async function GET(request: NextRequest) {
     const status = (request.nextUrl.searchParams.get("status") || "PENDING").trim().toUpperCase();
     const where = status && status !== "ALL" ? { status } : {};
 
+    // 退款申请经管理员人工审批，量级小，全量拉取后在客户端做筛选 / 搜索 / 分页，
+    // 避免 take:200 这类上限在申请增多时静默截断数据。
     const rows = await prisma.refundrequest.findMany({
       where,
       orderBy: { createdAt: "asc" },
-      take: 200,
     });
 
     const taskIds = Array.from(new Set(rows.map((r) => r.taskId)));
     const userIds = Array.from(new Set(rows.map((r) => r.userId)));
+    const adminIds = Array.from(new Set(rows.map((r) => r.adminId).filter(Boolean) as string[]));
 
-    const [tasks, users] = await Promise.all([
+    const [tasks, users, admins] = await Promise.all([
       taskIds.length
         ? prisma.componenttask.findMany({ where: { id: { in: taskIds } }, select: { id: true, name: true, status: true } })
         : [],
       userIds.length
         ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true, name: true } })
         : [],
+      adminIds.length
+        ? prisma.user.findMany({ where: { id: { in: adminIds } }, select: { id: true, email: true, name: true } })
+        : [],
     ]);
     const taskMap = new Map(tasks.map((t) => [t.id, t]));
     const userMap = new Map(users.map((u) => [u.id, u]));
+    const adminMap = new Map(admins.map((u) => [u.id, u]));
 
     return NextResponse.json({
       success: true,
@@ -48,6 +54,7 @@ export async function GET(request: NextRequest) {
         taskName: taskMap.get(r.taskId)?.name ?? null,
         taskStatus: taskMap.get(r.taskId)?.status ?? null,
         applicant: userMap.get(r.userId) ?? null,
+        admin: r.adminId ? adminMap.get(r.adminId) ?? null : null,
       })),
     });
   } catch (error) {

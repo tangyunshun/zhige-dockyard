@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
           providerName: d.provider.name,
           modelId: d.modelId,
           upstreamModel: d.upstreamModel,
+          priceOrigin: mainstream?.priceOrigin || "PLATFORM",
           displayName: d.displayName || d.upstreamModel,
           contextLimit: d.contextLimit,
           capabilities: (Array.isArray(d.capabilities) ? d.capabilities : []) as string[],
@@ -119,7 +120,22 @@ export async function GET(request: NextRequest) {
       }),
     );
 
-    return NextResponse.json({ success: true, data });
+    // 动态元数据：高峰窗口与节假日覆盖均来自实时配置/日历，页面据此渲染，无需硬编码
+    const allPeriods = data.flatMap((d) => d.periods);
+    const peakPeriods = allPeriods.filter((p) => p.kind === "PEAK" && p.startTime && p.endTime);
+    const peakRanges = Array.from(new Set(peakPeriods.map((p) => `${p.startTime}-${p.endTime}`))).sort();
+    const peakWeekdaysRaw = peakPeriods[0]?.weekdays;
+    const peakWeekdaysText =
+      peakWeekdaysRaw && peakWeekdaysRaw.split(",").filter(Boolean).sort().join(",") === "1,2,3,4,5"
+        ? "工作日"
+        : peakWeekdaysRaw
+          ? `星期${peakWeekdaysRaw.split(",").join("、")}`
+          : "每天";
+    const meta = {
+      peakWindow: { weekdaysText: peakWeekdaysText, ranges: peakRanges },
+    };
+
+    return NextResponse.json({ success: true, data, meta });
   } catch (error) {
     console.error("[model-pricing-public] 查询失败:", (error as Error)?.message);
     return NextResponse.json({ success: false, error: "查询模型定价失败" }, { status: 500 });

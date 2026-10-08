@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission } from "@/lib/security";
 import { PRICE_SOURCES, resolvePriceStatus, yuanPerMillionToMicros } from "@/lib/model-pricing";
+import { rejectIfDeploymentEnabled } from "@/lib/model-deployment-guard";
 
 interface PeriodListParams {
   deploymentId: string;
@@ -145,6 +146,9 @@ export async function POST(
     const auth = await requirePlatformPermission(request, "system:manage", "model:manage", "billing:manage");
     if (!auth.authorized) return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
     const { deploymentId } = await params;
+    // 启用态冻结：新增时段价格等于改写计费规则，运行中的模型不允许
+    const locked = await rejectIfDeploymentEnabled(deploymentId);
+    if (locked) return locked;
     const deployment = await prisma.modeldeployment.findUnique({ where: { id: deploymentId }, select: { id: true } });
     if (!deployment) return NextResponse.json({ success: false, error: "模型部署不存在" }, { status: 404 });
 

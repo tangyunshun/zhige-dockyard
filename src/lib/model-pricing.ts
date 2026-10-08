@@ -51,6 +51,8 @@ export interface DeploymentPricing {
   priceCacheWriteMicrosPerMillion: number | null;
   priceSource: PriceSource;
   priceStatus: PriceStatus;
+  /// 价格来源（计费口径）：PLATFORM 平台模型注册表 | USER_BYOK 用户自带模型
+  priceOrigin?: "PLATFORM" | "USER_BYOK" | string;
   markupRateBps: number | null;
   priceVersion: number;
   effectiveFrom: string | null;

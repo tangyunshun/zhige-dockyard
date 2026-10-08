@@ -12,8 +12,9 @@ import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
-  Cpu,
   Server,
+  Boxes,
+  Star,
   Plus,
   RotateCcw,
   CheckCircle2,
@@ -158,7 +159,7 @@ export default function AdminModelsPage() {
       setTestingId(null);
     }
   };
-  // 平台默认模型（唯一裁决入口读取的配置；来自数据库，不在前端硬编码任何供应商/模型）
+  // 平台默认模型（配置读取自数据库，前端不硬编码任何供应商/模型）
   const [platformDefault, setPlatformDefault] = useState<{
     deploymentId: string | null;
     deployment: { id: string; providerId: string; modelId: string } | null;
@@ -270,6 +271,97 @@ export default function AdminModelsPage() {
     return body;
   }, []);
 
+  // 上下文窗口：从权威公开模型目录实时获取，命中即写入并锁定只读，避免手工写错；未命中才允许手写
+  const [ctxInfo, setCtxInfo] = useState<{
+    loading: boolean;
+    tried: boolean;
+    found: boolean;
+    contextLimit?: number;
+    outputLimit?: number;
+    source?: string;
+    matchedKey?: string;
+  }>({ loading: false, tried: false, found: false });
+
+  const autoFetchContext = useCallback(
+    async (modelId: string, upstreamModel?: string) => {
+      const mid = (modelId || "").trim();
+      const up = (upstreamModel || "").trim();
+      if (!mid && !up) return;
+      setCtxInfo((s) => ({ ...s, loading: true }));
+      try {
+        const qs = new URLSearchParams();
+        qs.set("model", mid);
+        if (up) qs.set("upstream", up);
+        const body = await authFetch(`/api/admin/model-context?${qs.toString()}`);
+        const d = (body?.data ?? {}) as {
+          contextLimit?: number;
+          outputLimit?: number;
+          source?: string;
+          matchedKey?: string;
+        };
+        const found = typeof d.contextLimit === "number";
+        setCtxInfo({
+          loading: false,
+          tried: true,
+          found,
+          contextLimit: d.contextLimit,
+          outputLimit: d.outputLimit,
+          source: d.source,
+          matchedKey: d.matchedKey,
+        });
+        if (found && d.contextLimit) {
+          setDForm((f) => ({ ...f, contextLimit: String(d.contextLimit) }));
+          setDErrors((prev) => ({ ...prev, contextLimit: undefined }));
+        }
+      } catch {
+        setCtxInfo({ loading: false, tried: true, found: false });
+      }
+    },
+    [authFetch],
+  );
+
+  // 编辑部署时同样的自动获取（独立状态，避免与新建表单互相干扰）
+  const [ctxEditInfo, setCtxEditInfo] = useState<{
+    loading: boolean;
+    tried: boolean;
+    found: boolean;
+    contextLimit?: number;
+    outputLimit?: number;
+    source?: string;
+    matchedKey?: string;
+  }>({ loading: false, tried: false, found: false });
+
+  const autoFetchEditContext = useCallback(async () => {
+    const mid = (editDeploymentMeta.modelId || "").trim();
+    const up = (dEditForm.upstreamModel || "").trim();
+    if (!mid && !up) return;
+    setCtxEditInfo((s) => ({ ...s, loading: true }));
+    try {
+      const qs = new URLSearchParams();
+      qs.set("model", mid);
+      if (up) qs.set("upstream", up);
+      const body = await authFetch(`/api/admin/model-context?${qs.toString()}`);
+      const d = (body?.data ?? {}) as { contextLimit?: number; outputLimit?: number; source?: string; matchedKey?: string };
+      const found = typeof d.contextLimit === "number";
+      setCtxEditInfo({
+        loading: false,
+        tried: true,
+        found,
+        contextLimit: d.contextLimit,
+        outputLimit: d.outputLimit,
+        source: d.source,
+        matchedKey: d.matchedKey,
+      });
+      if (found && d.contextLimit) {
+        setDEditForm((f) => ({ ...f, contextLimit: String(d.contextLimit) }));
+        setDEditErrors({});
+      }
+    } catch {
+      setCtxEditInfo({ loading: false, tried: true, found: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authFetch, editDeploymentMeta.modelId, dEditForm.upstreamModel]);
+
   const applyPlatformDefault = useCallback((def: { deploymentId?: string | null; deployment?: unknown }) => {
     setPlatformDefault({
       deploymentId: def?.deploymentId ?? null,
@@ -338,7 +430,7 @@ export default function AdminModelsPage() {
         title: "禁用供应商通道",
         message: `确认禁用供应商通道「${row.name}」？`,
         warnings: [
-          `禁用后，该通道下关联的 ${activeCount} 个已启用模型部署将立即全部失效，全站组件无法调度调用。`,
+          `禁用后，该通道下关联的 ${activeCount} 个已启用模型部署将立即全部失效，全站组件将无法使用这些模型。`,
           "已配置该供应商模型为默认策略的工作空间，任务执行将直接报错中断。",
         ],
         type: "warning",
@@ -391,7 +483,7 @@ export default function AdminModelsPage() {
         warnings: [
           "禁用后，全站所有依赖该模型的组件将立即拒绝执行，且系统不会自动回落环境变量。",
           platformDefault?.deploymentId === row.id
-            ? "⚠️ 特别提醒：该模型当前被设为【平台默认模型】，禁用后未配置空间专属默认的工作空间将无法调度执行！"
+            ? "⚠️ 特别提醒：该模型当前被设为【平台默认模型】，禁用后没有单独设置模型的工作空间将无法执行模型任务！"
             : "若有工作空间模型策略将此模型设为默认，相关空间的执行任务也将受到影响。",
         ],
         type: "warning",
@@ -522,6 +614,7 @@ export default function AdminModelsPage() {
       contextLimit: String(d.contextLimit || 32000),
     });
     setDEditErrors({});
+    setCtxEditInfo({ loading: false, tried: false, found: false });
   };
   const saveDeploymentEdit = async () => {
     if (!editDeploymentId) return;
@@ -557,6 +650,7 @@ export default function AdminModelsPage() {
       });
       toast.success("模型部署已更新");
       setEditDeploymentId(null);
+      setCtxEditInfo({ loading: false, tried: false, found: false });
       await load();
     } catch (e) {
       toast.error((e as Error)?.message || "更新模型部署失败");
@@ -597,7 +691,7 @@ export default function AdminModelsPage() {
   /** 保存模型能力：写回部署后，组件「能力是否满足」判定立即按新能力生效 */
   const saveCapabilities = async (row: ModelDeployment) => {
     if (capabilityDraft.length === 0) {
-      setCapError("模型必须至少声明一项基础能力（如文本生成），否则全站组件将无法调度该模型");
+      setCapError("模型必须至少声明一项基础能力（如文本生成），否则全站组件将无法使用该模型");
       setTimeout(() => {
         const el = document.getElementById("capability-options-grid");
         if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -682,7 +776,7 @@ export default function AdminModelsPage() {
       errors.contextLimit = "上下文窗口上限必须为大于 0 的有效正整数";
     }
     if ((dForm.capabilities as string[]).length === 0) {
-      errors.capabilities = "请至少勾选一项抽象能力（如「文本生成」），否则组件无法调度该模型";
+      errors.capabilities = "请至少勾选一项能力（如「文本生成」），否则组件将无法使用该模型";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -721,6 +815,7 @@ export default function AdminModelsPage() {
         capabilities: [],
       });
       setDErrors({});
+      setCtxInfo({ loading: false, tried: false, found: false });
       await load();
     } catch (e) {
       toast.error((e as Error)?.message || "创建失败");
@@ -755,6 +850,12 @@ export default function AdminModelsPage() {
     return Math.round(n * 1_000_000);
   };
   const microsToYuan = (v: number | null): string => (v === null || v === undefined ? "" : String(v / 1_000_000));
+
+  // 两种定价模式互斥：加价率与用户端售价二选一（填一方则置灰另一方并提示）
+  const priceUserFilled = [priceForm.priceInput, priceForm.priceOutput, priceForm.priceCacheRead, priceForm.priceCacheWrite].some(
+    (v) => (v ?? "").trim() !== "",
+  );
+  const priceMarkupFilled = (priceForm.markupRateBps ?? "").trim() !== "";
 
   // —— 时段价格（覆盖主流价）——
   type PricePeriodRow = {
@@ -804,6 +905,44 @@ export default function AdminModelsPage() {
     markupRateBps: "",
   });
   const [periodErrors, setPeriodErrors] = useState<Record<string, string | undefined>>({});
+  const periodUserFilled = [periodForm.priceInput, periodForm.priceOutput, periodForm.priceCacheRead, periodForm.priceCacheWrite].some(
+    (v) => (v ?? "").trim() !== "",
+  );
+  const periodMarkupFilled = (periodForm.markupRateBps ?? "").trim() !== "";
+
+  // 加价率 → 用户售价实时推算（纯展示，不写回表单），让调整加价率时可以立刻看到售价变化
+  const derivePrice = (cost: string | undefined, bpsRaw: string | undefined): number | null => {
+    const c = Number(cost ?? "");
+    const bp = Number(bpsRaw ?? "");
+    if ((cost ?? "").trim() === "" || !Number.isFinite(c)) return null;
+    if ((bpsRaw ?? "").trim() === "" || !Number.isFinite(bp)) return null;
+    return Number((c * (1 + bp / 10_000)).toFixed(6));
+  };
+  const priceDerived = priceMarkupFilled
+    ? {
+        priceInput: derivePrice(priceForm.costInput, priceForm.markupRateBps),
+        priceOutput: derivePrice(priceForm.costOutput, priceForm.markupRateBps),
+        priceCacheRead: derivePrice(priceForm.costCacheRead, priceForm.markupRateBps),
+        priceCacheWrite: derivePrice(priceForm.costCacheWrite, priceForm.markupRateBps),
+      }
+    : null;
+  const periodDerivedPrices = periodMarkupFilled
+    ? {
+        priceInput: derivePrice(periodForm.costInput, periodForm.markupRateBps),
+        priceOutput: derivePrice(periodForm.costOutput, periodForm.markupRateBps),
+        priceCacheRead: derivePrice(periodForm.costCacheRead, periodForm.markupRateBps),
+        priceCacheWrite: derivePrice(periodForm.costCacheWrite, periodForm.markupRateBps),
+      }
+    : null;
+  const WD_OPTIONS: [string, string][] = [
+    ["1", "周一"],
+    ["2", "周二"],
+    ["3", "周三"],
+    ["4", "周四"],
+    ["5", "周五"],
+    ["6", "周六"],
+    ["7", "周日"],
+  ];
 
   const loadPricePeriods = async (deploymentId: string) => {
     try {
@@ -815,6 +954,10 @@ export default function AdminModelsPage() {
   };
 
   const periodScheduleText = (p: PricePeriodRow): string => {
+    // 自动节假日时段：无日期/星期约束，由官方日历自动命中
+    if (p.kind === "HOLIDAY" && !p.startDate && !p.endDate && !p.weekdays && !p.startTime && !p.endTime) {
+      return "法定节假日自动套用 · 按国务院官方日历（当前及后续已配置年份）命中即按闲时价";
+    }
     const parts: string[] = [];
     const wdNames = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
     if (p.weekdays && p.startTime && p.endTime) {
@@ -929,6 +1072,15 @@ export default function AdminModelsPage() {
     } finally {
       setBusy(null);
     }
+  };
+
+  /** 关闭价格弹窗前检查：时段正在编辑时阻止误关，避免未保存的时段改动被丢弃 */
+  const tryClosePricePanel = () => {
+    if (periodPanel.open) {
+      toast.error("时段正在编辑中：请先点「更新时段」保存该时段，或点「取消」放弃本次时段修改");
+      return;
+    }
+    setPricePanelId(null);
   };
 
   const deletePeriod = async (id: string) => {
@@ -1067,7 +1219,10 @@ export default function AdminModelsPage() {
       };
       await authFetch(`/api/admin/model-pricing/${d.id}`, { method: "PATCH", body: JSON.stringify(body) });
       toast.success("价格已保存（历史任务快照不变）");
-      await openPrice(d);
+      // 保存成功后关闭价格配置弹窗，并刷新列表让「价格来源状态 / 已生效」等标识同步
+      setPricePanelId(null);
+      setPriceErrors({});
+      await load();
     } catch (e) {
       toast.error((e as Error)?.message || "保存价格失败");
     } finally {
@@ -1086,7 +1241,7 @@ export default function AdminModelsPage() {
         <div>
           <h1 className="text-3xl font-black text-slate-800 mb-2 tracking-tight flex items-center gap-2.5">
             <span className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100/80 text-[#3182ce] flex items-center justify-center font-bold shadow-2xs">
-              <Cpu className="w-5 h-5" />
+              <Layers className="w-5 h-5" />
             </span>
             <span>模型注册表</span>
           </h1>
@@ -1139,7 +1294,7 @@ export default function AdminModelsPage() {
             <div className="text-2xl font-black font-mono tracking-tight text-slate-800">{deployments.length}</div>
           </div>
           <div className="w-10 h-10 rounded bg-purple-50 border border-purple-100/80 text-[#805ad5] flex items-center justify-center font-bold shrink-0 shadow-2xs">
-            <Cpu className="w-5 h-5" />
+            <Boxes className="w-5 h-5" />
           </div>
         </div>
 
@@ -1165,22 +1320,17 @@ export default function AdminModelsPage() {
         </div>
       ) : (
         <>
-          {/* 平台默认模型：来自数据库配置，为「未配置空间默认」的空间兜底裁决 */}
+          {/* 平台默认模型：来自数据库配置，供未设置专属默认模型的工作空间使用 */}
           <section className="bg-white rounded-lg border border-slate-200/80 shadow-2xs overflow-hidden">
             <div className="px-6 py-4 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-white border-b border-blue-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded bg-[#3182ce] text-white flex items-center justify-center shadow-xs">
-                  <Cpu className="w-4 h-4" />
+                  <Star className="w-4 h-4" />
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
-                    <span>平台默认模型</span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-[#2b6cb0] border border-blue-200">
-                      兜底裁决
-                    </span>
-                  </h2>
+                  <h2 className="text-base font-black text-slate-800 tracking-tight">平台默认模型</h2>
                   <p className="text-xs text-slate-500 font-medium">
-                    未配置空间专属默认模型时，组件任务将自动采用此处的平台默认模型
+                    工作空间如果没有单独设置专属模型，组件任务将自动采用此处指定的模型
                   </p>
                 </div>
               </div>
@@ -1207,7 +1357,7 @@ export default function AdminModelsPage() {
               <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-[#3182ce] shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
-                  未配置空间专属默认模型时，组件执行将选用此处设定的全站默认部署；若两者皆未配置，系统将无法调度模型执行任务。备选项实时来自数据库部署列表。
+                  当工作空间没有单独设置专属模型时，组件任务会自动使用此处设定的全站默认部署；若两者都没设置，该空间的组件任务将无法执行。下拉备选项实时取自数据库中已启用的部署。
                 </div>
               </div>
 
@@ -1540,7 +1690,7 @@ export default function AdminModelsPage() {
             <div className="px-6 py-4 bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded bg-purple-50 border border-purple-100 text-[#805ad5] flex items-center justify-center font-bold shadow-2xs">
-                  <Cpu className="w-4 h-4" />
+                  <Boxes className="w-4 h-4" />
                 </div>
                 <div>
                   <h2 className="text-base font-black text-slate-800 tracking-tight">模型部署 (Deployments)</h2>
@@ -1600,6 +1750,7 @@ export default function AdminModelsPage() {
                       setDForm({ ...dForm, modelId: e.target.value });
                       if (dErrors.modelId) setDErrors({ ...dErrors, modelId: undefined });
                     }}
+                    onBlur={(e) => autoFetchContext(e.target.value, dForm.upstreamModel)}
                   />
                   {dErrors.modelId && (
                     <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
@@ -1616,6 +1767,7 @@ export default function AdminModelsPage() {
                     placeholder="真正下发厂商的 model（如 deepseek-chat）"
                     value={dForm.upstreamModel}
                     onChange={(e) => setDForm({ ...dForm, upstreamModel: e.target.value })}
+                    onBlur={(e) => autoFetchContext(dForm.modelId, e.target.value)}
                   />
                   <span className="block text-[11px] text-slate-400">留空则直接以下方代号下发</span>
                 </label>
@@ -1632,16 +1784,41 @@ export default function AdminModelsPage() {
 
                 <label className="block space-y-1">
                   <span className="text-xs font-bold text-slate-600">上下文窗口上限 (Token) <span className="text-red-500 font-bold ml-0.5">*</span></span>
-                  <input
-                    id="deployment-input-contextLimit"
-                    className={getInputCls(!!dErrors.contextLimit)}
-                    placeholder="如 32000、64000、128000"
-                    value={dForm.contextLimit}
-                    onChange={(e) => {
-                      setDForm({ ...dForm, contextLimit: e.target.value });
-                      if (dErrors.contextLimit) setDErrors({ ...dErrors, contextLimit: undefined });
-                    }}
-                  />
+                  <div className="relative">
+                    <input
+                      id="deployment-input-contextLimit"
+                      className={`${getInputCls(!!dErrors.contextLimit)} ${
+                        ctxInfo.found ? "pr-24 bg-slate-50 text-slate-600 cursor-not-allowed" : ""
+                      }`}
+                      placeholder={ctxInfo.loading ? "正在从官方目录获取..." : "如 32000、64000、128000"}
+                      value={dForm.contextLimit}
+                      readOnly={ctxInfo.found}
+                      onChange={(e) => {
+                        setDForm({ ...dForm, contextLimit: e.target.value });
+                        if (dErrors.contextLimit) setDErrors({ ...dErrors, contextLimit: undefined });
+                      }}
+                    />
+                    {ctxInfo.found && (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-black bg-blue-50 text-[#2b6cb0] border border-blue-200">
+                        官方目录
+                      </span>
+                    )}
+                  </div>
+                  {ctxInfo.found ? (
+                    <span className="block text-[11px] text-emerald-600 font-bold">
+                      来源：{ctxInfo.source}
+                      {ctxInfo.matchedKey ? `（${ctxInfo.matchedKey}）` : ""}
+                      {ctxInfo.outputLimit ? `，输出上限 ${ctxInfo.outputLimit}` : ""}
+                    </span>
+                  ) : ctxInfo.tried && !ctxInfo.loading ? (
+                    <span className="block text-[11px] text-amber-600 font-bold">
+                      未在公开目录匹配到该模型，请自行核实后填写
+                    </span>
+                  ) : (
+                    <span className="block text-[11px] text-slate-400">
+                      填写模型代号或上游名称后自动获取
+                    </span>
+                  )}
                   {dErrors.contextLimit && (
                     <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -1697,7 +1874,7 @@ export default function AdminModelsPage() {
               </div>
 
               <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 leading-relaxed">
-                创建时已在上方声明抽象能力；创建后还需：① 点击「价格」配置 Token 单价；② 在上方「平台默认模型」或「空间模型策略」中指定该模型生效，组件即可立即调度。
+                创建后还需两步：① 点击「价格」配置 Token 单价；② 在上方「平台默认模型」或「空间模型策略」中指定该模型，组件即可使用。
               </div>
 
               <div className="pt-1 flex items-center justify-end gap-3">
@@ -1715,6 +1892,7 @@ export default function AdminModelsPage() {
                       capabilities: [],
                     });
                     setDErrors({});
+                    setCtxInfo({ loading: false, tried: false, found: false });
                   }}
                   title="清空当前输入的所有模型部署信息与勾选能力"
                 >
@@ -1918,26 +2096,29 @@ export default function AdminModelsPage() {
                             </button>
                           )}
 
-                          {/* 次要操作统一收进「⋯」菜单：价格 / 能力 / 编辑（仅禁用时）/ 删除（仅禁用时） */}
-                          <button
-                            type="button"
-                            className={`inline-flex items-center justify-center w-7 h-7 rounded font-bold transition-all duration-200 cursor-pointer shadow-2xs active:scale-95 border ${
-                              actionMenu?.id === d.id
-                                ? "bg-[#3182ce] text-white border-[#3182ce]"
-                                : "bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-800 border-slate-200"
-                            }`}
-                            onClick={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setActionMenu((prev) =>
-                                prev?.id === d.id
-                                  ? null
-                                  : { id: d.id, top: rect.bottom + 6, right: window.innerWidth - rect.right }
-                              );
-                            }}
-                            title="更多操作"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </button>
+                          {/* 次要操作收进「⋯」菜单：价格 / 能力 / 编辑 / 删除。
+                              启用中的模型仅有「测试通道 / 停用」两个操作，无需再展示「⋯」。 */}
+                          {!d.enabled && (
+                            <button
+                              type="button"
+                              className={`inline-flex items-center justify-center w-7 h-7 rounded font-bold transition-all duration-200 cursor-pointer shadow-2xs active:scale-95 border ${
+                                actionMenu?.id === d.id
+                                  ? "bg-[#3182ce] text-white border-[#3182ce]"
+                                  : "bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-800 border-slate-200"
+                              }`}
+                              onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setActionMenu((prev) =>
+                                  prev?.id === d.id
+                                    ? null
+                                    : { id: d.id, top: rect.bottom + 6, right: window.innerWidth - rect.right }
+                                );
+                              }}
+                              title="更多操作"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1945,7 +2126,7 @@ export default function AdminModelsPage() {
                   {deployments.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                        <Cpu className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <Boxes className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         <span className="text-xs font-bold text-slate-500">暂无模型部署</span>
                       </td>
                     </tr>
@@ -1973,20 +2154,28 @@ export default function AdminModelsPage() {
             (() => {
               const menuDep = deployments.find((x) => x.id === actionMenu.id);
               if (!menuDep) return null;
-              const menuItems: { label: string; icon: ReactNode; cls: string; action: () => void }[] = [
-                {
-                  label: "价格",
-                  icon: <Coins className="w-3.5 h-3.5" />,
-                  cls: "text-[#3182ce] hover:bg-blue-50",
-                  action: () => openPrice(menuDep),
-                },
-                {
-                  label: "能力",
-                  icon: <SlidersHorizontal className="w-3.5 h-3.5" />,
-                  cls: "text-[#805ad5] hover:bg-purple-50",
-                  action: () => openCapabilityPanel(menuDep),
-                },
-              ];
+              // 启用中的模型只保留「测试通道 / 停用」等操作；价格与能力修改仅在停用后出现，避免无效入口
+              const menuItems: {
+                label: string;
+                icon: ReactNode;
+                cls: string;
+                action: () => void;
+              }[] = menuDep.enabled
+                ? []
+                : [
+                    {
+                      label: "价格",
+                      icon: <Coins className="w-3.5 h-3.5" />,
+                      cls: "text-[#3182ce] hover:bg-blue-50",
+                      action: () => openPrice(menuDep),
+                    },
+                    {
+                      label: "能力",
+                      icon: <SlidersHorizontal className="w-3.5 h-3.5" />,
+                      cls: "text-[#805ad5] hover:bg-purple-50",
+                      action: () => openCapabilityPanel(menuDep),
+                    },
+                  ];
               if (!menuDep.enabled) {
                 menuItems.push(
                   {
@@ -2060,7 +2249,7 @@ export default function AdminModelsPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setPricePanelId(null)}
+                    onClick={tryClosePricePanel}
                     className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors flex items-center justify-center cursor-pointer shrink-0"
                     title="关闭"
                   >
@@ -2075,6 +2264,9 @@ export default function AdminModelsPage() {
                     <Info className="w-4 h-4 text-[#3182ce] shrink-0 mt-0.5" />
                     <div>
                       平台采用<b>微元</b>（1 元 = 1,000,000 微元）进行纳秒级精确算力核算。修改价格保存后仅对新任务生效，历史已生成账单快照严格锁定不变。
+                      <br />
+                      <b>两处加价率的分工：</b>结算时先按当前时间匹配时段——<b>命中时段</b>就完全按该时段自己的定价（它的直接售价，或它的成本 × (1 + 该时段加价率/10000)）；
+                      <b>未命中任何时段</b>才回退主流价（主流价的直接售价，或主流价成本 × (1 + 主流价加价率/10000)）。两层互不叠加、互不继承。
                     </div>
                   </div>
 
@@ -2139,9 +2331,10 @@ export default function AdminModelsPage() {
                         <span className="font-bold">平台加价率 (基点 bp)</span>
                         <input
                           id="price-input-markupRateBps"
-                          className={getInputCls(!!priceErrors.markupRateBps)}
+                          className={`${getInputCls(!!priceErrors.markupRateBps)} ${priceUserFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
                           placeholder="如 2000 = 20%"
                           value={priceForm.markupRateBps}
+                          disabled={priceUserFilled}
                           onChange={(e) => {
                             setPriceForm({ ...priceForm, markupRateBps: e.target.value });
                             if (priceErrors.markupRateBps) setPriceErrors({ ...priceErrors, markupRateBps: undefined });
@@ -2155,15 +2348,19 @@ export default function AdminModelsPage() {
                         )}
                         {/* 两种定价模式互斥：实时提示，避免保存时才被接口拒绝 */}
                         {(() => {
-                          const markupFilled = priceForm.markupRateBps.trim() !== "";
-                          const priceFilled = [priceForm.priceInput, priceForm.priceOutput, priceForm.priceCacheRead, priceForm.priceCacheWrite].some(
-                            (v) => v.trim() !== "",
-                          );
-                          if (markupFilled && priceFilled) {
+                          if (priceUserFilled) {
                             return (
-                              <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-center gap-1 leading-relaxed">
-                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                                <span>「用户端售价」与「加价率」同时填会冲突：两套定价模式互斥，请清空其中一组再保存。</span>
+                              <p className="text-[11px] text-sky-600 font-medium mt-1 flex items-center gap-1 leading-relaxed">
+                                <Info className="w-3.5 h-3.5 shrink-0" />
+                                <span>已选「直接定价」：你已填写用户端售价，本项「平台加价率」已自动置灰（二选一）。如需改用成本加成模式，请先清空上面的用户端售价。</span>
+                              </p>
+                            );
+                          }
+                          if (priceMarkupFilled) {
+                            return (
+                              <p className="text-[11px] text-sky-600 font-medium mt-1 flex items-center gap-1 leading-relaxed">
+                                <Info className="w-3.5 h-3.5 shrink-0" />
+                                <span>已选「成本加成」：本项已填，用户端售价 4 个输入框已自动置灰；实际售价由系统按「售价 = 供应商成本 × (1 + 加价率/10000)」自动算出（需同时填写供应商成本）。</span>
                               </p>
                             );
                           }
@@ -2287,14 +2484,29 @@ export default function AdminModelsPage() {
                       </h4>
                       <span className="text-[11px] text-[#3182ce] font-bold">实际扣费依据 · 单位: 元 / 100万 Token</span>
                     </div>
+                    {priceMarkupFilled && (
+                      <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-[11px] text-sky-700 font-bold leading-relaxed">
+                        当前为「成本加成」模式：加价率 {priceForm.markupRateBps} bp（+
+                        {Number(priceForm.markupRateBps || 0) / 100}%），下面售价由系统按「成本 × (1 + bp/10000)」
+                        实时算出，会随你修改加价率或成本立即变化。
+                        {priceDerived && (
+                          <span className="ml-1 font-mono">
+                            推算结果：输入 {priceDerived.priceInput ?? "—"} / 输出 {priceDerived.priceOutput ?? "—"}
+                            {priceDerived.priceCacheRead != null ? ` / 缓存读 ${priceDerived.priceCacheRead}` : ""}
+                            {priceDerived.priceCacheWrite != null ? ` / 缓存写 ${priceDerived.priceCacheWrite}` : ""}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-blue-50/40 p-3.5 rounded-xl border border-blue-100">
                       <label className="text-xs text-slate-700 space-y-1 block">
                         <span className="font-bold">输入 Token 售价</span>
                         <input
                           id="price-input-priceInput"
-                          className={getInputCls(!!priceErrors.priceInput)}
+                          className={`${getInputCls(!!priceErrors.priceInput)} ${priceMarkupFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
+                          disabled={priceMarkupFilled}
                           placeholder="如 3.00"
-                          value={priceForm.priceInput}
+                          value={priceMarkupFilled ? (priceDerived?.priceInput != null ? String(priceDerived.priceInput) : "") : priceForm.priceInput}
                           onChange={(e) => {
                             setPriceForm({ ...priceForm, priceInput: e.target.value });
                             if (priceErrors.priceInput) setPriceErrors({ ...priceErrors, priceInput: undefined });
@@ -2312,9 +2524,10 @@ export default function AdminModelsPage() {
                         <span className="font-bold">输出 Token 售价</span>
                         <input
                           id="price-input-priceOutput"
-                          className={getInputCls(!!priceErrors.priceOutput)}
+                          className={`${getInputCls(!!priceErrors.priceOutput)} ${priceMarkupFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
+                          disabled={priceMarkupFilled}
                           placeholder="如 12.00"
-                          value={priceForm.priceOutput}
+                          value={priceMarkupFilled ? (priceDerived?.priceOutput != null ? String(priceDerived.priceOutput) : "") : priceForm.priceOutput}
                           onChange={(e) => {
                             setPriceForm({ ...priceForm, priceOutput: e.target.value });
                             if (priceErrors.priceOutput) setPriceErrors({ ...priceErrors, priceOutput: undefined });
@@ -2332,9 +2545,10 @@ export default function AdminModelsPage() {
                         <span className="font-bold">缓存命中读取售价</span>
                         <input
                           id="price-input-priceCacheRead"
-                          className={getInputCls(!!priceErrors.priceCacheRead)}
+                          className={`${getInputCls(!!priceErrors.priceCacheRead)} ${priceMarkupFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
+                          disabled={priceMarkupFilled}
                           placeholder="如 0.60"
-                          value={priceForm.priceCacheRead}
+                          value={priceMarkupFilled ? (priceDerived?.priceCacheRead != null ? String(priceDerived.priceCacheRead) : "") : priceForm.priceCacheRead}
                           onChange={(e) => {
                             setPriceForm({ ...priceForm, priceCacheRead: e.target.value });
                             if (priceErrors.priceCacheRead) setPriceErrors({ ...priceErrors, priceCacheRead: undefined });
@@ -2352,9 +2566,10 @@ export default function AdminModelsPage() {
                         <span className="font-bold">缓存写入售价</span>
                         <input
                           id="price-input-priceCacheWrite"
-                          className={getInputCls(!!priceErrors.priceCacheWrite)}
+                          className={`${getInputCls(!!priceErrors.priceCacheWrite)} ${priceMarkupFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
+                          disabled={priceMarkupFilled}
                           placeholder="如 3.00"
-                          value={priceForm.priceCacheWrite}
+                          value={priceMarkupFilled ? (priceDerived?.priceCacheWrite != null ? String(priceDerived.priceCacheWrite) : "") : priceForm.priceCacheWrite}
                           onChange={(e) => {
                             setPriceForm({ ...priceForm, priceCacheWrite: e.target.value });
                             if (priceErrors.priceCacheWrite) setPriceErrors({ ...priceErrors, priceCacheWrite: undefined });
@@ -2385,7 +2600,7 @@ export default function AdminModelsPage() {
                       </button>
                     </div>
                     <p className="text-[11px] text-slate-400 leading-relaxed">
-                      为闲时 / 高峰 / 节日等自定义时段设置不同单价；结算时按当前时钟+日期自动选用命中的时段价，无命中则回退上面的主流价。每条可启用 / 禁用 / 编辑 / 删除。
+                      为闲时 / 高峰 / 节假日等自定义时段设置不同单价；结算时按当前时钟+日期自动选用命中的时段价，无命中则回退上面的主流价。每条可启用 / 禁用 / 编辑 / 删除。
                     </p>
                     {pricePeriods.length === 0 ? (
                       <div className="text-[11px] text-slate-400 bg-slate-50/60 border border-dashed border-slate-200 rounded-lg p-3 text-center">
@@ -2399,7 +2614,7 @@ export default function AdminModelsPage() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-bold text-slate-800">{p.name}</span>
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/60">
-                                  {p.kind === "IDLE" ? "闲时" : p.kind === "PEAK" ? "高峰" : p.kind === "HOLIDAY" ? "节日" : "自定义"}
+                                  {p.kind === "IDLE" ? "闲时" : p.kind === "PEAK" ? "高峰" : p.kind === "HOLIDAY" ? "节假日" : "自定义"}
                                 </span>
                                 <span
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -2409,7 +2624,19 @@ export default function AdminModelsPage() {
                                   {p.enabled ? "已启用" : "已禁用"}
                                 </span>
                               </div>
-                              <div className="text-[11px] text-slate-500 mt-0.5 truncate">{periodScheduleText(p)}</div>
+                              <div className="text-[11px] text-slate-500 mt-0.5">{periodScheduleText(p)}</div>
+                              <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                <span>
+                                  <span className="text-slate-400">用户售价</span> 输入 {microsToYuan(p.priceInputMicrosPerMillion)} / 输出{" "}
+                                  {microsToYuan(p.priceOutputMicrosPerMillion)} <span className="text-slate-400">元/百万</span>
+                                </span>
+                                {p.costInputMicrosPerMillion != null && (
+                                  <span>
+                                    <span className="text-slate-400">平台成本</span> 输入 {microsToYuan(p.costInputMicrosPerMillion)} / 输出{" "}
+                                    {microsToYuan(p.costOutputMicrosPerMillion)} <span className="text-slate-400">元/百万</span>
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer shrink-0">
                               <input type="checkbox" className="sr-only peer" checked={p.enabled} onChange={() => togglePeriod(p)} />
@@ -2470,7 +2697,7 @@ export default function AdminModelsPage() {
                           <select className={inputCls} value={periodForm.kind} onChange={(e) => setPeriodForm({ ...periodForm, kind: e.target.value })}>
                             <option value="IDLE">闲时</option>
                             <option value="PEAK">高峰</option>
-                            <option value="HOLIDAY">节日</option>
+                            <option value="HOLIDAY">节假日</option>
                             <option value="CUSTOM">自定义</option>
                           </select>
                         </label>
@@ -2482,10 +2709,55 @@ export default function AdminModelsPage() {
                           <input type="checkbox" checked={periodForm.enabled} onChange={(e) => setPeriodForm({ ...periodForm, enabled: e.target.checked })} />
                           <span className="font-bold">启用该时段</span>
                         </label>
-                        <label className="text-xs text-slate-700 space-y-1 block sm:col-span-2">
-                          <span className="font-bold">星期几（1-7 逗号，如 1,2,3,4,5；留空=每天）</span>
-                          <input className={inputCls} placeholder="留空=每天" value={periodForm.weekdays} onChange={(e) => setPeriodForm({ ...periodForm, weekdays: e.target.value })} />
-                        </label>
+                        <div className="text-xs text-slate-700 space-y-1 sm:col-span-2">
+                          <span className="font-bold">适用星期</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {WD_OPTIONS.map(([v, label]) => {
+                              const checked = (periodForm.weekdays || "")
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean)
+                                .includes(v);
+                              const disabled = periodForm.kind === "HOLIDAY";
+                              return (
+                                <label
+                                  key={v}
+                                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors ${
+                                    disabled
+                                      ? "opacity-40 cursor-not-allowed bg-slate-50 border-slate-200"
+                                      : checked
+                                        ? "bg-[#3182ce] text-white border-[#3182ce]"
+                                        : "bg-white border-slate-200 hover:border-[#3182ce]/50"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="hidden"
+                                    checked={checked}
+                                    disabled={disabled}
+                                    onChange={() => {
+                                      const set = new Set(
+                                        (periodForm.weekdays || "")
+                                          .split(",")
+                                          .map((s) => s.trim())
+                                          .filter(Boolean),
+                                      );
+                                      if (set.has(v)) set.delete(v);
+                                      else set.add(v);
+                                      setPeriodForm({ ...periodForm, weekdays: Array.from(set).sort().join(",") });
+                                    }}
+                                  />
+                                  {label}
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
+                            {periodForm.kind === "HOLIDAY"
+                              ? "节假日时段按国务院官方日历自动匹配，无需选择星期。"
+                              : "不选 = 每天生效；高峰通常勾选周一~周五（1-5）。"}
+                          </p>
+                        </div>
                         <label className="text-xs text-slate-700 space-y-1 block">
                           <span className="font-bold">开始时间</span>
                           <input type="time" className={inputCls} value={periodForm.startTime} onChange={(e) => setPeriodForm({ ...periodForm, startTime: e.target.value })} />
@@ -2512,7 +2784,18 @@ export default function AdminModelsPage() {
                         </label>
                         <label className="text-xs text-slate-700 space-y-1 block">
                           <span className="font-bold">平台加价率 (bp)</span>
-                          <input className={inputCls} placeholder="如 2000=20%，留空走直接定价" value={periodForm.markupRateBps} onChange={(e) => setPeriodForm({ ...periodForm, markupRateBps: e.target.value })} />
+                          <input
+                            className={`${inputCls} ${periodUserFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
+                            placeholder="如 2000=20%，留空走直接定价"
+                            value={periodForm.markupRateBps}
+                            disabled={periodUserFilled}
+                            onChange={(e) => setPeriodForm({ ...periodForm, markupRateBps: e.target.value })}
+                          />
+                          {periodUserFilled ? (
+                            <p className="text-[11px] text-sky-600 leading-relaxed">已填用户端售价，本项自动置灰（二选一）。</p>
+                          ) : periodMarkupFilled ? (
+                            <p className="text-[11px] text-sky-600 leading-relaxed">已选成本加成：售价 = 成本 × (1 + bp/10000)，用户端售价自动置灰。</p>
+                          ) : null}
                         </label>
                       </div>
                       <div>
@@ -2548,9 +2831,10 @@ export default function AdminModelsPage() {
                             <label key={k} className="text-xs text-slate-700 space-y-1 block">
                               <span className="font-bold">{label}</span>
                               <input
-                                className={inputCls}
+                                className={`${inputCls} ${periodMarkupFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
                                 placeholder="0"
                                 value={(periodForm as unknown as Record<string, string>)[k]}
+                                disabled={periodMarkupFilled}
                                 onChange={(e) => setPeriodForm({ ...periodForm, [k]: e.target.value })}
                               />
                             </label>
@@ -2584,7 +2868,7 @@ export default function AdminModelsPage() {
                   <button
                     type="button"
                     className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs"
-                    onClick={() => setPricePanelId(null)}
+                    onClick={tryClosePricePanel}
                   >
                     取消
                   </button>
@@ -2593,11 +2877,15 @@ export default function AdminModelsPage() {
                     className={btnCls}
                     disabled={busy === `price:${pricePanelId}`}
                     onClick={() => {
+                      if (periodPanel.open) {
+                        toast.error("时段正在编辑中：请先点「更新时段」保存该时段，或点「取消」放弃修改。时段与主流价各自独立保存。");
+                        return;
+                      }
                       const dep = deployments.find((x) => x.id === pricePanelId);
                       if (dep) void savePrice(dep);
                     }}
                   >
-                    {busy === `price:${pricePanelId}` ? "正在保存..." : "确认保存价格"}
+                    {busy === `price:${pricePanelId}` ? "正在保存..." : "保存主流价（时段各自单独保存）"}
                   </button>
                 </div>
               </div>
@@ -2623,7 +2911,7 @@ export default function AdminModelsPage() {
                         <span className="text-red-500 font-bold ml-0.5">*</span>
                       </h3>
                       <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                        声明该模型具备的抽象能力（必填项，至少勾选一项），决定组件能否成功调度运行
+                        声明该模型具备的能力（必填，至少勾选一项），决定组件能否正常使用它运行
                       </p>
                     </div>
                   </div>
@@ -2898,6 +3186,7 @@ export default function AdminModelsPage() {
                       placeholder="真正下发厂商的 model（留空则以下方代号下发）"
                       value={dEditForm.upstreamModel}
                       onChange={(e) => setDEditForm({ ...dEditForm, upstreamModel: e.target.value })}
+                      onBlur={() => autoFetchEditContext()}
                     />
                     <span className="block text-[11px] text-slate-400">留空则默认下发模型标识</span>
                   </label>
@@ -2919,6 +3208,14 @@ export default function AdminModelsPage() {
                         上下文窗口上限 (Token) <span className="text-red-500 font-bold">*</span>
                       </span>
                       <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => autoFetchEditContext()}
+                          disabled={ctxEditInfo.loading}
+                          className="px-2 py-0.5 rounded-[8px] text-[11px] font-black bg-blue-50 text-[#3182ce] border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {ctxEditInfo.loading ? "获取中..." : "从官方目录获取"}
+                        </button>
                         <span className="text-[10px] text-slate-400 font-medium">快捷填入:</span>
                         {[
                           { label: "32K", val: "32000" },
@@ -2947,14 +3244,26 @@ export default function AdminModelsPage() {
                     </div>
                     <input
                       id="edit-deployment-input-contextLimit"
-                      className={getInputCls(!!dEditErrors.contextLimit)}
-                      placeholder="如 32000、64000、128000"
+                      className={`${getInputCls(!!dEditErrors.contextLimit)} ${
+                        ctxEditInfo.found ? "bg-slate-50 text-slate-600 cursor-not-allowed" : ""
+                      }`}
+                      placeholder={ctxEditInfo.loading ? "正在从官方目录获取..." : "如 32000、64000、128000"}
                       value={dEditForm.contextLimit}
+                      readOnly={ctxEditInfo.found}
                       onChange={(e) => {
                         setDEditForm({ ...dEditForm, contextLimit: e.target.value });
                         if (dEditErrors.contextLimit) setDEditErrors({ ...dEditErrors, contextLimit: undefined });
                       }}
                     />
+                    {ctxEditInfo.found ? (
+                      <span className="block text-[11px] text-emerald-600 font-bold">
+                        来源：{ctxEditInfo.source}
+                        {ctxEditInfo.matchedKey ? `（${ctxEditInfo.matchedKey}）` : ""}
+                        {ctxEditInfo.outputLimit ? `，输出上限 ${ctxEditInfo.outputLimit}` : ""}
+                      </span>
+                    ) : ctxEditInfo.tried && !ctxEditInfo.loading ? (
+                      <span className="block text-[11px] text-amber-600 font-bold">未匹配到，可手写核实后保存</span>
+                    ) : null}
                     {dEditErrors.contextLimit && (
                       <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -2968,7 +3277,10 @@ export default function AdminModelsPage() {
                   <button
                     type="button"
                     className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded text-xs font-bold hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs"
-                    onClick={() => setEditDeploymentId(null)}
+                    onClick={() => {
+                      setEditDeploymentId(null);
+                      setCtxEditInfo({ loading: false, tried: false, found: false });
+                    }}
                   >
                     取消
                   </button>

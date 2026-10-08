@@ -22,6 +22,7 @@ import {
   type PriceSource,
   type PriceStatus,
 } from "@/lib/model-pricing";
+import { isHoliday } from "@/lib/holiday-calendar";
 import { tryResolveWorkspaceByoDefault } from "@/lib/workspace-byo-model";
 import { decryptSecret } from "@/lib/crypto-secrets";
 
@@ -61,13 +62,14 @@ export async function loadDeploymentPricing(deploymentId: string): Promise<Deplo
     priceCacheWriteMicrosPerMillion: row.priceCacheWriteMicrosPerMillion,
     priceSource: source,
     priceStatus: status,
+    priceOrigin: row.priceOrigin || "PLATFORM",
     markupRateBps: row.markupRateBps,
     priceVersion: row.priceVersion,
     effectiveFrom: row.effectiveFrom ? row.effectiveFrom.toISOString() : null,
   };
 }
 
-/** 时段价类型权重（同级优先级时的决胜顺序：节日 > 高峰 > 闲时 > 自定义） */
+/** 时段价类型权重（同级优先级时的决胜顺序：节假日 > 高峰 > 闲时 > 自定义） */
 const PERIOD_KIND_WEIGHT: Record<string, number> = { HOLIDAY: 3, PEAK: 2, IDLE: 1, CUSTOM: 0 };
 
 type PricingPeriodRow = {
@@ -168,6 +170,10 @@ function weekTimeMatch(now: Date, weekdays: string | null, startTime: string | n
 
 /** 时段价是否在当前时刻生效（日期区间 与 周计划窗口 同时命中） */
 function periodMatchesNow(p: PricingPeriodRow, now: Date): boolean {
+  // 自动节假日时段：无日期/星期/时间约束，仅在法定节假日当天命中（价格已在时段内设为闲时价）
+  if (p.kind === "HOLIDAY" && !p.startDate && !p.endDate && !p.weekdays && !p.startTime && !p.endTime) {
+    return isHoliday(now);
+  }
   return dateInRange(now, p.startDate, p.endDate) && weekTimeMatch(now, p.weekdays, p.startTime, p.endTime);
 }
 

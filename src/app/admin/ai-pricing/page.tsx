@@ -174,8 +174,8 @@ export default function AdminAiPricingPage() {
           providerId: p.id,
           modelId: `${m.id}-copy`,
           modelName: `${m.name} (自建)`,
-          inputPrice: m.inputPrice,
-          outputPrice: m.outputPrice,
+          inputPrice: m.inputPricePerMillion,
+          outputPrice: m.outputPricePerMillion,
           note: m.note || `${p.name} 旗下一键基准`,
         });
       });

@@ -1434,7 +1434,7 @@ model modelpricing {
 /// 模型时段价格（在「主流价」modelpricing 之上叠加的时段覆盖价）
 /// 生效规则（周计划 + 日期区间，二选一或叠加）：
 ///   - 周计划：weekdays（1=周一..7=周日，逗号分隔，null=每天）+ startTime/endTime（HH:mm，每天窗口）
-///   - 日期区间：startDate/endDate（含当日，用于节日/自定义绝对区间）
+///   - 日期区间：startDate/endDate（含当日，用于节假日/自定义绝对区间）
 /// 结算时按当前时钟+日期挑「enabled 且命中且 priority 最高」的时段价；无命中则回退主流价。
 model modelpricingperiod {
   id          String  @id @default(uuid())
@@ -1443,7 +1443,7 @@ model modelpricingperiod {
 
   /// 时段名称（管理员自定义，如「闲时」「国庆」）
   name String
-  /// 类型：IDLE 闲时 | PEAK 高峰 | HOLIDAY 节日 | CUSTOM 自定义（仅用于排序与展示）
+  /// 类型：IDLE 闲时 | PEAK 高峰 | HOLIDAY 节假日 | CUSTOM 自定义（仅用于排序与展示）
   kind String @default("CUSTOM")
   /// 是否启用（禁用后结算忽略该时段）
   enabled Boolean @default(true)
@@ -1456,7 +1456,7 @@ model modelpricingperiod {
   startTime String?
   endTime   String?
 
-  /// 日期区间（节日/自定义绝对区间用，含当日）
+  /// 日期区间（节假日/自定义绝对区间用，含当日）
   startDate DateTime?
   endDate   DateTime?
 

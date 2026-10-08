@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission } from "@/lib/security";
 import { PRICE_SOURCES, resolvePriceStatus, yuanPerMillionToMicros } from "@/lib/model-pricing";
+import { rejectIfDeploymentEnabled } from "@/lib/model-deployment-guard";
 
 const PERIOD_KINDS = ["IDLE", "PEAK", "HOLIDAY", "CUSTOM"] as const;
 const PRICE_FIELDS = [
@@ -48,6 +49,9 @@ export async function PATCH(
     const auth = await requirePlatformPermission(request, "system:manage", "model:manage", "billing:manage");
     if (!auth.authorized) return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
     const { deploymentId, periodId } = await params;
+    // 启用态冻结：改/启停单条时段都会影响实时计费，运行中的模型不允许
+    const locked = await rejectIfDeploymentEnabled(deploymentId);
+    if (locked) return locked;
 
     const current = await prisma.modelpricingperiod.findUnique({ where: { id: periodId } });
     if (!current || current.deploymentId !== deploymentId) {
@@ -164,6 +168,9 @@ export async function DELETE(
     const auth = await requirePlatformPermission(request, "system:manage", "model:manage", "billing:manage");
     if (!auth.authorized) return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
     const { deploymentId, periodId } = await params;
+    // 启用态冻结：删除时段会立刻改变实时计费口径，运行中的模型不允许
+    const locked = await rejectIfDeploymentEnabled(deploymentId);
+    if (locked) return locked;
     const current = await prisma.modelpricingperiod.findUnique({ where: { id: periodId } });
     if (!current || current.deploymentId !== deploymentId) {
       return NextResponse.json({ success: false, error: "时段价格不存在" }, { status: 404 });

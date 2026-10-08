@@ -9,6 +9,7 @@ import {
   validatePricingInput,
   type PriceSource,
 } from "@/lib/model-pricing";
+import { rejectIfDeploymentEnabled } from "@/lib/model-deployment-guard";
 
 /** 只读 DTO：不返回任何密钥（价格表本身不含密钥） */
 function toDto(row: {
@@ -82,6 +83,9 @@ export async function PATCH(
       return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
     }
     const { deploymentId } = await params;
+    // 启用态冻结：正在运行的模型不允许改写定价（绕页面调 API 同样拦截）
+    const locked = await rejectIfDeploymentEnabled(deploymentId);
+    if (locked) return locked;
     const deployment = await prisma.modeldeployment.findUnique({
       where: { id: deploymentId },
       select: { id: true, providerId: true, modelId: true },

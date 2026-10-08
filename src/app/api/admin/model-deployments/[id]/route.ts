@@ -23,6 +23,22 @@ export async function PATCH(
     if (!exists) return NextResponse.json({ success: false, error: "模型部署不存在" }, { status: 404 });
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+
+    // 启用态冻结：运行中的模型不允许改写「能力/上游名/展示名/上下文」等会影响执行与计费的字段。
+    // 注意：enabled 字段本身永远放行（否则管理员无法停用模型进入可编辑状态）。
+    const touchesLockedField = (["upstreamModel", "displayName", "contextLimit", "capabilities"] as const).some(
+      (k) => body[k] !== undefined,
+    );
+    if (exists.enabled && touchesLockedField) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "DEPLOYMENT_ENABLED_LOCKED",
+          error: "模型启用中：请先在管理后台「停用」该模型，再修改能力、上游模型名、展示名或上下文",
+        },
+        { status: 409 },
+      );
+    }
     const data: Record<string, unknown> = { updatedAt: new Date() };
     for (const key of ALLOWED_UPDATE_FIELDS) {
       const value = body[key];
