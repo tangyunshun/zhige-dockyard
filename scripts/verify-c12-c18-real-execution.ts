@@ -100,16 +100,19 @@ async function main() {
     try { json = JSON.parse(text) as AnyJson; } catch { /* 非 JSON 响应 */ }
 
     const data = (json.data ?? {}) as AnyJson;
-    // 产物文本：兼容多种返回结构
-    const candidates = [data.output, data.content, data.result, json.output, json.content, json.result];
+    // 产物文本：兼容多种返回结构（含顶层 artifacts[].content）
     let output = "";
-    for (const c of candidates) {
+    const collect = (c: unknown) => {
       if (typeof c === "string" && c.length > output.length) output = c;
       else if (c && typeof c === "object") {
         const inner = (c as AnyJson).content ?? (c as AnyJson).text;
         if (typeof inner === "string" && inner.length > output.length) output = inner;
       }
-    }
+    };
+    const topArtifacts = Array.isArray(json.artifacts) ? (json.artifacts as unknown[]) : [];
+    const dataArtifacts = Array.isArray(data.artifacts) ? (data.artifacts as unknown[]) : [];
+    for (const a of [...topArtifacts, ...dataArtifacts]) collect(a);
+    for (const c of [data.output, data.content, data.result, json.output, json.content, json.result]) collect(c);
 
     const expected = EXPECTED_SECTIONS[componentId] ?? [];
     const sectionHits = expected.map((s) => ({ section: s, hit: output.includes(s) }));
