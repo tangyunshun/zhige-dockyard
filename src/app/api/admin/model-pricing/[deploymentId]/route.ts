@@ -37,6 +37,7 @@ function toDto(row: {
     updatedAt: row.updatedAt.toISOString(),
     supplierCost: pick(COST_FIELDS),
     userPrice: pick(PRICE_FIELDS),
+    rules: row.rules && typeof row.rules === "object" && !Array.isArray(row.rules) ? (row.rules as Record<string, unknown>) : null,
   };
 }
 
@@ -157,6 +158,7 @@ export async function PATCH(
     }
     if (submitted("currency") && data.currency !== undefined) payload.currency = data.currency;
     if (submitted("markupRateBps")) payload.markupRateBps = data.markupRateBps ?? null;
+    if (submitted("rules")) payload.rules = (data.rules as Record<string, unknown> | null) ?? null;
     if (data.effectiveFrom !== undefined) payload.effectiveFrom = data.effectiveFrom;
 
     const row = before

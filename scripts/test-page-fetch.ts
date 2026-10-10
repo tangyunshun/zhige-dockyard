@@ -13,3 +13,6 @@ async function main() {
 }
 
 main().catch(console.error);
+
+// 显式声明为模块作用域，避免与其它脚本文件的顶层 main 冲突（TS2393）
+export {};

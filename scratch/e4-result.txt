@@ -1,0 +1,43 @@
+◇ injected env (4) from .env.local // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ injected env (0) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+== 合同状态 ==
+{"id":"C46","name":"开发对接说明书自动生成","flow":"Swagger ➜ API","mode":"both","ver":"1.0.1","life":"PUBLISHED","input":"TEXT_AND_FILES","out":"DOCUMENT","promptOK":true,"est":80}
+{"id":"C47","name":"代码白话文翻译批注","flow":"代码 ➜ 中文批注","mode":"both","ver":"1.0.1","life":"PUBLISHED","input":"TEXT_AND_FILES","out":"DOCUMENT","promptOK":true,"est":60}
+{"id":"C48","name":"空间内部资料全文搜索","flow":"文档 ➜ 全文索引","mode":"file","ver":"1.0.1","life":"PUBLISHED","input":"FILE","out":"JSON","promptOK":"无章节","est":50}
+{"id":"C49","name":"研发专属智能问答客服","flow":"知识库 ➜ 智能问答","mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"DOCUMENT","promptOK":true,"est":50}
+{"id":"C50","name":"资深老手代码审查报告","flow":"Diff ➜ 审查报告","mode":"both","ver":"1.0.1","life":"PUBLISHED","input":"TEXT_AND_FILES","out":"JSON","promptOK":"无章节","est":200}
+{"id":"C51","name":"经典设计模式与架构规约推荐","flow":null,"mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"DOCUMENT","promptOK":true,"est":150}
+{"id":"C52","name":"软件系统底层技术选型建议","flow":null,"mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"DOCUMENT","promptOK":true,"est":80}
+{"id":"C53","name":"历史教训与团队避坑指南SOP","flow":"历史故障 ➜ SOP","mode":"both","ver":"1.0.1","life":"PUBLISHED","input":"TEXT_AND_FILES","out":"JSON","promptOK":"无章节","est":150}
+{"id":"C54","name":"智能效能分析引擎","flow":"源码 ➜ 偏离度诊断","mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"JSON","promptOK":"无章节","est":80}
+{"id":"C55","name":"自动部署与构建组件","flow":"配置 ➜ 巡检大盘","mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"DOCUMENT","promptOK":true,"est":100}
+{"id":"C56","name":"架构代码生成器","flow":"契约 ➜ 骨架代码","mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"DOCUMENT","promptOK":true,"est":120}
+{"id":"C57","name":"代码安全审计工具","flow":"项目 ➜ 漏洞预警","mode":"text","ver":"1.0.2","life":"PUBLISHED","input":"TEXT","out":"JSON","promptOK":"无章节","est":150}
+{"id":"C58","name":"需求文档解析组件","flow":null,"mode":"text","ver":"1.0.2","life":"PUBLISHED","input":"TEXT","out":"JSON","promptOK":"无章节","est":90}
+{"id":"C59","name":"自动化测试套件","flow":null,"mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"JSON","promptOK":"无章节","est":140}
+{"id":"C60","name":"后端核心接口组件","flow":null,"mode":"text","ver":"1.0.1","life":"PUBLISHED","input":"TEXT","out":"DOCUMENT","promptOK":true,"est":100}
+✗ C57 70967ffc FAILED 未全退 5/0
+== 执行分布（成功/失败） ==
+C46: 1/0
+C47: 1/1
+C48: 1/1
+C49: 1/0
+C50: 1/1
+C51: 1/0
+C52: 1/1
+C53: 1/1
+C54: 1/1
+C55: 1/2
+C56: 1/0
+C57: 1/24
+C58: 1/20
+C59: 2/17
+C60: 3/15
+费用: 净消费 95 点（0.95 元）| 异常 1
+== 文件组件上传证据 ==
+{"id":"C46","source":"file","file":"user-api.ts","size":537}
+{"id":"C47","source":"file","file":"obscure.ts","size":411}
+{"id":"C48","source":"file","file":"deploy-runbook.md","size":396}
+{"id":"C50","source":"file","file":"order-fix.diff","size":425}
+{"id":"C53","source":"file","file":"defects.md","size":338}
+== 全量进度: 就绪 57 / 60 | 未就绪: C09 C12 C18

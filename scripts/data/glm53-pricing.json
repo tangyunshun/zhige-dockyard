@@ -1,0 +1,83 @@
+{
+  "provider": {
+    "name": "智谱-bigmodel",
+    "displayName": "智谱 AI",
+    "protocol": "OPENAI_COMPATIBLE",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "apiKeyEnv": "ZHIPU_API_KEY"
+  },
+  "models": [
+    {
+      "modelId": "GLM-5.3",
+      "upstreamModel": "glm-5.3",
+      "displayName": "GLM-5.3",
+      "contextLimit": 1000000,
+      "capabilities": ["TEXT_GENERATION", "STRUCTURED_OUTPUT", "LONG_CONTEXT"],
+      "enabled": true,
+      "currency": "CNY",
+      "priceSource": "VERIFIED",
+      "markupRateBps": null,
+      "cost": { "input": 8, "output": 28, "cacheRead": 2, "cacheWrite": 0 },
+      "price": { "input": 8, "output": 28, "cacheRead": 2, "cacheWrite": 0 },
+      "rules": {
+        "usd": { "input": 1.40, "output": 4.40, "cacheRead": 0.26 },
+        "cacheStorage": "FREE_PROMOTIONAL",
+        "billingFormula": "含缓存存储：输入 + 缓存命中 + 输出 + 缓存存储费",
+        "subscriptionPointDeduction": {
+          "appliesTo": "GLM Coding Plan 等订阅套餐积分抵扣（非按量 API；按量 API 不分峰谷）",
+          "peak": null,
+          "idle": null,
+          "note": "GLM-5.3 官方未披露套餐积分抵扣系数"
+        }
+      }
+    },
+    {
+      "modelId": "GLM-5.3-Flash",
+      "upstreamModel": "glm-5.3-flash",
+      "displayName": "GLM-5.3-Flash",
+      "contextLimit": 1000000,
+      "capabilities": ["TEXT_GENERATION", "STRUCTURED_OUTPUT", "VISION", "FILE_ANALYSIS", "LONG_CONTEXT"],
+      "enabled": true,
+      "currency": "CNY",
+      "priceSource": "VERIFIED",
+      "markupRateBps": null,
+      "cost": { "input": 0.8, "output": 2.8, "cacheRead": 0.23, "cacheWrite": 0 },
+      "price": { "input": 0.8, "output": 2.8, "cacheRead": 0.23, "cacheWrite": 0 },
+      "rules": {
+        "usd": { "input": 0.15, "output": 0.50, "cacheRead": 0.03 },
+        "cacheStorage": "FREE_PROMOTIONAL",
+        "billingFormula": "含缓存存储：输入 + 缓存命中 + 输出 + 缓存存储费",
+        "subscriptionPointDeduction": {
+          "appliesTo": "GLM Coding Plan 等订阅套餐积分抵扣（非按量 API；按量 API 不分峰谷）",
+          "peak": { "input": 23.438, "output": 78.125, "cacheRead": 4.688 },
+          "idle": { "input": 11.719, "output": 39.0625, "cacheRead": 2.344 },
+          "note": "空闲时段积分抵扣为高峰时段的 50%（idle = peak × 0.5）"
+        }
+      }
+    },
+    {
+      "modelId": "glm-5.3-flashx",
+      "upstreamModel": "glm-5.3-flashx",
+      "displayName": "GLM-5.3-FlashX",
+      "contextLimit": 1000000,
+      "capabilities": ["TEXT_GENERATION", "STRUCTURED_OUTPUT", "VISION", "FILE_ANALYSIS", "LONG_CONTEXT"],
+      "enabled": true,
+      "currency": "CNY",
+      "priceSource": "VERIFIED",
+      "markupRateBps": null,
+      "cost": { "input": 2, "output": 7, "cacheRead": 0.57, "cacheWrite": 0 },
+      "price": { "input": 2, "output": 7, "cacheRead": 0.57, "cacheWrite": 0 },
+      "rules": {
+        "usd": { "input": 0.37, "output": 1.25, "cacheRead": 0.075 },
+        "cacheStorage": "FREE_PROMOTIONAL",
+        "billingFormula": "含缓存存储：输入 + 缓存命中 + 输出 + 缓存存储费",
+        "subscriptionPointDeduction": {
+          "appliesTo": "GLM Coding Plan 等订阅套餐积分抵扣（非按量 API；按量 API 不分峰谷）",
+          "peak": null,
+          "idle": null,
+          "note": "GLM-5.3-FlashX 官方未披露套餐积分抵扣系数"
+        }
+      }
+    }
+  ]
+}

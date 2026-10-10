@@ -111,6 +111,27 @@ export const AI_PROVIDERS: AiProvider[] = [
         outputPricePerMillion: 0,
         note: "免费模型，不扣减算力点",
       },
+      {
+        id: "glm-5.3",
+        name: "GLM-5.3",
+        inputPricePerMillion: 8,
+        outputPricePerMillion: 28,
+        note: "旗舰模型；缓存命中 2 元/百万、缓存存储限时免费（详见模型注册表 modelpricing.rules）",
+      },
+      {
+        id: "glm-5.3-flash",
+        name: "GLM-5.3-Flash",
+        inputPricePerMillion: 0.8,
+        outputPricePerMillion: 2.8,
+        note: "原生多模态；缓存命中 0.23 元/百万、缓存存储限时免费（详见模型注册表 modelpricing.rules）",
+      },
+      {
+        id: "glm-5.3-flashx",
+        name: "GLM-5.3-FlashX",
+        inputPricePerMillion: 2,
+        outputPricePerMillion: 7,
+        note: "Flash 高速版；缓存命中 0.57 元/百万、缓存存储限时免费（详见模型注册表 modelpricing.rules）",
+      },
     ],
   },
   {

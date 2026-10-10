@@ -19,6 +19,7 @@ uploads/
 
 # Debug and runtime logs
 *.log
+scratch/pilot-server.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -34,7 +35,11 @@ pnpm-debug.log*
 
 # 临时调试产物
 *.err
+*.out
 nul
+
+# OCR 训练数据（体积大，不入库）
+*.traineddata
 
 # OS & Editor files
 .DS_Store

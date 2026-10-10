@@ -56,6 +56,25 @@ export interface DeploymentPricing {
   markupRateBps: number | null;
   priceVersion: number;
   effectiveFrom: string | null;
+  /// 通用规则容器（任意厂商特殊定价规则，如多币种参考价、订阅积分抵扣系数、缓存存储标记等）
+  rules?: Record<string, unknown> | null;
+}
+
+/**
+ * 校验通用规则容器 rules：必须为可空的对象（不能是数组/标量），且字段数受控，防止脏数据撑爆存储。
+ * 返回标准化对象（null 表示清空/未配置）。
+ */
+export function validatePricingRules(value: unknown): { ok: true; value: Record<string, unknown> | null } | { ok: false; error: string } {
+  if (value === null || value === undefined) return { ok: true, value: null };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "rules 必须是 JSON 对象（不能为数组或标量）" };
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (keys.length > 50) return { ok: false, error: "rules 字段过多（≤ 50）" };
+  // 序列化体积上限（约 16KB），避免超大 JSON 写入
+  if (JSON.stringify(obj).length > 16_384) return { ok: false, error: "rules 序列化体积超限（≤ 16KB）" };
+  return { ok: true, value: obj };
 }
 
 // ---------------- 单位换算（纯函数，便于单测） ----------------
@@ -324,6 +343,7 @@ export interface PricingInput {
   priceSource?: unknown;
   markupRateBps?: unknown;
   effectiveFrom?: unknown;
+  rules?: unknown;
 }
 
 export type PricingValidation =
@@ -378,6 +398,12 @@ export function validatePricingInput(input: PricingInput): PricingValidation {
     const d = new Date(String(input.effectiveFrom));
     if (Number.isNaN(d.getTime())) return { ok: false, error: "生效时间格式非法（应为 ISO 时间）" };
     data.effectiveFrom = d;
+  }
+
+  if (input.rules !== undefined) {
+    const r = validatePricingRules(input.rules);
+    if (!r.ok) return r;
+    data.rules = r.value;
   }
 
   // 定价模式互斥：同一请求中不得同时直接配售价又给加价率
@@ -680,6 +706,8 @@ export interface RegistryPricingSnapshot {
   supplierCost: Record<string, number | null>;
   /** 用户售价（元/百万 Token 与 微元/百万）——有效用户售价 */
   userPrice: Record<string, number | null>;
+  /** 通用规则容器（多币种参考价、订阅积分抵扣系数、缓存存储标记等任意厂商特殊规则） */
+  rules?: Record<string, unknown> | null;
   billingMode: "ESTIMATED_COMPATIBILITY";
   settlementEnabled: boolean;
   note: string;
@@ -740,6 +768,7 @@ export function buildRegistryPricingSnapshot(params: {
     markupRateBps: p?.markupRateBps ?? null,
     supplierCost,
     userPrice,
+    rules: p?.rules ?? null,
     billingMode: "ESTIMATED_COMPATIBILITY",
     // 五项条件（成本确认/售价配置/缓存策略/加价规则/结算功能启用），当前结算功能未启用 → 恒为 false
     settlementEnabled: evaluateSettlementReadiness(p, { settlementFeatureEnabled:  false }),

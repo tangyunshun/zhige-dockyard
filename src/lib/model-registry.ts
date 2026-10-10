@@ -66,6 +66,10 @@ export async function loadDeploymentPricing(deploymentId: string): Promise<Deplo
     markupRateBps: row.markupRateBps,
     priceVersion: row.priceVersion,
     effectiveFrom: row.effectiveFrom ? row.effectiveFrom.toISOString() : null,
+    rules:
+      row.rules && typeof row.rules === "object" && !Array.isArray(row.rules)
+        ? (row.rules as Record<string, unknown>)
+        : null,
   };
 }
 

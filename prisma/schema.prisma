@@ -1426,6 +1426,12 @@ model modelpricing {
   /// 价格生效时间
   effectiveFrom DateTime?
 
+  /// 通用规则容器（JSON，可空，读取按 "{}" 处理）：承载「任何模型任何规则」的非标定价信息，
+  /// 例如多币种参考价（usd）、订阅套餐积分抵扣系数（subscriptionPointDeduction）、
+  /// 缓存存储计费标记（cacheStorage）、厂商特殊计费口径等。
+  /// 说明：成本/售价主口径仍以上述微元字段为准；rules 仅作扩展元数据，不得替代主价格字段参与结算。
+  rules Json?
+
   updatedBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -68,8 +68,14 @@ interface ModelDeployment {
     priceVersion: number;
     costInputMicrosPerMillion: number | null;
     costOutputMicrosPerMillion: number | null;
+    costCacheReadMicrosPerMillion: number | null;
+    costCacheWriteMicrosPerMillion: number | null;
     priceInputMicrosPerMillion: number | null;
     priceOutputMicrosPerMillion: number | null;
+    priceCacheReadMicrosPerMillion: number | null;
+    priceCacheWriteMicrosPerMillion: number | null;
+    /** 通用规则容器（多币种参考价、订阅积分抵扣系数、缓存存储标记等任意厂商特殊规则） */
+    rules?: Record<string, unknown> | null;
   } | null;
   enabled: boolean;
 }
@@ -109,6 +115,55 @@ function priceStatusLabel(status: string): string {
   }
 }
 
+/** 缓存存储标记 → 中文 */
+function cacheStorageLabel(v: unknown): string {
+  if (typeof v !== "string") return "—";
+  if (v === "FREE_PROMOTIONAL") return "限时免费";
+  if (v === "FREE") return "免费";
+  if (v === "PAID") return "按量计费";
+  return v;
+}
+
+/** 列表用的规则小结：用一组小标签概括已配置的规则，避免把原始 JSON 直接铺在列表里 */
+function RulesSummaryChips({ rules }: { rules: Record<string, unknown> | null | undefined }) {
+  if (!rules || typeof rules !== "object" || Object.keys(rules).length === 0) return null;
+  const chips: string[] = [];
+  if (rules.usd && typeof rules.usd === "object") chips.push("官网$价");
+  if (typeof rules.cacheStorage === "string") chips.push(`缓存${cacheStorageLabel(rules.cacheStorage)}`);
+  if (typeof rules.billingFormula === "string" && (rules.billingFormula as string).trim() !== "")
+    chips.push("计费公式");
+  if (rules.subscriptionPointDeduction) chips.push("积分抵扣");
+  const known = new Set(["usd", "usdRate", "cacheStorage", "billingFormula", "subscriptionPointDeduction"]);
+  const extra = Object.keys(rules).filter((k) => !known.has(k));
+  if (extra.length) chips.push(extra.length === 1 ? `其他·${extra[0]}` : `其他规则×${extra.length}`);
+  if (!chips.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {chips.map((c) => (
+        <span
+          key={c}
+          className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-medium border border-slate-200"
+        >
+          {c}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** 缓存价（元/百万）→ 展示串「缓存读 X / 写 Y」，无任何缓存价时返回 null */
+function cacheCostText(
+  cacheRead: number | null | undefined,
+  cacheWrite: number | null | undefined,
+): string | null {
+  const hasRead = cacheRead != null;
+  const hasWrite = cacheWrite != null;
+  if (!hasRead && !hasWrite) return null;
+  const r = hasRead ? `¥${(cacheRead! / 1_000_000).toFixed(2)}` : "—";
+  const w = hasWrite ? `¥${(cacheWrite! / 1_000_000).toFixed(2)}` : "—";
+  return `缓存读 ${r} / 写 ${w}`;
+}
+
 const inputCls =
   "w-full px-3 py-2 bg-white border border-slate-200/90 rounded text-xs font-medium text-slate-800 placeholder:text-slate-400 hover:border-slate-300 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none transition-all shadow-2xs";
 const getInputCls = (hasError?: boolean, extra?: string) =>
@@ -119,6 +174,164 @@ const getInputCls = (hasError?: boolean, extra?: string) =>
   } ${extra || ""}`;
 const btnCls =
   "px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+
+/** 价格规则(rules)结构化表单（覆盖 GLM 类常见字段；其余任意键走「自定义规则」键—值） */
+interface RulesForm {
+  usdInput: string;
+  usdCacheRead: string;
+  usdOutput: string;
+  /** 汇率：1 USD = ¥?（参考用，配合 USD 参考价做对比） */
+  usdRate: string;
+  cacheStorage: string; // "" | FREE_PROMOTIONAL | FREE | PAID
+  billingFormula: string;
+  subAppliesTo: string;
+  subPeakInput: string;
+  subPeakOutput: string;
+  subPeakCacheRead: string;
+  subIdleInput: string;
+  subIdleOutput: string;
+  subIdleCacheRead: string;
+  subNote: string;
+  /** 其他自定义规则（任意键—值），用于未来模型扩展，无需手写 JSON */
+  customRules: { key: string; value: string }[];
+}
+const emptyRulesForm: RulesForm = {
+  usdInput: "",
+  usdCacheRead: "",
+  usdOutput: "",
+  usdRate: "",
+  cacheStorage: "",
+  billingFormula: "",
+  subAppliesTo: "",
+  subPeakInput: "",
+  subPeakOutput: "",
+  subPeakCacheRead: "",
+  subIdleInput: "",
+  subIdleOutput: "",
+  subIdleCacheRead: "",
+  subNote: "",
+  customRules: [],
+};
+const CACHE_STORAGE_OPTIONS: [string, string][] = [
+  ["", "（不设置）"],
+  ["FREE_PROMOTIONAL", "限时免费"],
+  ["FREE", "免费"],
+  ["PAID", "按量计费"],
+];
+/** 计费公式：用下拉选择，避免让用户手写难以理解的公式文本 */
+const BILLING_FORMULA_OPTIONS: [string, string][] = [
+  ["", "（不设置）"],
+  ["standard_tokens", "标准 Token：输入 + 缓存命中 + 输出"],
+  ["with_cache_storage", "含缓存存储：输入 + 缓存命中 + 输出 + 缓存存储费"],
+  ["io_only", "仅输入 + 输出"],
+  ["custom", "其他（自定义）"],
+];
+const r2s = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
+
+/** 将 rules 对象拆成结构化表单（已知键入结构化字段，未知键入 raw） */
+function rulesToForm(rules: unknown): RulesForm {
+  const f: RulesForm = { ...emptyRulesForm };
+  if (!rules || typeof rules !== "object") return f;
+  const r = rules as Record<string, unknown>;
+  const usd = r.usd as Record<string, number> | undefined;
+  if (usd && typeof usd === "object") {
+    f.usdInput = r2s(usd.input);
+    f.usdCacheRead = r2s(usd.cacheRead);
+    f.usdOutput = r2s(usd.output);
+  }
+  if (typeof r.usdRate === "number" || typeof r.usdRate === "string") f.usdRate = r2s(r.usdRate);
+  if (typeof r.cacheStorage === "string") f.cacheStorage = r.cacheStorage;
+  if (typeof r.billingFormula === "string") f.billingFormula = r.billingFormula;
+  const sub = r.subscriptionPointDeduction as Record<string, unknown> | undefined;
+  if (sub && typeof sub === "object") {
+    if (typeof sub.appliesTo === "string") f.subAppliesTo = sub.appliesTo;
+    const peak = sub.peak as Record<string, number> | undefined;
+    if (peak && typeof peak === "object") {
+      f.subPeakInput = r2s(peak.input);
+      f.subPeakOutput = r2s(peak.output);
+      f.subPeakCacheRead = r2s(peak.cacheRead);
+    }
+    const idle = sub.idle as Record<string, number> | undefined;
+    if (idle && typeof idle === "object") {
+      f.subIdleInput = r2s(idle.input);
+      f.subIdleOutput = r2s(idle.output);
+      f.subIdleCacheRead = r2s(idle.cacheRead);
+    }
+    if (typeof sub.note === "string") f.subNote = sub.note;
+  }
+  const known = new Set(["usd", "usdRate", "cacheStorage", "billingFormula", "subscriptionPointDeduction"]);
+  f.customRules = Object.keys(r)
+    .filter((k) => !known.has(k))
+    .map((k) => ({ key: k, value: r2s(r[k]) }));
+  return f;
+}
+
+/** 由结构化表单组装 rules 对象；校验非法数字，返回错误 */
+function buildRulesFromForm(form: RulesForm): { ok: boolean; rules: Record<string, unknown> | null; error?: string } {
+  let errMsg: string | undefined;
+  const num = (v: string, label: string): number | null => {
+    const t = v.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    if (!Number.isFinite(n)) {
+      errMsg = `${label} 不是合法数字`;
+      return null;
+    }
+    return n;
+  };
+  const usdInput = num(form.usdInput, "USD 输入");
+  const usdCacheRead = num(form.usdCacheRead, "USD 缓存命中");
+  const usdOutput = num(form.usdOutput, "USD 输出");
+  const usdRate = num(form.usdRate, "汇率");
+  const subPeakInput = num(form.subPeakInput, "高峰积分抵扣·输入");
+  const subPeakOutput = num(form.subPeakOutput, "高峰积分抵扣·输出");
+  const subPeakCacheRead = num(form.subPeakCacheRead, "高峰积分抵扣·缓存命中");
+  const subIdleInput = num(form.subIdleInput, "空闲积分抵扣·输入");
+  const subIdleOutput = num(form.subIdleOutput, "空闲积分抵扣·输出");
+  const subIdleCacheRead = num(form.subIdleCacheRead, "空闲积分抵扣·缓存命中");
+  if (errMsg) return { ok: false, rules: null, error: errMsg };
+
+  // 解析自定义规则（键—值）：值自动识别为数字 / 布尔 / JSON 对象，否则按字符串
+  const extra: Record<string, unknown> = {};
+  for (const item of form.customRules) {
+    const key = item.key.trim();
+    const val = item.value.trim();
+    if (!key || !val) continue;
+    if (/^[-+]?\d+(\.\d+)?$/.test(val)) {
+      extra[key] = Number(val);
+    } else if (val === "true" || val === "false") {
+      extra[key] = val === "true";
+    } else if ((val.startsWith("{") && val.endsWith("}")) || (val.startsWith("[") && val.endsWith("]"))) {
+      try {
+        extra[key] = JSON.parse(val);
+      } catch {
+        extra[key] = val;
+      }
+    } else {
+      extra[key] = val;
+    }
+  }
+
+  const rules: Record<string, unknown> = { ...extra };
+  if (usdInput != null || usdCacheRead != null || usdOutput != null) {
+    rules.usd = { input: usdInput ?? 0, cacheRead: usdCacheRead ?? 0, output: usdOutput ?? 0 };
+  }
+  if (form.cacheStorage) rules.cacheStorage = form.cacheStorage;
+  if (form.billingFormula.trim()) rules.billingFormula = form.billingFormula.trim();
+  if (usdRate != null) rules.usdRate = usdRate;
+  const subBlock: Record<string, unknown> = {};
+  if (form.subAppliesTo.trim()) subBlock.appliesTo = form.subAppliesTo.trim();
+  if (subPeakInput != null || subPeakOutput != null || subPeakCacheRead != null) {
+    subBlock.peak = { input: subPeakInput ?? 0, output: subPeakOutput ?? 0, cacheRead: subPeakCacheRead ?? 0 };
+  }
+  if (subIdleInput != null || subIdleOutput != null || subIdleCacheRead != null) {
+    subBlock.idle = { input: subIdleInput ?? 0, output: subIdleOutput ?? 0, cacheRead: subIdleCacheRead ?? 0 };
+  }
+  if (form.subNote.trim()) subBlock.note = form.subNote.trim();
+  if (Object.keys(subBlock).length) rules.subscriptionPointDeduction = subBlock;
+  // 全部为空时写入 null（清空规则），避免落库空对象 {}
+  return { ok: true, rules: Object.keys(rules).length ? rules : null };
+}
 
 export default function AdminModelsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
@@ -720,8 +933,10 @@ export default function AdminModelsPage() {
     const errors: { name?: string; baseUrl?: string; apiKeyEnv?: string } = {};
     if (!pForm.name.trim()) {
       errors.name = "请输入供应商标识";
-    } else if (!/^[a-zA-Z0-9_-]+$/.test(pForm.name.trim())) {
-      errors.name = "供应商标识仅支持英文字母、数字、下划线及中划线";
+    } else if (!/^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$/.test(pForm.name.trim())) {
+      errors.name = "供应商标识支持中文、英文字母、数字、下划线及中划线，不可含空格或特殊符号";
+    } else if (pForm.name.trim().length > 64) {
+      errors.name = "供应商标识最长 64 个字符";
     }
     if (!pForm.baseUrl.trim()) {
       errors.baseUrl = "请输入 Base URL";
@@ -843,6 +1058,8 @@ export default function AdminModelsPage() {
     priceCacheRead: "",
     priceCacheWrite: "",
   });
+  /** 价格规则(rules)结构化表单（USD 参考价 / 缓存存储 / 计费公式 / 订阅抵扣 / 自定义键—值），不再暴露裸 JSON */
+  const [rulesForm, setRulesForm] = useState<RulesForm>({ ...emptyRulesForm });
 
   const yuanToMicros = (v: string): number | null => {
     if (v.trim() === "") return null;
@@ -1142,6 +1359,7 @@ export default function AdminModelsPage() {
         priceCacheRead: microsToYuan(p?.userPrice?.priceCacheReadMicrosPerMillion ?? null),
         priceCacheWrite: microsToYuan(p?.userPrice?.priceCacheWriteMicrosPerMillion ?? null),
       });
+      setRulesForm(rulesToForm(p?.rules));
       setPricePeriods([]);
       setPeriodPanel({ open: false, editingId: null });
       await loadPricePeriods(d.id);
@@ -1152,12 +1370,12 @@ export default function AdminModelsPage() {
     }
   };
 
-  const savePrice = async (d: ModelDeployment) => {
+  /** 价格表单 UI 层校验（仅校验当前 priceForm 的填写值），返回字段级错误 */
+  const validatePrice = (): Record<string, string> => {
     const errors: Record<string, string> = {};
     if (!priceForm.currency.trim()) {
       errors.currency = "请输入结算币种（如 CNY）";
     }
-
     const priceKeys = [
       "costInput",
       "costOutput",
@@ -1168,7 +1386,6 @@ export default function AdminModelsPage() {
       "priceCacheRead",
       "priceCacheWrite",
     ] as const;
-
     for (const key of priceKeys) {
       const val = (priceForm as Record<string, string>)[key].trim();
       if (val !== "") {
@@ -1178,54 +1395,114 @@ export default function AdminModelsPage() {
         }
       }
     }
-
     if (priceForm.markupRateBps.trim() !== "") {
       const bp = Number(priceForm.markupRateBps.trim());
       if (isNaN(bp) || !Number.isInteger(bp) || bp < 0) {
         errors.markupRateBps = "加价率必须为大于或等于 0 的有效整数基点";
       }
     }
+    return errors;
+  };
 
+  /** 展示并定位第一个价格校验错误 */
+  const revealPriceErrors = (errors: Record<string, string>) => {
+    setPriceErrors(errors);
+    const order = ["currency", "costInput", "costOutput", "costCacheRead", "costCacheWrite", "priceInput", "priceOutput", "priceCacheRead", "priceCacheWrite", "markupRateBps"];
+    const firstKey = order.find((k) => errors[k]);
+    if (firstKey) {
+      setTimeout(() => {
+        const el = document.getElementById(`price-input-${firstKey}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.focus();
+        }
+      }, 50);
+    }
+  };
+
+  /** 组装并写入价格；成功返回 true（调用方负责关闭弹窗、提示与刷新） */
+  const commitPrice = async (d: ModelDeployment): Promise<boolean> => {
+    const built = buildRulesFromForm(rulesForm);
+    if (!built.ok) {
+      toast.error(`规则(rules) 校验失败：${built.error}`);
+      return false;
+    }
+    const body = {
+      currency: priceForm.currency,
+      priceSource: priceForm.priceSource,
+      markupRateBps: priceForm.markupRateBps === "" ? null : Number(priceForm.markupRateBps),
+      effectiveFrom: priceForm.effectiveFrom ? `${priceForm.effectiveFrom}T00:00:00.000Z` : null,
+      costInputMicrosPerMillion: yuanToMicros(priceForm.costInput),
+      costOutputMicrosPerMillion: yuanToMicros(priceForm.costOutput),
+      costCacheReadMicrosPerMillion: yuanToMicros(priceForm.costCacheRead),
+      costCacheWriteMicrosPerMillion: yuanToMicros(priceForm.costCacheWrite),
+      priceInputMicrosPerMillion: yuanToMicros(priceForm.priceInput),
+      priceOutputMicrosPerMillion: yuanToMicros(priceForm.priceOutput),
+      priceCacheReadMicrosPerMillion: yuanToMicros(priceForm.priceCacheRead),
+      priceCacheWriteMicrosPerMillion: yuanToMicros(priceForm.priceCacheWrite),
+      rules: built.rules,
+    };
+    try {
+      await authFetch(`/api/admin/model-pricing/${d.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      return true;
+    } catch (e) {
+      toast.error((e as Error)?.message || "保存价格失败");
+      return false;
+    }
+  };
+
+  /** 仅保存价格（不改动模型启用状态） */
+  const savePrice = async (d: ModelDeployment) => {
+    const errors = validatePrice();
     if (Object.keys(errors).length > 0) {
-      setPriceErrors(errors);
-      // 准确定位到第一个未填或格式错误的输入框，平滑滚动居中并获得焦点高亮，不显示多余的 toast
-      const order = ["currency", ...priceKeys, "markupRateBps"];
-      const firstKey = order.find((k) => errors[k]);
-      if (firstKey) {
-        setTimeout(() => {
-          const el = document.getElementById(`price-input-${firstKey}`);
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            el.focus();
-          }
-        }, 50);
-      }
+      revealPriceErrors(errors);
       return;
     }
     setBusy(`price:${d.id}`);
     try {
-      const body = {
-        currency: priceForm.currency,
-        priceSource: priceForm.priceSource,
-        markupRateBps: priceForm.markupRateBps === "" ? null : Number(priceForm.markupRateBps),
-        effectiveFrom: priceForm.effectiveFrom ? `${priceForm.effectiveFrom}T00:00:00.000Z` : null,
-        costInputMicrosPerMillion: yuanToMicros(priceForm.costInput),
-        costOutputMicrosPerMillion: yuanToMicros(priceForm.costOutput),
-        costCacheReadMicrosPerMillion: yuanToMicros(priceForm.costCacheRead),
-        costCacheWriteMicrosPerMillion: yuanToMicros(priceForm.costCacheWrite),
-        priceInputMicrosPerMillion: yuanToMicros(priceForm.priceInput),
-        priceOutputMicrosPerMillion: yuanToMicros(priceForm.priceOutput),
-        priceCacheReadMicrosPerMillion: yuanToMicros(priceForm.priceCacheRead),
-        priceCacheWriteMicrosPerMillion: yuanToMicros(priceForm.priceCacheWrite),
-      };
-      await authFetch(`/api/admin/model-pricing/${d.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const ok = await commitPrice(d);
+      if (!ok) return;
       toast.success("价格已保存（历史任务快照不变）");
-      // 保存成功后关闭价格配置弹窗，并刷新列表让「价格来源状态 / 已生效」等标识同步
       setPricePanelId(null);
       setPriceErrors({});
       await load();
-    } catch (e) {
-      toast.error((e as Error)?.message || "保存价格失败");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * 停用 → 改价 → 重新启用 的一键闭环：
+   * 启用态模型后端会拒绝改价，因此推荐「先停用、改价、再启用」。
+   * 当模型已处于停用状态时，本按钮在保存价格后自动重新启用，省去手动切回。
+   */
+  const savePriceAndEnable = async (d: ModelDeployment) => {
+    const errors = validatePrice();
+    if (Object.keys(errors).length > 0) {
+      revealPriceErrors(errors);
+      return;
+    }
+    setBusy(`price:${d.id}`);
+    try {
+      const okSave = await commitPrice(d);
+      if (!okSave) return;
+      try {
+        await authFetch(`/api/admin/model-deployments/${d.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: true }),
+        });
+        setDeployments((prev) => prev.map((x) => (x.id === d.id ? { ...x, enabled: true } : x)));
+      } catch (e) {
+        toast.error(`价格已保存，但重新启用模型失败：${(e as Error)?.message || "操作失败"}（请到列表手动启用）`);
+        setPricePanelId(null);
+        setPriceErrors({});
+        await load();
+        return;
+      }
+      toast.success("价格已保存并已重新启用模型");
+      setPricePanelId(null);
+      setPriceErrors({});
+      await load();
     } finally {
       setBusy(null);
     }
@@ -1435,7 +1712,8 @@ export default function AdminModelsPage() {
                   <input
                     id="provider-input-name"
                     className={getInputCls(!!pErrors.name)}
-                    placeholder="如 deepseek、openai（创建后不可修改）"
+                    maxLength={64}
+                    placeholder="如 deepseek、openai、智谱-bigmodel（创建后不可修改）"
                     value={pForm.name}
                     onChange={(e) => {
                       setPForm({ ...pForm, name: e.target.value });
@@ -1492,6 +1770,7 @@ export default function AdminModelsPage() {
                   <input
                     id="provider-input-apiKeyEnv"
                     className={getInputCls(!!pErrors.apiKeyEnv)}
+                    maxLength={128}
                     placeholder="MODEL_API_KEY 或 DEEPSEEK_API_KEY"
                     value={pForm.apiKeyEnv}
                     onChange={(e) => {
@@ -1745,6 +2024,7 @@ export default function AdminModelsPage() {
                   <input
                     id="deployment-input-modelId"
                     className={getInputCls(!!dErrors.modelId)}
+                    maxLength={128}
                     placeholder="平台内部代号，如 deepseek-chat"
                     value={dForm.modelId}
                     onChange={(e) => {
@@ -1765,6 +2045,7 @@ export default function AdminModelsPage() {
                   <span className="text-xs font-bold text-slate-600">上游模型真实名称</span>
                   <input
                     className={inputCls}
+                    maxLength={128}
                     placeholder="真正下发厂商的 model（如 deepseek-chat）"
                     value={dForm.upstreamModel}
                     onChange={(e) => setDForm({ ...dForm, upstreamModel: e.target.value })}
@@ -1777,6 +2058,7 @@ export default function AdminModelsPage() {
                   <span className="text-xs font-bold text-slate-600">用户端展示名称</span>
                   <input
                     className={inputCls}
+                    maxLength={64}
                     placeholder="如 DeepSeek V3 极速版"
                     value={dForm.displayName}
                     onChange={(e) => setDForm({ ...dForm, displayName: e.target.value })}
@@ -2010,15 +2292,25 @@ export default function AdminModelsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-3.5 text-xs text-slate-600 whitespace-nowrap">
+                      <td className="px-6 py-3.5 text-xs text-slate-600 align-top">
                         {d.pricing ? (
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <span className="font-mono text-xs text-slate-800 font-bold whitespace-nowrap">
-                              入: {d.pricing.priceInputMicrosPerMillion === null ? "—" : `¥${(d.pricing.priceInputMicrosPerMillion / 1_000_000).toFixed(2)}`} / 出: {d.pricing.priceOutputMicrosPerMillion === null ? "—" : `¥${(d.pricing.priceOutputMicrosPerMillion / 1_000_000).toFixed(2)}`}
-                            </span>
-                            <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap">
-                              v{d.pricing.priceVersion} · {priceStatusLabel(d.pricing.priceStatus)}
-                            </span>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs text-slate-800 font-bold whitespace-nowrap">
+                                售价 入: {d.pricing.priceInputMicrosPerMillion === null ? "—" : `¥${(d.pricing.priceInputMicrosPerMillion / 1_000_000).toFixed(2)}`} / 出: {d.pricing.priceOutputMicrosPerMillion === null ? "—" : `¥${(d.pricing.priceOutputMicrosPerMillion / 1_000_000).toFixed(2)}`}
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap">
+                                v{d.pricing.priceVersion} · {priceStatusLabel(d.pricing.priceStatus)}
+                              </span>
+                            </div>
+                            <div className="font-mono text-[10px] text-slate-500 whitespace-nowrap">
+                              成本 入 {d.pricing.costInputMicrosPerMillion === null ? "—" : `¥${(d.pricing.costInputMicrosPerMillion / 1_000_000).toFixed(2)}`} / 出 {d.pricing.costOutputMicrosPerMillion === null ? "—" : `¥${(d.pricing.costOutputMicrosPerMillion / 1_000_000).toFixed(2)}`}
+                              {(() => {
+                                const c = cacheCostText(d.pricing.costCacheReadMicrosPerMillion, d.pricing.costCacheWriteMicrosPerMillion);
+                                return c ? ` · ${c}` : "";
+                              })()}
+                            </div>
+                            <RulesSummaryChips rules={d.pricing.rules} />
                           </div>
                         ) : (
                           <span className="text-slate-400 text-xs whitespace-nowrap">未配置价格</span>
@@ -2276,6 +2568,25 @@ export default function AdminModelsPage() {
                       <b>未命中任何时段</b>才回退主流价（主流价的直接售价，或主流价成本 × (1 + 主流价加价率/10000)）。两层互不叠加、互不继承。
                     </div>
                   </div>
+
+                  {/* 启用态冻结提示 */}
+                  {priceDep?.enabled ? (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded text-xs text-amber-800 leading-relaxed flex items-start gap-2.5">
+                      <span className="text-base leading-none shrink-0 mt-0.5">🔒</span>
+                      <div>
+                        <b>该模型当前处于「启用」状态：保存将被拒绝。</b>
+                        <br />
+                        启用中的模型禁止改价（防止运行中的任务计费口径被偷改）。请先在列表中<b>停用</b>该模型 → 保存价格 → 再<b>启用</b>。
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded text-xs text-emerald-800 leading-relaxed flex items-start gap-2.5">
+                      <span className="text-base leading-none shrink-0 mt-0.5">✅</span>
+                      <div>
+                        模型已停用，可直接改价。填好后点底部<b>「保存并重新启用模型」</b>可保存价格并一键恢复启用，无需手动切回。
+                      </div>
+                    </div>
+                  )}
 
                   {/* 板块 1：结算规则与状态 */}
                   <div className="space-y-3">
@@ -2592,6 +2903,204 @@ export default function AdminModelsPage() {
                     </div>
                   </div>
 
+                  {/* 板块：官方参考价与特殊规则（均为可选元数据，填不填都不影响实际扣费） */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="flex items-center gap-2 text-xs font-black text-slate-800 before:content-[''] before:w-1 before:h-3.5 before:bg-teal-500 before:rounded-full">
+                        官方参考价与特殊规则
+                      </h4>
+                      <span className="text-[11px] text-slate-400 font-medium">以下均为「参考/标记」信息，可留空；不影响实际计费</span>
+                    </div>
+
+                    {/* USD 官网参考价 + 实时对比 */}
+                    <div className="space-y-2 rounded-lg border border-slate-200/80 bg-slate-50/40 p-3">
+                      <div className="text-[11px] font-bold text-slate-700">厂商官网美元参考价（USD / 百万 Token）</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <label className="text-xs text-slate-600 space-y-1 block">
+                          <span className="font-bold">输入</span>
+                          <input id="rules-usd-input" className={inputCls} placeholder="如 1.40" value={rulesForm.usdInput} onChange={(e) => setRulesForm({ ...rulesForm, usdInput: e.target.value })} />
+                        </label>
+                        <label className="text-xs text-slate-600 space-y-1 block">
+                          <span className="font-bold">缓存命中</span>
+                          <input id="rules-usd-cacheRead" className={inputCls} placeholder="如 0.26" value={rulesForm.usdCacheRead} onChange={(e) => setRulesForm({ ...rulesForm, usdCacheRead: e.target.value })} />
+                        </label>
+                        <label className="text-xs text-slate-600 space-y-1 block">
+                          <span className="font-bold">输出</span>
+                          <input id="rules-usd-output" className={inputCls} placeholder="如 4.40" value={rulesForm.usdOutput} onChange={(e) => setRulesForm({ ...rulesForm, usdOutput: e.target.value })} />
+                        </label>
+                        <label className="text-xs text-slate-600 space-y-1 block">
+                          <span className="font-bold">汇率 1 USD = ¥</span>
+                          <input id="rules-usd-rate" className={inputCls} placeholder="如 7.2" value={rulesForm.usdRate} onChange={(e) => setRulesForm({ ...rulesForm, usdRate: e.target.value })} />
+                        </label>
+                      </div>
+                      {(() => {
+                        const usdIn = Number(rulesForm.usdInput);
+                        const rate = Number(rulesForm.usdRate);
+                        const cnyIn = Number(priceForm.priceInput);
+                        const offCny = usdIn > 0 && rate > 0 ? usdIn * rate : 0;
+                        if (!offCny && !(cnyIn > 0)) return null;
+                        return (
+                          <div className="rounded bg-white/70 border border-slate-200 px-2 py-1 space-y-0.5 text-[10px] text-slate-600">
+                            {offCny > 0 && (
+                              <div>
+                                官网输入 ${usdIn.toFixed(2)} ≈ <b>¥{offCny.toFixed(2)}</b> / 百万 Token
+                                {cnyIn > 0 && (
+                                  <span className={cnyIn >= offCny ? "text-rose-500" : "text-emerald-600"}>
+                                    {" "}
+                                    · 你的售价 ¥{cnyIn.toFixed(2)}（{cnyIn >= offCny ? "溢价" : "折扣"} {Math.abs(((cnyIn - offCny) / offCny) * 100).toFixed(1)}%）
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {!offCny && cnyIn > 0 && (
+                              <div>填写「官网美元价 + 汇率」可自动算出你的售价相对官网的溢价 / 折扣。</div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      <p className="text-[10px] text-slate-400 leading-relaxed">仅用于对比展示，不参与实际扣费；留空则不计算对比。</p>
+                    </div>
+
+                    {/* 缓存存储 + 计费公式 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="text-xs text-slate-600 space-y-1 block">
+                        <span className="font-bold">缓存存储如何计费</span>
+                        <select id="rules-cacheStorage" className={inputCls} value={rulesForm.cacheStorage} onChange={(e) => setRulesForm({ ...rulesForm, cacheStorage: e.target.value })}>
+                          {CACHE_STORAGE_OPTIONS.map(([v, l]) => (
+                            <option key={v} value={v}>
+                              {l}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs text-slate-600 space-y-1 block">
+                        <span className="font-bold">计费公式（计费口径）</span>
+                        <select
+                          id="rules-billingFormula"
+                          className={inputCls}
+                          value={rulesForm.billingFormula}
+                          onChange={(e) => setRulesForm({ ...rulesForm, billingFormula: e.target.value })}
+                        >
+                          {BILLING_FORMULA_OPTIONS.map(([, l]) => (
+                            <option key={l} value={l}>
+                              {l}
+                            </option>
+                          ))}
+                          {rulesForm.billingFormula !== "" && !BILLING_FORMULA_OPTIONS.some(([, l]) => l === rulesForm.billingFormula) && (
+                            <option value={rulesForm.billingFormula}>{rulesForm.billingFormula}</option>
+                          )}
+                        </select>
+                        {rulesForm.billingFormula !== "" && !BILLING_FORMULA_OPTIONS.some(([, l]) => l === rulesForm.billingFormula) ? (
+                          <input
+                            className={`${inputCls} mt-1`}
+                            placeholder="自定义计费说明，如：按字符数计费"
+                            value={rulesForm.billingFormula}
+                            onChange={(e) => setRulesForm({ ...rulesForm, billingFormula: e.target.value })}
+                          />
+                        ) : null}
+                      </label>
+                    </div>
+
+                    {/* 订阅套餐积分抵扣系数（GLM 类特有，默认折叠） */}
+                    <details className="group rounded-lg border border-slate-200/80 bg-slate-50/40 p-3">
+                      <summary className="cursor-pointer select-none text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <span className="text-slate-400 group-open:hidden">▸</span>
+                        <span className="hidden group-open:inline text-slate-400">▾</span>
+                        订阅套餐积分抵扣系数（仅 GLM 类需要，点开填写）
+                      </summary>
+                      <div className="space-y-3 pt-3">
+                        <label className="text-xs text-slate-600 space-y-1 block">
+                          <span className="font-bold">适用模型</span>
+                          <input id="rules-sub-appliesTo" className={inputCls} placeholder="如 GLM-5.3-Flash" value={rulesForm.subAppliesTo} onChange={(e) => setRulesForm({ ...rulesForm, subAppliesTo: e.target.value })} />
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1.5 rounded border border-amber-200/70 bg-amber-50/30 p-2">
+                            <div className="text-[11px] font-bold text-amber-700">高峰时段</div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <label className="text-[10px] text-slate-600 space-y-1 block">
+                                <span className="font-bold">输入</span>
+                                <input id="rules-sub-peak-input" className={inputCls} placeholder="如 23.438" value={rulesForm.subPeakInput} onChange={(e) => setRulesForm({ ...rulesForm, subPeakInput: e.target.value })} />
+                              </label>
+                              <label className="text-[10px] text-slate-600 space-y-1 block">
+                                <span className="font-bold">缓存</span>
+                                <input id="rules-sub-peak-cacheRead" className={inputCls} placeholder="如 4.688" value={rulesForm.subPeakCacheRead} onChange={(e) => setRulesForm({ ...rulesForm, subPeakCacheRead: e.target.value })} />
+                              </label>
+                              <label className="text-[10px] text-slate-600 space-y-1 block">
+                                <span className="font-bold">输出</span>
+                                <input id="rules-sub-peak-output" className={inputCls} placeholder="如 78.125" value={rulesForm.subPeakOutput} onChange={(e) => setRulesForm({ ...rulesForm, subPeakOutput: e.target.value })} />
+                              </label>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5 rounded border border-sky-200/70 bg-sky-50/30 p-2">
+                            <div className="text-[11px] font-bold text-sky-700">空闲时段（留空=高峰×50%）</div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <label className="text-[10px] text-slate-600 space-y-1 block">
+                                <span className="font-bold">输入</span>
+                                <input id="rules-sub-idle-input" className={inputCls} placeholder="如 11.719" value={rulesForm.subIdleInput} onChange={(e) => setRulesForm({ ...rulesForm, subIdleInput: e.target.value })} />
+                              </label>
+                              <label className="text-[10px] text-slate-600 space-y-1 block">
+                                <span className="font-bold">缓存</span>
+                                <input id="rules-sub-idle-cacheRead" className={inputCls} placeholder="如 2.344" value={rulesForm.subIdleCacheRead} onChange={(e) => setRulesForm({ ...rulesForm, subIdleCacheRead: e.target.value })} />
+                              </label>
+                              <label className="text-[10px] text-slate-600 space-y-1 block">
+                                <span className="font-bold">输出</span>
+                                <input id="rules-sub-idle-output" className={inputCls} placeholder="如 39.0625" value={rulesForm.subIdleOutput} onChange={(e) => setRulesForm({ ...rulesForm, subIdleOutput: e.target.value })} />
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                        <label className="text-xs text-slate-600 space-y-1 block">
+                          <span className="font-bold">备注</span>
+                          <input id="rules-sub-note" className={inputCls} placeholder="如 空闲=高峰×50%" value={rulesForm.subNote} onChange={(e) => setRulesForm({ ...rulesForm, subNote: e.target.value })} />
+                        </label>
+                      </div>
+                    </details>
+
+                    {/* 其他自定义规则（键—值，默认折叠，未来任何模型扩展都在此添加） */}
+                    <details className="group rounded-lg border border-slate-200/80 bg-slate-50/40 p-3">
+                      <summary className="cursor-pointer select-none text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <span className="text-slate-400 group-open:hidden">▸</span>
+                        <span className="hidden group-open:inline text-slate-400">▾</span>
+                        其他自定义规则（新增模型规则点此添加，无需写代码）
+                      </summary>
+                      <div className="space-y-2 pt-3">
+                        {rulesForm.customRules.length === 0 && (
+                          <div className="text-[11px] text-slate-400">暂无自定义规则。下方可添加任意「键—值」，例如 最小起订量 minOrder=1。</div>
+                        )}
+                        {rulesForm.customRules.map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              className={`${inputCls} flex-1`}
+                              placeholder="规则键名（英文，如 minOrder）"
+                              value={item.key}
+                              onChange={(e) => setRulesForm({ ...rulesForm, customRules: rulesForm.customRules.map((c, i) => (i === idx ? { ...c, key: e.target.value } : c)) })}
+                            />
+                            <input
+                              className={`${inputCls} flex-1`}
+                              placeholder="值（数字 / true / 文本）"
+                              value={item.value}
+                              onChange={(e) => setRulesForm({ ...rulesForm, customRules: rulesForm.customRules.map((c, i) => (i === idx ? { ...c, value: e.target.value } : c)) })}
+                            />
+                            <button
+                              type="button"
+                              className="px-2 py-1.5 rounded bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold hover:bg-rose-100 transition-colors cursor-pointer shrink-0"
+                              onClick={() => setRulesForm({ ...rulesForm, customRules: rulesForm.customRules.filter((_, i) => i !== idx) })}
+                            >
+                              删除
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 rounded bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                          onClick={() => setRulesForm({ ...rulesForm, customRules: [...rulesForm.customRules, { key: "", value: "" }] })}
+                        >
+                          + 添加一条规则
+                        </button>
+                      </div>
+                    </details>
+                  </div>
+
                   {/* 板块 4：时段价格（覆盖主流价） */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
@@ -2894,6 +3403,25 @@ export default function AdminModelsPage() {
                   >
                     {busy === `price:${pricePanelId}` ? "正在保存..." : "保存主流价（时段各自单独保存）"}
                   </button>
+                  {/* 模型已停用（启用态禁止改价）：保存后一键重新启用，闭环「停用→改价→启用」 */}
+                  {priceDep?.enabled === false && (
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={busy === `price:${pricePanelId}`}
+                      onClick={() => {
+                        if (periodPanel.open) {
+                          toast.error("时段正在编辑中：请先点「更新时段」保存该时段，或点「取消」放弃修改。时段与主流价各自独立保存。");
+                          return;
+                        }
+                        const dep = deployments.find((x) => x.id === pricePanelId);
+                        if (dep) void savePriceAndEnable(dep);
+                      }}
+                      title="该模型已停用，保存价格后自动重新启用"
+                    >
+                      {busy === `price:${pricePanelId}` ? "正在保存..." : "保存并重新启用模型"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -3103,6 +3631,7 @@ export default function AdminModelsPage() {
                     <input
                       id="edit-provider-input-apiKeyEnv"
                       className={getInputCls(!!pEditErrors.apiKeyEnv)}
+                      maxLength={128}
                       value={pEditForm.apiKeyEnv}
                       onChange={(e) => {
                         setPEditForm({ ...pEditForm, apiKeyEnv: e.target.value });
