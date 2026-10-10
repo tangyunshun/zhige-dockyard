@@ -15,7 +15,7 @@
  * JSON 规格见 scripts/data/glm53-pricing.json 示例。
  */
 import { randomUUID } from "crypto";
-import { PrismaClient, type ModelProviderProtocol } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { loadCliEnv } from "./cli-env";
 import {
   yuanPerMillionToMicros,

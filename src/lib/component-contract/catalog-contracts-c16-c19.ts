@@ -498,15 +498,15 @@ export const BATCH_2E_ANALYSIS: Record<"C16" | "C17" | "C18" | "C19", Batch2ECon
       "目录承诺的「ER 实体图」属图形化产物（FILE/DOCUMENT_PACKAGE 类），当前不支持 → 登记为阻断项。",
     contractVersion: CONTRACT_VERSION,
     publishStatus: "DRAFT",
-    activationStatus: "BLOCKED",
+    activationStatus: "ELIGIBLE",
     missingMaterials: [],
     unsupportedRequirements: [
-      "ER 实体图（图形化关系图）：目录输出承诺包含「ER 实体图」/「清晰展示外键关系的实体图」，但当前不支持图形类输出类型（FILE / DOCUMENT_PACKAGE）；" +
-        "本批次以 Markdown 关系说明表格 + DDL 建表语句替代，不发布伪支持的图形/文件型合同，仅保留 DRAFT。",
+      "ER 实体图（图形化关系图）：目录输出承诺包含「ER 实体图」/「清晰展示外键关系的实体图」，但图形化渲染器缺失，已采用 Mermaid 文本等价方案（负责人授权）；" +
+        "1.1.0 起以 Mermaid erDiagram 文本块 + Markdown 关系说明表格等价表达，已发布并激活，阻断解除。",
     ],
     notes:
       "产物是人类阅读的表结构与关系说明文本（实体/字段以 Markdown 表格呈现），非机器可读结构化数据 → 按证据只声明 TEXT_GENERATION；" +
-      "因目录图形化承诺与系统能力冲突，本组件维持 DRAFT 阻断，待图形化输出能力具备后再评估发布。",
+      "1.1.0（Mermaid 文本等价方案，负责人授权）已发布并激活：以 Mermaid erDiagram 文本块承载图形语义，严禁声称已生成图形化 ER 图。",
   },
   C19: {
     componentId: "C19",

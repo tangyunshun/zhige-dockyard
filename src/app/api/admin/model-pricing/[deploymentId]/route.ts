@@ -175,16 +175,20 @@ export async function PATCH(
             workspaceId: null,
             action: "UPDATE_MODEL_PRICING",
             resource: "MODEL_PRICING",
-            details: {
-              deploymentId,
-              providerId: deployment.providerId,
-              modelId: deployment.modelId,
-              priceVersion: row.priceVersion,
-              priceStatus,
-              priceSource: nextSource,
-              before: before ? toDto(before as never) : null,
-              after: toDto(row as never),
-            },
+            // JSON 往返：把 toDto 产出的 Record<string, unknown>（含 rules）收敛为 Prisma 可接受的 InputJsonValue，
+            // 仅影响类型，写入内容与之前完全一致。
+            details: JSON.parse(
+              JSON.stringify({
+                deploymentId,
+                providerId: deployment.providerId,
+                modelId: deployment.modelId,
+                priceVersion: row.priceVersion,
+                priceStatus,
+                priceSource: nextSource,
+                before: before ? toDto(before as never) : null,
+                after: toDto(row as never),
+              }),
+            ),
           },
         });
       }

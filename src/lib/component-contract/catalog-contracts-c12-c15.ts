@@ -426,11 +426,11 @@ export const BATCH_2C_ANALYSIS: Record<"C12" | "C13" | "C14" | "C15", Batch2CCon
     capabilitySupport: "支持：平台默认部署实测能力为 TEXT_GENERATION + STRUCTURED_OUTPUT，本组件所需能力被完整覆盖。",
     contractVersion: CONTRACT_VERSION,
     publishStatus: "DRAFT",
-    activationStatus: "BLOCKED",
+    activationStatus: "ELIGIBLE",
     missingMaterials: [],
     unsupportedRequirements: [
-      "关联拓扑图（图形化 ER 图）：目录输出承诺包含「直观的关联拓扑图」，但当前不支持图形类输出类型；" +
-        "本批次以 Markdown 关系说明 + 实体清单替代，不发布伪支持的图形/文件型合同。",
+      "关联拓扑图（图形化 ER 图）：目录输出承诺包含「直观的关联拓扑图」，但图形化渲染器缺失，已采用 Mermaid 文本等价方案（负责人授权）；" +
+        "1.1.0 起以 Mermaid erDiagram 文本块 + Markdown 关联拓扑表（表A | 关系 | 表B | 外键字段）等价表达，已发布并激活，阻断解除。",
     ],
     notes:
       "产物是人类阅读的设计文档与代码文本（其中表格以 Markdown 呈现），非机器可读结构化数据 → 按证据只声明 TEXT_GENERATION，不声明 STRUCTURED_OUTPUT。",
