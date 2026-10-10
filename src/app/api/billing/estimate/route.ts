@@ -195,9 +195,11 @@ export async function GET(request: NextRequest) {
     const settlementEnabled = isComponentSettlementEnabled(comp.id, {
       globalFlag: isTokenSettlementFeatureEnabled(),
       whitelist: config.settlementComponentWhitelist,
+      mode: config.settlementMode,
     });
     let settlement: {
       enabled: boolean;
+      mode: string;
       whitelist: string[];
       deposit: { points: number | null; worstInputTokens: number; worstOutputTokens: number } | null;
     } | null = null;
@@ -219,6 +221,7 @@ export async function GET(request: NextRequest) {
       settlement = {
         enabled: true,
         whitelist: config.settlementComponentWhitelist,
+      mode: config.settlementMode,
         deposit: {
           points: depositEst.points,
           worstInputTokens: bounds.inputTokens,

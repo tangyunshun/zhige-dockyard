@@ -80,7 +80,7 @@ export type TaskDetailSafeDTO = {
   hasContractSnapshot: boolean;
   contractView: TaskContractView | null;
   qualityHints: string[];
-  refundStatus: "NO_CHARGE" | "REFUNDED" | "REFUND_PENDING" | "RECONCILIATION_REQUIRED" | "UNKNOWN";
+  refundStatus: "NO_CHARGE" | "REFUNDED" | "REFUND_PENDING" | "RECONCILIATION_REQUIRED" | "UNKNOWN" | null;
   refundedPoints: number | null;
   chargeAttempted: boolean | null;
   errorCode: string | null;
@@ -226,7 +226,7 @@ export function serializeTaskDetailItem(
   },
   componentName: string,
   refundMeta: {
-    refundStatus: "NO_CHARGE" | "REFUNDED" | "REFUND_PENDING" | "RECONCILIATION_REQUIRED" | "UNKNOWN";
+    refundStatus: "NO_CHARGE" | "REFUNDED" | "REFUND_PENDING" | "RECONCILIATION_REQUIRED" | "UNKNOWN" | null;
     refundedPoints: number | null;
     chargeAttempted: boolean | null;
   },
@@ -400,7 +400,7 @@ export function serializeTaskDetailItem(
     hasContractSnapshot: execution.hasContractSnapshot,
     contractView,
     qualityHints: execution.qualityHints || [],
-    refundStatus: refundMeta.refundStatus ?? "UNKNOWN",
+    refundStatus: refundMeta.refundStatus ?? null,
     refundedPoints: refundMeta.refundedPoints ?? null,
     chargeAttempted: typeof refundMeta.chargeAttempted === "boolean" ? refundMeta.chargeAttempted : null,
     errorCode,

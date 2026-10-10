@@ -1,10 +1,16 @@
 /**
- * 批次 2C 组件合同迁移（C12、C13、C14、C15）
+ * 批次 2E 组件合同迁移（C16、C17、C18、C19）
  *
  * 规则（严格遵循批次约束）：
- *  - 仅处理 C12/C13/C14/C15，**绝不触碰 C07**、**绝不触碰暂停中的 C09**，也绝不触碰其它批次组件；
- *  - 全部输出类型仅限 DOCUMENT / TABLE / JSON；业务需要的其它类型已在合同的 unsupportedRequirements 中登记为阻断项，
- *    本脚本严禁为阻断项发布伪支持合同；
+ *  - 仅处理 C16/C17/C18/C19，**绝不触碰 C07**、**绝不触碰暂停中的 C09**，也绝不触碰其它批次组件；
+ *  - 全部输出类型仅限 DOCUMENT / TABLE / JSON；业务需要的其它类型一律登记为阻断项（**不得发布伪支持合同**）；
+ *     阻断事实以结构化三要素写入 **合同 JSON 的 `unsupportedRequirements`**（随不可变快照一同落库）：
+ *       [{ requirement: 不被支持的需求, reason: 客观依据, suggestedAlternative: 等价替代方案 }]；
+ *     · C18：「ER 实体关系图（图形化输出）」→ 引擎仅支持 DOCUMENT/TABLE/JSON 且无图形渲染器；
+ *       替代为 Markdown 关系说明 + DDL（本次以 TABLE/JSON 等价表达，待负责人裁决）。
+ *  - C18 因上述图形化阻断项，仅创建/保留 DRAFT，绝不 PUBLISH/激活；
+ *     幂等注意：本脚本在「该版本合同已存在」时不覆盖既有合同体，
+ *     若需将阻断事实补记进已存在的 DRAFT，请执行 prisma/record-blocking-facts.ts。
  *  - 能力裁决：仅当「当前启用的平台默认部署能力 ⊇ 合同 requiredCapabilities」时才 PUBLISH + 激活；
  *    缺失能力者仅创建 DRAFT，绝不强行 PUBLISH/激活；
  *  - 幂等：已存在相同版本合同则跳过；已存在其它有效激活合同则保持不换绑（不因排序/新增部署自动改绑）；
@@ -12,14 +18,18 @@
  *  - 不修改价格、结算开关、BYOK、C07/C09 合同与 .env/.env.local；
  *  - 默认只读预演（dry-run），必须显式传入 --apply 才会写库。
  *
- * 用法：npx tsx prisma/migrate-c12-c15-contracts.ts [--apply]
+ * 用法：npx tsx prisma/migrate-c16-c19-contracts.ts [--apply] [--target=C17]
  *       不带 --apply 时仅做只读预演（dry-run），不写库。
  */
+
+// 复用的激活裁决纯函数（与 C12-C15 同一份实现，避免语义漂移）
+export { evaluateActivationEligibility } from "../src/lib/component-contract/catalog-contracts-c01-c05";
+
 async function main() {
-  // 说明：本脚本**不主动读取 .env / .env.local**，数据库连接所需环境变量由 Prisma Client 自动加载。
+  // 本脚本**不主动读取 .env / .env.local**，数据库连接所需环境变量由 Prisma Client 自动加载。
   const apply = process.argv.includes("--apply");
 
-  // 支持单组件安全隔离模式：--target=C13（仅处理指定组件，严禁触碰其他组件）
+  // 支持单组件安全隔离模式：--target=C17（仅处理指定组件，严禁触碰其他组件）
   const targetArg = process.argv.find((arg) => arg.startsWith("--target="));
   const explicitTarget = targetArg ? targetArg.split("=")[1]?.trim().toUpperCase() : null;
 
@@ -27,16 +37,16 @@ async function main() {
   const { createDraftContract, publishContract } = await import("../src/lib/component-contract/repository");
   const { getPlatformDefaultDeploymentId } = await import("../src/lib/model-registry");
   const {
-    BATCH_2C,
-    BATCH_2C_COMPONENT_IDS,
-    BATCH_2C_FORBIDDEN_IDS,
+    BATCH_2E,
+    BATCH_2E_COMPONENT_IDS,
+    BATCH_2E_FORBIDDEN_IDS,
     SUPPORTED_OUTPUT_KINDS,
     evaluateActivationEligibility,
-  } = await import("../src/lib/component-contract/catalog-contracts-c12-c15");
+  } = await import("../src/lib/component-contract/catalog-contracts-c16-c19");
 
-  // 硬防线 1：批次目标集合必须精确等于 C12/C13/C14/C15，任何越界立即中止
-  const allowed = new Set<string>(BATCH_2C_COMPONENT_IDS as readonly string[]);
-  const forbidden = new Set<string>(BATCH_2C_FORBIDDEN_IDS as readonly string[]);
+  // 硬防线 1：批次目标集合必须精确等于 C16/C17/C18/C19，任何越界立即中止
+  const allowed = new Set<string>(BATCH_2E_COMPONENT_IDS as readonly string[]);
+  const forbidden = new Set<string>(BATCH_2E_FORBIDDEN_IDS as readonly string[]);
 
   if (explicitTarget) {
     if (!allowed.has(explicitTarget) || forbidden.has(explicitTarget)) {
@@ -50,14 +60,14 @@ async function main() {
 
   // 待处理目标列表：若指定了 explicitTarget 则严格单组件隔离，绝不波及批次内其他组件
   const targetItems = explicitTarget
-    ? BATCH_2C.filter((item) => item.componentId === explicitTarget)
-    : BATCH_2C;
+    ? BATCH_2E.filter((item) => item.componentId === explicitTarget)
+    : BATCH_2E;
 
   for (const { componentId } of targetItems) {
     const id = componentId as string;
     if (!allowed.has(id) || forbidden.has(id)) {
       console.error(
-        `MIGRATE_FAIL BATCH_SCOPE_VIOLATION: 批次 2C 只允许 C12/C13/C14/C15（禁止触碰 ${Array.from(forbidden).join("/")}），实际包含 ${id}`,
+        `MIGRATE_FAIL BATCH_SCOPE_VIOLATION: 批次 2E 只允许 C16/C17/C18/C19（禁止触碰 ${Array.from(forbidden).join("/")}），实际包含 ${id}`,
       );
       process.exit(2);
     }
@@ -193,7 +203,7 @@ async function main() {
 
   // 明确非破坏性回滚指引（Rollback Guide）
   const rollbackGuide = {
-    target: explicitTarget || "ALL_BATCH_2C",
+    target: explicitTarget || "ALL_BATCH_2E",
     rollbackMethod: "NON_DESTRUCTIVE_ARCHIVE_AND_UNBIND",
     instructions: [
       "1. 归档已发布版本：调用 repository.archiveContract({ componentId, contractVersion, operatorId })，同事务原子升级为 ARCHIVED 并生成不可变审计证据；",
@@ -206,10 +216,10 @@ async function main() {
   console.log(
     JSON.stringify(
       {
-        batch: "2C",
+        batch: "2E",
         apply,
         targetMode: explicitTarget ? "SINGLE_COMPONENT_ISOLATION" : "BATCH_ALL",
-        target: explicitTarget ? [explicitTarget] : BATCH_2C_COMPONENT_IDS,
+        target: explicitTarget ? [explicitTarget] : BATCH_2E_COMPONENT_IDS,
         forbidden: Array.from(forbidden),
         supportedOutputKinds: SUPPORTED_OUTPUT_KINDS,
         deploymentCapabilities,

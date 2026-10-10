@@ -259,6 +259,7 @@ export interface ByoTestResult {
   ok: boolean;
   latencyMs: number;
   errorType?: ByoTestErrorType;
+  label?: string;
   message?: string;
   troubleshooting?: string[];
   sampleReply?: string;
@@ -284,6 +285,7 @@ export async function testByoModelConnection(input: {
       ok: false,
       latencyMs: latency(),
       errorType: "protocol_unsupported",
+      label: "协议不支持",
       message: `协议暂不支持：${protocol}（可选：${SUPPORTED_MODEL_PROTOCOLS.join(" / ")}）`,
       troubleshooting: ["请在协议下拉框中选择受支持的接入协议后再试。"],
     };
@@ -296,6 +298,7 @@ export async function testByoModelConnection(input: {
       ok: false,
       latencyMs: latency(),
       errorType: "endpoint_blocked",
+      label: "地址被拦截（安全校验）",
       message: `Base URL 安全校验未通过：${urlCheck.error}`,
       troubleshooting: [
         "仅允许 https 公网地址（本地联调请设置 MODEL_ALLOW_INSECURE_LOCAL=true 后使用 http）。",
@@ -320,7 +323,8 @@ export async function testByoModelConnection(input: {
       modelId: modelLabel,
       userPrompt: "请只回复「连通正常」四个字，不要输出任何其他内容。",
       temperature: 0,
-      maxOutputTokens: 16,
+      // 推理模型会先把 token 花在思考(reasoning)上，太小会导致 content 空而误判；与注册表测试对齐给足预算
+      maxOutputTokens: 512,
     });
     return {
       ok: true,
@@ -331,45 +335,53 @@ export async function testByoModelConnection(input: {
     const e = err as { code?: string; message?: string };
     const code = err instanceof ModelAdapterError ? err.code : e?.code || "UNKNOWN";
     const msg = e?.message || "模型服务调用失败";
-    const map: Record<string, { type: ByoTestErrorType; tips: string[] }> = {
+    const map: Record<string, { type: ByoTestErrorType; label: string; tips: string[] }> = {
       MODEL_ENDPOINT_BLOCKED: {
         type: "endpoint_blocked",
-        tips: ["Base URL 未通过服务端 SSRF 安全校验，请检查地址是否为公网 https。", "本地/内网地址需开启 MODEL_ALLOW_INSECURE_LOCAL 测试开关后重试。"],
+        label: "地址被拦截（安全校验）",
+        tips: ["在本表单把 Base URL 改为公网 https 地址（本地联调需开 MODEL_ALLOW_INSECURE_LOCAL）。", "不得使用 127.0.0.1 / 内网 / 169.254.169.254 等地址。"],
       },
       MODEL_AUTH_ERROR: {
         type: "auth",
-        tips: [
-          "API Key 鉴权失败（401）。请检查密钥是否正确、是否过期或额度耗尽。",
-          "OpenAI 兼容网关：密钥通常需以 sk- 开头；Anthropic 由系统自动以 x-api-key 头部注入。",
-          "确认该密钥对该模型有调用权限。",
-        ],
+        label: "密钥无效（401）",
+        tips: ["检查本表单填写的 API Key 是否正确、是否过期或额度耗尽。", "确认该密钥对目标模型有调用权限。"],
       },
       MODEL_FORBIDDEN: {
         type: "forbidden",
-        tips: ["该密钥无权限访问目标模型（403）。", "确认密钥所属账号已被授予该模型的调用权限。"],
+        label: "无权限（403）",
+        tips: ["密钥有效但账号无该模型权限：去供应商后台给账号开通目标模型权限。"],
       },
       MODEL_TIMEOUT: {
         type: "timeout",
-        tips: ["调用超时。请检查 Base URL 是否可达、网络是否通畅。", "确认服务端出站防火墙已放行目标端口（如 443）。", "上游响应慢可稍后重试。"],
+        label: "连接超时",
+        tips: ["检查本表单 Base URL 是否可达、模型名是否拼错。", "上游确实慢可稍后重试或调大 MODEL_TIMEOUT_MS。"],
       },
       MODEL_RATE_LIMITED: {
         type: "rate_limited",
-        tips: ["触发上游限流（429）。", "请降低调用频率，或升级配额 / 更换密钥。"],
+        label: "触发限流（429）",
+        tips: ["上游限流：降低频率或升级配额 / 更换密钥后重试。"],
       },
       MODEL_BAD_REQUEST: {
         type: "bad_request",
-        tips: ["请求参数被拒绝（400）。", "请确认「模型展示名称」填写的是上游真实的模型 ID（如 deepseek-chat），而非自定义昵称。"],
+        label: "请求参数错误",
+        tips: ["确认「模型展示名称」填的是上游真实模型 ID（如 deepseek-chat），而非自定义昵称。"],
       },
       MODEL_UPSTREAM_ERROR: {
         type: "upstream",
-        tips: ["上游模型服务返回错误。", "确认 Base URL 路径正确（OpenAI 兼容需含 /v1 等前缀）。", "确认模型 ID 存在且服务可用。"],
+        label: "上游报错",
+        tips: [
+          "看上方「错误详情」：message 是上游真实报错。",
+          "常见原因：模型 ID 不存在/拼错、额度耗尽、服务不可用。",
+          "核对本表单 Base URL 路径（OpenAI 兼容需含 /v1）与模型名。",
+        ],
       },
     };
-    const hit = map[code] || { type: "unknown" as ByoTestErrorType, tips: ["未知错误，请检查配置后重试。", msg] };
+    const hit = map[code] || { type: "unknown" as ByoTestErrorType, label: "未知错误", tips: ["未知错误，请检查配置后重试。", msg] };
     return {
       ok: false,
       latencyMs: latency(),
       errorType: hit.type,
+      label: hit.label,
       message: msg,
       troubleshooting: hit.tips,
     };

@@ -18,11 +18,13 @@ const PUBLIC_PREFIXES = [
   "/solutions",
   "/security",
   "/pricing",
+  "/models",
   "/developers",
   "/docs",
   "/init",
   // 营销页面与注册登录未登录展示所需的公开数据接口
   "/api/membership/levels",
+  "/api/model-pricing/public",
   // 首页「用户评价」公开读取（未登录访客可见；后台维护接口 /api/admin/testimonials 仍需鉴权）
   "/api/testimonials",
   "/api/documents/list",

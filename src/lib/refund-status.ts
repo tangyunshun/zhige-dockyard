@@ -18,7 +18,8 @@ export type RefundStatus =
   | "UNKNOWN";
 
 export interface TaskRefundMeta {
-  refundStatus: RefundStatus;
+  /** null = SUCCESS 任务的真实结算差额退（多退少补），非失败退款，前端不展示退款横幅 */
+  refundStatus: RefundStatus | null;
   refundedPoints: number | null;
   /**
    * 是否曾尝试扣费（三态，严禁折叠）：
@@ -118,13 +119,24 @@ export function deriveRefundStatus(facts: RefundFactInput): TaskRefundMeta {
     refundLedgerPoints,
     recoveryStatus,
     chargeAttemptedExplicit,
+    taskStatus,
   } = facts;
 
   const refPointsNum = refundLedgerPoints != null ? Number(refundLedgerPoints) : 0;
   const hasRefundLedger = refPointsNum > 0;
 
-  // 规则 2: 只有存在明确退款流水或权威成功证据时返回 REFUNDED，同时返回实际退款点数
+  // 规则 2: 只有存在明确退款流水或权威成功证据时返回 REFUNDED，同时返回实际退款点数。
+  // 例外：SUCCESS 任务存在 REFUND 流水时，那是「真实结算差额退（多退）」而非失败退款——
+  // 押金 26 实扣 21 的多退不应向用户展示为「已退款」（语义误导，试点实测缺陷）。
+  // 此种情况 refundStatus 返回 null：前端不展示退款横幅，refundedPoints 保留供账单明细。
   if (hasRefundLedger) {
+    if (String(taskStatus || "").trim().toUpperCase() === "SUCCESS") {
+      return {
+        refundStatus: null,
+        refundedPoints: refPointsNum,
+        chargeAttempted: true,
+      };
+    }
     return {
       refundStatus: "REFUNDED",
       refundedPoints: refPointsNum,

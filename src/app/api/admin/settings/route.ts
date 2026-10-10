@@ -70,6 +70,7 @@ const CONFIG_KEYS = [
   "billing.freePointsPerMonth",
   "billing.refundReviewThresholdCents",
   "billing.minPointsPerTask",
+  "billing.settlementMode",
   "billing_usage_calibration",
 ];
 
@@ -87,6 +88,7 @@ const DEFAULT_CONFIGS: Record<string, string> = {
   "billing.freePointsPerMonth": "100",
   "billing.refundReviewThresholdCents": "50000",
   "billing.minPointsPerTask": "5",
+  "billing.settlementMode": "WHITELIST",
   "billing_usage_calibration": "{}",
   smtpHost: "smtp.zhige.com",
   smtpPort: "587",

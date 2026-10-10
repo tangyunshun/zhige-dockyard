@@ -2859,6 +2859,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           settlementFeatureEnabled = isComponentSettlementEnabled(comp.id, {
             globalFlag: isTokenSettlementFeatureEnabled(),
             whitelist: billingCfg.settlementComponentWhitelist,
+            mode: billingCfg.settlementMode,
           });
           // Phase 1：模型必须来自数据库注册表（受 enabled 与空间白名单约束），适配器在执行前按解析结果创建
           let adapter: ModelAdapter;

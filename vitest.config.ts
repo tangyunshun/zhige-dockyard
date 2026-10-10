@@ -65,5 +65,12 @@ export default defineConfig({
     exclude: ["**/node_modules/**", ...nodeTestFiles],
     testTimeout: 60000,
     hookTimeout: 60000,
+    // 串行执行测试文件（关闭跨文件并行）：
+    // 账务类集成测试（如 refund-integration）直接对**同一个真实 MySQL 库**执行扣点/退款事务，
+    // 各文件虽已用随机 UUID 隔离记录，但事务会在 pointledger / pointgrant / workspacequota 等
+    // 全局表上产生行锁与间隙锁竞争（不同于「各自独立 schema」的隔离方式）。
+    // 跨文件并发时会出现间歇性的事务冲突/死锁失败（单独跑或串行跑均全绿，属偶发竞争而非真实回归）。
+    // 因此此处关闭文件级并行以换取确定性；串行全量耗时约 13s（并行约 6s），代价可接受。
+    fileParallelism: false,
   },
 });

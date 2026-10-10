@@ -32,6 +32,8 @@ export const BILLING_CONFIG_KEYS = {
    * 白名单外组件维持估算兼容模式（灰度试点，禁止全局一刀切）。
    */
   settlementComponentWhitelist: "settlement_component_whitelist",
+  /** 真实结算模式：OFF 关闭 | WHITELIST 白名单灰度（默认） | ALL 全量（价格未登记组件仍被 readiness 门禁阻断） */
+  settlementMode: "billing.settlementMode",
 } as const;
 
 export type BillingConfigKey = keyof typeof BILLING_CONFIG_KEYS;
@@ -45,6 +47,7 @@ export const BILLING_CONFIG_DEFAULTS = {
   refundReviewThresholdCents: 50_000, // 500 元
   minPointsPerTask: 5, // 单次执行保底 5 点
   settlementComponentWhitelist: [] as string[], // 默认无组件启用押金-结算（灰度显式开启）
+  settlementMode: "WHITELIST" as const, // 默认白名单灰度
 } as const;
 
 export interface BillingConfig {
@@ -59,6 +62,8 @@ export interface BillingConfig {
   minPointsPerTask: number;
   /** 真实结算组件白名单（空数组 = 无组件启用押金-结算） */
   settlementComponentWhitelist: string[];
+  /** 真实结算模式：OFF 关闭 | WHITELIST 白名单灰度 | ALL 全量（价格未登记组件仍被 readiness 门禁阻断） */
+  settlementMode: "OFF" | "WHITELIST" | "ALL";
 }
 
 interface IntRange {
@@ -99,6 +104,12 @@ export function parseComponentWhitelist(raw: string | null | undefined): string[
   } catch {
     return [];
   }
+}
+
+/** 纯函数：解析结算模式（非法值回退 WHITELIST，绝不静默放大权限） */
+export function parseSettlementMode(raw: string | null | undefined): "OFF" | "WHITELIST" | "ALL" {
+  const v = String(raw ?? "").trim().toUpperCase();
+  return v === "OFF" || v === "ALL" ? v : "WHITELIST";
 }
 
 /** 纯函数：白名单解析进配置（便于单测，不依赖数据库） */
@@ -144,6 +155,7 @@ export function parseBillingConfig(
     settlementComponentWhitelist: parseComponentWhitelist(
       map.get(BILLING_CONFIG_KEYS.settlementComponentWhitelist),
     ),
+    settlementMode: parseSettlementMode(map.get(BILLING_CONFIG_KEYS.settlementMode)),
   };
 }
 
@@ -154,9 +166,16 @@ export function parseBillingConfig(
  */
 export function isComponentSettlementEnabled(
   componentId: string,
-  options: { globalFlag: boolean; whitelist: string[] },
+  options: { globalFlag: boolean; whitelist: string[]; mode?: "OFF" | "WHITELIST" | "ALL" },
 ): boolean {
   if (!options.globalFlag) return false;
+  const mode = options.mode ?? "WHITELIST";
+  if (mode === "ALL") {
+    // 全量模式：所有组件启用押金-结算；价格未登记的部署由既有 readiness 门禁阻断（fail-closed），
+    // 不会因为模式放大而算错账。
+    return true;
+  }
+  if (mode === "OFF") return false;
   return options.whitelist.includes(String(componentId).trim().toUpperCase());
 }
 

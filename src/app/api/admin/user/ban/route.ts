@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
         banReason: banReasonText,
         bannedUntil: bannedUntil ? new Date(bannedUntil) : null,
         sessionToken: null,
+        sessionRememberMe: false, // 会话销毁时复位「7天内免登录」标记
         sessionExpiresAt: null,
         updatedAt: new Date(), // 开启全新的封禁时间线起点
       },

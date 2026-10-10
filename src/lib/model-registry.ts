@@ -398,6 +398,7 @@ export type DeploymentTestResult = {
   ok: boolean;
   latencyMs: number;
   errorType?: string;
+  label?: string;
   message?: string;
   troubleshooting?: string[];
   sampleReply?: string;
@@ -418,7 +419,7 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
     include: { provider: true },
   });
   if (!deployment || !deployment.provider) {
-    return { ok: false, latencyMs: latency(), errorType: "not_found", message: "模型部署或所属供应商不存在" };
+    return { ok: false, latencyMs: latency(), errorType: "not_found", label: "记录不存在", message: "模型部署或所属供应商不存在" };
   }
   const provider = deployment.provider;
   const modelLabel = deployment.upstreamModel || deployment.modelId;
@@ -430,6 +431,7 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
       ok: false,
       latencyMs: latency(),
       errorType: "provider_disabled",
+      label: "供应商已禁用",
       message: `供应商通道「${provider.name}」已被禁用，无法执行通道测试，请先在供应商列表启用该通道。`,
       troubleshooting: [
         "禁用态的供应商通道不会向任何端点发起调用（与执行路径规则一致）。",
@@ -442,6 +444,7 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
       ok: false,
       latencyMs: latency(),
       errorType: "deployment_disabled",
+      label: "模型已禁用",
       message: `模型部署「${deployment.providerId}/${deployment.modelId}」已被禁用，无法执行通道测试，请先启用该模型。`,
       troubleshooting: [
         "禁用态的模型部署不会被执行（含测试性调用），与执行路径规则一致。",
@@ -457,6 +460,7 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
       ok: false,
       latencyMs: latency(),
       errorType: "endpoint_blocked",
+      label: "地址被拦截（安全校验）",
       message: `Base URL 安全校验未通过：${urlCheck.error}`,
       troubleshooting: [
         "仅允许 https 公网地址（本地联调请设置 MODEL_ALLOW_INSECURE_LOCAL=true 后使用 http）。",
@@ -480,7 +484,8 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
       modelId: deployment.modelId,
       userPrompt: "请只回复「连通正常」四个字，不要输出任何其他内容。",
       temperature: 0,
-      maxOutputTokens: 16,
+      // 推理模型会先把 token 花在思考(reasoning)上，太小会导致 content 空而误判；给足预算让其先思考再作答
+      maxOutputTokens: 512,
     });
     return {
       ok: true,
@@ -491,45 +496,67 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
     const e = err as { code?: string; message?: string };
     const code = err instanceof ModelAdapterError ? err.code : e?.code || "UNKNOWN";
     const msg = e?.message || "模型服务调用失败";
-    const map: Record<string, { type: string; tips: string[] }> = {
+    const map: Record<string, { type: string; label: string; tips: string[] }> = {
       MODEL_ENDPOINT_BLOCKED: {
         type: "endpoint_blocked",
-        tips: ["Base URL 未通过服务端 SSRF 安全校验，请检查地址是否为公网 https。", "本地/内网地址需开启 MODEL_ALLOW_INSECURE_LOCAL 测试开关后重试。"],
+        label: "地址被拦截（安全校验）",
+        tips: [
+          "去「供应商配置」把 Base URL 改为公网 https 地址。",
+          "本地/内网联调需开启 MODEL_ALLOW_INSECURE_LOCAL 测试开关。",
+        ],
       },
       MODEL_AUTH_ERROR: {
         type: "auth",
-        tips: ["API Key 鉴权失败（401）。请检查环境变量密钥是否正确、是否过期或额度耗尽。", "确认该密钥对该模型有调用权限。"],
+        label: "密钥无效（401）",
+        tips: [
+          "去「供应商配置」检查 API Key（环境变量或密钥密文）是否正确、是否过期。",
+          "确认该密钥对目标模型有调用权限与可用额度。",
+        ],
       },
       MODEL_FORBIDDEN: {
         type: "forbidden",
-        tips: ["该密钥无权限访问目标模型（403）。", "确认密钥所属账号已被授予该模型的调用权限。"],
+        label: "无权限（403）",
+        tips: ["密钥有效但账号无该模型权限：去供应商后台给账号开通目标模型的调用权限。"],
       },
       MODEL_TIMEOUT: {
         type: "timeout",
-        tips: ["模型服务响应超时。", "确认 Base URL 可达、模型名正确，或适当放宽网络超时。"],
+        label: "连接超时",
+        tips: [
+          "去「供应商配置」检查 Base URL 是否可达、模型名是否拼错。",
+          "上游确实慢可稍后重试，或调大 MODEL_TIMEOUT_MS。",
+        ],
       },
       MODEL_NOT_CONFIGURED: {
         type: "not_configured",
-        tips: ["模型服务鉴权未配置。", "请在供应商配置中填写正确的 apiKeyEnv 环境变量名，并确保服务端已设置该环境变量（或录入密钥密文）。"],
+        label: "密钥未配置",
+        tips: ["去「供应商配置」填写 apiKeyEnv 环境变量名，并在服务端设置该变量或录入密钥密文。"],
       },
       MODEL_PROTOCOL_UNSUPPORTED: {
         type: "protocol_unsupported",
-        tips: ["接入协议不被支持。", "请在供应商配置中选择受支持的协议（OpenAI 兼容 / Anthropic / Gemini）。"],
+        label: "协议不支持",
+        tips: ["去「供应商配置」把协议改为受支持项：OpenAI 兼容 / Anthropic / Gemini。"],
       },
       MODEL_UPSTREAM_ERROR: {
         type: "upstream_error",
-        tips: ["上游模型返回错误。", "查看 message 中的上游错误信息，确认模型可用且参数合法。"],
+        label: "上游报错",
+        tips: [
+          "看上方「错误详情」：message 里是上游真实报错。",
+          "常见原因：模型 ID 不存在/拼错、额度耗尽、服务临时不可用。",
+          "去「供应商配置」核对 Base URL 路径（OpenAI 兼容需含 /v1）与 upstreamModel 模型名。",
+        ],
       },
       MODEL_BAD_REQUEST: {
         type: "bad_request",
-        tips: ["请求参数不合法。", "确认 upstreamModel / 协议与目标网关要求一致。"],
+        label: "请求参数错误",
+        tips: ["去「供应商配置」核对 upstreamModel（填上游真实模型 ID，如 deepseek-chat）与所选协议是否匹配该网关。"],
       },
     };
-    const hit = map[code] || { type: "unknown", tips: ["未知错误，请查看 message 详情或后端日志。"] };
+    const hit = map[code] || { type: "unknown", label: "未知错误", tips: ["未知错误，请查看 message 详情或后端日志。"] };
     return {
       ok: false,
       latencyMs: latency(),
       errorType: hit.type,
+      label: hit.label,
       message: msg,
       troubleshooting: hit.tips,
     };

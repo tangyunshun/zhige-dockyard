@@ -159,7 +159,23 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
       }
 
       const data: any = await res.json();
-      const text: string = data?.choices?.[0]?.message?.content?.toString() ?? "";
+      // 部分网关在 HTTP 200 下返回错误体，优先识别并透传，避免被误判为「内容为空」
+      if (data?.error) {
+        const detail =
+          typeof data.error === "string"
+            ? data.error
+            : data.error?.message || JSON.stringify(data.error).slice(0, 200);
+        throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", `上游返回错误：${detail}`, 502);
+      }
+      const msg: any = data?.choices?.[0]?.message ?? {};
+      // 兼容各厂商推理模型：content 优先；缺失时回退常见的思考字段(reasoning_content / reasoning / thinking)
+      const content: string = msg?.content?.toString() ?? "";
+      const reasoning: string =
+        msg?.reasoning_content?.toString() ??
+        msg?.reasoning?.toString() ??
+        msg?.thinking?.toString() ??
+        "";
+      const text: string = content || reasoning;
       const rawUsage = data?.usage;
       const usage: ModelExecutionUsage = {
         inputTokens: typeof rawUsage?.prompt_tokens === "number" ? rawUsage.prompt_tokens : null,
@@ -168,7 +184,13 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
       };
 
       if (!text) {
-        throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", "模型返回内容为空，无法生成结果。", 502);
+        const fr = data?.choices?.[0]?.finish_reason;
+        const hint = reasoning
+          ? "（该模型以 reasoning/思考内容返回，未输出常规 content，可能是推理模型）"
+          : fr
+            ? `（finish_reason=${fr}，上游未产出可见文本）`
+            : "（上游响应未包含 choices[0].message.content，可能协议/字段不匹配或返回了空结果）";
+        throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", `模型返回内容为空，无法生成结果。${hint}`, 502);
       }
 
       return {
@@ -320,11 +342,20 @@ export class AnthropicAdapter implements ModelAdapter {
       }
       if (!res.ok) throw mapModelHttpError(res.status);
       const data: any = await res.json();
+      if (data?.error) {
+        const detail =
+          typeof data.error === "string"
+            ? data.error
+            : data.error?.message || JSON.stringify(data.error).slice(0, 200);
+        throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", `上游返回错误：${detail}`, 502);
+      }
       const blocks: any[] = Array.isArray(data?.content) ? data.content : [];
-      const text: string = blocks
-        .filter((b) => b?.type === "text")
-        .map((b) => String(b.text ?? ""))
-        .join("");
+      // 文本优先；推理模型(扩展思考)内容在 type==="thinking" 的块里，缺失时回退之
+      const textBlocks = blocks.filter((b) => b?.type === "text").map((b) => String(b?.text ?? ""));
+      const thinkingBlocks = blocks
+        .filter((b) => b?.type === "thinking")
+        .map((b) => String(b?.thinking ?? b?.text ?? ""));
+      const text: string = textBlocks.join("") || thinkingBlocks.join("");
       const usage: ModelExecutionUsage = {
         inputTokens: typeof data?.usage?.input_tokens === "number" ? data.usage.input_tokens : null,
         outputTokens: typeof data?.usage?.output_tokens === "number" ? data.usage.output_tokens : null,
@@ -333,7 +364,12 @@ export class AnthropicAdapter implements ModelAdapter {
             ? data.usage.input_tokens + data.usage.output_tokens
             : null,
       };
-      if (!text) throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", "模型返回内容为空，无法生成结果。", 502);
+      if (!text) {
+        const hint = data?.stop_reason
+          ? `（stop_reason=${data.stop_reason}，上游未产出可见文本）`
+          : "（上游响应未包含文本内容块，可能协议/字段不匹配或返回了空结果）";
+        throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", `模型返回内容为空，无法生成结果。${hint}`, 502);
+      }
       return {
         text,
         usage,
@@ -419,8 +455,20 @@ export class GeminiAdapter implements ModelAdapter {
       }
       if (!res.ok) throw mapModelHttpError(res.status);
       const data: any = await res.json();
-      const parts: any[] = data?.candidates?.[0]?.content?.parts ?? [];
-      const text: string = parts.map((p) => String(p?.text ?? "")).join("");
+      if (data?.error) {
+        const detail =
+          typeof data.error === "string"
+            ? data.error
+            : data.error?.message || JSON.stringify(data.error).slice(0, 200);
+        throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", `上游返回错误：${detail}`, 502);
+      }
+      const cand: any = data?.candidates?.[0] ?? {};
+      const parts: any[] = cand?.content?.parts ?? [];
+      // 文本优先；推理模型的思考在 thought 标记的 part 或 thinkingProcess，缺失时回退之
+      const textParts = parts.filter((p) => !p?.thought).map((p) => String(p?.text ?? ""));
+      const thoughtParts = parts.filter((p) => p?.thought).map((p) => String(p?.text ?? ""));
+      const thinkingProcess = (cand?.thinkingProcess?.parts ?? []).map((p: any) => String(p?.text ?? "")).join("");
+      const text: string = textParts.join("") || thoughtParts.join("") || thinkingProcess;
       const um = data?.usageMetadata;
       const inputTokens = typeof um?.promptTokenCount === "number" ? um.promptTokenCount : null;
       const outputTokens = typeof um?.candidatesTokenCount === "number" ? um.candidatesTokenCount : null;
@@ -434,7 +482,13 @@ export class GeminiAdapter implements ModelAdapter {
               ? inputTokens + outputTokens
               : null,
       };
-      if (!text) throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", "模型返回内容为空，无法生成结果。", 502);
+      if (!text) {
+        const fr = data?.candidates?.[0]?.finishReason;
+        const hint = fr
+          ? `（finishReason=${fr}，上游未产出可见文本）`
+          : "（上游响应未包含文本内容，可能协议/字段不匹配或返回了空结果）";
+        throw new ModelAdapterError("MODEL_UPSTREAM_ERROR", `模型返回内容为空，无法生成结果。${hint}`, 502);
+      }
       return {
         text,
         usage,

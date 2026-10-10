@@ -170,6 +170,16 @@ export const C12_CONTRACT: ComponentContract = draft("C12", {
     estimatedTokens: 120,
     ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
   },
+  // 业务阻断事实（结构化三要素，随 DRAFT 合同持久化）：
+  // 目录/口语诉求包含「DDL/ER 图 图形化输出」（清晰展示外键关系的关联拓扑图），属图形化输出，当前不支持 → 登记阻断，
+  // 本批次以 DOCUMENT（实体清单 + 关系说明 + DDL/Resolver 文本）替代，绝不发布伪支持的图形/文件型合同。
+  unsupportedRequirements: [
+    {
+      requirement: "DDL/ER图 图形化输出（关联拓扑图）",
+      reason: "当前执行引擎仅支持 DOCUMENT/TABLE/JSON，图形化 ER 图/拓扑渲染无渲染器",
+      suggestedAlternative: "TABLE/JSON 等价表达实体关系（待负责人裁决）或 Mermaid 文本方案（待路线图）",
+    },
+  ],
 });
 
 // ---------------------------------------------------------------------------

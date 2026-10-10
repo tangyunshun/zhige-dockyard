@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
       where: { id: userId },
       data: {
         sessionToken: null,
+        sessionRememberMe: false, // 会话销毁时复位「7天内免登录」标记
         sessionExpiresAt: null,
         lastForcedLogoutAt: new Date(),
       },

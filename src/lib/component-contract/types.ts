@@ -239,6 +239,21 @@ export interface ComponentContract {
 
   // 8. 隐私与数据边界策略（可选；仅数据生成类组件声明）
   privacyPolicy?: ComponentPrivacyPolicy;
+
+  // 9. 业务阻断项（可选；仅登记业务确实需要、但当前引擎不支持的需求/输出）
+  //    严禁通过伪装成 DOCUMENT/TABLE/JSON 来"伪支持"，必须在此显式结构化登记，
+  //    并随不可变合同快照一同落库，作为「不得发布伪支持合同」的可追溯依据。
+  unsupportedRequirements?: ComponentUnsupportedRequirement[];
+}
+
+/** 不支持项的结构化阻断事实：必须写清「不被支持什么 / 依据 / 替代方案」三要素 */
+export interface ComponentUnsupportedRequirement {
+  /** 业务确实需要、但当前不支持的需求或输出形态 */
+  requirement: string;
+  /** 判定为不支持的客观依据（引擎能力边界，不得含糊） */
+  reason: string;
+  /** 推荐的等价替代方案（含待裁决/待路线图的明确状态） */
+  suggestedAlternative: string;
 }
 
 /** 不可变合同快照 */

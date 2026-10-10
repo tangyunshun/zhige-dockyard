@@ -160,6 +160,7 @@ export default function UserByoModelPage() {
     ok: boolean;
     latencyMs: number;
     errorType?: string;
+    label?: string;
     message?: string;
     troubleshooting?: string[];
     sampleReply?: string;
@@ -672,7 +673,7 @@ export default function UserByoModelPage() {
                 <span className={"text-xs font-black " + (testResult.ok ? "text-emerald-700" : "text-rose-700")}>
                   {testResult.ok
                     ? `测试通道连通成功（耗时 ${testResult.latencyMs}ms）`
-                    : `测试通道连通失败${testResult.errorType ? `（${testResult.errorType}）` : ""}`}
+                    : `测试通道连通失败${testResult.label ? `（${testResult.label}）` : testResult.errorType ? `（${testResult.errorType}）` : ""}`}
                 </span>
                 {!testResult.ok && testResult.latencyMs != null && (
                   <span className="text-[11px] text-rose-400 font-mono">耗时 {testResult.latencyMs}ms</span>
@@ -684,14 +685,20 @@ export default function UserByoModelPage() {
                 </div>
               )}
               {!testResult.ok && testResult.message && (
-                <div className="text-[11px] text-rose-600 font-medium break-words">{testResult.message}</div>
+                <div className="text-[11px] text-rose-600 font-medium break-words">
+                  <span className="font-black">错误详情：</span>
+                  {testResult.message}
+                </div>
               )}
               {!testResult.ok && testResult.troubleshooting?.length ? (
-                <ul className="list-disc pl-4 space-y-1 text-[11px] text-rose-600/90">
-                  {testResult.troubleshooting.map((t, i) => (
-                    <li key={i}>{t}</li>
-                  ))}
-                </ul>
+                <div className="text-[11px] text-rose-600/90">
+                  <div className="font-black mb-1">如何修复：</div>
+                  <ul className="list-disc pl-4 space-y-1">
+                    {testResult.troubleshooting.map((t, i) => (
+                      <li key={i}>{t}</li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </div>
           )}
