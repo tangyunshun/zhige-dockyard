@@ -50,6 +50,7 @@ export interface ResultViewerTask {
     legacy?: boolean;
     provider?: { id?: string; modelId?: string } | null;
     model?: string | null;
+    isExplicitDeployment?: boolean;
     usage?: { inputTokens?: number | null; outputTokens?: number | null; totalTokens?: number | null } | null;
     billingMode?: string | null;
     estimatedPoints?: number | null;
@@ -815,11 +816,14 @@ export function ResultViewer({
                   </span>
                 </>
               ) : null}
-              {exec.provider?.modelId ? (
+              {exec.provider?.modelId || exec.model ? (
                 <>
                   <span>·</span>
                   <span className="font-mono text-slate-500" title="执行模型（REAL_MODEL 元数据）">
-                    {exec.provider.modelId}
+                    执行模型：{exec.provider?.modelId || exec.model}
+                    <span className={exec.isExplicitDeployment ? "text-[#3182ce] font-bold ml-1" : "text-slate-400 ml-1"}>
+                      {exec.isExplicitDeployment ? "（空间指定）" : "（自动默认）"}
+                    </span>
                   </span>
                 </>
               ) : null}

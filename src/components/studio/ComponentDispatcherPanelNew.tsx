@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
-import { X, Shield, ArrowRight, Layers, Database, FileText, CheckCircle2, ChevronRight, Activity, Star, TrendingUp, Code, FolderOpen, Layout, Server, Monitor, Users, ShieldCheck, FlaskConical, Coins, Cpu } from "lucide-react";
+import { X, Shield, ArrowRight, Layers, Database, FileText, CheckCircle2, ChevronRight, Activity, Star, TrendingUp, Code, FolderOpen, Layout, Server, Monitor, Users, ShieldCheck, FlaskConical, Coins, Cpu, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ComponentDefinition, ComponentCategory } from "@/constants/components";
 import { getAuthToken } from "@/utils/auth";
@@ -158,6 +159,105 @@ export default function ComponentDispatcherPanel({
   /** 本次查询是否已返回结果（用于区分「加载中」与「确实无法估价」，避免首帧误报） */
   const [pricingHintResolved, setPricingHintResolved] = useState(false);
 
+  // ===== MODEL-SELECT-E1: 空间可用模型池与用户指定模型状态 =====
+  const [availableModels, setAvailableModels] = useState<{
+    systemModels: Array<{
+      id: string;
+      providerId: string;
+      providerName: string;
+      modelId: string;
+      displayName: string;
+      upstreamModel: string;
+      capabilities: string[];
+      contextLimit: number;
+      isSpaceDefault: boolean;
+      pricing: {
+        currency: string;
+        priceInputMicrosPerMillion: number | null;
+        priceOutputMicrosPerMillion: number | null;
+        markupRateBps: number | null;
+      } | null;
+    }>;
+    byoModel: {
+      configured: boolean;
+      id: string;
+      label: string;
+      protocol: string;
+      endpointHost: string;
+      capabilities: string[];
+      contextLimit: number;
+      enabled: boolean;
+      shareWithMembers: boolean;
+      canUse: boolean;
+      reason: string | null;
+      pricing: {
+        priceInputMicrosPerMillion: number | null;
+        priceOutputMicrosPerMillion: number | null;
+        byokServiceRateBps: number;
+      };
+    } | null;
+    defaultTarget: {
+      source: string;
+      targetDeploymentId: string;
+      label: string;
+    };
+  } | null>(null);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>("auto");
+
+  // 本地记忆加载：读取上次选定的模型（默认 auto）
+  useEffect(() => {
+    if (typeof window !== "undefined" && selectedWorkspaceId) {
+      try {
+        const saved = localStorage.getItem(`zhige_last_selected_model_${selectedWorkspaceId}`);
+        if (saved) {
+          setSelectedDeploymentId(saved);
+        } else {
+          setSelectedDeploymentId("auto");
+        }
+      } catch {
+        setSelectedDeploymentId("auto");
+      }
+    }
+  }, [selectedWorkspaceId]);
+
+  const handleSelectModel = (val: string) => {
+    setSelectedDeploymentId(val);
+    if (typeof window !== "undefined" && selectedWorkspaceId) {
+      try {
+        localStorage.setItem(`zhige_last_selected_model_${selectedWorkspaceId}`, val);
+      } catch {}
+    }
+  };
+
+  // 加载当前空间可用模型池
+  useEffect(() => {
+    if (!isOpen || !isLoggedIn || !selectedWorkspaceId) {
+      setAvailableModels(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingModels(true);
+    const authToken = getAuthToken();
+    fetch(`/api/workspace/available-models?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`, {
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!cancelled && json?.success) {
+          setAvailableModels(json.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingModels(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isLoggedIn, selectedWorkspaceId]);
+
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formRunning, setFormRunning] = useState(false);
@@ -175,9 +275,9 @@ export default function ComponentDispatcherPanel({
   }, [componentId]);
 
   /**
-   * 执行前价格提示：随「运行目标 workspace + 合同能力」变化拉取当前生效单价。
-   * 裁决口径与真实执行路径完全一致（服务端 resolveDefaultDeployment），前端只做只读展示，
-   * 不得自行推导或硬编码任何价格。
+   * 执行前价格提示：随「运行目标 workspace + 所选模型 + 合同能力」变化拉取当前生效单价。
+   * 裁决口径与真实执行路径完全一致（服务端 resolveDefaultDeployment / resolveDeploymentForWorkspace），
+   * 前端只做只读展示，不得自行推导或硬编码任何价格。
    */
   useEffect(() => {
     if (!isOpen || !isLoggedIn || !selectedWorkspaceId || !requiredCapsKey) {
@@ -193,6 +293,7 @@ export default function ComponentDispatcherPanel({
     const params = new URLSearchParams({
       componentId: componentId || "",
       workspaceId: selectedWorkspaceId,
+      deploymentId: selectedDeploymentId || "auto",
     });
     fetch(`/api/billing/estimate?${params.toString()}`, {
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
@@ -215,7 +316,7 @@ export default function ComponentDispatcherPanel({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, isLoggedIn, selectedWorkspaceId, requiredCapsKey]);
+  }, [isOpen, isLoggedIn, selectedWorkspaceId, requiredCapsKey, selectedDeploymentId]);
 
   /**
    * 结构化表单提交：以合同字段做前端必填/选项校验（**不替代后端合同校验**），
@@ -275,6 +376,7 @@ export default function ComponentDispatcherPanel({
           workspaceId: targetWorkspace.id,
           componentId: comp.id,
           formData: formValues,
+          deploymentId: selectedDeploymentId !== "auto" ? selectedDeploymentId : undefined,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -764,6 +866,97 @@ export default function ComponentDispatcherPanel({
                     </span>
                   </div>
                 </div>
+
+                {/* MODEL-SELECT-E1: 空间可用模型选择器 (三分组级联) */}
+                {isLoggedIn && selectedWorkspaceId && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100 z-10">
+                    <div className="flex items-center justify-between text-[8.5px] font-black uppercase tracking-wider text-slate-500">
+                      <span className="flex items-center gap-1 text-[#3182ce]">
+                        <Cpu className="w-3 h-3" />
+                        <span>运行模型选择</span>
+                      </span>
+                      {loadingModels && (
+                        <span className="text-slate-400 font-normal flex items-center gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> 加载中
+                        </span>
+                      )}
+                    </div>
+
+                    <select
+                      value={selectedDeploymentId}
+                      onChange={(e) => handleSelectModel(e.target.value)}
+                      className="w-full h-8 px-2.5 rounded border border-slate-200 bg-white text-xs text-slate-800 outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 transition-all font-medium cursor-pointer shadow-2xs"
+                    >
+                      {/* 分组 1：智能调度 */}
+                      <optgroup label="⚡ 智能调度">
+                        <option value="auto">
+                          自动默认（优先空间自带 ➔ 次选空间默认 ➔ 兜底平台）
+                          {availableModels?.defaultTarget?.label ? ` [当前: ${availableModels.defaultTarget.label}]` : ""}
+                        </option>
+                      </optgroup>
+
+                      {/* 分组 2：空间私有模型 */}
+                      {availableModels?.byoModel?.configured && (
+                        <optgroup label="🏷️ 空间私有模型 (自备端点 · 仅付 15% 服务费)">
+                          {availableModels.byoModel.enabled && availableModels.byoModel.canUse ? (
+                            <option value="byo">
+                              [自带] {availableModels.byoModel.label} ({availableModels.byoModel.endpointHost}) · 仅付 15% 服务费
+                            </option>
+                          ) : (
+                            <option value="byo" disabled>
+                              [自带] {availableModels.byoModel.label} · {availableModels.byoModel.enabled ? "未共享不可选" : "维护中不可选"}
+                            </option>
+                          )}
+                        </optgroup>
+                      )}
+
+                      {/* 分组 3：平台授权模型 */}
+                      {availableModels?.systemModels && availableModels.systemModels.length > 0 && (
+                        <optgroup label="🏢 平台授权模型 (官方通道 · 白名单授权)">
+                          {availableModels.systemModels.map((m) => {
+                            const priceIn = m.pricing?.priceInputMicrosPerMillion != null ? (m.pricing.priceInputMicrosPerMillion / 1000000).toFixed(2) : "--";
+                            const priceOut = m.pricing?.priceOutputMicrosPerMillion != null ? (m.pricing.priceOutputMicrosPerMillion / 1000000).toFixed(2) : "--";
+                            const provLabel = m.providerName || "平台";
+                            return (
+                              <option key={m.id} value={m.id}>
+                                [{provLabel}] {m.displayName}（入 ¥{priceIn} / 出 ¥{priceOut} 元/百万）{m.isSpaceDefault ? " [空间默认]" : ""}
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+                      )}
+                    </select>
+
+                    {/* 当前选中模型的时段生效售价实时状态行 */}
+                    {(() => {
+                      if (selectedDeploymentId === "byo" && availableModels?.byoModel) {
+                        const byo = availableModels.byoModel;
+                        const pIn = byo.pricing?.priceInputMicrosPerMillion != null ? (byo.pricing.priceInputMicrosPerMillion / 1000000).toFixed(2) : "0.00";
+                        const pOut = byo.pricing?.priceOutputMicrosPerMillion != null ? (byo.pricing.priceOutputMicrosPerMillion / 1000000).toFixed(2) : "0.00";
+                        return (
+                          <div className="flex items-center justify-between text-[9.5px] bg-amber-50/80 border border-amber-200/60 px-2 py-1 rounded text-amber-800 font-mono">
+                            <span>当前生效: 自带私有模型</span>
+                            <span>端点定价 ¥{pIn}/¥{pOut}/M · 仅计 15% 平台服务费</span>
+                          </div>
+                        );
+                      }
+                      const curSysModel = availableModels?.systemModels?.find(m => m.id === selectedDeploymentId);
+                      if (curSysModel) {
+                        const priceIn = curSysModel.pricing?.priceInputMicrosPerMillion != null ? (curSysModel.pricing.priceInputMicrosPerMillion / 1000000).toFixed(2) : "--";
+                        const priceOut = curSysModel.pricing?.priceOutputMicrosPerMillion != null ? (curSysModel.pricing.priceOutputMicrosPerMillion / 1000000).toFixed(2) : "--";
+                        return (
+                          <div className="flex items-center justify-between text-[9.5px] bg-blue-50/70 border border-blue-200/60 px-2 py-1 rounded text-[#2b6cb0]">
+                            <span className="font-semibold truncate max-w-[140px]">当前模型: {curSysModel.displayName}</span>
+                            <span className="font-mono font-bold">
+                              当前时段生效价: 入 ¥{priceIn} / 出 ¥{priceOut} 元/百万Token
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                )}
                 
                 {/* 成本基准诚实提示：平台真实历史基准未配置时必须标注为「假设估算」，不得显示为真实报价 */}
                 {costBaselineStatus === "ASSUMPTION" && (
@@ -905,8 +1098,21 @@ export default function ComponentDispatcherPanel({
                     </button>
 
                     {formRunError && (
-                      <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[9.5px] text-rose-700 font-semibold">
-                        执行失败 [{formRunError.code}]：{formRunError.message}
+                      <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[9.5px] text-rose-700 font-semibold space-y-1.5">
+                        <div>
+                          执行失败 [{formRunError.code}]：{formRunError.message}
+                        </div>
+                        {formRunError.code === "POINTS_INSUFFICIENT" && (
+                          <Link
+                            href="/user/pay"
+                            className="inline-flex items-center gap-0.5 text-[#3182ce] hover:underline font-black"
+                          >
+                            前往充值算力点
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </Link>
+                        )}
                       </div>
                     )}
                     {formRunResult && (

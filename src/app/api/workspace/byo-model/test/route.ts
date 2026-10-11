@@ -3,7 +3,7 @@ import { validateUser, isAdminRole } from "@/lib/auth";
 import { requireWorkspaceMembership, getLogicalWorkspaceRole } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto-secrets";
-import { testByoModelConnection } from "@/lib/workspace-byo-model";
+import { testByoModelConnection, deriveSuggestedCapabilities } from "@/lib/workspace-byo-model";
 
 /**
  * BYO 配置权限：平台管理员（isAdminRole）可代管任意空间；
@@ -64,7 +64,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await testByoModelConnection({ baseUrl, protocol, apiKey, modelLabel });
-    return NextResponse.json({ success: result.ok, ...result });
+    const suggestedCapabilities = deriveSuggestedCapabilities(result.sampleReply);
+    return NextResponse.json({ success: result.ok, ...result, suggestedCapabilities });
   } catch (error) {
     console.error("[byo-model] TEST 失败:", (error as Error)?.message);
     return NextResponse.json({ success: false, error: "测试通道调用异常" }, { status: 500 });

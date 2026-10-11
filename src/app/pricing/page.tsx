@@ -458,6 +458,18 @@ export default function PricingPage() {
                             按量实时扣减 · 无月度自动重置，用尽后需充值或购买算力加油包
                           </p>
                         )}
+                        <button
+                          onClick={() => {
+                            if (!userState.isLoggedIn) {
+                              router.push(`/auth/login?redirect=${encodeURIComponent("/user/pay")}`);
+                            } else {
+                              router.push("/user/pay");
+                            }
+                          }}
+                          className="mt-2.5 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-[11px] font-black shadow-xs hover:brightness-105 transition-all cursor-pointer"
+                        >
+                          <Zap className="w-3 h-3" /> 充值算力点
+                        </button>
                       </div>
 
                       {/* 垂直分隔 */}

@@ -108,8 +108,8 @@ describe("押金换算端到端（C07 最坏情况，deepseek-flash 高峰价 2/
   // 单价（微元/百万）：输入 2 元 = 2_000_000 微元；输出 8 元 = 8_000_000 微元
   const UNIT = { input: 2_000_000, output: 8_000_000 };
 
-  it("C07 最坏情况（材料 12000 字符 → 4000 Token 输入 + 4096 输出）= 9 点（含向上取整与保底）", () => {
-    // 成本 = 4000×2/1e6 + 4096×8/1e6 = 0.008 + 0.032768 = 0.040768 元；×k2.0 = 0.081536 元 = 8.1536 点 → ceil 9
+  it("C07 最坏情况（材料 12000 字符 → 4000 Token 输入 + 4096 输出）= 5 点（含向上取整与保底，全局 +20%）", () => {
+    // 成本 = 4000×2/1e6 + 4096×8/1e6 = 0.008 + 0.032768 = 0.040768 元；×1.2（全局 +20%）= 0.0489216 元 = 4.89216 点 → ceil 5
     const bounds = computeDepositTokenBounds(12_000, 4096);
     expect(bounds).toEqual({ inputTokens: 4000, outputTokens: 4096 });
     const est = computeEstimatedPoints({
@@ -119,12 +119,12 @@ describe("押金换算端到端（C07 最坏情况，deepseek-flash 高峰价 2/
       outputTokens: bounds.outputTokens,
       pricingSource: "PLATFORM",
       priceKind: "COST_PLUS_MARKUP",
-      markupCoefficientBps: 20_000, // k = 2.0
+      markupCoefficientBps: 2_000, // 全局加价率 +20%
       byokServiceRateBps: 1_500,
       minPointsPerTask: 5,
     } as any);
     expect(est.basis).toBe("CONVERTED_PRICE");
-    expect(est.points).toBe(9);
+    expect(est.points).toBe(5);
     // applied 语义 = 本次计算应用的保底配置值（9 > 5 未抬升，仍记录配置值 5）
     expect(est.snapshot.minPointsPerTaskApplied).toBe(5);
   });
@@ -137,11 +137,11 @@ describe("押金换算端到端（C07 最坏情况，deepseek-flash 高峰价 2/
       outputTokens: 100,
       pricingSource: "PLATFORM",
       priceKind: "COST_PLUS_MARKUP",
-      markupCoefficientBps: 20_000,
+      markupCoefficientBps: 2_000,
       byokServiceRateBps: 1_500,
       minPointsPerTask: 5,
     } as any);
-    // 100×2/1e6 + 100×8/1e6 = 0.001 元 ×2 = 0.002 元 = 0.2 点 → ceil 1 → 保底 max(1,5) = 5
+    // 100×2/1e6 + 100×8/1e6 = 0.001 元 ×1.2 = 0.0012 元 = 0.12 点 → ceil 1 → 保底 max(1,5) = 5
     expect(est.points).toBe(5);
     expect(est.snapshot.minPointsPerTaskApplied).toBe(5);
   });

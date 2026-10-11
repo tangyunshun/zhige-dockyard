@@ -46,7 +46,9 @@ function LoginForm() {
   const [showSmsLogin, setShowSmsLogin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  // 「7天内免登录」默认勾选：与主流产品（GitHub/Google 记住我）一致，
+  // 避免用户忘记勾选导致 10 分钟空闲即被登出的期望落差；不想要可手动取消。
+  const [rememberMe, setRememberMe] = useState(true);
   const [hasShownError, setHasShownError] = useState(false);
   const [showAppealModal, setShowAppealModal] = useState(false);
   const [qrModalChannel, setQrModalChannel] = useState<OAuthChannelMeta | null>(null);

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { loadDeploymentPricing } from "@/lib/model-registry";
+import { resolveActivePricingAt } from "@/lib/model-registry";
 import type { DeploymentPricing } from "@/lib/model-pricing";
 import { loadBillingConfig, type BillingConfig } from "./billing-config";
 
@@ -134,7 +134,7 @@ export function byokWorkspaceIdOf(deploymentId: string): string | null {
 /**
  * 计算实际生效乘数（基点，10000 = ×1.0）：
  * - BYOK_OFFICIAL：10000 + 服务费率
- * - COST_PLUS_MARKUP：10000 +（模型覆盖加价率 ?? 全局 k 对应的加价率）
+ * - COST_PLUS_MARKUP：10000 +（模型覆盖加价率 ?? 全局加价率）；全局与模型同口径（加价率基点）
  * - DIRECT_PRICE：10000（售价已含加价，禁止重复叠加）
  */
 export function effectiveMultiplierBps(params: {
@@ -152,8 +152,8 @@ export function effectiveMultiplierBps(params: {
   if (perModel !== null && perModel !== undefined && Number.isFinite(perModel)) {
     return { multiplierBps: 10_000 + Math.max(0, Math.floor(perModel)), markupOverriddenByModel: true };
   }
-  // 全局 k（k×10000）本身就是「成本 → 售价」的乘数，直接作为 multiplierBps
-  return { multiplierBps: Math.max(10_000, params.markupCoefficientBps), markupOverriddenByModel: false };
+  // 全局加价率与模型层同口径（加价率基点，2000 = +20%），作为「成本之上」的加成相加
+  return { multiplierBps: 10_000 + Math.max(0, Math.floor(params.markupCoefficientBps)), markupOverriddenByModel: false };
 }
 
 /**
@@ -251,7 +251,7 @@ export function computeEstimatedPoints(params: {
 }
 
 /** 从平台价目解析单价口径（售价优先，其次成本×加价） */
-function resolvePlatformUnit(p: DeploymentPricing | null): {
+export function resolvePlatformUnit(p: DeploymentPricing | null): {
   unit: UnitPriceMicros;
   priceKind: PriceKind | null;
   perModelMarkupRateBps: number | null;
@@ -330,7 +330,7 @@ export async function estimatePoints(params: {
     });
   }
 
-  const pricing = await loadDeploymentPricing(deploymentId);
+  const pricing = await resolveActivePricingAt(deploymentId);
   const { unit, priceKind, perModelMarkupRateBps } = resolvePlatformUnit(pricing);
   return computeEstimatedPoints({
     deploymentId,

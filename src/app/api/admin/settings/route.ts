@@ -81,8 +81,8 @@ const DEFAULT_CONFIGS: Record<string, string> = {
   logo: "/logo.png",
   copyright: "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1",
   icpNumber: "京ICP备 2026000000 号-1",
-  // 商业化计费（算账中心）：k=2.0 / BYOK 服务费 15% / 免费 3 个月每月 100 点 / 退款审核阈值 500 元
-  "billing.markupCoefficientBps": "20000",
+  // 商业化计费（算账中心）：全局加价率 +20% / BYOK 服务费 15% / 免费 3 个月每月 100 点 / 退款审核阈值 500 元
+  "billing.markupCoefficientBps": "2000",
   "billing.byokServiceRateBps": "1500",
   "billing.freeMonths": "3",
   "billing.freePointsPerMonth": "100",

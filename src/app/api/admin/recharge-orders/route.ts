@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { isPlatformAdminRole, requirePlatformPermission, writeAuditLog  } from "@/lib/security";
 import { grantPoints } from "@/lib/credit-service";
 
 /**
@@ -17,10 +17,6 @@ import { grantPoints } from "@/lib/credit-service";
  *     CONFIRM_PAID 待收款 → 已收款并自动入账（写入算力分桶 + 流水 + 财务账单）
  */
 
-function isPlatformAdmin(role?: string | null): boolean {
-  const r = (role || "").toUpperCase();
-  return r === "ADMIN" || r === "SUPER_ADMIN" || r === "PLATFORM_ADMIN";
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +29,7 @@ export async function GET(request: NextRequest) {
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
-    if (!isPlatformAdmin(auth.user.role)) {
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可查看充值工单" }, { status: 403 });
     }
 
@@ -130,7 +126,7 @@ export async function PATCH(request: NextRequest) {
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
-    if (!isPlatformAdmin(auth.user.role)) {
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可审批充值工单" }, { status: 403 });
     }
 

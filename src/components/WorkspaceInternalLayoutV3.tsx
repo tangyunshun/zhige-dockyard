@@ -7940,11 +7940,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             {/* 算力加油包选择列表 纯卡片垂直滚动 */}
             <div className="flex-1 min-h-[160px] max-h-[34vh] overflow-y-auto pr-1.5 space-y-3">
               <div className="grid grid-cols-1 gap-3">
-                {(dynamicTokenPacks.length > 0 ? dynamicTokenPacks : [
-                  { id: "pack_standard_1000", name: "标准算力包", points: 1000, price: pointsToYuan(1000), icon: "⚡", isPopular: false, description: "适合日常基础算力补充" },
-                  { id: "pack_pro_10000", name: "尊享算力包", points: 10000, price: pointsToYuan(10000), icon: "👑", isPopular: true, description: "热门划算选购，团队敏捷研发首选" },
-                  { id: "pack_enterprise_50000", name: "企业旗舰算力包", points: 50000, price: pointsToYuan(50000), icon: "🚀", isPopular: false, description: "大型团队敏捷研发保障" },
-                ]).map((pack) => {
+                {dynamicTokenPacks.length > 0 ? dynamicTokenPacks.map((pack) => {
                   const isSelected = selectedRechargePack.id
                     ? selectedRechargePack.id === pack.id
                     : selectedRechargePack.points === pack.points;
@@ -8004,7 +8000,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       </div>
                     </div>
                   );
-                })}
+                }) : (
+                  <div className="col-span-1 p-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
+                    <p className="text-xs font-bold text-slate-600">暂无可购加油包，请联系管理员在后台配置</p>
+                    <a href="/user/pay" className="inline-block px-3 py-1.5 rounded-[4px] bg-[#3182ce] text-white text-xs font-bold hover:bg-[#2b6cb0] transition-colors">前往充值中心 →</a>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -8039,6 +8040,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
             {/* 底部按钮区 保持吸底 */}
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 shrink-0">
+              <a href="/user/pay" className="mr-auto text-[11px] font-bold text-[#3182ce] hover:text-[#2b6cb0] underline underline-offset-2 cursor-pointer">查看充值记录与更多充值方式 → 前往充值中心</a>
               <button
                 type="button"
                 onClick={() => setShowRechargeModal(false)}

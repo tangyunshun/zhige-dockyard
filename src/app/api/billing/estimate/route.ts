@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { resolveDefaultDeployment } from "@/lib/model-registry";
+import { resolveDefaultDeployment, resolveDeploymentForWorkspace } from "@/lib/model-registry";
 import { extractRequiredCapabilities } from "@/lib/component-contract/capabilities";
 import { microsToYuanPerMillion } from "@/lib/model-pricing";
 import { pointsToYuan, YUAN_PER_POINT } from "@/lib/point-rate";
@@ -44,10 +44,10 @@ function buildExplanation(r: EstimatePointsResult, config: { markupCoefficientBp
   if (s.priceKind === "DIRECT_PRICE") {
     return `按模型登记的售价计算——输入 ${fmtYuan(inYuan)} / 百万 Token、输出 ${fmtYuan(outYuan)} / 百万 Token（售价已含加价，不再叠加系数）；${rateText}。`;
   }
-  const k = markupCoefficientToNumber(s.multiplierBps / 1); // multiplierBps 即成本→售价的乘数（k×10000）
+  const k = markupCoefficientToNumber(s.multiplierBps / 1); // multiplierBps 即成本→售价的乘数（×1.2 等）
   const kText = s.markupOverriddenByModel
     ? `按模型覆盖加价系数 k=${k}`
-    : `全局加价系数 k=${markupCoefficientToNumber(config.markupCoefficientBps)}`;
+    : `全局加价系数 k=${markupCoefficientToNumber(10_000 + config.markupCoefficientBps)}`;
   return `按供应商成本加价计算——成本输入 ${fmtYuan(inYuan)} / 百万 Token、输出 ${fmtYuan(outYuan)} / 百万 Token；${kText}；${rateText}。`;
 }
 
@@ -122,8 +122,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 模型裁决：与真实执行同口径
-    const plan = await resolveDefaultDeployment({ workspaceId, requiredCapabilities });
+    // 模型裁决：与真实执行同口径（支持显式指定模型估价，或未传/auto时走智能默认）
+    const requestedDeploymentId = (searchParams.get("deploymentId") || "").trim();
+    const plan = (!requestedDeploymentId || requestedDeploymentId === "auto")
+      ? await resolveDefaultDeployment({ workspaceId, requiredCapabilities, userId: auth.user.id })
+      : await resolveDeploymentForWorkspace({
+          workspaceId,
+          targetDeploymentId: requestedDeploymentId,
+          requiredCapabilities,
+          userId: auth.user.id,
+        });
 
     // Token 用量：调用方显式给定优先，否则按合同 maxOutputTokens 对总量做数据驱动拆分
     // 用量估算来源优先级（写库事实，禁止颠倒）：

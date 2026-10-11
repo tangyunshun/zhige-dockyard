@@ -96,6 +96,7 @@ import { enqueueRefundRecovery } from "@/lib/refund-recovery";
 import { resolveTasksRefundMetaMap } from "@/lib/refund-status";
 import {
   resolveDefaultDeployment,
+  resolveDeploymentForWorkspace,
   getPlatformDefaultDeploymentCapabilities,
   calculateMissingCapabilities,
   type ResolvedModelPlan,
@@ -1624,6 +1625,7 @@ function buildRunningTaskConfig(params: {
   executionMode: string;
   materialSummary: string;
   inputSource: unknown;
+  deploymentId?: string;
 }): Record<string, unknown> {
   const now = new Date();
   return {
@@ -1636,6 +1638,7 @@ function buildRunningTaskConfig(params: {
     chargeAttempted: false,
     inputSource: params.inputSource as unknown as Prisma.InputJsonValue,
     materialSummary: params.materialSummary,
+    ...(params.deploymentId ? { deploymentId: params.deploymentId } : {}),
     // 严禁写入原始 Prompt / API Key / 供应商响应 / 异常堆栈 / 原始 inputMaterial
   };
 }
@@ -1644,6 +1647,14 @@ async function createRunningTask(
   prisma: typeof import("@/lib/prisma").prisma,
   params: { taskId: string; userId: string; workspaceId: string; componentId: string; name: string; config: Record<string, unknown> },
 ): Promise<void> {
+  // 修复「新用户首次执行必挂」：componenttask.tenantId 外键指向 tenant 表，
+  // 新注册用户的个人空间此前只在成功路径事务里补 tenant 行——RUNNING 任务先行创建时
+  // 外键无对应行 → P2003 → 首次执行 500。此处先确保 tenant 行存在。
+  await prisma.tenant.upsert({
+    where: { id: params.workspaceId },
+    update: {},
+    create: { id: params.workspaceId, name: params.workspaceId, updatedAt: new Date() },
+  });
   await prisma.componenttask.create({
     data: {
       id: params.taskId,
@@ -2453,7 +2464,15 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         try {
           const caps = extractRequiredCapabilities(activeContract);
           if (caps.length > 0) {
-            const plan = await resolveDefaultDeployment({ workspaceId, requiredCapabilities: caps });
+            const requestedDeploymentId = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
+            const plan = (!requestedDeploymentId || requestedDeploymentId === "auto")
+              ? await resolveDefaultDeployment({ workspaceId, requiredCapabilities: caps, userId: userId })
+              : await resolveDeploymentForWorkspace({
+                  workspaceId,
+                  targetDeploymentId: requestedDeploymentId,
+                  requiredCapabilities: caps,
+                  userId: userId,
+                });
             const steps = Array.isArray((activeContract as any)?.executionPlan?.steps)
               ? ((activeContract as any).executionPlan.steps as Array<{ maxOutputTokens?: number }>)
               : [];
@@ -2946,31 +2965,21 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           }
 
           // 模型策略校验：从数据库注册表解析；未注册/未启用/不在白名单 → MODEL_NOT_ALLOWED（绝不降级模拟）
-          const reqProvider = typeof body.providerId === "string" ? body.providerId : null;
-          const reqModel = typeof body.modelId === "string" ? body.modelId : null;
+          // MODEL-SELECT-E1：请求只接受 deploymentId 或 "byo"，禁止 baseUrl 任意拼接（严格 SSRF 红线）
+          const rawTarget = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
+          const isAuto = !rawTarget || rawTarget === "auto";
           try {
-            // 执行模型唯一裁决：空间默认 -> 平台默认 -> 明确拒绝 MODEL_NOT_ALLOWED。
-            // 严禁 findFirst(orderBy: createdAt) 之类「按创建时间挑一个」的逻辑，严禁环境变量兜底。
-            // 合同声明的能力要求，统一由通用 helper 提取（executionPlan.steps + 兼容合法顶层），
-            // 交由裁决入口逐项校验；严禁组件 ID 特判。
             const requiredCapabilities = extractRequiredCapabilities(activeContract);
-            const defaultPlan = await resolveDefaultDeployment({ workspaceId, requiredCapabilities });
+            const resolvedPlan = isAuto
+              ? await resolveDefaultDeployment({ workspaceId, requiredCapabilities, userId: userId })
+              : await resolveDeploymentForWorkspace({
+                  workspaceId,
+                  targetDeploymentId: rawTarget,
+                  requiredCapabilities,
+                  userId: userId,
+                });
 
-            // 请求体一旦显式指定 provider/model，必须与裁决结果完全一致（禁止越权指定模型）
-            if (reqProvider || reqModel) {
-              if (reqProvider !== defaultPlan.providerId || reqModel !== defaultPlan.modelId) {
-                return NextResponse.json(
-                  {
-                    success: false,
-                    code: "MODEL_OVERRIDE_NOT_ALLOWED",
-                    error: "当前仅允许使用空间/平台默认模型，不接受自定义 provider/model。",
-                  },
-                  { status: 400 },
-                );
-              }
-            }
-
-            modelPlan = defaultPlan;
+            modelPlan = resolvedPlan;
             adapter = await createModelAdapter(modelPlan);
             modelPlanForSettlement = modelPlan;
 
@@ -3011,6 +3020,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             executionMode,
             materialSummary,
             inputSource: storedInputSource,
+            ...(isAuto ? {} : { deploymentId: rawTarget }),
           });
           await createRunningTask(prisma, {
             taskId,
@@ -3443,6 +3453,9 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         let taskResult: { quota: any; task: any };
         try {
           taskResult = await prisma.$transaction(async (tx) => {
+          // 在事务闭包内重新派生目标部署（与请求解析处口径完全一致），修复外层 const 在此闭包作用域不可见的 tsc 回归
+          const rawTarget = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
+          const isAuto = !rawTarget || rawTarget === "auto";
           // 确保租户记录存在，避免 componenttask.tenantId 外键约束失败导致 simulate 恒 500
           await tx.tenant.upsert({
             where: { id: workspaceId },
@@ -3515,6 +3528,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                 contractVersion: targetContractVersion || null,
                 contractSnapshot: (targetContractSnapshot || null) as unknown as Prisma.InputJsonValue,
                 chargeAttempted: true,
+                ...(isAuto ? {} : { deploymentId: rawTarget }),
                 ...(realMeta
                   ? {
                       providerId: realMeta.providerId,

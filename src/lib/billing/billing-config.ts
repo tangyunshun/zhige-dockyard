@@ -5,11 +5,11 @@ import { prisma } from "@/lib/prisma";
  *
  * 数值口径：
  * - 系数/费率一律以「基点 bps」整数存储（1 bp = 0.01%），禁止浮点；
- * - 加价系数 k 以 k×10000 存储：20000 = k 2.0（毛利 = 1 - 1/k = 50%）；
+ * - 加价率统一为「加价率基点」：2000 = 成本加价 +20%（售价 = 成本 × 1.2）；全局与模型层同口径；
  * - 金额阈值以「分」为单位整数存储。
  */
 export const BILLING_CONFIG_KEYS = {
-  /** 加价系数 k（k×10000：20000 = 2.0）。支持按模型 markupRateBps 覆盖 */
+  /** 平台全局加价率（加价率基点，1bp=0.01%）：2000 = +20%。模型 markupRateBps 留空即继承此值 */
   markupCoefficientBps: "billing.markupCoefficientBps",
   /** 自带模型（BYOK）服务费率（基点）：1500 = 15% */
   byokServiceRateBps: "billing.byokServiceRateBps",
@@ -40,7 +40,7 @@ export type BillingConfigKey = keyof typeof BILLING_CONFIG_KEYS;
 
 /** 负责人拍板的默认值；systemconfig 缺失或非法时回退到这里，绝不静默取 0 */
 export const BILLING_CONFIG_DEFAULTS = {
-  markupCoefficientBps: 20_000, // k = 2.0
+  markupCoefficientBps: 2_000, // 全局加价率 +20%（与模型 markupRateBps 同口径）
   byokServiceRateBps: 1_500, // 15%
   freeMonths: 3,
   freePointsPerMonth: 100,
@@ -51,7 +51,7 @@ export const BILLING_CONFIG_DEFAULTS = {
 } as const;
 
 export interface BillingConfig {
-  /** k×10000，约束 >= 10000（k >= 1，禁止亏本系数） */
+  /** 全局加价率基点（1bp = 0.01%）：0 = 不另加价，2000 = +20%。模型层留空时继承此值 */
   markupCoefficientBps: number;
   /** BYOK 服务费率基点 */
   byokServiceRateBps: number;
@@ -117,13 +117,22 @@ export function parseBillingConfig(
   rows: Array<{ key: string; value: string | null }>,
 ): BillingConfig {
   const map = new Map(rows.map((r) => [r.key, r.value]));
+  // 全局加价率（加价率基点）：0% ~ 1000%，与模型 markupRateBps 同口径。
+  const rawMarkup = map.get(BILLING_CONFIG_KEYS.markupCoefficientBps);
+  let markupCoefficientBps = readInt(
+    map,
+    BILLING_CONFIG_KEYS.markupCoefficientBps,
+    BILLING_CONFIG_DEFAULTS.markupCoefficientBps,
+    { min: 0, max: 100_000 }, // 加价率 0% ~ 1000%
+  );
+  // 遗留口径过渡折算：旧版以「乘数 k×10000」存储（20000 = k 2.0 = +100%），新口径为加价率基点
+  // （2000 = +20%）。检测到旧版超大值（> 10000）自动 ÷10；管理员在全局卡片重新同步后数据归一，此分支失效。
+  if (rawMarkup != null) {
+    const n = Number(rawMarkup);
+    if (Number.isFinite(n) && Number.isInteger(n) && n > 10_000) markupCoefficientBps = Math.round(n / 10);
+  }
   return {
-    markupCoefficientBps: readInt(
-      map,
-      BILLING_CONFIG_KEYS.markupCoefficientBps,
-      BILLING_CONFIG_DEFAULTS.markupCoefficientBps,
-      { min: 10_000, max: 1_000_000 }, // k ∈ [1, 100]
-    ),
+    markupCoefficientBps,
     byokServiceRateBps: readInt(
       map,
       BILLING_CONFIG_KEYS.byokServiceRateBps,

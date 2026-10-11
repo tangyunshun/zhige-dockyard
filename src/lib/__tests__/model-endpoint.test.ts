@@ -67,11 +67,15 @@ describe("模型服务 Base URL 防 SSRF 校验", () => {
 });
 
 describe("协议与适配器创建校验", () => {
-  test("仅 OPENAI_COMPATIBLE 受支持", () => {
+  test("OPENAI_COMPATIBLE / ANTHROPIC / GEMINI 三协议受支持", () => {
     assert.equal(isSupportedModelProtocol("OPENAI_COMPATIBLE"), true);
     assert.equal(isSupportedModelProtocol("openai_compatible"), true);
-    assert.equal(isSupportedModelProtocol("ANTHROPIC"), false);
+    assert.equal(isSupportedModelProtocol("ANTHROPIC"), true);
+    assert.equal(isSupportedModelProtocol("anthropic"), true);
+    assert.equal(isSupportedModelProtocol("GEMINI"), true);
+    assert.equal(isSupportedModelProtocol("gemini"), true);
     assert.equal(isSupportedModelProtocol(""), false);
+    assert.equal(isSupportedModelProtocol("UNKNOWN_PROTOCOL"), false);
   });
 
   test("未知协议创建适配器 → MODEL_PROTOCOL_UNSUPPORTED，不得静默当作 OpenAI 兼容", async () => {

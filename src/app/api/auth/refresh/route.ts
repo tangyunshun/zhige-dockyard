@@ -87,7 +87,15 @@ export async function POST(request: NextRequest) {
     const newRefreshToken = crypto.randomUUID();
     const prevRefreshToken = user.refreshToken;
 
-    const sessionToken = crypto.randomUUID();
+    // 修复「7 天内免登录」失效根因：静默刷新不得更换 sessionToken（会话令牌）。
+    // 会话令牌代表「一次登录」，只在真正的新登录（/api/auth/login 等）时轮换——
+    // 那才是挤线检查（MULTI_LOGIN_CONFLICT）的本意：新登录顶替旧设备。
+    // 此前每次刷新都换新 sessionToken，导致：
+    //   1) 多标签页互相踢（A 标签刷新 → B 标签的 JWT 立即挤线冲突 → 登出）；
+    //   2) 关浏览器时若刷新进行到一半（库已写新值、响应未送达），下次打开必被踢
+    //      ——「7 天免登录」就在这两种场景下莫名失效。
+    // 保留原 sessionToken 后，JWT 内会话标识与库恒一致；RT 轮换防重放语义不受影响。
+    const sessionToken = user.sessionToken ?? crypto.randomUUID();
 
     await prisma.user.update({
       where: { id: user.id },

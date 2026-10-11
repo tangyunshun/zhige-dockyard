@@ -49,6 +49,7 @@ interface UserTaskRecord {
   legacy?: boolean;
   provider?: { id?: string; modelId?: string } | null;
   model?: string | null;
+  isExplicitDeployment?: boolean;
   usage?: { inputTokens?: number | null; outputTokens?: number | null; totalTokens?: number | null } | null;
   billingMode?: string | null;
   estimatedPoints?: number | null;
@@ -107,6 +108,7 @@ export interface TaskExecutionView {
   legacy: boolean;
   provider: { id: string; modelId?: string } | null;
   model: string | null;
+  isExplicitDeployment?: boolean;
   usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
   billingMode: string | null;
   estimatedPoints: number | null;
@@ -321,6 +323,7 @@ export default function PersonalTasksManagementPage() {
       legacy: t.execution?.legacy ?? false,
       provider: t.execution?.provider ?? null,
       model: t.execution?.model ?? null,
+      isExplicitDeployment: t.execution?.isExplicitDeployment ?? false,
       usage: t.execution?.usage ?? null,
       billingMode: t.execution?.billingMode ?? null,
       estimatedPoints: t.execution?.estimatedPoints ?? null,
@@ -923,6 +926,17 @@ export default function PersonalTasksManagementPage() {
                               </span>
                             ) : null}
                           </div>
+                          {t.model ? (
+                            <div
+                              className="text-[9.5px] text-slate-500 font-mono mt-0.5 truncate max-w-[170px]"
+                              title={`执行模型：${t.model}${t.isExplicitDeployment ? "（空间指定）" : "（自动默认）"}`}
+                            >
+                              <span>执行模型：{t.model}</span>
+                              <span className={t.isExplicitDeployment ? "text-[#3182ce] font-bold ml-1" : "text-slate-400 ml-1"}>
+                                {t.isExplicitDeployment ? "（空间指定）" : "（自动默认）"}
+                              </span>
+                            </div>
+                          ) : null}
                         </td>
 
                         <td className="py-3.5 px-3">

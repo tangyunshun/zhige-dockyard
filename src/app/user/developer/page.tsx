@@ -303,6 +303,8 @@ export default function DeveloperCenterPage() {
               { method: "GET", path: "/api/open/v1/workspaces", desc: "获取当前账号可访问的工作空间列表" },
               { method: "GET", path: "/api/open/v1/components", desc: "获取平台已上架的组件目录（只读）" },
               { method: "GET", path: "/api/open/v1/tasks", desc: "获取本人最近发起的组件任务列表（可用 ?limit=1~100）" },
+              { method: "GET", path: "/api/open/v1/tasks/:id", desc: "轮询某任务进度与结果（执行后推荐轮询）" },
+              { method: "POST", path: "/api/open/v1/execute", desc: "执行组件（业务闭环：估价→扣点→真实模型→结算/退款）" },
             ].map((ep) => (
               <div
                 key={ep.path}
@@ -319,6 +321,50 @@ export default function DeveloperCenterPage() {
           <p className="text-[11px] text-slate-400 mt-2">
             同时支持 <code className="font-mono text-slate-500">x-api-key: YOUR_API_KEY</code> 请求头。
             Key 仅用于服务端调用，请勿在前端代码中暴露；每次请求都会计入上方「累计调用」统计。
+          </p>
+        </div>
+
+        {/* 执行端点文档 */}
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="text-xs font-bold text-slate-700 mb-2">POST /api/open/v1/execute · 组件执行（业务闭环）</div>
+          <pre className="text-xs font-mono text-emerald-400 bg-slate-950 rounded-xl p-4 overflow-x-auto leading-relaxed border border-slate-800">{`# 请求示例
+curl -X POST "${origin}/api/open/v1/execute" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "workspaceId": "ws_xxx",
+    "componentId": "C07",
+    "taskName": "可选任务名",
+    "inputMaterial": "需求背景文本…",
+    "inputSource": { "sourceType": "text" },
+    "formData": { "字段名": "值" }
+  }'
+
+# 成功响应（HTTP 200）
+{
+  "success": true,
+  "taskId": "uuid",
+  "status": "SUCCESS",
+  "estimatedPoints": 12,
+  "depositPoints": 12,
+  "actualPoints": 12,
+  "executionMode": "REAL_MODEL",
+  "contractVersion": "1.0.0",
+  "artifacts": [ "成果物摘要…" ],
+  "poll": { "method": "GET", "url": "/api/open/v1/tasks/uuid" }
+}
+
+# 常见错误码
+# 401 UNAUTHORIZED           API Key 缺失/无效
+# 403 FORBIDDEN              API Key 所属用户不属于该工作空间
+# 400 POINTS_INSUFFICIENT    算力点余额不足（硬阻断，不扣费）
+# 400 INPUT_REQUIRED         输入材料/表单不满足合同要求
+# 409 COMPONENT_CONTRACT_NOT_READY  组件无激活合同
+# 429 RATE_LIMITED           超过 API Key 每分钟请求上限`}</pre>
+          <p className="text-[11px] text-slate-400 mt-2">
+            计费与页面执行完全同口径：服务端先按算账中心估价并预扣算力点，再调用真实模型，成功后按实际用量结算、失败原路退款；
+            该渠道的任务在 <code className="font-mono text-slate-500">componenttask.config.channel</code> 标记为 <code className="font-mono text-slate-500">OPEN_API</code>，便于渠道对账。
+            模型调用可能超过客户端 HTTP 超时，请用返回的 <code className="font-mono text-slate-500">poll.url</code> 轮询进度与结果。
           </p>
         </div>
       </div>

@@ -891,6 +891,13 @@ export async function requirePlatformPermission(
   return requirePlatformAuth(request, keys.length <= 1 ? keys[0] : keys);
 }
 
+/** 平台管理员判定（统一权威实现，替代各路由本地复制粘贴版本）：
+ * 认全所有历史变体：ADMIN / PLATFORM_ADMIN / SUPER_ADMIN / SUPERADMIN / superadmin / super_admin */
+export function isPlatformAdminRole(role?: string | null): boolean {
+  const r = String(role || '').toUpperCase().trim();
+  return r === 'ADMIN' || r === 'PLATFORM_ADMIN' || isSuperAdminPlatformRole(r);
+}
+
 /** 归一化角色，兼容历史遗留的 SUPER 写法 */
 function isSuperAdminPlatformRole(role: string | null | undefined): boolean {
   const r = String(role || "").toUpperCase().trim();

@@ -70,10 +70,6 @@ export async function GET(request: NextRequest) {
 
     const availableComponents = Number(membershipLevel.maxComponents) - componentCount;
 
-    // TODO: 存储统计需要 storageUsed 字段，暂时设置为 0
-    const storageUsedMB = 0;
-    const availableStorageMB = Number(membershipLevel.maxStorage) - storageUsedMB;
-
     // 统计 API 调用次数（过去 30 天）
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const apiCallsUsed = await prisma.apiusage.count({
@@ -129,6 +125,10 @@ export async function GET(request: NextRequest) {
         console.warn("[/api/workspace/quota] 补创建配额记录非致命提示:", e);
       }
     }
+
+    // 存储用量：来自配额记录的真实累计字段（字节 → MB）
+    const storageUsedMB = workspaceQuotaRecord ? Number(workspaceQuotaRecord.storageUsed) / (1024 * 1024) : 0;
+    const availableStorageMB = Number(membershipLevel.maxStorage) - storageUsedMB;
 
     // 累计历史算力点消耗（真实统计）：唯一真源为 pointledger 的 CONSUME 流水。
     // 严禁再用 componentcatalog.estimatedModelTokens（Token 用量估算）× 使用次数累加——

@@ -40,6 +40,8 @@ export interface TaskExecutionMeta {
   qualityHints: string[];
   /** 任务是否持有不可变合同快照 */
   hasContractSnapshot: boolean;
+  /** 是否为空间成员显式指定模型（非自动默认调度，依据 config.deploymentId 判定） */
+  isExplicitDeployment: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export type TaskListExecutionMeta = {
   legacy: boolean;
   provider: string | null;
   model: string | null;
+  isExplicitDeployment: boolean;
   usage: {
     inputTokens?: number;
     outputTokens?: number;
@@ -243,6 +246,11 @@ export function extractTaskExecutionMeta(config: unknown, result: unknown, creat
     contractVersion: trustedContractVersion,
     qualityHints,
     hasContractSnapshot,
+    isExplicitDeployment: Boolean(
+      typeof c.deploymentId === "string" &&
+      c.deploymentId.trim() &&
+      c.deploymentId.trim() !== "auto"
+    ),
   };
 }
 
@@ -284,6 +292,7 @@ export function extractTaskListExecutionMeta(
     legacy: meta.legacy,
     provider: safeProvider,
     model: meta.model,
+    isExplicitDeployment: meta.isExplicitDeployment,
     usage: safeUsage,
     billingMode: meta.billingMode || null,
     estimatedPoints: meta.estimatedPoints,

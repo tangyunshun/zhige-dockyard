@@ -1,3 +1,4 @@
+import { isPlatformAdminRole } from "@/lib/security";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,10 +15,6 @@ import { scanAndNotifyZombies } from "@/lib/zombie-user";
  *   2. 系统级：scripts/zombie-scan-cron.ts（npm run cron:zombie-scan），由 crontab / 任务计划程序每日调用。
  * 此接口供管理员在需要时手动立即执行。
  */
-function isPlatformAdmin(role?: string | null): boolean {
-  const r = (role || "").toUpperCase();
-  return r === "ADMIN" || r === "SUPER_ADMIN" || r === "PLATFORM_ADMIN";
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +22,7 @@ export async function POST(request: NextRequest) {
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
-    if (!isPlatformAdmin(auth.user.role)) {
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可触发僵尸扫描" }, { status: 403 });
     }
 

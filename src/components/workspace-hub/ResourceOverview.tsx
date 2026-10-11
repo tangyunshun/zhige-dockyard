@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { Layers, ArrowUpRight, HardDrive, Building2 } from "lucide-react";
+import { Layers, ArrowUpRight, HardDrive, Building2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { UpgradeHighlight } from "./modals/QuotaUpgradeModal";
 
 interface ResourceOverviewProps {
@@ -11,6 +12,10 @@ interface ResourceOverviewProps {
   quota: any;
   /** 唤起统一升级中枢，入参用于锚定需要高亮的权益维度 */
   onUpgrade?: (highlight: UpgradeHighlight) => void;
+  /** 充值入口链接（由页面层显式传入，便于审计与复用登录态判断） */
+  rechargeHref?: string;
+  /** 是否渲染充值按钮：由页面层基于登录态控制（未登录不渲染） */
+  showRecharge?: boolean;
 }
 
 export default function ResourceOverview({
@@ -18,6 +23,8 @@ export default function ResourceOverview({
   dashboardData,
   quota,
   onUpgrade,
+  rechargeHref = "/user/pay",
+  showRecharge = false,
 }: ResourceOverviewProps) {
   const router = useRouter();
 
@@ -158,9 +165,19 @@ export default function ResourceOverview({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs text-slate-500 font-bold">算力点可用余额</span>
-            <span className="text-xs font-mono font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-              {tokenUnlimited ? "无限" : `${tokenAvailable.toLocaleString("zh-CN")} 算力点`}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-mono font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                {tokenUnlimited ? "无限" : `${tokenAvailable.toLocaleString("zh-CN")} 算力点`}
+              </span>
+              {showRecharge && !tokenUnlimited && (
+                <Link
+                  href={rechargeHref}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-[4px] bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-[10px] font-black shadow-xs hover:brightness-105 transition-all cursor-pointer"
+                >
+                  <Zap className="w-2.5 h-2.5" /> 充值
+                </Link>
+              )}
+            </div>
           </div>
           <div className="text-xs font-bold text-slate-600 truncate leading-none">
             累计消耗 <span className="font-mono text-slate-800">{tokenHistoryUsed.toLocaleString("zh-CN")}</span>{" "}
@@ -177,7 +194,7 @@ export default function ResourceOverview({
                     ? "当前会员享有无限算力"
                     : "当前算力充沛"}
           </span>
-        </div>
+      </div>
       </div>
 
       {/* 存储空间与企业空间配额进度 (系统标准的蓝、橙双色渐变，极具呼吸感) */}

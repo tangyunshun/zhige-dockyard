@@ -1350,6 +1350,10 @@ model modelprovider {
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  /// 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（由「测试连接」更新）
+  health      String   @default("unknown")
+  /// 最近一次「测试连接」时间
+  lastTestedAt DateTime?
 
   /// 该供应商下的模型部署（外键引用 name：providerId 的语义即供应商平台标识 name）
   deployments modeldeployment[]
@@ -1552,6 +1556,8 @@ model workspace_byo_model {
   contextLimit  Int      @default(32000)
   /// 是否启用（禁用则回落到空间/平台默认模型）
   enabled       Boolean  @default(true)
+  /// 是否允许空间成员共享使用（默认 true；false 时仅空间所有者可使用该自带模型）
+  shareWithMembers Boolean @default(true)
   /// —— 厂商官方单价（微元 / 100 万 Token）——【商业化方案 B】
   /// BYO 下平台不承担厂商成本，此处登记的是「厂商官方单价」，不是平台售价。
   /// 对外扣点 = 官方单价折算点数 ×（1 + 服务费费率 billing.byokServiceRateBps，默认 15%）。

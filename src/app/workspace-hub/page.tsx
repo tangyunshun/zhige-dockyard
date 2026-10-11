@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAppContext } from "@/contexts/AppContext";
 import { useToast } from "@/components/Toast";
 
 // 引入 5 个独立拆分的 Hooks
@@ -39,6 +40,7 @@ import { ShieldCheck, X } from "lucide-react";
 export default function WorkspaceHub() {
   const router = useRouter();
   const toast = useToast();
+  const { userState } = useAppContext();
 
   // 1. 数据状态与加载 Hook
   const {
@@ -674,6 +676,8 @@ export default function WorkspaceHub() {
       dashboardData={dashboardData}
       quota={quota}
       onUpgrade={openUpgradeHub}
+      rechargeHref="/user/pay"
+      showRecharge={userState.isLoggedIn}
     />
   );
 

@@ -217,27 +217,27 @@ async function runFullVerification() {
   const c15BtnDisabled = c15Content.includes("待配置/不可执行");
 
   scenarios.push({
-    scenarioId: "SCENARIO_C15_UNCONFIGURED",
-    scenarioName: "C15 提效区域合规化与待配置状态验证",
+    scenarioId: "SCENARIO_C15_CONFIGURED",
+    scenarioName: "C15 提效区域合规化与可执行状态验证",
     entryUrl: "http://localhost:3000/studio",
     steps: [
       "1. 在 Stage 3 货架中点击 C15 高速数据内存提速设计 卡片",
-      "2. 检查商业提效滑轨中的指标标注",
-      "3. 检查底部执行按钮文案与可用状态",
+      "2. 检查商业提效滑轨中的指标标注（不得含未经压测假数据）",
+      "3. 检查底部执行按钮为可执行（已激活合同）",
     ],
     apiActualFields: c15Api,
     pageActualDisplay: [
       c15HasUnbenchmarked ? "提效评估已标注：业务预估，未经压测" : "未标注未经压测",
       c15HasNo85 && c15HasNo3Point5 ? "已彻底清除 85%+ 与 3.5 倍假数据" : "存在未经压测的假数据",
-      c15BtnDisabled ? "按钮文案：待配置/不可执行 (已禁用)" : "按钮未正确禁用",
+      c15BtnDisabled ? "按钮仍显示待配置/不可执行（异常）" : "按钮可点击（已激活合同）",
     ],
     buttonStatus: {
-      label: "待配置/不可执行",
+      label: c15BtnDisabled ? "待配置/不可执行" : "可执行",
       disabled: c15BtnDisabled,
-      isExecutable: false,
+      isExecutable: !c15BtnDisabled,
     },
     emptyOrErrorState: "正常渲染提效说明与质量限制，非空白页面",
-    hasDefect: !c15HasUnbenchmarked || !c15HasNo85 || !c15HasNo3Point5 || !c15BtnDisabled,
+    hasDefect: !c15HasUnbenchmarked || !c15HasNo85 || !c15HasNo3Point5 || c15BtnDisabled,
     defectReproductionSteps: null,
     screenshotPath: c15Pic,
   });
@@ -264,26 +264,26 @@ async function runFullVerification() {
   const c13HasHint = c13Content.includes("未经目标工程编译/运行验证") || c13Content.includes("质量与使用限制说明");
 
   scenarios.push({
-    scenarioId: "SCENARIO_C13_UNCONFIGURED",
-    scenarioName: "C13 代码质量提示与待配置状态验证",
+    scenarioId: "SCENARIO_C13_CONFIGURED",
+    scenarioName: "C13 代码质量提示与可执行状态验证",
     entryUrl: "http://localhost:3000/studio",
     steps: [
       "1. 在 Stage 3 货架中点击 C13 即时消息WebSocket开发",
       "2. 检查输出成果契约与质量说明",
-      "3. 检查按钮状态",
+      "3. 检查按钮状态为可执行（已激活合同）",
     ],
     apiActualFields: c13Api,
     pageActualDisplay: [
       c13HasHint ? "已展示质量限制：生成代码未经目标工程编译/运行验证" : "缺少代码质量提示",
-      c13BtnDisabled ? "按钮文案：待配置/不可执行 (已禁用)" : "按钮未禁用",
+      c13BtnDisabled ? "按钮仍显示待配置/不可执行（异常）" : "按钮可点击（已激活合同）",
     ],
     buttonStatus: {
-      label: "待配置/不可执行",
+      label: c13BtnDisabled ? "待配置/不可执行" : "可执行",
       disabled: c13BtnDisabled,
-      isExecutable: false,
+      isExecutable: !c13BtnDisabled,
     },
     emptyOrErrorState: "正常渲染限制说明，非空白页面",
-    hasDefect: !c13BtnDisabled || !c13HasHint,
+    hasDefect: c13BtnDisabled || !c13HasHint,
     defectReproductionSteps: null,
     screenshotPath: c13Pic,
   });
@@ -351,9 +351,10 @@ async function runFullVerification() {
   await page.waitForTimeout(600);
 
   // ----------------------------------------------------
-  // 场景 4: 无合同组件 (C09) 显示待配置状态
+  // 场景 4: 已激活合同组件 (C09) 显示可执行状态
+  // （C09 原为负向"无合同"样本；60/60 验收后已补建激活合同，负向 UI 改由 studio-contract-integration.test.ts fixture 覆盖）
   // ----------------------------------------------------
-  console.log("\n[场景 4] 验证无合同组件 C09 显示待配置状态...");
+  console.log("\n[场景 4] 验证已激活合同组件 C09 显示可执行状态...");
   await page.evaluate(() => {
     const catalog = document.querySelector("#catalog");
     if (catalog) {
@@ -381,27 +382,31 @@ async function runFullVerification() {
   const c09Api = getApiFields("C09");
   const c09BtnDisabled = c09Content.includes("待配置/不可执行");
 
+  // C09 现已补建激活合同（60/60 可估价验收达成）。原"无合同待配置"负向场景不再适用——
+  // 负向 UI 路径改由 fixture 型集成测试覆盖（src/app/api/studio/__tests__/studio-contract-integration.test.ts 场景3：无激活合同→409 拒绝）。
+  // 此处改为验证 C09 的"有激活合同/可执行"正向状态。
+  const c09Executable = !c09BtnDisabled;
   scenarios.push({
-    scenarioId: "SCENARIO_C09_NO_CONTRACT",
-    scenarioName: "无合同组件 C09 待配置状态验证",
+    scenarioId: "SCENARIO_C09_ACTIVE_CONTRACT",
+    scenarioName: "有激活合同组件 C09 可执行状态验证",
     entryUrl: "http://localhost:3000/studio",
     steps: [
       "1. 切换至 Stage 2 (需求定义与产品设计)",
-      "2. 点击无激活合同组件 C09 客户差评自动聚类与提单 卡片",
-      "3. 检查按钮状态与合同未配置说明",
+      "2. 点击已激活合同组件 C09 客户差评自动聚类与提单 卡片",
+      "3. 检查按钮状态为可执行（不再显示待配置/不可执行）",
     ],
     apiActualFields: c09Api,
     pageActualDisplay: [
-      "API 返回 activeContractLifecycle=null, readinessStatus=UNCONFIGURED",
-      c09BtnDisabled ? "按钮文案：待配置/不可执行 (已禁用)" : "按钮未禁用",
+      "API 返回 activeContractLifecycle=PUBLISHED, isExecutable=true",
+      c09Executable ? "按钮可点击（非待配置/不可执行）" : "按钮仍显示待配置/不可执行",
     ],
     buttonStatus: {
-      label: "待配置/不可执行",
+      label: c09Executable ? "可执行" : "待配置/不可执行",
       disabled: c09BtnDisabled,
-      isExecutable: false,
+      isExecutable: c09Executable,
     },
-    emptyOrErrorState: "正常显示待配置提示，非空白页面",
-    hasDefect: !c09BtnDisabled,
+    emptyOrErrorState: "正常显示可执行入口，非空白页面",
+    hasDefect: c09BtnDisabled,
     defectReproductionSteps: null,
     screenshotPath: c09Pic,
   });

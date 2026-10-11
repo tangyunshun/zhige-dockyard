@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission } from "@/lib/security";
 import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS } from "@/lib/model-endpoint";
-import { encryptSecret } from "@/lib/crypto-secrets";
+import { encryptSecret, decryptSecret } from "@/lib/crypto-secrets";
 
 /** GET：列出全部模型供应商（不含任何密钥，仅暴露环境变量名） */
 export async function GET(request: NextRequest) {
@@ -27,6 +27,20 @@ export async function GET(request: NextRequest) {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       hasApiKey: !!r.apiKeyCipher,
+      // 大厂级脱敏：仅下发「前 6 + 后 4、中间固定掩码」的局部明文，绝不暴露完整密钥到网络响应。
+      apiKeyMasked:
+        r.apiKeyCipher != null
+          ? (() => {
+              try {
+                const plain = decryptSecret(r.apiKeyCipher);
+                return plain.length <= 10
+                  ? "••••••••" + plain.slice(-2)
+                  : plain.slice(0, 6) + "••••••••" + plain.slice(-4);
+              } catch {
+                return null;
+              }
+            })()
+          : null,
       apiKeyConfigured: !!r.apiKeyCipher || (!r.apiKeyEnv ? true : !!process.env[r.apiKeyEnv]),
     }));
     return NextResponse.json({ success: true, data });

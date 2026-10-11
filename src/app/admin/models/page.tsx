@@ -5,7 +5,7 @@
  * 所有列表均来自后端 API，前端不硬编码任何供应商 / 模型清单。
  * 密钥不在此处展示，仅展示环境变量名。
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
@@ -37,7 +37,66 @@ import {
   TestTube,
   MoreHorizontal,
   Info,
+  FileCheck,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Search,
+  Clock,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { GlobalMarkupSync } from "./global-markup-sync";
+
+/** 加价率双模式折算：表单统一存「整数基点 bp」（1bp = 0.01%，1% = 100bp），显示层按所选模式折算 */
+const bpsToPercentStr = (bps: string) => {
+  const s = (bps ?? "").trim();
+  if (s === "") return "";
+  const n = Number(s);
+  return Number.isFinite(n) ? String(n / 100) : "";
+};
+const percentToBpsStr = (pct: string) => {
+  const s = (pct ?? "").trim();
+  if (s === "") return "";
+  const n = Number(s);
+  return Number.isFinite(n) ? String(Math.round(n * 100)) : "";
+};
+
+/** 加价率模式分段单选（继承全局 / 百分比 / 基点 互斥）：值统一以整数基点落库，仅显示层折算 */
+export type MarkupMode3 = "inherit" | "percent" | "bps";
+function MarkupModeSwitch({
+  mode,
+  onModeChange,
+  disabled,
+}: {
+  mode: MarkupMode3;
+  onModeChange: (m: MarkupMode3) => void;
+  disabled?: boolean;
+}) {
+  const opts: Array<[MarkupMode3, string]> = [
+    ["inherit", "继承全局"],
+    ["percent", "按百分比 (%)"],
+    ["bps", "按基点 (bps)"],
+  ];
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg bg-white p-0.5 border border-slate-200 shadow-2xs">
+      {opts.map(([m, label]) => (
+        <button
+          key={m}
+          type="button"
+          disabled={disabled}
+          onClick={() => onModeChange(m)}
+          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+            mode === m ? "bg-[#3182ce] text-white shadow" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 interface ModelProvider {
   id: string;
@@ -49,6 +108,14 @@ interface ModelProvider {
   sortOrder: number;
   /** 运行时密钥配置状态：apiKeyEnv 为空时恒为 true（无需密钥）；非空时取决于 process.env 是否设置 */
   apiKeyConfigured?: boolean;
+  /** 后台是否已录入密文钥匙（apiKeyCipher 非空） */
+  hasApiKey?: boolean;
+  /** 后端下发的脱敏钥匙串（前 6 + 后 4 局部明文，中间掩码），完整明文永不下发 */
+  apiKeyMasked?: string | null;
+  /** 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（由「测试连接」更新） */
+  health?: string;
+  /** 最近一次测试连接时间（ISO 字符串） */
+  lastTestedAt?: string | null;
 }
 
 interface ModelDeployment {
@@ -74,6 +141,8 @@ interface ModelDeployment {
     priceOutputMicrosPerMillion: number | null;
     priceCacheReadMicrosPerMillion: number | null;
     priceCacheWriteMicrosPerMillion: number | null;
+    /** 平台加价率（基点）；非空且无直配售价时，生效价 = 成本 × (1 + 加价率/10000) */
+    markupRateBps?: number | null;
     /** 通用规则容器（多币种参考价、订阅积分抵扣系数、缓存存储标记等任意厂商特殊规则） */
     rules?: Record<string, unknown> | null;
   } | null;
@@ -133,7 +202,8 @@ function RulesSummaryChips({ rules }: { rules: Record<string, unknown> | null | 
   if (typeof rules.billingFormula === "string" && (rules.billingFormula as string).trim() !== "")
     chips.push("计费公式");
   if (rules.subscriptionPointDeduction) chips.push("积分抵扣");
-  const known = new Set(["usd", "usdRate", "cacheStorage", "billingFormula", "subscriptionPointDeduction"]);
+  if (typeof rules.evidenceUrl === "string" && rules.evidenceUrl) chips.push("凭据已归档");
+  const known = new Set(["usd", "usdRate", "cacheStorage", "billingFormula", "evidenceUrl", "subscriptionPointDeduction"]);
   const extra = Object.keys(rules).filter((k) => !known.has(k));
   if (extra.length) chips.push(extra.length === 1 ? `其他·${extra[0]}` : `其他规则×${extra.length}`);
   if (!chips.length) return null;
@@ -192,6 +262,8 @@ interface RulesForm {
   subIdleOutput: string;
   subIdleCacheRead: string;
   subNote: string;
+  /** 官方价目凭据归档：官方定价页 / 公告截图的链接（审计可追溯） */
+  evidenceUrl: string;
   /** 其他自定义规则（任意键—值），用于未来模型扩展，无需手写 JSON */
   customRules: { key: string; value: string }[];
 }
@@ -210,6 +282,7 @@ const emptyRulesForm: RulesForm = {
   subIdleOutput: "",
   subIdleCacheRead: "",
   subNote: "",
+  evidenceUrl: "",
   customRules: [],
 };
 const CACHE_STORAGE_OPTIONS: [string, string][] = [
@@ -242,6 +315,7 @@ function rulesToForm(rules: unknown): RulesForm {
   if (typeof r.usdRate === "number" || typeof r.usdRate === "string") f.usdRate = r2s(r.usdRate);
   if (typeof r.cacheStorage === "string") f.cacheStorage = r.cacheStorage;
   if (typeof r.billingFormula === "string") f.billingFormula = r.billingFormula;
+  if (typeof r.evidenceUrl === "string") f.evidenceUrl = r.evidenceUrl;
   const sub = r.subscriptionPointDeduction as Record<string, unknown> | undefined;
   if (sub && typeof sub === "object") {
     if (typeof sub.appliesTo === "string") f.subAppliesTo = sub.appliesTo;
@@ -259,7 +333,7 @@ function rulesToForm(rules: unknown): RulesForm {
     }
     if (typeof sub.note === "string") f.subNote = sub.note;
   }
-  const known = new Set(["usd", "usdRate", "cacheStorage", "billingFormula", "subscriptionPointDeduction"]);
+  const known = new Set(["usd", "usdRate", "cacheStorage", "billingFormula", "evidenceUrl", "subscriptionPointDeduction"]);
   f.customRules = Object.keys(r)
     .filter((k) => !known.has(k))
     .map((k) => ({ key: k, value: r2s(r[k]) }));
@@ -318,6 +392,7 @@ function buildRulesFromForm(form: RulesForm): { ok: boolean; rules: Record<strin
   }
   if (form.cacheStorage) rules.cacheStorage = form.cacheStorage;
   if (form.billingFormula.trim()) rules.billingFormula = form.billingFormula.trim();
+  if (form.evidenceUrl.trim()) rules.evidenceUrl = form.evidenceUrl.trim();
   if (usdRate != null) rules.usdRate = usdRate;
   const subBlock: Record<string, unknown> = {};
   if (form.subAppliesTo.trim()) subBlock.appliesTo = form.subAppliesTo.trim();
@@ -336,6 +411,9 @@ function buildRulesFromForm(form: RulesForm): { ok: boolean; rules: Record<strin
 export default function AdminModelsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [deployments, setDeployments] = useState<ModelDeployment[]>([]);
+  // Part4：价格凭证确认记录 + 每日对账起点（仅展示，不含任何密钥）
+  const [priceVoucherNote, setPriceVoucherNote] = useState<string | null>(null);
+  const [reconciliationStartDate, setReconciliationStartDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   // 部署行「⋯」更多操作菜单：fixed 定位锚定触发按钮视口坐标，避免被表格 overflow 裁剪
@@ -367,12 +445,92 @@ export default function AdminModelsPage() {
         troubleshooting: data.troubleshooting,
         sampleReply: data.sampleReply,
       });
+      requestAnimationFrame(() =>
+        deploymentResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      );
     } catch {
       // 静默：结果以横幅展示，不弹 toast
     } finally {
       setTestingId(null);
     }
   };
+  const testProvider = async (p: ModelProvider) => {
+    setTestingId(p.id);
+    setTestResult(null);
+    try {
+      const data = await authFetch(`/api/admin/model-providers/${p.id}/test`, { method: "POST" });
+      setTestResult({
+        id: p.id,
+        ok: data.success,
+        latencyMs: data.latencyMs ?? 0,
+        errorType: data.errorType,
+        message: data.message || (data.success ? "连通正常" : "连通失败"),
+        troubleshooting: data.troubleshooting,
+        sampleReply: data.sampleReply,
+      });
+      // 刷新供应商列表以同步 health / lastTestedAt
+      void load();
+      requestAnimationFrame(() =>
+        providerResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      );
+    } catch {
+      // 静默：结果以横幅展示，不弹 toast
+    } finally {
+      setTestingId(null);
+    }
+  };
+
+  // 测试结果横幅（供应商测试与部署测试共用 state，按结果 id 归属分别渲染在各自区块）
+  const testResultBanner = testResult && (
+    <div
+      className={
+        "mt-4 rounded border p-4 space-y-2 " +
+        (testResult.ok ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200")
+      }
+    >
+      <div className="flex items-center gap-2">
+        {testResult.ok ? (
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        ) : (
+          <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+        )}
+        <span className={"text-xs font-black " + (testResult.ok ? "text-emerald-700" : "text-rose-700")}>
+          {testResult.ok
+            ? `测试通道连通成功（耗时 ${testResult.latencyMs}ms）`
+            : `测试通道连通失败${testResult.label ? `（${testResult.label}）` : testResult.errorType ? `（${testResult.errorType}）` : ""}`}
+        </span>
+        {!testResult.ok && testResult.latencyMs != null && (
+          <span className="text-[11px] text-rose-400 font-mono">耗时 {testResult.latencyMs}ms</span>
+        )}
+      </div>
+      {testResult.ok && testResult.sampleReply && (
+        <div className="text-[11px] text-slate-500 font-mono bg-white/70 rounded border border-emerald-100 px-2 py-1.5 break-words">
+          模型回执：{testResult.sampleReply}
+        </div>
+      )}
+      {!testResult.ok && testResult.message && (
+        <div className="text-[11px] text-rose-600 font-medium break-words">
+          <span className="font-black">错误详情：</span>
+          {testResult.message}
+        </div>
+      )}
+      {!testResult.ok && testResult.troubleshooting?.length ? (
+        <div className="text-[11px] text-rose-600/90">
+          <div className="font-black mb-1">如何修复：</div>
+          <ul className="list-disc pl-4 space-y-1">
+            {testResult.troubleshooting.map((t, i) => (
+              <li key={i}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  // 测试结果横幅定位锚点（点击测试后平滑滚动到对应列表上方）
+  const providerResultRef = useRef<HTMLDivElement>(null);
+  const deploymentResultRef = useRef<HTMLDivElement>(null);
+
   // 平台默认模型（配置读取自数据库，前端不硬编码任何供应商/模型）
   const [platformDefault, setPlatformDefault] = useState<{
     deploymentId: string | null;
@@ -381,10 +539,39 @@ export default function AdminModelsPage() {
   const [selectedDefault, setSelectedDefault] = useState<string>("");
   const [savingDefault, setSavingDefault] = useState(false);
 
+  // 页面主工作台 Tab 切换（按业务顺位：policy: 平台默认与策略 | providers: 供应商通道 | deployments: 模型部署中枢）
+  const [mainTab, setMainTab] = useState<"policy" | "providers" | "deployments">("policy");
+  // 控制新增表单折叠与展开，避免直接占满首屏视口
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [showAddDeployment, setShowAddDeployment] = useState(false);
+  // 价格弹窗内部 Tab（base: 核心定价与加价 | periods: 分时定价策略 | rules: 官方参考与规则）
+  const [priceModalTab, setPriceModalTab] = useState<"base" | "periods" | "rules">("base");
+  // 部署列表过滤条件
+  const [deploymentSearch, setDeploymentSearch] = useState("");
+  const [deploymentProviderFilter, setDeploymentProviderFilter] = useState("ALL");
+  const [deploymentStatusFilter, setDeploymentStatusFilter] = useState("ALL");
+
   // 供应商与部署列表分页状态（每页固定展示 5 条数据）
   const PAGE_SIZE = 5;
   const [providerPage, setProviderPage] = useState(1);
   const [deploymentPage, setDeploymentPage] = useState(1);
+
+  const filteredDeployments = useMemo(() => {
+    return deployments.filter((d) => {
+      if (deploymentProviderFilter !== "ALL" && d.providerId !== deploymentProviderFilter) return false;
+      if (deploymentStatusFilter === "ENABLED" && !d.enabled) return false;
+      if (deploymentStatusFilter === "DISABLED" && d.enabled) return false;
+      if (deploymentSearch.trim()) {
+        const q = deploymentSearch.trim().toLowerCase();
+        const matchName = (d.displayName || "").toLowerCase().includes(q);
+        const matchModel = (d.modelId || "").toLowerCase().includes(q);
+        const matchUpstream = (d.upstreamModel || "").toLowerCase().includes(q);
+        const matchProvider = (d.providerId || "").toLowerCase().includes(q);
+        if (!matchName && !matchModel && !matchUpstream && !matchProvider) return false;
+      }
+      return true;
+    });
+  }, [deployments, deploymentProviderFilter, deploymentStatusFilter, deploymentSearch]);
 
   const pagedProviders = useMemo(() => {
     const start = (providerPage - 1) * PAGE_SIZE;
@@ -393,13 +580,29 @@ export default function AdminModelsPage() {
 
   const pagedDeployments = useMemo(() => {
     const start = (deploymentPage - 1) * PAGE_SIZE;
-    return deployments.slice(start, start + PAGE_SIZE);
-  }, [deployments, deploymentPage]);
+    return filteredDeployments.slice(start, start + PAGE_SIZE);
+  }, [filteredDeployments, deploymentPage]);
 
   useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(providers.length / PAGE_SIZE));
     if (providerPage > maxPage) setProviderPage(maxPage);
   }, [providers.length, providerPage]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredDeployments.length / PAGE_SIZE));
+    if (deploymentPage > maxPage) setDeploymentPage(maxPage);
+  }, [filteredDeployments.length, deploymentPage]);
+
+  // Part4：拉取价格凭证确认记录与对账起点（用于「第 X 天 / 7 天」进度展示）
+  useEffect(() => {
+    authFetch("/api/admin/systemconfig-values")
+      .then((r) => {
+        const d = (r as { pricingPriceVoucherNote?: string; reconciliationStartDate?: string }) ?? {};
+        setPriceVoucherNote(d.pricingPriceVoucherNote ?? null);
+        setReconciliationStartDate(d.reconciliationStartDate ?? null);
+      })
+      .catch(() => {});
+  }, []);
 
   // 「⋯」菜单打开期间：任意滚动（含表格容器内滚动）/窗口缩放时关闭，避免 fixed 锚点错位
   useEffect(() => {
@@ -436,6 +639,33 @@ export default function AdminModelsPage() {
     confirmText: "确认删除",
   });
 
+  // 供应商创建完成后的系统引导状态（提示下一步配置模型，支持一键直达或稍后配置）
+  const [createdProviderGuidance, setCreatedProviderGuidance] = useState<{
+    isOpen: boolean;
+    providerName: string;
+  }>({
+    isOpen: false,
+    providerName: "",
+  });
+
+  // 快捷从供应商直达模型部署并自动预填通道
+  const goToDeployModelForProvider = useCallback((providerName: string) => {
+    setCreatedProviderGuidance({ isOpen: false, providerName: "" });
+    setMainTab("deployments");
+    setShowAddDeployment(true);
+    setDForm((prev) => ({
+      ...prev,
+      providerId: providerName,
+    }));
+    setTimeout(() => {
+      const el = document.getElementById("deployment-input-modelId");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+    }, 120);
+  }, []);
+
   const [pForm, setPForm] = useState({ name: "", protocol: "OPENAI_COMPATIBLE", baseUrl: "", apiKeyEnv: "MODEL_API_KEY", apiKey: "" });
   const [pErrors, setPErrors] = useState<{ name?: string; baseUrl?: string; apiKeyEnv?: string }>({});
 
@@ -454,6 +684,16 @@ export default function AdminModelsPage() {
   const [editProviderName, setEditProviderName] = useState("");
   const [pEditForm, setPEditForm] = useState({ protocol: "OPENAI_COMPATIBLE", baseUrl: "", apiKeyEnv: "", apiKey: "" });
   const [pEditErrors, setPEditErrors] = useState<{ baseUrl?: string; apiKeyEnv?: string }>({});
+  // 供应商钥匙连通测试（复用模型注册表测试通道，真实发一次最小上游调用，明文密钥不出服务端）
+  const [providerTest, setProviderTest] = useState<{ ok: boolean; latencyMs?: number; label?: string; message?: string } | null>(null);
+  const [providerTesting, setProviderTesting] = useState(false);
+  // 钥匙脱敏查看：眼睛开关（展示脱敏串 vs 圆点）；更换密钥模式
+  const [showMaskedKey, setShowMaskedKey] = useState(false);
+  const [replaceKeyMode, setReplaceKeyMode] = useState(false);
+  const editingProvider = useMemo(
+    () => providers.find((p) => p.id === editProviderId) ?? null,
+    [providers, editProviderId],
+  );
 
   // 部署编辑（providerId / modelId 为稳定标识，后端禁止改名；仅可改上游名 / 展示名 / 上下文）
   const [editDeploymentId, setEditDeploymentId] = useState<string | null>(null);
@@ -632,9 +872,21 @@ export default function AdminModelsPage() {
     }
   };
 
+  // 全局默认加价率（百分比），用于「继承全局」态的展示
+  const [globalMarkupPercent, setGlobalMarkupPercent] = useState<number | null>(null);
+  const loadGlobalMarkup = useCallback(async () => {
+    try {
+      const res = await authFetch("/api/admin/model-pricing/global-markup");
+      if (res?.success) setGlobalMarkupPercent(res.data?.percent ?? null);
+    } catch {
+      // 静默忽略
+    }
+  }, [authFetch]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadGlobalMarkup();
+  }, [load, loadGlobalMarkup]);
 
   const toggleProvider = (row: ModelProvider) => {
     if (row.enabled) {
@@ -747,6 +999,9 @@ export default function AdminModelsPage() {
     setEditProviderName(p.name);
     setPEditForm({ protocol: p.protocol, baseUrl: p.baseUrl, apiKeyEnv: p.apiKeyEnv, apiKey: "" });
     setPEditErrors({});
+    setShowMaskedKey(false);
+    setReplaceKeyMode(false);
+    setProviderTest(null);
   };
   const saveProviderEdit = async () => {
     if (!editProviderId) return;
@@ -793,6 +1048,26 @@ export default function AdminModelsPage() {
       toast.error((e as Error)?.message || "更新供应商失败");
     } finally {
       setBusy(null);
+    }
+  };
+  /** 测试当前供应商钥匙连通性：取该供应商下一个已启用部署，复用模型注册表测试通道真实调用上游 */
+  const testProviderKey = async () => {
+    if (!editProviderId) return;
+    const target = deployments.find((d) => d.providerId === editProviderName && d.enabled);
+    if (!target) {
+      setProviderTest({ ok: false, label: "无可用部署", message: "该供应商下没有已启用的模型部署，无法发起测试调用" });
+      return;
+    }
+    setProviderTesting(true);
+    setProviderTest(null);
+    try {
+      const res = await authFetch(`/api/admin/model-deployments/${target.id}/test`, { method: "POST" });
+      const data = (res as { ok?: boolean; latencyMs?: number; label?: string; message?: string }) ?? {};
+      setProviderTest({ ok: !!data.ok, latencyMs: data.latencyMs, label: data.label, message: data.message });
+    } catch (e) {
+      setProviderTest({ ok: false, label: "测试异常", message: (e as Error)?.message || "测试通道调用失败" });
+    } finally {
+      setProviderTesting(false);
     }
   };
   const deleteProvider = (p: ModelProvider) => {
@@ -965,11 +1240,18 @@ export default function AdminModelsPage() {
 
     setBusy("p:create");
     try {
+      const createdName = pForm.name.trim();
       await authFetch("/api/admin/model-providers", { method: "POST", body: JSON.stringify(pForm) });
       toast.success("供应商已创建");
       setPForm({ name: "", protocol: "OPENAI_COMPATIBLE", baseUrl: "", apiKeyEnv: "MODEL_API_KEY", apiKey: "" });
       setPErrors({});
+      setShowAddProvider(false);
       await load();
+      // 触发系统建议引导：通道创建后需绑定具体模型部署，引导管理员立即配置或稍后配置
+      setCreatedProviderGuidance({
+        isOpen: true,
+        providerName: createdName,
+      });
     } catch (e) {
       toast.error((e as Error)?.message || "创建失败");
     } finally {
@@ -1128,6 +1410,13 @@ export default function AdminModelsPage() {
   );
   const periodMarkupFilled = (periodForm.markupRateBps ?? "").trim() !== "";
 
+  // 加价率输入状态：三态（继承全局 / 百分比 / 基点）；inherit=true 时落库 markupRateBps=null（结算回落全局默认）
+  const [priceMarkupMode, setPriceMarkupMode] = useState<"percent" | "bps">("percent");
+  const [priceMarkupInput, setPriceMarkupInput] = useState("");
+  const [priceMarkupInherit, setPriceMarkupInherit] = useState(false);
+  const [periodMarkupMode, setPeriodMarkupMode] = useState<"percent" | "bps">("percent");
+  const [periodMarkupInput, setPeriodMarkupInput] = useState("");
+  const [periodMarkupInherit, setPeriodMarkupInherit] = useState(false);
   // 加价率 → 用户售价实时推算（纯展示，不写回表单），让调整加价率时可以立刻看到售价变化
   const derivePrice = (cost: string | undefined, bpsRaw: string | undefined): number | null => {
     const c = Number(cost ?? "");
@@ -1217,6 +1506,9 @@ export default function AdminModelsPage() {
         priceSource: p.priceSource,
         markupRateBps: p.markupRateBps === null || p.markupRateBps === undefined ? "" : String(p.markupRateBps),
       });
+      setPeriodMarkupMode("percent");
+      setPeriodMarkupInherit(p.markupRateBps == null);
+      setPeriodMarkupInput(bpsToPercentStr(p.markupRateBps == null ? "" : String(p.markupRateBps)));
       setPeriodPanel({ open: true, editingId: p.id });
     } else {
       setPeriodForm({
@@ -1240,6 +1532,9 @@ export default function AdminModelsPage() {
         priceSource: "UNVERIFIED",
         markupRateBps: "",
       });
+      setPeriodMarkupMode("percent");
+      setPeriodMarkupInherit(true);
+      setPeriodMarkupInput("");
       setPeriodPanel({ open: true, editingId: null });
     }
     setPeriodErrors({});
@@ -1270,7 +1565,7 @@ export default function AdminModelsPage() {
       priceCacheRead: periodForm.priceCacheRead,
       priceCacheWrite: periodForm.priceCacheWrite,
       priceSource: periodForm.priceSource,
-      markupRateBps: periodForm.markupRateBps.trim(),
+      markupRateBps: periodForm.markupRateBps.trim() === "" ? null : Number(periodForm.markupRateBps),
     };
     setBusy(`period:${pricePanelId}`);
     try {
@@ -1359,7 +1654,11 @@ export default function AdminModelsPage() {
         priceCacheRead: microsToYuan(p?.userPrice?.priceCacheReadMicrosPerMillion ?? null),
         priceCacheWrite: microsToYuan(p?.userPrice?.priceCacheWriteMicrosPerMillion ?? null),
       });
+      setPriceMarkupMode("percent");
+      setPriceMarkupInherit(p?.markupRateBps == null);
+      setPriceMarkupInput(bpsToPercentStr(p?.markupRateBps == null ? "" : String(p.markupRateBps)));
       setRulesForm(rulesToForm(p?.rules));
+      setPriceModalTab("base");
       setPricePeriods([]);
       setPeriodPanel({ open: false, editingId: null });
       await loadPricePeriods(d.id);
@@ -1591,6 +1890,58 @@ export default function AdminModelsPage() {
 
       </div>
 
+      {/* 全局加价率：单一真源，一键应用到全部主表 + 全部时段 */}
+      <GlobalMarkupSync
+        onApplied={() => {
+          void load();
+          void loadGlobalMarkup();
+        }}
+      />
+
+      {/* Part4：价格凭证确认 + 每日对账进度（Day X/7） */}
+      <div className="bg-white rounded-lg border border-slate-200/80 shadow-2xs p-4.5 space-y-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+            <FileCheck className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-black text-slate-800">价格凭证 / 每日对账</div>
+            <div className="text-[11px] text-slate-400">官方价经负责人确认；对账 cron 每日 08:00 自动扫描（dry-run）</div>
+          </div>
+        </div>
+        {priceVoucherNote ? (
+          <div className="flex items-start gap-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-2.5 py-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{priceVoucherNote}</span>
+          </div>
+        ) : (
+          <div className="text-[11px] text-slate-400">暂无价格凭证记录</div>
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[11px] text-slate-500">
+            {reconciliationStartDate ? (
+              (() => {
+                const start = new Date(`${reconciliationStartDate}T00:00:00`);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                start.setHours(0, 0, 0, 0);
+                const days = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
+                const day = Math.min(7, Math.max(1, days));
+                return <>对账观察进度：<b className="text-slate-700">第 {day} 天 / 7 天</b></>;
+              })()
+            ) : (
+              "对账观察进度：未设定起点"
+            )}
+          </div>
+          <a
+            href="/admin/finance/settlements"
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-[#3182ce] hover:underline shrink-0"
+          >
+            查看最近对账结果 <ChevronRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </div>
+
       {loading ? (
         <div className="bg-white rounded-lg border border-slate-200/80 shadow-2xs p-16 flex flex-col items-center justify-center gap-3">
           <div className="w-10 h-10 border-3 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin"></div>
@@ -1598,113 +1949,201 @@ export default function AdminModelsPage() {
         </div>
       ) : (
         <>
-          {/* 平台默认模型：来自数据库配置，供未设置专属默认模型的工作空间使用 */}
-          <section className="bg-white rounded-lg border border-slate-200/80 shadow-2xs overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-white border-b border-blue-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded bg-[#3182ce] text-white flex items-center justify-center shadow-xs">
-                  <Star className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base font-black text-slate-800 tracking-tight">平台默认模型</h2>
-                  <p className="text-xs text-slate-500 font-medium">
-                    工作空间如果没有单独设置专属模型，组件任务将自动采用此处指定的模型
-                  </p>
-                </div>
-              </div>
-
-              {/* 当前默认模型状态展示 */}
-              <div>
-                {platformDefault?.deployment ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold bg-blue-50 text-[#2b6cb0] border border-blue-200 shadow-2xs">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-[#3182ce]" />
-                    <span>
-                      当前默认：{platformDefault.deployment.providerId} / {platformDefault.deployment.modelId}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                    <span>尚未配置平台默认模型</span>
+          {/* 页面主工作台 Tab 导航栏：大厂高信息密度设计，聚焦当前工作流 */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-200/90 pb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setMainTab("policy")}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  mainTab === "policy"
+                    ? "bg-[#3182ce] text-white shadow-sm ring-2 ring-[#3182ce]/20"
+                    : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/80 shadow-2xs"
+                }`}
+              >
+                <Star className="w-4 h-4" />
+                <span>平台默认与策略</span>
+                {platformDefault?.deployment && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      mainTab === "policy"
+                        ? "bg-white/20 text-white"
+                        : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    }`}
+                  >
+                    已就绪
                   </span>
                 )}
-              </div>
-            </div>
+              </button>
 
-            <div className="p-6 space-y-4">
-              <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-[#3182ce] shrink-0 mt-0.5" />
-                <div className="leading-relaxed">
-                  当工作空间没有单独设置专属模型时，组件任务会自动使用此处设定的全站默认部署；若两者都没设置，该空间的组件任务将无法执行。下拉备选项实时取自数据库中已启用的部署。
+              <button
+                type="button"
+                onClick={() => setMainTab("providers")}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  mainTab === "providers"
+                    ? "bg-[#3182ce] text-white shadow-sm ring-2 ring-[#3182ce]/20"
+                    : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/80 shadow-2xs"
+                }`}
+              >
+                <Server className="w-4 h-4" />
+                <span>供应商通道</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                    mainTab === "providers"
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {providers.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMainTab("deployments")}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  mainTab === "deployments"
+                    ? "bg-[#3182ce] text-white shadow-sm ring-2 ring-[#3182ce]/20"
+                    : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/80 shadow-2xs"
+                }`}
+              >
+                <Boxes className="w-4 h-4" />
+                <span>模型部署中枢</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                    mainTab === "deployments"
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {deployments.length}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* 平台默认模型：仅在策略选项卡显示 */}
+          {mainTab === "policy" && (
+            <section className="bg-white rounded-lg border border-slate-200/80 shadow-2xs overflow-hidden">
+              <div className="px-6 py-4 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-white border-b border-blue-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded bg-[#3182ce] text-white flex items-center justify-center shadow-xs">
+                    <Star className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-black text-slate-800 tracking-tight">平台默认模型</h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      工作空间如果没有单独设置专属模型，组件任务将自动采用此处指定的模型
+                    </p>
+                  </div>
+                </div>
+
+                {/* 当前默认模型状态展示 */}
+                <div>
+                  {platformDefault?.deployment ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold bg-blue-50 text-[#2b6cb0] border border-blue-200 shadow-2xs">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#3182ce]" />
+                      <span>
+                        当前默认：{platformDefault.deployment.providerId} / {platformDefault.deployment.modelId}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                      <span>尚未配置平台默认模型</span>
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                <select
-                  className={`${inputCls} sm:max-w-md py-2.5 font-bold cursor-pointer`}
-                  value={selectedDefault}
-                  onChange={(e) => setSelectedDefault(e.target.value)}
-                >
-                  <option value="">（不设置 / 清除平台默认）</option>
-                  {deployments.map((d) => (
-                    <option key={d.id} value={d.id} disabled={!d.enabled}>
-                      {d.providerId} / {d.modelId} · {d.displayName || d.modelId}
-                      {d.enabled ? "" : "（已禁用，不可作为默认模型）"}
-                      {platformDefault?.deploymentId === d.id ? " [当前默认]" : ""}
-                    </option>
-                  ))}
-                </select>
+              <div className="p-6 space-y-4">
+                <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-[#3182ce] shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    当工作空间没有单独设置专属模型时，组件任务会自动使用此处设定的全站默认部署；若两者都没设置，该空间的组件任务将无法执行。下拉备选项实时取自数据库中已启用的部署。
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                  <select
+                    className={`${inputCls} sm:max-w-md py-2.5 font-bold cursor-pointer`}
+                    value={selectedDefault}
+                    onChange={(e) => setSelectedDefault(e.target.value)}
+                  >
+                    <option value="">（不设置 / 清除平台默认）</option>
+                    {deployments.map((d) => (
+                      <option key={d.id} value={d.id} disabled={!d.enabled}>
+                        {d.providerId} / {d.modelId} · {d.displayName || d.modelId}
+                        {d.enabled ? "" : "（已禁用，不可作为默认模型）"}
+                        {platformDefault?.deploymentId === d.id ? " [当前默认]" : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className={`${btnCls} flex items-center gap-1.5`}
+                      disabled={savingDefault || deployments.find((d) => d.id === selectedDefault)?.enabled !== true}
+                      onClick={() => savePlatformDefault(selectedDefault || null)}
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{savingDefault ? "保存中..." : "保存平台默认"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 rounded text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-50 active:scale-95"
+                      disabled={savingDefault || !platformDefault?.deploymentId}
+                      onClick={() => savePlatformDefault(null)}
+                    >
+                      清除默认
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* 模型供应商列表与新增：仅在供应商选项卡显示 */}
+          {mainTab === "providers" && (
+            <section className="bg-white rounded-lg border border-slate-200/80 shadow-2xs overflow-hidden">
+              <div className="px-6 py-4 bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded bg-blue-50 border border-blue-100 text-[#3182ce] flex items-center justify-center font-bold shadow-2xs">
+                    <Server className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-black text-slate-800 tracking-tight">模型供应商 (Providers)</h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      管理对接的厂商通道、接口协议与密钥环境变量索引
+                    </p>
+                  </div>
+                </div>
 
                 <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 font-mono">
+                    {providers.length} 个供应商
+                  </span>
                   <button
                     type="button"
-                    className={`${btnCls} flex items-center gap-1.5`}
-                    disabled={savingDefault || deployments.find((d) => d.id === selectedDefault)?.enabled !== true}
-                    onClick={() => savePlatformDefault(selectedDefault || null)}
+                    onClick={() => setShowAddProvider(!showAddProvider)}
+                    className="px-3 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{savingDefault ? "保存中..." : "保存平台默认"}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 rounded text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-50 active:scale-95"
-                    disabled={savingDefault || !platformDefault?.deploymentId}
-                    onClick={() => savePlatformDefault(null)}
-                  >
-                    清除默认
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{showAddProvider ? "收起表单" : "新增供应商"}</span>
+                    {showAddProvider ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
-            </div>
-          </section>
 
-          {/* 模型供应商列表与新增 */}
-          <section className="bg-white rounded-lg border border-slate-200/80 shadow-2xs overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded bg-blue-50 border border-blue-100 text-[#3182ce] flex items-center justify-center font-bold shadow-2xs">
-                  <Server className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base font-black text-slate-800 tracking-tight">模型供应商 (Providers)</h2>
-                  <p className="text-xs text-slate-500 font-medium">
-                    管理对接的厂商通道、接口协议与密钥环境变量索引
-                  </p>
-                </div>
-              </div>
-
-              <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 font-mono">
-                {providers.length} 个供应商
-              </span>
-            </div>
-
-            {/* 新增供应商 Bento 表单 */}
-            <div className="m-6 p-5 rounded-lg border border-slate-200/80 bg-white shadow-2xs space-y-4">
-              <div className="flex items-center gap-2 text-xs font-black text-slate-800">
-                <Plus className="w-4 h-4 text-[#3182ce]" />
-                <span>新增供应商通道</span>
-              </div>
+              {/* 新增供应商 Bento 表单（受控折叠） */}
+              {showAddProvider && (
+                <div className="m-6 p-5 rounded-lg border border-blue-200/80 bg-blue-50/20 shadow-2xs space-y-4 animate-in fade-in-50 duration-200">
+                  <div className="flex items-center gap-2 text-xs font-black text-slate-800">
+                    <Plus className="w-4 h-4 text-[#3182ce]" />
+                    <span>新增供应商通道</span>
+                  </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <label className="block space-y-1">
@@ -1831,6 +2270,12 @@ export default function AdminModelsPage() {
                 </button>
               </div>
             </div>
+          )}
+
+            {/* 供应商「测试连接」结果反馈：定位到列表上方 */}
+            <div ref={providerResultRef}>
+              {testResult && providers.some((p) => p.id === testResult.id) && testResultBanner}
+            </div>
 
             {/* 供应商列表表格 */}
             <div className="overflow-x-auto">
@@ -1842,6 +2287,7 @@ export default function AdminModelsPage() {
                     <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Base URL</th>
                     <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">环境变量名</th>
                     <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">状态</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">健康</th>
                     <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-10 px-6 py-3.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap border-l border-slate-200 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)]">操作</th>
                   </tr>
                 </thead>
@@ -1875,18 +2321,84 @@ export default function AdminModelsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-3.5 text-xs whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-bold border ${
+                              p.enabled
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-slate-100 text-slate-500 border-slate-200"
+                            }`}
+                          >
+                            {p.enabled ? "已启用" : "已禁用"}
+                          </span>
+                          {(() => {
+                            const count = deployments.filter((d) => d.providerId === p.name).length;
+                            if (count === 0) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => goToDeployModelForProvider(p.name)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 cursor-pointer transition-colors shadow-2xs active:scale-95"
+                                  title="系统建议：该通道暂未配置任何模型部署，点击立即去配置"
+                                >
+                                  <span>待配置模型</span>
+                                  <Plus className="w-3 h-3 text-amber-600" />
+                                </button>
+                              );
+                            }
+                            return (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-[#2b6cb0] border border-blue-200"
+                                title={`该供应商已接入 ${count} 款模型部署`}
+                              >
+                                {count} 款模型
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-3.5 text-xs whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-bold border ${
-                            p.enabled
+                            p.health === "healthy"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-slate-100 text-slate-500 border-slate-200"
+                              : p.health === "error"
+                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                : "bg-slate-100 text-slate-500 border-slate-200"
                           }`}
                         >
-                          {p.enabled ? "已启用" : "已禁用"}
+                          {p.health === "healthy" ? "健康" : p.health === "error" ? "异常" : "未探测"}
                         </span>
+                        {p.lastTestedAt ? (
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            {new Date(p.lastTestedAt).toLocaleString("zh-CN", { hour12: false })}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="sticky right-0 bg-white group-hover:bg-blue-50/50 backdrop-blur-xs z-10 px-6 py-3.5 text-right whitespace-nowrap border-l border-slate-100 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)] transition-colors">
                         <div className="flex items-center justify-end gap-2">
+                          {/* 测试连接：验证 Base URL / API Key / 鉴权，结果写入 health 与 lastTestedAt */}
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-600 hover:text-white text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+                            disabled={testingId === p.id}
+                            onClick={() => testProvider(p)}
+                            title="测试该供应商连通性（验证 Base URL、API Key 与鉴权）"
+                          >
+                            {testingId === p.id ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>测试中...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Activity className="w-3.5 h-3.5" />
+                                <span>测试连接</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* 启用/禁用通道切换 */}
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-bold transition-all duration-200 shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50 ${
@@ -1911,29 +2423,31 @@ export default function AdminModelsPage() {
                             )}
                           </button>
 
+                          {/* 严格状态互锁：已启用供应商严禁编辑，仅在已禁用状态下允许编辑通道配置 */}
                           {!p.enabled && (
-                            <>
-                              <button
-                                type="button"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-800 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
-                                onClick={() => openProviderEdit(p)}
-                                title="编辑供应商通道（标识不可修改）"
-                              >
-                                <Settings className="w-3.5 h-3.5" />
-                                <span>编辑</span>
-                              </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-800 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                              onClick={() => openProviderEdit(p)}
+                              title="编辑供应商通道（标识不可修改，需在禁用状态下维护）"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                              <span>编辑</span>
+                            </button>
+                          )}
 
-                              <button
-                                type="button"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
-                                disabled={busy === `p:del:${p.id}`}
-                                onClick={() => deleteProvider(p)}
-                                title="删除供应商通道（其下需无模型部署且非平台默认）"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>{busy === `p:del:${p.id}` ? "删除中..." : "删除"}</span>
-                              </button>
-                            </>
+                          {/* 严格状态互锁：仅在已禁用状态下允许删除通道 */}
+                          {!p.enabled && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+                              disabled={busy === `p:del:${p.id}`}
+                              onClick={() => deleteProvider(p)}
+                              title="删除供应商通道（需先停用该通道）"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>{busy === `p:del:${p.id}` ? "删除中..." : "删除"}</span>
+                            </button>
                           )}
                         </div>
                       </td>
@@ -1941,7 +2455,7 @@ export default function AdminModelsPage() {
                   ))}
                   {providers.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
                         <Server className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         <span className="text-xs font-bold text-slate-500">暂无供应商通道</span>
                       </td>
@@ -1964,285 +2478,479 @@ export default function AdminModelsPage() {
               </div>
             )}
           </section>
+        )}
 
-          {/* 模型部署列表与新增 */}
-          <section className="bg-white rounded-lg border border-slate-200/80 shadow-2xs overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded bg-purple-50 border border-purple-100 text-[#805ad5] flex items-center justify-center font-bold shadow-2xs">
-                  <Boxes className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base font-black text-slate-800 tracking-tight">模型部署 (Deployments)</h2>
-                  <p className="text-xs text-slate-500 font-medium">
-                    管理具体模型代号、上下文上限、组件能力声明及 Token 计费单价
-                  </p>
-                </div>
-              </div>
-
-              <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 font-mono">
-                {deployments.length} 款模型
-              </span>
-            </div>
-
-            {/* 新增模型部署 Bento 表单 */}
-            <div className="m-6 p-5 rounded-lg border border-slate-200/80 bg-white shadow-2xs space-y-4">
-              <div className="flex items-center gap-2 text-xs font-black text-slate-800">
-                <Plus className="w-4 h-4 text-[#3182ce]" />
-                <span>新增模型部署</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-600">所属供应商 <span className="text-red-500 font-bold ml-0.5">*</span></span>
-                  <select
-                    id="deployment-input-providerId"
-                    className={getInputCls(!!dErrors.providerId, "font-bold cursor-pointer")}
-                    value={dForm.providerId}
-                    onChange={(e) => {
-                      setDForm({ ...dForm, providerId: e.target.value });
-                      if (dErrors.providerId) setDErrors({ ...dErrors, providerId: undefined });
-                    }}
-                  >
-                    <option value="">请选择供应商通道</option>
-                    {providers.map((p) => (
-                      <option key={p.id} value={p.name}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  {dErrors.providerId && (
-                    <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{dErrors.providerId}</span>
-                    </p>
-                  )}
-                </label>
-
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-600">模型代号标识 <span className="text-red-500 font-bold ml-0.5">*</span></span>
-                  <input
-                    id="deployment-input-modelId"
-                    className={getInputCls(!!dErrors.modelId)}
-                    maxLength={128}
-                    placeholder="平台内部代号，如 deepseek-chat"
-                    value={dForm.modelId}
-                    onChange={(e) => {
-                      setDForm({ ...dForm, modelId: e.target.value });
-                      if (dErrors.modelId) setDErrors({ ...dErrors, modelId: undefined });
-                    }}
-                    onBlur={(e) => autoFetchContext(e.target.value, dForm.upstreamModel)}
-                  />
-                  {dErrors.modelId && (
-                    <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{dErrors.modelId}</span>
-                    </p>
-                  )}
-                </label>
-
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-600">上游模型真实名称</span>
-                  <input
-                    className={inputCls}
-                    maxLength={128}
-                    placeholder="真正下发厂商的 model（如 deepseek-chat）"
-                    value={dForm.upstreamModel}
-                    onChange={(e) => setDForm({ ...dForm, upstreamModel: e.target.value })}
-                    onBlur={(e) => autoFetchContext(dForm.modelId, e.target.value)}
-                  />
-                  <span className="block text-[11px] text-slate-400">留空则直接以下方代号下发</span>
-                </label>
-
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-600">用户端展示名称</span>
-                  <input
-                    className={inputCls}
-                    maxLength={64}
-                    placeholder="如 DeepSeek V3 极速版"
-                    value={dForm.displayName}
-                    onChange={(e) => setDForm({ ...dForm, displayName: e.target.value })}
-                  />
-                </label>
-
-                <label className="block space-y-1">
-                  <span className="text-xs font-bold text-slate-600">上下文窗口上限 (Token) <span className="text-red-500 font-bold ml-0.5">*</span></span>
-                  <div className="relative">
-                    <input
-                      id="deployment-input-contextLimit"
-                      className={`${getInputCls(!!dErrors.contextLimit)} ${
-                        ctxInfo.found ? "pr-24 bg-slate-50 text-slate-600 cursor-not-allowed" : ""
-                      }`}
-                      placeholder={ctxInfo.loading ? "正在从官方目录获取..." : "如 32000、64000、128000"}
-                      value={dForm.contextLimit}
-                      readOnly={ctxInfo.found}
-                      onChange={(e) => {
-                        setDForm({ ...dForm, contextLimit: e.target.value });
-                        if (dErrors.contextLimit) setDErrors({ ...dErrors, contextLimit: undefined });
-                      }}
-                    />
-                    {ctxInfo.found && (
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-black bg-blue-50 text-[#2b6cb0] border border-blue-200">
-                        官方目录
-                      </span>
-                    )}
+          {/* 模型部署列表与新增：仅在部署选项卡显示 */}
+          {mainTab === "deployments" && (
+            <section className="bg-white rounded-lg border border-slate-200/80 shadow-2xs overflow-hidden">
+              <div className="px-6 py-4 bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded bg-purple-50 border border-purple-100 text-[#805ad5] flex items-center justify-center font-bold shadow-2xs">
+                    <Boxes className="w-4 h-4" />
                   </div>
-                  {ctxInfo.found ? (
-                    <span className="block text-[11px] text-emerald-600 font-bold">
-                      来源：{ctxInfo.source}
-                      {ctxInfo.matchedKey ? `（${ctxInfo.matchedKey}）` : ""}
-                      {ctxInfo.outputLimit ? `，输出上限 ${ctxInfo.outputLimit}` : ""}
-                    </span>
-                  ) : ctxInfo.tried && !ctxInfo.loading ? (
-                    <span className="block text-[11px] text-amber-600 font-bold">
-                      未在公开目录匹配到该模型，请自行核实后填写
-                    </span>
-                  ) : (
-                    <span className="block text-[11px] text-slate-400">
-                      填写模型代号或上游名称后自动获取
-                    </span>
-                  )}
-                  {dErrors.contextLimit && (
-                    <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{dErrors.contextLimit}</span>
+                  <div>
+                    <h2 className="text-base font-black text-slate-800 tracking-tight">模型部署 (Deployments)</h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      管理具体模型代号、上下文上限、组件能力声明及 Token 计费单价
                     </p>
-                  )}
-                </label>
+                  </div>
+                </div>
 
-                <label className="block space-y-1 sm:col-span-3">
-                  <span className="text-xs font-bold text-slate-600">
-                    抽象能力声明 <span className="text-red-500 font-bold ml-0.5">*</span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 font-mono">
+                    {deployments.length} 款模型
                   </span>
-                  <div id="create-capability-grid" className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                    {capabilityOptions.map((opt) => {
-                      const checked = (dForm.capabilities as string[]).includes(opt.value);
-                      return (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddDeployment(!showAddDeployment)}
+                    className="px-3 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{showAddDeployment ? "收起表单" : "新增模型部署"}</span>
+                    {showAddDeployment ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* 新增模型部署表单（受控折叠，大厂高扩展性设计，通俗易懂） */}
+              {showAddDeployment && (
+                <div className="m-6 p-5 rounded-lg border border-purple-200/80 bg-purple-50/20 shadow-2xs space-y-4 animate-in fade-in-50 duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-3">
+                    <div className="flex items-center gap-2 text-xs font-black text-slate-800">
+                      <Plus className="w-4 h-4 text-[#3182ce]" />
+                      <span>新增模型部署（支持任意上游模型与通用通道接入）</span>
+                    </div>
+
+                    {/* 快捷参考模版：大厂一键预设填入，不限制手动自由修改，通用开放架构 */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] font-bold text-slate-500">快速填入模版：</span>
+                      {[
+                        {
+                          name: "DeepSeek",
+                          modelId: "deepseek-chat",
+                          upstream: "deepseek-chat",
+                          display: "DeepSeek V3",
+                          context: "64000",
+                          caps: ["chat", "code", "long-context"],
+                        },
+                        {
+                          name: "通义千问",
+                          modelId: "qwen-plus",
+                          upstream: "qwen-plus",
+                          display: "通义千问 Plus",
+                          context: "131072",
+                          caps: ["chat", "code", "function-calling"],
+                        },
+                        {
+                          name: "Claude",
+                          modelId: "claude-3-5-sonnet",
+                          upstream: "claude-3-5-sonnet-20241022",
+                          display: "Claude 3.5 Sonnet",
+                          context: "200000",
+                          caps: ["chat", "code", "vision", "long-context"],
+                        },
+                        {
+                          name: "OpenAI",
+                          modelId: "gpt-4o",
+                          upstream: "gpt-4o",
+                          display: "GPT-4o (Omni)",
+                          context: "128000",
+                          caps: ["chat", "code", "vision", "function-calling"],
+                        },
+                        {
+                          name: "通用开源/私有",
+                          modelId: "custom-model",
+                          upstream: "custom-model",
+                          display: "通用开源大模型",
+                          context: "32000",
+                          caps: ["chat"],
+                        },
+                      ].map((tpl) => (
                         <button
+                          key={tpl.name}
                           type="button"
-                          key={opt.value}
-                          onClick={() =>
-                            setDForm({
-                              ...dForm,
-                              capabilities: checked
-                                ? (dForm.capabilities as string[]).filter((v) => v !== opt.value)
-                                : [...(dForm.capabilities as string[]), opt.value],
-                            })
-                          }
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs font-bold transition-all cursor-pointer ${
-                            checked
-                              ? "bg-[#3182ce] text-white border-[#3182ce] shadow-2xs"
-                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                          }`}
+                          onClick={() => {
+                            setDForm((prev) => ({
+                              ...prev,
+                              providerId: prev.providerId || providers[0]?.name || "",
+                              modelId: tpl.modelId,
+                              upstreamModel: tpl.upstream,
+                              displayName: tpl.display,
+                              contextLimit: tpl.context,
+                              capabilities: tpl.caps.filter((c) => capabilityOptions.some((o) => o.value === c)),
+                            }));
+                            setDErrors({});
+                          }}
+                          className="px-2 py-0.5 rounded text-[11px] font-bold bg-white text-slate-600 hover:text-[#3182ce] hover:bg-blue-50 border border-slate-200 transition-colors shadow-2xs cursor-pointer active:scale-95"
+                          title={`点击填入 ${tpl.name} 推荐参数`}
                         >
-                          <span
-                            className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center ${
-                              checked ? "bg-white/20 border-white" : "border-slate-300"
+                          {tpl.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* 1. 所属供应商通道 */}
+                    <label className="block space-y-1">
+                      <span className="text-xs font-bold text-slate-700">所属供应商通道 <span className="text-red-500 font-bold ml-0.5">*</span></span>
+                      <select
+                        id="deployment-input-providerId"
+                        className={getInputCls(!!dErrors.providerId, "font-bold cursor-pointer")}
+                        value={dForm.providerId}
+                        onChange={(e) => {
+                          setDForm({ ...dForm, providerId: e.target.value });
+                          if (dErrors.providerId) setDErrors({ ...dErrors, providerId: undefined });
+                        }}
+                      >
+                        <option value="">请选择供应商通道</option>
+                        {providers.map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name} {p.enabled ? "（已启用）" : "（已禁用）"}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="block text-[11px] text-slate-400">
+                        {providers.length === 0 ? "暂无通道，请先在供应商通道标签页新增" : "选择承载该模型的厂商网关或私有服务"}
+                      </span>
+                      {dErrors.providerId && (
+                        <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{dErrors.providerId}</span>
+                        </p>
+                      )}
+                    </label>
+
+                    {/* 2. 平台内部模型标识 */}
+                    <label className="block space-y-1">
+                      <span className="text-xs font-bold text-slate-700">平台模型代号 (modelId) <span className="text-red-500 font-bold ml-0.5">*</span></span>
+                      <input
+                        id="deployment-input-modelId"
+                        className={getInputCls(!!dErrors.modelId)}
+                        maxLength={128}
+                        placeholder="如 deepseek-chat、qwen-plus"
+                        value={dForm.modelId}
+                        onChange={(e) => {
+                          setDForm({ ...dForm, modelId: e.target.value });
+                          if (dErrors.modelId) setDErrors({ ...dErrors, modelId: undefined });
+                        }}
+                        onBlur={(e) => autoFetchContext(e.target.value, dForm.upstreamModel)}
+                      />
+                      <span className="block text-[11px] text-slate-400">系统内部调度与组件绑定的唯一标识</span>
+                      {dErrors.modelId && (
+                        <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{dErrors.modelId}</span>
+                        </p>
+                      )}
+                    </label>
+
+                    {/* 3. 上游厂商模型真实名称 */}
+                    <label className="block space-y-1">
+                      <span className="text-xs font-bold text-slate-700">上游厂商模型名 (upstreamModel)</span>
+                      <input
+                        className={inputCls}
+                        maxLength={128}
+                        placeholder="如厂商要求的真实参数名；若与代号相同可留空"
+                        value={dForm.upstreamModel}
+                        onChange={(e) => setDForm({ ...dForm, upstreamModel: e.target.value })}
+                        onBlur={(e) => autoFetchContext(dForm.modelId, e.target.value)}
+                      />
+                      <span className="block text-[11px] text-slate-400">向厂商接口实际下发的 model 参数；留空默认使用代号</span>
+                    </label>
+
+                    {/* 4. 用户端友好展示名称 */}
+                    <label className="block space-y-1">
+                      <span className="text-xs font-bold text-slate-700">界面直观展示名 (displayName)</span>
+                      <input
+                        className={inputCls}
+                        maxLength={64}
+                        placeholder="如 DeepSeek V3 官方版、通义千问 Plus"
+                        value={dForm.displayName}
+                        onChange={(e) => setDForm({ ...dForm, displayName: e.target.value })}
+                      />
+                      <span className="block text-[11px] text-slate-400">在工作台模型下拉框中呈现给普通用户的友好名称</span>
+                    </label>
+
+                    {/* 5. 上下文窗口上限 */}
+                    <label className="block space-y-1 sm:col-span-2">
+                      <span className="text-xs font-bold text-slate-700">上下文窗口上限 (Token) <span className="text-red-500 font-bold ml-0.5">*</span></span>
+                      <div className="relative">
+                        <input
+                          id="deployment-input-contextLimit"
+                          className={`${getInputCls(!!dErrors.contextLimit)} ${
+                            ctxInfo.found ? "pr-24 bg-slate-50 text-slate-600 cursor-not-allowed" : ""
+                          }`}
+                          placeholder={ctxInfo.loading ? "正在从官方目录获取..." : "如 32000、64000、128000"}
+                          value={dForm.contextLimit}
+                          readOnly={ctxInfo.found}
+                          onChange={(e) => {
+                            setDForm({ ...dForm, contextLimit: e.target.value });
+                            if (dErrors.contextLimit) setDErrors({ ...dErrors, contextLimit: undefined });
+                          }}
+                        />
+                        {ctxInfo.found && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-black bg-blue-50 text-[#2b6cb0] border border-blue-200">
+                            官方目录自动匹配
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 常用规格快捷胶囊 */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[11px] text-slate-400">常用规格：</span>
+                        {[
+                          { label: "32K (3.2万)", val: "32000" },
+                          { label: "64K (6.4万)", val: "64000" },
+                          { label: "128K (12.8万)", val: "128000" },
+                          { label: "200K (20万)", val: "200000" },
+                          { label: "1M (百万Token)", val: "1000000" },
+                        ].map((spec) => (
+                          <button
+                            key={spec.label}
+                            type="button"
+                            onClick={() => {
+                              setDForm((f) => ({ ...f, contextLimit: spec.val }));
+                              if (dErrors.contextLimit) setDErrors((prev) => ({ ...prev, contextLimit: undefined }));
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all border cursor-pointer ${
+                              dForm.contextLimit === spec.val
+                                ? "bg-[#3182ce] text-white border-[#3182ce]"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-[#3182ce]"
                             }`}
                           >
-                            {checked && <Check className="w-2.5 h-2.5" />}
-                          </span>
-                          <span>{opt.label}</span>
-                        </button>
-                      );
-                    })}
+                            {spec.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {ctxInfo.found ? (
+                        <span className="block text-[11px] text-emerald-600 font-bold">
+                          来源：{ctxInfo.source}
+                          {ctxInfo.matchedKey ? `（${ctxInfo.matchedKey}）` : ""}
+                          {ctxInfo.outputLimit ? `，输出上限 ${ctxInfo.outputLimit}` : ""}
+                        </span>
+                      ) : ctxInfo.tried && !ctxInfo.loading ? (
+                        <span className="block text-[11px] text-amber-600 font-bold">
+                          未在公开目录匹配到该模型，支持手工直接输入或点击上方常用规格
+                        </span>
+                      ) : (
+                        <span className="block text-[11px] text-slate-400">
+                          输入模型代号后系统会自动尝试匹配官方规格，亦可手动自定
+                        </span>
+                      )}
+                      {dErrors.contextLimit && (
+                        <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{dErrors.contextLimit}</span>
+                        </p>
+                      )}
+                    </label>
+
+                    {/* 6. 支持的功能特性（模型能力标签） */}
+                    <div className="space-y-1.5 sm:col-span-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">
+                          支持的功能特性 (模型能力标签) <span className="text-red-500 font-bold ml-0.5">*</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDForm((prev) => ({
+                                ...prev,
+                                capabilities: capabilityOptions.map((o) => o.value),
+                              }))
+                            }
+                            className="text-[11px] text-[#3182ce] hover:underline font-bold cursor-pointer"
+                          >
+                            全选
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setDForm((prev) => ({ ...prev, capabilities: [] }))}
+                            className="text-[11px] text-slate-500 hover:text-slate-800 font-bold cursor-pointer"
+                          >
+                            清空
+                          </button>
+                        </div>
+                      </div>
+
+                      <div id="create-capability-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                        {capabilityOptions.map((opt) => {
+                          const checked = (dForm.capabilities as string[]).includes(opt.value);
+                          return (
+                            <button
+                              type="button"
+                              key={opt.value}
+                              onClick={() =>
+                                setDForm({
+                                  ...dForm,
+                                  capabilities: checked
+                                    ? (dForm.capabilities as string[]).filter((v) => v !== opt.value)
+                                    : [...(dForm.capabilities as string[]), opt.value],
+                                })
+                              }
+                              className={`flex items-start gap-2.5 p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                                checked
+                                  ? "bg-blue-50/80 text-[#2b6cb0] border-[#3182ce] shadow-2xs ring-1 ring-[#3182ce]/20"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                              }`}
+                            >
+                              <span
+                                className={`w-4 h-4 mt-0.5 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${
+                                  checked ? "bg-[#3182ce] border-[#3182ce] text-white" : "border-slate-300 bg-white"
+                                }`}
+                              >
+                                {checked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </span>
+                              <div className="space-y-0.5 min-w-0">
+                                <div className="text-xs font-black leading-tight">{opt.label}</div>
+                                {opt.description && (
+                                  <div className="text-[11px] text-slate-500 font-normal leading-normal">
+                                    {opt.description}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {dErrors.capabilities && (
+                        <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{dErrors.capabilities}</span>
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  {dErrors.capabilities && (
-                    <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{dErrors.capabilities}</span>
-                    </p>
-                  )}
-                </label>
-              </div>
 
-              <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 leading-relaxed">
-                创建后还需两步：① 点击「价格」配置 Token 单价；② 在上方「平台默认模型」或「空间模型策略」中指定该模型，组件即可使用。
-              </div>
+                  {/* 快速指引卡片：通俗易懂大白话 */}
+                  <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 leading-relaxed">
+                    💡 <b>快速指引</b>：模型部署创建完成后默认为【已禁用】维护状态；请在列表操作列点击【配置价格】设定 Token 计费单价，确认无误后再点击【启用】，全站组件即可正常调用该模型。
+                  </div>
 
-              <div className="pt-1 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded text-xs font-bold hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 transition-all cursor-pointer shadow-2xs flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-                  disabled={busy === "d:create"}
-                  onClick={() => {
-                    setDForm({
-                      providerId: "",
-                      modelId: "",
-                      upstreamModel: "",
-                      displayName: "",
-                      contextLimit: "32000",
-                      capabilities: [],
-                    });
-                    setDErrors({});
-                    setCtxInfo({ loading: false, tried: false, found: false });
+                  <div className="pt-1 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded text-xs font-bold hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 transition-all cursor-pointer shadow-2xs flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                      disabled={busy === "d:create"}
+                      onClick={() => {
+                        setDForm({
+                          providerId: "",
+                          modelId: "",
+                          upstreamModel: "",
+                          displayName: "",
+                          contextLimit: "32000",
+                          capabilities: [],
+                        });
+                        setDErrors({});
+                        setCtxInfo({ loading: false, tried: false, found: false });
+                      }}
+                      title="清空当前输入的所有模型部署信息与勾选能力"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                      <span>清空重填</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`${btnCls} flex items-center gap-1.5`}
+                      disabled={busy === "d:create"}
+                      onClick={createDeployment}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{busy === "d:create" ? "正在创建..." : "确认新增模型部署"}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+          {/* 模型部署「测试模型」结果反馈：定位到列表上方 */}
+          <div ref={deploymentResultRef}>
+            {testResult && deployments.some((d) => d.id === testResult.id) && testResultBanner}
+          </div>
+
+          {/* 部署筛选与快捷操作栏 */}
+          <div className="px-6 py-3.5 bg-slate-50/70 border-b border-slate-200/80 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 flex-1 max-w-xl">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  className="w-full pl-8.5 pr-8 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]"
+                  placeholder="按模型代号、展示名或上游代号搜索..."
+                  value={deploymentSearch}
+                  onChange={(e) => {
+                    setDeploymentSearch(e.target.value);
+                    setDeploymentPage(1);
                   }}
-                  title="清空当前输入的所有模型部署信息与勾选能力"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                  <span>清除</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${btnCls} flex items-center gap-1.5`}
-                  disabled={busy === "d:create"}
-                  onClick={createDeployment}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{busy === "d:create" ? "正在创建..." : "确认新增模型部署"}</span>
-                </button>
+                />
+                {deploymentSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeploymentSearch("");
+                      setDeploymentPage(1);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
+
+              <select
+                className="px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-700 font-bold focus:outline-none focus:border-[#3182ce] cursor-pointer"
+                value={deploymentProviderFilter}
+                onChange={(e) => {
+                  setDeploymentProviderFilter(e.target.value);
+                  setDeploymentPage(1);
+                }}
+              >
+                <option value="ALL">全部供应商 ({providers.length})</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-700 font-bold focus:outline-none focus:border-[#3182ce] cursor-pointer"
+                value={deploymentStatusFilter}
+                onChange={(e) => {
+                  setDeploymentStatusFilter(e.target.value);
+                  setDeploymentPage(1);
+                }}
+              >
+                <option value="ALL">全部状态</option>
+                <option value="ENABLED">仅已启用</option>
+                <option value="DISABLED">仅已禁用</option>
+              </select>
             </div>
 
-            {/* 测试通道结果反馈 */}
-            {testResult && (
-              <div
-                className={
-                  "mt-4 rounded border p-4 space-y-2 " +
-                  (testResult.ok ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200")
-                }
-              >
-                <div className="flex items-center gap-2">
-                  {testResult.ok ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  )}
-                  <span className={"text-xs font-black " + (testResult.ok ? "text-emerald-700" : "text-rose-700")}>
-                    {testResult.ok
-                      ? `测试通道连通成功（耗时 ${testResult.latencyMs}ms）`
-                      : `测试通道连通失败${testResult.label ? `（${testResult.label}）` : testResult.errorType ? `（${testResult.errorType}）` : ""}`}
-                  </span>
-                  {!testResult.ok && testResult.latencyMs != null && (
-                    <span className="text-[11px] text-rose-400 font-mono">耗时 {testResult.latencyMs}ms</span>
-                  )}
-                </div>
-                {testResult.ok && testResult.sampleReply && (
-                  <div className="text-[11px] text-slate-500 font-mono bg-white/70 rounded border border-emerald-100 px-2 py-1.5 break-words">
-                    模型回执：{testResult.sampleReply}
-                  </div>
-                )}
-                {!testResult.ok && testResult.message && (
-                  <div className="text-[11px] text-rose-600 font-medium break-words">
-                    <span className="font-black">错误详情：</span>
-                    {testResult.message}
-                  </div>
-                )}
-                {!testResult.ok && testResult.troubleshooting?.length ? (
-                  <div className="text-[11px] text-rose-600/90">
-                    <div className="font-black mb-1">如何修复：</div>
-                    <ul className="list-disc pl-4 space-y-1">
-                      {testResult.troubleshooting.map((t, i) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+              <span>共找到 <b className="text-slate-800 font-mono">{filteredDeployments.length}</b> 款部署</span>
+              {(deploymentSearch || deploymentProviderFilter !== "ALL" || deploymentStatusFilter !== "ALL") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeploymentSearch("");
+                    setDeploymentProviderFilter("ALL");
+                    setDeploymentStatusFilter("ALL");
+                    setDeploymentPage(1);
+                  }}
+                  className="text-[11px] text-[#3182ce] hover:underline font-bold cursor-pointer"
+                >
+                  重置筛选
+                </button>
+              )}
+            </div>
+          </div>
 
-            {/* 模型部署列表表格 */}
-            <div className="overflow-x-auto">
+          {/* 模型部署列表表格 */}
+          <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[960px] table-auto">
                 <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-y border-slate-200">
                   <tr>
@@ -2295,14 +3003,40 @@ export default function AdminModelsPage() {
                       <td className="px-6 py-3.5 text-xs text-slate-600 align-top">
                         {d.pricing ? (
                           <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-xs text-slate-800 font-bold whitespace-nowrap">
-                                售价 入: {d.pricing.priceInputMicrosPerMillion === null ? "—" : `¥${(d.pricing.priceInputMicrosPerMillion / 1_000_000).toFixed(2)}`} / 出: {d.pricing.priceOutputMicrosPerMillion === null ? "—" : `¥${(d.pricing.priceOutputMicrosPerMillion / 1_000_000).toFixed(2)}`}
-                              </span>
-                              <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap">
-                                v{d.pricing.priceVersion} · {priceStatusLabel(d.pricing.priceStatus)}
-                              </span>
-                            </div>
+                            {(() => {
+                              // 当前生效价 + 归属：有直配售价走「直配」；否则按 成本×(1+加价率/10000) 派生（成本×加成）
+                              const hasDirect =
+                                d.pricing!.priceInputMicrosPerMillion !== null && d.pricing!.priceOutputMicrosPerMillion !== null;
+                              const derivedIn =
+                                d.pricing!.costInputMicrosPerMillion != null && d.pricing!.markupRateBps != null
+                                  ? d.pricing!.costInputMicrosPerMillion * (1 + d.pricing!.markupRateBps / 10000)
+                                  : null;
+                              const derivedOut =
+                                d.pricing!.costOutputMicrosPerMillion != null && d.pricing!.markupRateBps != null
+                                  ? d.pricing!.costOutputMicrosPerMillion * (1 + d.pricing!.markupRateBps / 10000)
+                                  : null;
+                              const effIn = hasDirect ? d.pricing!.priceInputMicrosPerMillion : derivedIn;
+                              const effOut = hasDirect ? d.pricing!.priceOutputMicrosPerMillion : derivedOut;
+                              return (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-xs text-slate-800 font-bold whitespace-nowrap">
+                                    生效价 入: {effIn === null || effIn === undefined ? "—" : `¥${(effIn / 1_000_000).toFixed(2)}`} / 出: {effOut === null || effOut === undefined ? "—" : `¥${(effOut / 1_000_000).toFixed(2)}`}
+                                  </span>
+                                  {hasDirect ? (
+                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap">
+                                      归属：直配
+                                    </span>
+                                  ) : derivedIn != null ? (
+                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 whitespace-nowrap">
+                                      归属：成本×加成 +{(d.pricing!.markupRateBps! / 100).toFixed(2)}%
+                                    </span>
+                                  ) : null}
+                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 whitespace-nowrap">
+                                    v{d.pricing!.priceVersion} · {priceStatusLabel(d.pricing!.priceStatus)}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                             <div className="font-mono text-[10px] text-slate-500 whitespace-nowrap">
                               成本 入 {d.pricing.costInputMicrosPerMillion === null ? "—" : `¥${(d.pricing.costInputMicrosPerMillion / 1_000_000).toFixed(2)}`} / 出 {d.pricing.costOutputMicrosPerMillion === null ? "—" : `¥${(d.pricing.costOutputMicrosPerMillion / 1_000_000).toFixed(2)}`}
                               {(() => {
@@ -2342,6 +3076,7 @@ export default function AdminModelsPage() {
                       </td>
                       <td className="sticky right-0 bg-white group-hover:bg-blue-50/50 backdrop-blur-xs z-10 px-6 py-3 text-right whitespace-nowrap border-l border-slate-100 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)] transition-colors">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* 1. 测试通道：探针连通性测试（无论启禁用均可测试健康连通性） */}
                           <button
                             type="button"
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-cyan-50 text-cyan-700 hover:bg-cyan-600 hover:text-white border border-cyan-200/80 rounded font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
@@ -2361,10 +3096,11 @@ export default function AdminModelsPage() {
                             <span>测试通道</span>
                           </button>
 
+                          {/* 2. 状态切换：启用 / 禁用 */}
                           {providers.find((p) => p.name === d.providerId)?.enabled === false ? (
                             <span
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200/80 rounded font-bold text-xs cursor-not-allowed"
-                              title="该部署所属供应商通道已禁用，此模型当前无法被组件执行；请先在上方供应商列表启用该通道"
+                              title="该部署所属供应商通道已禁用，此模型当前无法被组件执行；请先在供应商通道列表启用该通道"
                             >
                               <AlertCircle className="w-3.5 h-3.5" />
                               <span>通道已停用</span>
@@ -2395,38 +3131,66 @@ export default function AdminModelsPage() {
                             </button>
                           )}
 
-                          {/* 次要操作收进「⋯」菜单：价格 / 能力 / 编辑 / 删除。
-                              启用中的模型仅有「测试通道 / 停用」两个操作，无需再展示「⋯」。 */}
+                          {/* 3. 严格状态互锁：仅在【已禁用】状态下，才允许配置价格、能力以及更多操作（编辑部署/删除部署）；已启用在线服务期间严禁篡改 */}
                           {!d.enabled && (
-                            <button
-                              type="button"
-                              className={`inline-flex items-center justify-center w-7 h-7 rounded font-bold transition-all duration-200 cursor-pointer shadow-2xs active:scale-95 border ${
-                                actionMenu?.id === d.id
-                                  ? "bg-[#3182ce] text-white border-[#3182ce]"
-                                  : "bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-800 border-slate-200"
-                              }`}
-                              onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setActionMenu((prev) =>
-                                  prev?.id === d.id
-                                    ? null
-                                    : { id: d.id, top: rect.bottom + 6, right: window.innerWidth - rect.right }
-                                );
-                              }}
-                              title="更多操作"
-                            >
-                              <MoreHorizontal className="w-4 h-4" />
-                            </button>
+                            <>
+                              {/* 配置价格按钮（外置核心操作） */}
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-[#2b6cb0] hover:bg-[#3182ce] hover:text-white border border-blue-200/80 rounded font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs active:scale-95"
+                                onClick={() => openPrice(d)}
+                                title="配置价格（成本底价、用户售价、分时段策略与规则）"
+                              >
+                                <Coins className="w-3.5 h-3.5" />
+                                <span>配置价格</span>
+                              </button>
+
+                              {/* 能力快捷声明（外置核心操作） */}
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-2 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white border border-purple-200/80 rounded font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs active:scale-95"
+                                onClick={() => openCapabilityPanel(d)}
+                                title="配置该模型声明的组件能力"
+                              >
+                                <SlidersHorizontal className="w-3.5 h-3.5" />
+                                <span>能力</span>
+                              </button>
+
+                              {/* 更多操作菜单按钮：仅提供编辑部署与删除部署，杜绝重复项 */}
+                              <button
+                                type="button"
+                                className={`inline-flex items-center justify-center w-7 h-7 rounded font-bold transition-all duration-200 cursor-pointer shadow-2xs active:scale-95 border ${
+                                  actionMenu?.id === d.id
+                                    ? "bg-[#3182ce] text-white border-[#3182ce]"
+                                    : "bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-800 border-slate-200"
+                                }`}
+                                onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setActionMenu((prev) =>
+                                    prev?.id === d.id
+                                      ? null
+                                      : { id: d.id, top: rect.bottom + 6, right: window.innerWidth - rect.right }
+                                  );
+                                }}
+                                title="更多操作（编辑部署 / 删除部署）"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
                     </tr>
                   ))}
-                  {deployments.length === 0 && (
+                  {filteredDeployments.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                         <Boxes className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <span className="text-xs font-bold text-slate-500">暂无模型部署</span>
+                        <span className="text-xs font-bold text-slate-500">
+                          {deploymentSearch || deploymentProviderFilter !== "ALL" || deploymentStatusFilter !== "ALL"
+                            ? "未找到符合筛选条件的模型部署"
+                            : "暂无模型部署"}
+                        </span>
                       </td>
                     </tr>
                   )}
@@ -2435,11 +3199,11 @@ export default function AdminModelsPage() {
             </div>
 
             {/* 模型部署列表分页 */}
-            {deployments.length > 0 && (
+            {filteredDeployments.length > 0 && (
               <div className="px-6 py-4 border-t border-slate-100 bg-gradient-to-r from-slate-50/50 to-transparent">
                 <Pagination
                   currentPage={deploymentPage}
-                  totalItems={deployments.length}
+                  totalItems={filteredDeployments.length}
                   pageSize={PAGE_SIZE}
                   onPageChange={(p) => setDeploymentPage(p)}
                   itemLabel="个模型部署"
@@ -2447,50 +3211,32 @@ export default function AdminModelsPage() {
               </div>
             )}
           </section>
+        )}
 
-          {/* 部署行「⋯」更多操作下拉菜单：fixed 定位避免被表格 overflow-x-auto 裁剪，遮罩点击关闭 */}
+          {/* 部署行「⋯」更多操作下拉菜单：仅在已禁用态下供维护，且仅包含编辑部署与删除部署，杜绝重复项 */}
           {actionMenu &&
             (() => {
               const menuDep = deployments.find((x) => x.id === actionMenu.id);
-              if (!menuDep) return null;
-              // 启用中的模型只保留「测试通道 / 停用」等操作；价格与能力修改仅在停用后出现，避免无效入口
+              if (!menuDep || menuDep.enabled) return null;
               const menuItems: {
                 label: string;
                 icon: ReactNode;
                 cls: string;
                 action: () => void;
-              }[] = menuDep.enabled
-                ? []
-                : [
-                    {
-                      label: "价格",
-                      icon: <Coins className="w-3.5 h-3.5" />,
-                      cls: "text-[#3182ce] hover:bg-blue-50",
-                      action: () => openPrice(menuDep),
-                    },
-                    {
-                      label: "能力",
-                      icon: <SlidersHorizontal className="w-3.5 h-3.5" />,
-                      cls: "text-[#805ad5] hover:bg-purple-50",
-                      action: () => openCapabilityPanel(menuDep),
-                    },
-                  ];
-              if (!menuDep.enabled) {
-                menuItems.push(
-                  {
-                    label: "编辑",
-                    icon: <Settings className="w-3.5 h-3.5" />,
-                    cls: "text-slate-600 hover:bg-slate-100",
-                    action: () => openDeploymentEdit(menuDep),
-                  },
-                  {
-                    label: "删除",
-                    icon: <Trash2 className="w-3.5 h-3.5" />,
-                    cls: "text-rose-600 hover:bg-rose-50",
-                    action: () => deleteDeployment(menuDep),
-                  },
-                );
-              }
+              }[] = [
+                {
+                  label: "编辑部署",
+                  icon: <Settings className="w-3.5 h-3.5" />,
+                  cls: "text-slate-700 hover:bg-slate-100",
+                  action: () => openDeploymentEdit(menuDep),
+                },
+                {
+                  label: "删除部署",
+                  icon: <Trash2 className="w-3.5 h-3.5" />,
+                  cls: "text-rose-600 hover:bg-rose-50",
+                  action: () => deleteDeployment(menuDep),
+                },
+              ];
               return (
                 <>
                   <div className="fixed inset-0 z-[55]" onClick={() => setActionMenu(null)} />
@@ -2520,7 +3266,7 @@ export default function AdminModelsPage() {
           {/* 价格配置模态弹窗 (遵循知阁·舟坊设计系统与系统级 Modal 规范) */}
           {pricePanelId && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in-50 duration-200">
-              <div className="relative bg-white rounded-2xl shadow-2xl shadow-slate-900/15 w-full max-w-3xl overflow-hidden border border-slate-200/90 flex flex-col max-h-[90vh]">
+              <div className="relative bg-white rounded-2xl shadow-2xl shadow-slate-900/15 w-full max-w-4xl overflow-hidden border border-slate-200/90 flex flex-col max-h-[90vh]">
                 {/* 顶部品牌光泽装饰线 */}
                 <div className="h-1 w-full bg-gradient-to-r from-[#2b6cb0] via-[#3182ce] to-[#63b3ed] shrink-0" />
 
@@ -2556,8 +3302,66 @@ export default function AdminModelsPage() {
                   </button>
                 </div>
 
+                {/* 价格弹窗三选项卡导航 */}
+                <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200/90 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setPriceModalTab("base")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                        priceModalTab === "base"
+                          ? "bg-white text-[#3182ce] shadow-xs border border-blue-200"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                      }`}
+                    >
+                      <Coins className="w-3.5 h-3.5" />
+                      <span>核心定价与加价</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPriceModalTab("periods")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                        priceModalTab === "periods"
+                          ? "bg-white text-purple-700 shadow-xs border border-purple-200"
+                          : "text-slate-600 hover:text-purple-900 hover:bg-slate-200/60"
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>分时定价策略</span>
+                      {pricePeriods.length > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-700 font-mono font-bold">
+                          {pricePeriods.length}
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPriceModalTab("rules")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                        priceModalTab === "rules"
+                          ? "bg-white text-teal-700 shadow-xs border border-teal-200"
+                          : "text-slate-600 hover:text-teal-900 hover:bg-slate-200/60"
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>官方参考与规则</span>
+                      {(rulesForm.usdInput || rulesForm.evidenceUrl || rulesForm.subAppliesTo || rulesForm.customRules.length > 0) && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                      )}
+                    </button>
+                  </div>
+
+                  <span className="text-[11px] font-mono text-slate-400 hidden sm:inline">
+                    1元 = 1,000,000 微元
+                  </span>
+                </div>
+
                 {/* 弹窗主体 Body */}
                 <div className="p-6 space-y-5 overflow-y-auto flex-1 text-xs">
+                  {priceModalTab === "base" && (
+                    <>
                   {/* 说明提示条 */}
                   <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 leading-relaxed flex items-start gap-2.5">
                     <Info className="w-4 h-4 text-[#3182ce] shrink-0 mt-0.5" />
@@ -2646,18 +3450,57 @@ export default function AdminModelsPage() {
                       </label>
 
                       <label className="text-xs text-slate-700 space-y-1 block">
-                        <span className="font-bold">平台加价率 (基点 bp)</span>
-                        <input
-                          id="price-input-markupRateBps"
-                          className={`${getInputCls(!!priceErrors.markupRateBps)} ${priceUserFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
-                          placeholder="如 2000 = 20%"
-                          value={priceForm.markupRateBps}
-                          disabled={priceUserFilled}
-                          onChange={(e) => {
-                            setPriceForm({ ...priceForm, markupRateBps: e.target.value });
-                            if (priceErrors.markupRateBps) setPriceErrors({ ...priceErrors, markupRateBps: undefined });
-                          }}
-                        />
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="font-bold">平台加价率</span>
+                          <MarkupModeSwitch
+                            mode={priceMarkupInherit ? "inherit" : priceMarkupMode}
+                            onModeChange={(m) => {
+                              if (m === "inherit") {
+                                setPriceMarkupInherit(true);
+                                setPriceMarkupInput("");
+                                setPriceForm({ ...priceForm, markupRateBps: "" });
+                              } else {
+                                setPriceMarkupInherit(false);
+                                setPriceMarkupMode(m);
+                                // 切换模式时自动折算显示串（落库基点值不变）
+                                setPriceMarkupInput(m === "percent" ? bpsToPercentStr(priceForm.markupRateBps) : priceForm.markupRateBps);
+                              }
+                            }}
+                            disabled={priceUserFilled}
+                          />
+                        </div>
+                        {priceMarkupInherit ? (
+                          <p className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1 leading-relaxed">
+                            <Info className="w-3.5 h-3.5 shrink-0" />
+                            <span>
+                              已选「继承全局默认」：本模型不单独设加价率，结算按平台全局
+                              {globalMarkupPercent != null ? ` +${globalMarkupPercent}%` : ""}
+                              派生（在顶部卡片「设为默认」调整即对本模型生效）。
+                            </span>
+                          </p>
+                        ) : (
+                          <>
+                            <input
+                              id="price-input-markupRateBps"
+                              type="number"
+                              min={0}
+                              step={priceMarkupMode === "percent" ? 0.01 : 1}
+                              className={`${getInputCls(!!priceErrors.markupRateBps)} ${priceUserFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
+                              placeholder={priceMarkupMode === "percent" ? "如 20 = 加价 20%" : "如 2000 = 加价 20%"}
+                              value={priceMarkupInput}
+                              disabled={priceUserFilled}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setPriceMarkupInput(raw);
+                                setPriceForm({ ...priceForm, markupRateBps: priceMarkupMode === "percent" ? percentToBpsStr(raw) : raw });
+                                if (priceErrors.markupRateBps) setPriceErrors({ ...priceErrors, markupRateBps: undefined });
+                              }}
+                            />
+                            <span className="block text-[10px] text-slate-400 font-mono">
+                              落库值：{priceForm.markupRateBps.trim() === "" ? "（未填）" : `${priceForm.markupRateBps} bp`}
+                            </span>
+                          </>
+                        )}
                         {priceErrors.markupRateBps && (
                           <p className="text-[11px] text-red-500 font-medium mt-1 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -2678,7 +3521,7 @@ export default function AdminModelsPage() {
                             return (
                               <p className="text-[11px] text-sky-600 font-medium mt-1 flex items-center gap-1 leading-relaxed">
                                 <Info className="w-3.5 h-3.5 shrink-0" />
-                                <span>已选「成本加成」：本项已填，用户端售价 4 个输入框已自动置灰；实际售价由系统按「售价 = 供应商成本 × (1 + 加价率/10000)」自动算出（需同时填写供应商成本）。</span>
+                                <span>已选「成本加成」：本项已填，用户端售价 4 个输入框已自动置灰；实际售价由系统按「售价 = 供应商成本 × (1 + 加价率/10000)」自动算出（需同时填写供应商成本）。换算：1% = 100 基点（1bp = 0.01%）。注意：顶部「全局加价率 → 一键同步」会把全部价格（含本行）统一覆盖。</span>
                               </p>
                             );
                           }
@@ -2903,12 +3746,76 @@ export default function AdminModelsPage() {
                     </div>
                   </div>
 
-                  {/* 板块：官方参考价与特殊规则（均为可选元数据，填不填都不影响实际扣费） */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="flex items-center gap-2 text-xs font-black text-slate-800 before:content-[''] before:w-1 before:h-3.5 before:bg-teal-500 before:rounded-full">
-                        官方参考价与特殊规则
-                      </h4>
+                  {/* 算力毛利实时推演卡片 (Simulation Strip) */}
+                  {(() => {
+                    const cIn = Number(priceForm.costInput) || 0;
+                    const cOut = Number(priceForm.costOutput) || 0;
+                    const pIn = priceMarkupFilled
+                      ? (Number(priceDerived?.priceInput) || 0)
+                      : (Number(priceForm.priceInput) || 0);
+                    const pOut = priceMarkupFilled
+                      ? (Number(priceDerived?.priceOutput) || 0)
+                      : (Number(priceForm.priceOutput) || 0);
+
+                    if (!cIn && !cOut && !pIn && !pOut) return null;
+
+                    const simInTokens = 0.7;
+                    const simOutTokens = 0.3;
+                    const simCost = (cIn * simInTokens) + (cOut * simOutTokens);
+                    const simRevenue = (pIn * simInTokens) + (pOut * simOutTokens);
+                    const simMargin = simRevenue - simCost;
+                    const simMarginPct = simRevenue > 0 ? (simMargin / simRevenue) * 100 : 0;
+
+                    return (
+                      <div className="bg-gradient-to-r from-blue-50/70 via-indigo-50/30 to-slate-50 border border-blue-200/80 rounded-xl p-3.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-slate-800 text-xs flex items-center gap-1.5">
+                            <Zap className="w-3.5 h-3.5 text-[#3182ce]" />
+                            <span>工况沙盘推演（标准工况：70万输入 + 30万输出 = 100万 Token）</span>
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {priceMarkupFilled ? `成本加成 +${(Number(priceForm.markupRateBps || 0) / 100).toFixed(2)}%` : "直接零售定价"}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                          <div className="bg-white/80 rounded-lg p-2 border border-slate-200/70">
+                            <div className="text-[10px] text-slate-500 font-bold">预估综合成本</div>
+                            <div className="font-mono font-bold text-slate-800 text-sm mt-0.5">
+                              ¥{simCost.toFixed(3)}
+                            </div>
+                          </div>
+                          <div className="bg-white/80 rounded-lg p-2 border border-slate-200/70">
+                            <div className="text-[10px] text-slate-500 font-bold">预估用户扣费</div>
+                            <div className="font-mono font-bold text-[#3182ce] text-sm mt-0.5">
+                              ¥{simRevenue.toFixed(3)}
+                            </div>
+                          </div>
+                          <div className="bg-white/80 rounded-lg p-2 border border-slate-200/70">
+                            <div className="text-[10px] text-slate-500 font-bold">预估单次毛利</div>
+                            <div className={`font-mono font-bold text-sm mt-0.5 ${simMargin >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                              {simMargin >= 0 ? `+¥${simMargin.toFixed(3)}` : `-¥${Math.abs(simMargin).toFixed(3)}`}
+                            </div>
+                          </div>
+                          <div className="bg-white/80 rounded-lg p-2 border border-slate-200/70">
+                            <div className="text-[10px] text-slate-500 font-bold">综合毛利率</div>
+                            <div className={`font-mono font-bold text-sm mt-0.5 ${simMarginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                              {simRevenue > 0 ? `${simMarginPct.toFixed(1)}%` : "—"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+
+              {/* 板块：官方参考价与特殊规则（仅在官方规则选项卡显示） */}
+              {priceModalTab === "rules" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="flex items-center gap-2 text-xs font-black text-slate-800 before:content-[''] before:w-1 before:h-3.5 before:bg-teal-500 before:rounded-full">
+                      官方参考价与特殊规则
+                    </h4>
                       <span className="text-[11px] text-slate-400 font-medium">以下均为「参考/标记」信息，可留空；不影响实际计费</span>
                     </div>
 
@@ -3000,6 +3907,32 @@ export default function AdminModelsPage() {
                         ) : null}
                       </label>
                     </div>
+
+                    {/* 官方价目凭据归档（evidenceUrl）：定价依据可追溯 */}
+                    <label className="text-xs text-slate-600 space-y-1 block">
+                      <span className="font-bold flex items-center gap-1">
+                        官方价目凭据归档（evidenceUrl）
+                        {rulesForm.evidenceUrl.trim() !== "" && (
+                          <a
+                            href={rulesForm.evidenceUrl.trim()}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] font-bold text-[#3182ce] hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            查看凭据 ↗
+                          </a>
+                        )}
+                      </span>
+                      <input
+                        id="rules-evidenceUrl"
+                        className={inputCls}
+                        placeholder="官方定价页 / 价目公告截图链接，如 https://…"
+                        value={rulesForm.evidenceUrl}
+                        onChange={(e) => setRulesForm({ ...rulesForm, evidenceUrl: e.target.value })}
+                      />
+                      <span className="text-[10px] text-slate-400 leading-relaxed block">归档本次录价的官方依据（GLM-5.3 等已录官方价必须补归档），便于审计追溯。</span>
+                    </label>
 
                     {/* 订阅套餐积分抵扣系数（GLM 类特有，默认折叠） */}
                     <details className="group rounded-lg border border-slate-200/80 bg-slate-50/40 p-3">
@@ -3100,12 +4033,15 @@ export default function AdminModelsPage() {
                       </div>
                     </details>
                   </div>
+                )}
 
-                  {/* 板块 4：时段价格（覆盖主流价） */}
-                  <div className="space-y-3">
+                {/* 板块 4：时段价格（仅在分时定价策略选项卡显示） */}
+                {priceModalTab === "periods" && (
+                  <>
+                    <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h4 className="flex items-center gap-2 text-xs font-black text-slate-800 before:content-[''] before:w-1 before:h-3.5 before:bg-purple-500 before:rounded-full">
-                        时段价格（覆盖主流价）
+                        时段价格策略（覆盖主流价）
                       </h4>
                       <button
                         type="button"
@@ -3191,6 +4127,20 @@ export default function AdminModelsPage() {
                         >
                           收起
                         </button>
+                      </div>
+                      {/* 覆盖警示：时段价优先于主流价；直配售价会覆盖加价率派生 */}
+                      <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-lg text-[11px] text-amber-800 leading-relaxed flex items-start gap-2">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <b>覆盖警示：</b>命中该时段时<b>完全按时段定价</b>，主流价不参与、不叠加。推荐只填<b>成本 + 加价率</b>（售价由系统按 成本 × (1 + 加价率/10000) 派生，跟随全局调价）；
+                          若同时填了<b>直配售价</b>，将以直配售价为准，加价率派生被覆盖。
+                          {priceDep?.enabled ? (
+                            <>
+                              <br />
+                              <b>注意：该模型启用中，保存时段将被拒绝</b>（需先停用 → 修改 → 再启用）。
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                         <label className="text-xs text-slate-700 space-y-1 block">
@@ -3299,18 +4249,55 @@ export default function AdminModelsPage() {
                           </select>
                         </label>
                         <label className="text-xs text-slate-700 space-y-1 block">
-                          <span className="font-bold">平台加价率 (bp)</span>
-                          <input
-                            className={`${inputCls} ${periodUserFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
-                            placeholder="如 2000=20%，留空走直接定价"
-                            value={periodForm.markupRateBps}
-                            disabled={periodUserFilled}
-                            onChange={(e) => setPeriodForm({ ...periodForm, markupRateBps: e.target.value })}
-                          />
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-bold">平台加价率</span>
+                            <MarkupModeSwitch
+                              mode={periodMarkupInherit ? "inherit" : periodMarkupMode}
+                              onModeChange={(m) => {
+                                if (m === "inherit") {
+                                  setPeriodMarkupInherit(true);
+                                  setPeriodMarkupInput("");
+                                  setPeriodForm({ ...periodForm, markupRateBps: "" });
+                                } else {
+                                  setPeriodMarkupInherit(false);
+                                  setPeriodMarkupMode(m);
+                                  setPeriodMarkupInput(m === "percent" ? bpsToPercentStr(periodForm.markupRateBps) : periodForm.markupRateBps);
+                                }
+                              }}
+                              disabled={periodUserFilled}
+                            />
+                          </div>
+                          {periodMarkupInherit ? (
+                            <p className="text-[11px] text-emerald-600 leading-relaxed">
+                              已选「继承全局默认」：本时段不单独设加价率，按平台全局
+                              {globalMarkupPercent != null ? ` +${globalMarkupPercent}%` : ""}
+                              派生。
+                            </p>
+                          ) : (
+                            <>
+                              <input
+                                type="number"
+                                min={0}
+                                step={periodMarkupMode === "percent" ? 0.01 : 1}
+                                className={`${inputCls} ${periodUserFilled ? "opacity-50 cursor-not-allowed bg-slate-100" : ""}`}
+                                placeholder={periodMarkupMode === "percent" ? "如 20 = 20%，留空走直接定价" : "如 2000=20%，留空走直接定价"}
+                                value={periodMarkupInput}
+                                disabled={periodUserFilled}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setPeriodMarkupInput(raw);
+                                  setPeriodForm({ ...periodForm, markupRateBps: periodMarkupMode === "percent" ? percentToBpsStr(raw) : raw });
+                                }}
+                              />
+                              <span className="block text-[10px] text-slate-400 font-mono">
+                                落库值：{periodForm.markupRateBps.trim() === "" ? "（未填）" : `${periodForm.markupRateBps} bp`}
+                              </span>
+                            </>
+                          )}
                           {periodUserFilled ? (
                             <p className="text-[11px] text-sky-600 leading-relaxed">已填用户端售价，本项自动置灰（二选一）。</p>
                           ) : periodMarkupFilled ? (
-                            <p className="text-[11px] text-sky-600 leading-relaxed">已选成本加成：售价 = 成本 × (1 + bp/10000)，用户端售价自动置灰。</p>
+                            <p className="text-[11px] text-sky-600 leading-relaxed">已选成本加成：售价 = 成本 × (1 + bp/10000)，用户端售价自动置灰。1% = 100 基点；顶部「全局同步」会覆盖本值。</p>
                           ) : null}
                         </label>
                       </div>
@@ -3376,8 +4363,9 @@ export default function AdminModelsPage() {
                       </div>
                     </div>
                   )}
-
-                </div>
+                  </>
+                )}
+              </div>
 
                 {/* 弹窗底部 Footer */}
                 <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/70 shrink-0">
@@ -3648,19 +4636,114 @@ export default function AdminModelsPage() {
                   </label>
 
                   <label className="block space-y-1">
-                    <span className="text-xs font-bold text-slate-700">
-                      API Key 直接录入 <span className="text-slate-400 font-normal">（可选，留空则不修改现有密钥）</span>
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                      API Key
+                      {editingProvider?.hasApiKey ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                          已配置（密文落库，明文不展示）
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-normal">（可选，留空则不修改现有密钥）</span>
+                      )}
                     </span>
-                    <input
-                      id="edit-provider-input-apiKey"
-                      type="password"
-                      autoComplete="new-password"
-                      className={getInputCls(false)}
-                      placeholder="sk-... 录入后由服务端加密存储；留空表示沿用现有密钥"
-                      value={pEditForm.apiKey}
-                      onChange={(e) => setPEditForm({ ...pEditForm, apiKey: e.target.value })}
-                    />
-                    <span className="block text-[11px] text-slate-400">与「密钥环境变量名」二选一，密文优先；明文不在数据库落地</span>
+
+                    {/* 已配置且未进入更换模式：脱敏展示 + 眼睛切换 + 更换密钥 */}
+                    {editingProvider?.hasApiKey && !replaceKeyMode ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type={showMaskedKey ? "text" : "password"}
+                          readOnly
+                          value={showMaskedKey ? (editingProvider?.apiKeyMasked || "••••••••") : "••••••••"}
+                          className={getInputCls(false) + " bg-slate-50 text-slate-500"}
+                        />
+                        <button
+                          type="button"
+                          className="shrink-0 px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                          onClick={() => setShowMaskedKey((v) => !v)}
+                          title="显示/隐藏脱敏明文（仅前 6 + 后 4 位，非完整明文）"
+                        >
+                          {showMaskedKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                        <button
+                          type="button"
+                          className="shrink-0 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setReplaceKeyMode(true);
+                            setShowMaskedKey(false);
+                            setPEditForm((f) => ({ ...f, apiKey: "" }));
+                          }}
+                        >
+                          更换密钥
+                        </button>
+                        <button
+                          type="button"
+                          className="shrink-0 px-3 py-2 rounded-lg border border-[#3182ce]/30 bg-[#3182ce]/5 text-[#3182ce] text-xs font-bold hover:bg-[#3182ce]/10 transition-colors cursor-pointer disabled:opacity-50"
+                          disabled={providerTesting}
+                          onClick={testProviderKey}
+                          title="用该供应商下已启用部署真实调用一次上游，验证钥匙是否可用（明文密钥不出服务端）"
+                        >
+                          {providerTesting ? "测试中..." : "测试连通"}
+                        </button>
+                      </div>
+                    ) : (
+                      /* 未配置 或 更换中：直接录入新钥匙 */
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="edit-provider-input-apiKey"
+                          type={showMaskedKey ? "text" : "password"}
+                          autoComplete="new-password"
+                          className={getInputCls(false)}
+                          placeholder={editingProvider?.hasApiKey ? "输入新钥匙（留空则保留现有密钥）" : "sk-... 录入后由服务端加密存储"}
+                          value={pEditForm.apiKey}
+                          onChange={(e) => setPEditForm({ ...pEditForm, apiKey: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="shrink-0 px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                          onClick={() => setShowMaskedKey((v) => !v)}
+                          title="显示/隐藏输入内容"
+                        >
+                          {showMaskedKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                        {replaceKeyMode && (
+                          <button
+                            type="button"
+                            className="shrink-0 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-500 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+                            onClick={() => {
+                              setReplaceKeyMode(false);
+                              setPEditForm((f) => ({ ...f, apiKey: "" }));
+                            }}
+                          >
+                            取消更换
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="shrink-0 px-3 py-2 rounded-lg border border-[#3182ce]/30 bg-[#3182ce]/5 text-[#3182ce] text-xs font-bold hover:bg-[#3182ce]/10 transition-colors cursor-pointer disabled:opacity-50"
+                          disabled={providerTesting}
+                          onClick={testProviderKey}
+                          title="用该供应商下已启用部署真实调用一次上游，验证钥匙是否可用（明文密钥不出服务端）"
+                        >
+                          {providerTesting ? "测试中..." : "测试连通"}
+                        </button>
+                      </div>
+                    )}
+
+                    <span className="block text-[11px] text-slate-400">
+                      与「密钥环境变量名」二选一，密文优先；明文不在数据库落地。点击眼睛仅可查看脱敏后的部分明文（前 6 + 后 4 位），完整明文不会下发到浏览器。系统取钥匙顺序：后台密文 → 环境变量兜底。
+                    </span>
+                    {providerTest && (
+                      <span
+                        className={`mt-1 flex items-center gap-1.5 text-[11px] font-medium ${providerTest.ok ? "text-emerald-600" : "text-rose-600"}`}
+                      >
+                        {providerTest.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                        <span>
+                          {providerTest.ok
+                            ? `连通成功（耗时 ${providerTest.latencyMs ?? "?"}ms）`
+                            : `${providerTest.label ?? "不通"}：${providerTest.message ?? ""}`}
+                        </span>
+                      </span>
+                    )}
                   </label>
                 </div>
 
@@ -3849,6 +4932,55 @@ export default function AdminModelsPage() {
         }}
         onCancel={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
       />
+
+      {/* 供应商创建成功后的系统建议引导弹窗（严格遵循设计系统规范） */}
+      {createdProviderGuidance.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in-50 duration-200">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-slate-800">
+                  供应商通道创建成功
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  已成功接入通道 <span className="font-mono font-bold text-[#3182ce] bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{createdProviderGuidance.providerName}</span>。
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded text-xs text-amber-800 space-y-1.5 leading-relaxed">
+              <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>系统建议：立即配置配套模型</span>
+              </div>
+              <p>
+                仅配置供应商通道时，全站组件由于尚未绑定具体模型，仍无法调度该通道。系统建议您立即为该通道添加第一款模型部署，以便顺利开始对话与任务。
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setCreatedProviderGuidance({ isOpen: false, providerName: "" })}
+                className="px-4 py-2 rounded text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer shadow-2xs active:scale-95"
+              >
+                稍后配置
+              </button>
+              <button
+                type="button"
+                onClick={() => goToDeployModelForProvider(createdProviderGuidance.providerName)}
+                className="px-4 py-2 rounded text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5 active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>立即配置模型部署</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

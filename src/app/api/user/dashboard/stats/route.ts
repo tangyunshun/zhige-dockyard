@@ -66,8 +66,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 获取用户个人空间算力点余额（免费算力只来自注册福利按月发放，此处不做任何赠送/补偿）
+    // 获取用户个人空间算力点余额与真实用量（apiCalls/storage 为 workspacequota 真实字段，随执行/上传累计）
     let tokenBalance = 0;
+    let realApiCallsUsed = 0;
+    let realStorageUsed = 0;
     try {
       const personalWs = await prisma.workspace.findFirst({
         where: { ownerId: userId, type: "PERSONAL" },
@@ -76,6 +78,8 @@ export async function GET(request: NextRequest) {
       if (personalWs) {
         if (personalWs.workspacequota) {
           tokenBalance = Number(personalWs.workspacequota.tokenBalance);
+          realApiCallsUsed = Number(personalWs.workspacequota.apiCallsUsed);
+          realStorageUsed = Number(personalWs.workspacequota.storageUsed);
         } else {
           // 结构性自愈：仅补建 0 额度配额记录，不赠送算力
           await prisma.workspacequota.create({
@@ -93,10 +97,9 @@ export async function GET(request: NextRequest) {
       console.warn("[dashboard/stats] 查询个人空间算力配额非致命提示:", quotaErr);
     }
 
-    // 获取已使用的 API 调用次数和存储空间
-    // TODO: 实现具体的统计逻辑
-    const apiCallsUsed = 0;
-    const storageUsed = 0;
+    // 已使用的 API 调用次数与存储空间：来自个人空间配额的真实累计字段
+    const apiCallsUsed = realApiCallsUsed;
+    const storageUsed = realStorageUsed;
 
     return NextResponse.json({
       success: true,

@@ -42,6 +42,7 @@ export type TaskDetailExecutionMeta = {
   legacy: boolean;
   provider: { id: string; modelId?: string } | null;
   model: string | null;
+  isExplicitDeployment: boolean;
   usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
   billingMode: string | null;
   estimatedPoints: number | null;
@@ -258,6 +259,7 @@ export function serializeTaskDetailItem(
     legacy: executionRaw.legacy,
     provider: safeProvider,
     model: executionRaw.model,
+    isExplicitDeployment: executionRaw.isExplicitDeployment,
     usage: safeUsage,
     billingMode: executionRaw.billingMode,
     estimatedPoints: executionRaw.estimatedPoints,

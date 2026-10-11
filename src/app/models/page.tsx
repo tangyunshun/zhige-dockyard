@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { ChevronDown, Clock, Tag, Cpu, Search, Zap, Calculator, AlertTriangle, Sparkles } from "lucide-react";
 import { yuanToPoints, formatYuanFromPoints, POINT_UNIT_HINT, POINTS_PER_YUAN } from "@/lib/point-rate";
 
@@ -11,6 +12,10 @@ interface PriceView {
   cacheWrite: number | null;
   source: string;
   status: string;
+  /** 平台加价率（基点，1bp=0.01%）；非空表示按「成本+加成」模式算价 */
+  markupRateBps: number | null;
+  /** 定价模式：DIRECT_PRICE 直接配价 | COST_PLUS_MARKUP 成本+加价率 */
+  pricingMode: string | null;
 }
 
 interface PeriodView {
@@ -27,6 +32,7 @@ interface PeriodView {
   prices: { input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null };
   source: string;
   status: string;
+  markupRateBps: number | null;
 }
 
 interface PricingMeta {
@@ -62,6 +68,7 @@ const STATUS_LABEL: Record<string, string> = {
   UNVERIFIED: "未验证",
   UNCONFIGURED: "未配置",
   FREE: "免费",
+  CONFIGURED: "已生效",
 };
 const STATUS_CLASS: Record<string, string> = {
   VERIFIED: "bg-emerald-50 text-emerald-600 border-emerald-100",
@@ -69,6 +76,7 @@ const STATUS_CLASS: Record<string, string> = {
   UNVERIFIED: "bg-amber-50 text-amber-600 border-amber-100",
   UNCONFIGURED: "bg-slate-100 text-slate-400 border-slate-200",
   FREE: "bg-purple-50 text-purple-600 border-purple-100",
+  CONFIGURED: "bg-emerald-50 text-emerald-600 border-emerald-100",
 };
 const ORIGIN_LABEL: Record<string, string> = { PLATFORM: "平台模型", USER_BYOK: "空间自带" };
 const ORIGIN_CLASS: Record<string, string> = {
@@ -207,6 +215,11 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
             <Clock className="w-3.5 h-3.5 text-[#2b6cb0]" />
             当前生效价（{activeTag}价）
           </span>
+          {it.active?.pricingMode === "COST_PLUS_MARKUP" && it.active.markupRateBps != null && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">
+              成本+加成 · 加价 +{(it.active.markupRateBps / 100).toLocaleString("zh-CN", { maximumFractionDigits: 2 })}%
+            </span>
+          )}
           {activePeriod && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
               {activePeriod.name}
@@ -686,6 +699,24 @@ export default function ModelPricingPage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* 如何使用：模型来源与自带模型接入引导 */}
+      <div className="relative max-w-6xl mx-auto px-6 pb-6">
+        <div className="rounded-2xl border border-blue-200/60 bg-white/80 backdrop-blur-sm px-4 py-4 flex items-start gap-2.5 shadow-sm">
+          <Sparkles className="w-4 h-4 text-[#3182ce] mt-0.5 shrink-0" />
+          <p className="text-[11px] text-slate-600 leading-relaxed">
+            企业空间的默认模型由管理员在
+            <Link href="/admin/models" className="text-[#3182ce] font-bold hover:underline mx-0.5">
+              后台 · 模型管理
+            </Link>
+            配置；想使用自己的模型？空间所有者可到
+            <Link href="/user/byo-model" className="text-[#3182ce] font-bold hover:underline mx-0.5">
+              工作台 · 空间设置 · 自带模型
+            </Link>
+            接入（按官方价 + 服务费计费，独立结算、不占用平台共享池）。
+          </p>
+        </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-6 pb-10">

@@ -1,13 +1,13 @@
 /**
  * 空间自带模型（BYO：Bring Your Own Model）
  *
- * 允许空间所有者/管理员登记自己的 OpenAI 兼容模型端点 + API Key，
+ * 允许空间所有者/管理员登记自己的模型端点 + API Key，
  * 作为该空间的默认执行模型；平台仍按此处配置的价格向用户收费。
  *
  * 安全约束（与系统模型注册表一致）：
  *  - API Key 以 AES-256-GCM 密文落库，明文不出服务端；
  *  - Base URL 复用 SSRF/格式校验（validateModelBaseUrlForRequest）；
- *  - 协议仅 OPENAI_COMPATIBLE；
+ *  - 协议支持 OPENAI_COMPATIBLE / ANTHROPIC / GEMINI（SUPPORTED_MODEL_PROTOCOLS）；
  *  - 解析时逐项校验能力覆盖与上下文上限，不满足则回落到空间/平台默认模型。
  */
 import { prisma } from "@/lib/prisma";
@@ -26,7 +26,7 @@ export const SUPPORTED_CAPABILITIES = [
   "FILE_ANALYSIS",
 ] as const;
 
-function normCapabilities(raw: unknown): string[] {
+export function normCapabilities(raw: unknown): string[] {
   const arr = Array.isArray(raw) ? (raw as unknown[]) : [];
   return Array.from(
     new Set(
@@ -47,6 +47,8 @@ export interface WorkspaceByoInput {
   enabled: boolean;
   priceInputMicrosPerMillion: number | null;
   priceOutputMicrosPerMillion: number | null;
+  /** 是否允许空间成员共享使用（默认 true；false 时仅空间所有者可使用） */
+  shareWithMembers?: boolean;
   /** 编辑时留空 API Key 且已有密钥 → 保留现有密钥，不更新 */
   keepExistingKey?: boolean;
 }
@@ -92,10 +94,25 @@ export function validateByoInput(
   if (priceInput < 0 || priceOutput < 0) {
     return { ok: false, error: "平台服务费不能为负数" };
   }
+  const shareWithMembers = body.shareWithMembers !== false;
   return {
     ok: true,
-    data: { label, protocol, baseUrl, apiKey, capabilities, contextLimit, enabled, priceInputMicrosPerMillion: priceInput, priceOutputMicrosPerMillion: priceOutput, keepExistingKey },
+    data: { label, protocol, baseUrl, apiKey, capabilities, contextLimit, enabled, shareWithMembers, priceInputMicrosPerMillion: priceInput, priceOutputMicrosPerMillion: priceOutput, keepExistingKey },
   };
+}
+
+/** 确保数据库表中存在 shareWithMembers 列（热补全，防未执行迁移时查询/写入崩溃） */
+let _byoShareColumnChecked = false;
+export async function ensureByoShareWithMembersColumn(): Promise<void> {
+  if (_byoShareColumnChecked) return;
+  try {
+    await prisma.$executeRawUnsafe(
+      "ALTER TABLE `workspace_byo_model` ADD COLUMN `shareWithMembers` BOOLEAN NOT NULL DEFAULT true",
+    );
+  } catch {
+    // 列已存在时 MySQL 报错 Duplicate column name，忽略即可
+  }
+  _byoShareColumnChecked = true;
 }
 
 /** 配置（新增或更新）某空间的 BYO 模型；异步做 SSRF 校验 */
@@ -103,6 +120,7 @@ export async function upsertWorkspaceByoModel(
   workspaceId: string,
   input: WorkspaceByoInput,
 ): Promise<void> {
+  await ensureByoShareWithMembersColumn();
   const urlCheck = await validateModelBaseUrlForRequest(input.baseUrl);
   if (!urlCheck.ok) {
     throw new ContractValidationError("MODEL_NOT_ALLOWED", `BYO Base URL 校验失败：${urlCheck.error}`, 400);
@@ -119,6 +137,7 @@ export async function upsertWorkspaceByoModel(
       capabilities: input.capabilities,
       contextLimit: input.contextLimit,
       enabled: input.enabled,
+      shareWithMembers: input.shareWithMembers ?? true,
       priceInputMicrosPerMillion: input.priceInputMicrosPerMillion,
       priceOutputMicrosPerMillion: input.priceOutputMicrosPerMillion,
       priceStatus: "VERIFIED",
@@ -131,6 +150,7 @@ export async function upsertWorkspaceByoModel(
       capabilities: input.capabilities,
       contextLimit: input.contextLimit,
       enabled: input.enabled,
+      shareWithMembers: input.shareWithMembers ?? true,
       priceInputMicrosPerMillion: input.priceInputMicrosPerMillion,
       priceOutputMicrosPerMillion: input.priceOutputMicrosPerMillion,
       priceStatus: "VERIFIED",
@@ -145,6 +165,7 @@ export async function deleteWorkspaceByoModel(workspaceId: string): Promise<void
 
 /** 读取配置（不含密钥，仅暴露能力/价格/状态供前端展示） */
 export async function getWorkspaceByoModelView(workspaceId: string) {
+  await ensureByoShareWithMembersColumn();
   const row = await prisma.workspace_byo_model.findUnique({ where: { workspaceId } });
   if (!row) return null;
   const declared = normCapabilities(row.capabilities);
@@ -159,6 +180,7 @@ export async function getWorkspaceByoModelView(workspaceId: string) {
     capabilities: declared,
     contextLimit: row.contextLimit,
     enabled: row.enabled,
+    shareWithMembers: (row as any).shareWithMembers !== false,
     priceInputMicrosPerMillion: row.priceInputMicrosPerMillion,
     priceOutputMicrosPerMillion: row.priceOutputMicrosPerMillion,
     priceStatus: row.priceStatus,
@@ -169,15 +191,26 @@ export async function getWorkspaceByoModelView(workspaceId: string) {
 /**
  * 解析空间 BYO 默认模型为执行计划。
  *  - 未配置 / 禁用 / 能力或上下文不满足合同要求 → 返回 null（回落到空间/平台默认模型）；
+ *  - 若 shareWithMembers=false 且当前用户非空间所有者 → 返回 null（回落到空间/平台默认模型）；
  *  - 否则返回可直接用于执行的 ResolvedModelPlan，并把平台服务费同时作为结算成本入账，保证可结算。
  */
 export async function tryResolveWorkspaceByoDefault(
   workspaceId: string,
   requiredCapabilities: string[],
+  userId?: string,
 ): Promise<ResolvedModelPlan | null> {
   if (!workspaceId) return null;
+  await ensureByoShareWithMembersColumn();
   const row = await prisma.workspace_byo_model.findUnique({ where: { workspaceId } });
   if (!row || !row.enabled) return null;
+
+  // 共享权限校验：若未对成员共享，仅空间所有者可使用（其他人回落到系统模型）
+  if ((row as any).shareWithMembers === false && userId) {
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
+    if (ws && ws.ownerId !== userId) {
+      return null;
+    }
+  }
 
   const required = Array.isArray(requiredCapabilities)
     ? Array.from(new Set(requiredCapabilities.filter((c) => typeof c === "string" && c.trim()).map((c) => c.trim().toUpperCase())))
@@ -211,7 +244,7 @@ export async function tryResolveWorkspaceByoDefault(
 }
 
 /** BYO 定价：平台服务费同时作为结算成本（价差即平台收入），状态 VERIFIED 以通过结算就绪校验 */
-function buildByoPricing(row: {
+export function buildByoPricing(row: {
   priceInputMicrosPerMillion: number | null;
   priceOutputMicrosPerMillion: number | null;
   priceStatus: string;
@@ -386,4 +419,30 @@ export async function testByoModelConnection(input: {
       troubleshooting: hit.tips,
     };
   }
+}
+
+/**
+ * 根据 BYO 连通实测结果推导「建议登记的能力」。
+ *
+ * 推导依据（只返回可被实测证据支撑的能力，未实测的能力绝不臆测）：
+ *  - 非空回复 → TEXT_GENERATION（至少能生成文本）；
+ *  - 回复为合法 JSON（以 { 或 [ 开头且可解析）→ STRUCTURED_OUTPUT（能跟随结构化指令）；
+ *  - VISION / LONG_CONTEXT / FILE_ANALYSIS 无法通过纯文本连通测试验证，一律不返回。
+ *
+ * 返回能力保证落在 SUPPORTED_CAPABILITIES 白名单内；调用方（BYO 配置页）拿到后回填到
+ * 登记表单，但仍允许用户增删，最终以 validateByoInput 的白名单校验为准。
+ */
+export function deriveSuggestedCapabilities(sampleReply?: string | null): string[] {
+  if (typeof sampleReply !== "string" || sampleReply.trim().length === 0) return [];
+  const caps: string[] = ["TEXT_GENERATION"];
+  const trimmed = sampleReply.trim();
+  if ((trimmed.startsWith("{") || trimmed.startsWith("[")) ) {
+    try {
+      JSON.parse(trimmed);
+      caps.push("STRUCTURED_OUTPUT");
+    } catch {
+      // 不是合法 JSON：不臆测 STRUCTURED_OUTPUT
+    }
+  }
+  return caps;
 }

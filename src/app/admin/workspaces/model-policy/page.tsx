@@ -171,6 +171,7 @@ export default function WorkspaceModelPolicyPage() {
     async (
       page: number,
       opts: { search: string; type: "ALL" | "ENTERPRISE" | "PERSONAL"; pageSize?: number },
+      presetWs?: string,
     ) => {
       setWsLoading(true);
       try {
@@ -185,9 +186,10 @@ export default function WorkspaceModelPolicyPage() {
         setWsTotal(typeof wsRes?.data?.total === "number" ? wsRes.data.total : list.length);
         setWsTotalPages(typeof wsRes?.data?.totalPages === "number" ? wsRes.data.totalPages : 1);
         setWsPage(page);
-        // 仅当尚未选中时，默认选中当前页第一条（函数式更新，避免依赖外部 state）
-        setSelectedWs((prev) => prev || (list[0]?.id ?? ""));
-        setSelectedWorkspace((prev) => prev || (list[0] ?? null));
+        // 预选：若从「修改策略」等入口带 ?workspaceId= 进入，则优先选中该空间；否则默认选中当前页第一条
+        const foundPreset = presetWs ? list.find((w: any) => w.id === presetWs) : undefined;
+        setSelectedWs((prev) => presetWs || prev || (list[0]?.id ?? ""));
+        setSelectedWorkspace((prev) => (presetWs && foundPreset ? foundPreset : prev || (list[0] ?? null)));
       } catch (e) {
         toast.error((e as Error)?.message || "加载空间列表失败");
       } finally {
@@ -217,6 +219,20 @@ export default function WorkspaceModelPolicyPage() {
       loadWorkspaces(1, { search: "", type: "ALL" }),
     ]).finally(() => setLoading(false));
   }, [loadDeployments, loadWorkspaces]);
+
+  // 支持从「修改策略」等入口带 ?workspaceId= 直达并预选指定空间（避免在空间中枢列表里重新找）
+  useEffect(() => {
+    const params = new URLSearchParams(
+      typeof window !== "undefined" ? window.location.search : "",
+    );
+    const preset = params.get("workspaceId");
+    if (preset) {
+      setSelectedWs(preset);
+      setSelectedWorkspace({ id: preset, name: preset, type: undefined });
+      void loadWorkspaces(1, { search: "", type: "ALL" }, preset);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (selectedWs) void loadPolicy();
@@ -870,6 +886,11 @@ export default function WorkspaceModelPolicyPage() {
                         {currentDefaultDeployment.contextLimit && (
                           <span className="text-[11px] text-slate-500 font-mono">
                             {formatContextTokens(currentDefaultDeployment.contextLimit)}
+                          </span>
+                        )}
+                        {currentDefaultDeployment.pricing && (
+                          <span className="text-[11px] text-slate-600 font-mono">
+                            资费 ¥{(Number(currentDefaultDeployment.pricing.priceInputMicrosPerMillion || 0) / 1000000).toFixed(2)} / ¥{(Number(currentDefaultDeployment.pricing.priceOutputMicrosPerMillion || 0) / 1000000).toFixed(2)} 元/百万
                           </span>
                         )}
                       </div>

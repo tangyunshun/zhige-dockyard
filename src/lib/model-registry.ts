@@ -23,8 +23,13 @@ import {
   type PriceStatus,
 } from "@/lib/model-pricing";
 import { isHoliday } from "@/lib/holiday-calendar";
-import { tryResolveWorkspaceByoDefault } from "@/lib/workspace-byo-model";
 import { decryptSecret } from "@/lib/crypto-secrets";
+import {
+  tryResolveWorkspaceByoDefault,
+  normCapabilities,
+  buildByoPricing,
+  ensureByoShareWithMembersColumn,
+} from "@/lib/workspace-byo-model";
 
 /** 读取部署的价格配置（不存在返回 null = 未配置） */
 export async function loadDeploymentPricing(deploymentId: string): Promise<DeploymentPricing | null> {
@@ -173,7 +178,7 @@ function weekTimeMatch(now: Date, weekdays: string | null, startTime: string | n
 }
 
 /** 时段价是否在当前时刻生效（日期区间 与 周计划窗口 同时命中） */
-function periodMatchesNow(p: PricingPeriodRow, now: Date): boolean {
+export function periodMatchesNow(p: PricingPeriodRow, now: Date): boolean {
   // 自动节假日时段：无日期/星期/时间约束，仅在法定节假日当天命中（价格已在时段内设为闲时价）
   if (p.kind === "HOLIDAY" && !p.startDate && !p.endDate && !p.weekdays && !p.startTime && !p.endTime) {
     return isHoliday(now);
@@ -414,7 +419,10 @@ export type DeploymentTestResult = {
  * 真实发起一次上游调用验证该部署模型是否可用。
  * 安全：复用 SSRF 校验；密钥仅内存使用，绝不进入任何存储。
  */
-export async function testDeploymentConnection(deploymentId: string): Promise<DeploymentTestResult> {
+export async function testDeploymentConnection(
+  deploymentId: string,
+  opts?: { ignoreDisabled?: boolean },
+): Promise<DeploymentTestResult> {
   const startedAt = Date.now();
   const latency = () => Date.now() - startedAt;
 
@@ -430,7 +438,7 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
 
   // 禁用态门禁（与真实执行路径 assertModelAllowed 一致）：通道测试本质是一次测试性执行，
   // 禁用的供应商/模型不得发起任何真实上游调用，避免「能测通却用不了」的语义不一致与浪费真实 API 调用。
-  if (!provider.enabled) {
+  if (!provider.enabled && !opts?.ignoreDisabled) {
     return {
       ok: false,
       latencyMs: latency(),
@@ -443,7 +451,7 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
       ],
     };
   }
-  if (!deployment.enabled) {
+  if (!deployment.enabled && !opts?.ignoreDisabled) {
     return {
       ok: false,
       latencyMs: latency(),
@@ -564,6 +572,127 @@ export async function testDeploymentConnection(deploymentId: string): Promise<De
       message: msg,
       troubleshooting: hit.tips,
     };
+  }
+}
+
+/** 供应商「测试连接」结果（与部署测试同构，便于前端统一渲染） */
+export type ProviderTestResult = {
+  ok: boolean;
+  latencyMs: number;
+  errorType?: string;
+  label?: string;
+  message?: string;
+  troubleshooting?: string[];
+};
+
+/**
+ * 测试供应商连通性（真实发一次最小调用，验证总闸：Base URL 可达 + API Key 有效 + 鉴权通过）。
+ * 用于供应商「测试连接」：解析该供应商的端点与密钥（优先密文、回退环境变量），
+ * 复用适配器 healthCheck（OpenAI 兼容协议真实请求 /models 校验鉴权；其他协议校验端点）。
+ * 安全：复用 SSRF 校验；密钥仅内存使用，绝不进入任何存储。结果是否落库由调用方决定。
+ */
+export async function testProviderConnection(
+  providerId: string,
+  opts?: { ignoreDisabled?: boolean },
+): Promise<ProviderTestResult> {
+  const startedAt = Date.now();
+  const latency = () => Date.now() - startedAt;
+
+  const provider = await prisma.modelprovider.findUnique({ where: { id: providerId } });
+  if (!provider) {
+    return { ok: false, latencyMs: latency(), errorType: "not_found", label: "供应商不存在", message: "供应商记录不存在" };
+  }
+
+  // SSRF 校验（与执行路径一致）
+  const urlCheck = await validateModelBaseUrlForRequest(provider.baseUrl);
+  if (!urlCheck.ok) {
+    return {
+      ok: false,
+      latencyMs: latency(),
+      errorType: "endpoint_blocked",
+      label: "地址被拦截（安全校验）",
+      message: `Base URL 安全校验未通过：${urlCheck.error}`,
+      troubleshooting: [
+        "仅允许 https 公网地址（本地联调请设置 MODEL_ALLOW_INSECURE_LOCAL=true 后使用 http）。",
+        "不得使用本机 / 内网 / 链路本地 / 云元数据（如 169.254.169.254）地址，存在 SSRF 风险。",
+      ],
+    };
+  }
+
+  try {
+    const apiKey = resolveProviderApiKey(provider.apiKeyEnv, provider.apiKeyCipher);
+    const adapter = await createModelAdapter({
+      providerId: provider.id,
+      modelId: "_health_check_",
+      upstreamModelId: "_health_check_",
+      baseUrl: provider.baseUrl,
+      apiKey,
+      protocol: (provider.protocol || "OPENAI_COMPATIBLE").trim().toUpperCase(),
+    });
+    const hc = await adapter.healthCheck();
+    if (!hc.ok) {
+      const msg = hc.message || "连通性检查未通过";
+      const isAuth = /401|403|auth|unauthorized|forbidden/i.test(msg);
+      return {
+        ok: false,
+        latencyMs: latency(),
+        errorType: isAuth ? "auth" : "endpoint_blocked",
+        label: isAuth ? "密钥无效" : "连接失败",
+        message: `供应商连通性检查未通过：${msg}`,
+        troubleshooting: isAuth
+          ? ["去「供应商配置」检查 API Key（环境变量或密钥密文）是否正确、是否过期。", "确认该密钥对供应商有调用权限与可用额度。"]
+          : ["去「供应商配置」检查 Base URL 是否可达。", "上游确实慢可稍后重试，或调大 MODEL_TIMEOUT_MS。"],
+      };
+    }
+    return { ok: true, latencyMs: latency(), label: "连通正常", message: "供应商端点与鉴权校验通过" };
+  } catch (err) {
+    const e = err as { code?: string; message?: string };
+    const code = err instanceof ModelAdapterError ? err.code : e?.code || "UNKNOWN";
+    const msg = e?.message || "供应商服务调用失败";
+    const map: Record<string, { type: string; label: string; tips: string[] }> = {
+      MODEL_ENDPOINT_BLOCKED: {
+        type: "endpoint_blocked",
+        label: "地址被拦截（安全校验）",
+        tips: ["去「供应商配置」把 Base URL 改为公网 https 地址。", "本地/内网联调需开启 MODEL_ALLOW_INSECURE_LOCAL 测试开关。"],
+      },
+      MODEL_AUTH_ERROR: {
+        type: "auth",
+        label: "密钥无效（401）",
+        tips: ["去「供应商配置」检查 API Key（环境变量或密钥密文）是否正确、是否过期。", "确认该密钥对供应商有调用权限与可用额度。"],
+      },
+      MODEL_FORBIDDEN: {
+        type: "forbidden",
+        label: "无权限（403）",
+        tips: ["密钥有效但账号无权限：去供应商后台给账号开通调用权限。"],
+      },
+      MODEL_TIMEOUT: {
+        type: "timeout",
+        label: "连接超时",
+        tips: ["去「供应商配置」检查 Base URL 是否可达。", "上游确实慢可稍后重试，或调大 MODEL_TIMEOUT_MS。"],
+      },
+      MODEL_NOT_CONFIGURED: {
+        type: "not_configured",
+        label: "密钥未配置",
+        tips: ["去「供应商配置」填写 apiKeyEnv 环境变量名，并在服务端设置该变量或录入密钥密文。"],
+      },
+      MODEL_PROTOCOL_UNSUPPORTED: {
+        type: "protocol_unsupported",
+        label: "协议不支持",
+        tips: ["去「供应商配置」把协议改为受支持项：OpenAI 兼容 / Anthropic / Gemini。"],
+      },
+      MODEL_UPSTREAM_ERROR: {
+        type: "upstream_error",
+        label: "上游报错",
+        tips: ["看上方「错误详情」：message 里是上游真实报错。", "去「供应商配置」核对 Base URL 路径与协议是否匹配该网关。"],
+      },
+      MODEL_BAD_REQUEST: {
+        type: "bad_request",
+        label: "请求参数错误",
+        tips: ["去「供应商配置」核对协议与 Base URL 是否匹配该网关。"],
+      },
+    };
+    const hit = map[code] || { type: "unknown", label: "未知错误", tips: ["未知错误，请查看 message 详情或后端日志。"] };
+    return { ok: false, latencyMs: latency(), errorType: hit.type, label: hit.label, message: msg, troubleshooting: hit.tips };
   }
 }
 
@@ -834,6 +963,7 @@ export async function resolveDefaultDeployment(params: {
   workspaceId: string;
   /** 合同声明的抽象能力要求（如 TEXT_GENERATION / VISION / STRUCTURED_OUTPUT / LONG_CONTEXT） */
   requiredCapabilities?: string[];
+  userId?: string;
 }): Promise<DefaultDeploymentPlan> {
   // 空能力集合不得通过默认模型门禁：合同必须显式声明所需能力（来自 executionPlan.steps[].requiredCapabilities），
   // 否则在门禁入口即拒绝执行，稳定错误码 MODEL_CAPABILITY_NOT_DECLARED；不参与后续部署解析（失败前置）。
@@ -855,7 +985,7 @@ export async function resolveDefaultDeployment(params: {
   }
 
   // 0. 空间自带模型（BYO）优先：用户已登记且满足合同能力/上下文要求时，覆盖系统默认模型
-  const byoPlan = await tryResolveWorkspaceByoDefault(params.workspaceId, requiredCaps);
+  const byoPlan = await tryResolveWorkspaceByoDefault(params.workspaceId, requiredCaps, params.userId);
   if (byoPlan) {
     return { ...byoPlan, defaultSource: "WORKSPACE_BYO" };
   }
@@ -951,6 +1081,180 @@ export async function resolveDefaultDeployment(params: {
     ...buildDatabasePlan(dep, providerRow),
     pricing: await resolveActivePricingAt(dep.id),
     defaultSource: spaceDefaultId ? "SPACE_DEFAULT" : "PLATFORM_DEFAULT",
+  };
+}
+
+/**
+ * 指定部署解析函数（MODEL-SELECT-E1 核心）：
+ * 用于在空间内部显式指定目标模型执行（targetDeploymentId 可以是具体的 modeldeployment.id，也可以是 "byo"）。
+ *
+ * 三道安全检查缺一不可，任一失败抛出与 resolveDefaultDeployment 同款 ContractValidationError：
+ *   ① 池内校验：
+ *      - 若 targetDeploymentId === "byo"：校验该空间已登记且启用自带模型；若 shareWithMembers=false 且当前用户非所有者，则报 403；
+ *      - 若 targetDeploymentId 为系统模型：校验必须在空间 allowedDeploymentIds 白名单内（留空=不限制）；
+ *   ② enabled 校验：部署启用且所属供应商启用；
+ *   ③ 能力门禁：组件合同要求的能力 ⊆ 该部署声明能力（缺失报 MODEL_CAPABILITY_NOT_SUPPORTED 缺失错误）；
+ *
+ * 返回与 resolveDefaultDeployment 同构的执行计划（含时段生效价 pricing）。
+ */
+export async function resolveDeploymentForWorkspace(params: {
+  workspaceId: string;
+  targetDeploymentId: string;
+  requiredCapabilities?: string[];
+  userId?: string;
+}): Promise<DefaultDeploymentPlan> {
+  const target = (params.targetDeploymentId || "").trim();
+  if (!target) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      "未指定目标模型部署 ID，请传入有效 deploymentId 或 'byo'，或使用自动调度。",
+      400,
+    );
+  }
+
+  const requiredCaps = Array.isArray(params.requiredCapabilities)
+    ? Array.from(
+        new Set(
+          params.requiredCapabilities
+            .filter((c) => typeof c === "string" && c.trim().length > 0)
+            .map((c) => c.trim().toUpperCase()),
+        ),
+      )
+    : [];
+  if (requiredCaps.length === 0) {
+    throw new ContractValidationError(
+      "MODEL_CAPABILITY_NOT_DECLARED",
+      "合同未声明任何模型能力要求（requiredCapabilities 为空或非法），模型门禁拒绝执行；能力提取必须来自 executionPlan.steps[].requiredCapabilities，不得为空。",
+      403,
+    );
+  }
+
+  // 分支 1：指定自带模型（byo 或 byo:xxx）
+  if (target.toLowerCase() === "byo" || target.toLowerCase().startsWith("byo:")) {
+    await ensureByoShareWithMembersColumn();
+    const byoRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId: params.workspaceId } });
+    if (!byoRow) {
+      throw new ContractValidationError(
+        "MODEL_NOT_ALLOWED",
+        "当前空间尚未登记自带模型（BYO），无法指定该模型执行。",
+        403,
+      );
+    }
+    if (!byoRow.enabled) {
+      throw new ContractValidationError(
+        "MODEL_NOT_ALLOWED",
+        "当前空间的自带模型已被禁用处于维护状态，无法指定该模型执行。",
+        403,
+      );
+    }
+    if ((byoRow as any).shareWithMembers === false && params.userId) {
+      const ws = await prisma.workspace.findUnique({ where: { id: params.workspaceId }, select: { ownerId: true } });
+      if (ws && ws.ownerId !== params.userId) {
+        throw new ContractValidationError(
+          "MODEL_NOT_ALLOWED",
+          "当前空间的自带模型仅限空间所有者使用，未对空间成员开放共享。",
+          403,
+        );
+      }
+    }
+
+    const declared = normCapabilities(byoRow.capabilities);
+    const missingCaps = requiredCaps.filter((c) => !declared.includes(c));
+    if (missingCaps.length > 0) {
+      throw new ContractValidationError(
+        "MODEL_CAPABILITY_NOT_SUPPORTED",
+        `自带模型（${byoRow.label}）缺少合同要求的能力：${missingCaps.join("、")}，不允许执行。`,
+        403,
+      );
+    }
+
+    let apiKey: string;
+    try {
+      apiKey = decryptSecret(byoRow.apiKeyCipher);
+    } catch {
+      throw new ModelAdapterError(
+        "MODEL_NOT_CONFIGURED",
+        "空间自带模型密钥解密失败，无法执行真实模型调用。",
+        503,
+      );
+    }
+
+    const pricing = buildByoPricing(byoRow);
+    return {
+      source: "WORKSPACE_BYO",
+      pricing,
+      deploymentId: `byo:${params.workspaceId}`,
+      providerId: `BYO:${params.workspaceId}`,
+      modelId: byoRow.label,
+      upstreamModelId: byoRow.label,
+      protocol: byoRow.protocol || "OPENAI_COMPATIBLE",
+      baseUrl: byoRow.baseUrl,
+      apiKey,
+      contextLimit: byoRow.contextLimit,
+      defaultSource: "WORKSPACE_BYO",
+    };
+  }
+
+  // 分支 2：指定系统模型（target 即 modeldeployment.id）
+  const policy = await loadSpaceModelPolicy(params.workspaceId);
+  const allowedList = policy.configured ? policy.allowedDeploymentIds : null;
+  if (allowedList && allowedList.length > 0 && !allowedList.includes(target)) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      "指定的模型部署不在当前空间允许的模型白名单内，不允许执行。",
+      403,
+    );
+  }
+
+  const dep = await prisma.modeldeployment.findUnique({ where: { id: target } });
+  if (!dep) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      `指定的模型部署 [${target}] 不存在，无法执行。`,
+      403,
+    );
+  }
+
+  const providerRow = await prisma.modelprovider.findUnique({ where: { name: dep.providerId } });
+  if (!providerRow) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      `模型（${dep.providerId}/${dep.modelId}）所属供应商未在注册表中登记，不允许执行。`,
+      403,
+    );
+  }
+
+  if (!dep.enabled) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      `模型部署（${dep.providerId}/${dep.modelId}）已被平台禁用，不允许执行。`,
+      403,
+    );
+  }
+  if (!providerRow.enabled) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      `模型供应商（${dep.providerId}）已被平台禁用，不允许执行。`,
+      403,
+    );
+  }
+
+  const declared = Array.isArray(dep.capabilities)
+    ? (dep.capabilities as unknown as string[]).map((c) => String(c).toUpperCase())
+    : [];
+  const missingCaps = requiredCaps.filter((c) => !declared.includes(c));
+  if (missingCaps.length > 0) {
+    throw new ContractValidationError(
+      "MODEL_CAPABILITY_NOT_SUPPORTED",
+      `模型（${dep.providerId}/${dep.modelId}）缺少合同要求的能力：${missingCaps.join("、")}，不允许执行。`,
+      403,
+    );
+  }
+
+  return {
+    ...buildDatabasePlan(dep, providerRow),
+    pricing: await resolveActivePricingAt(dep.id),
+    defaultSource: "SPACE_DEFAULT",
   };
 }
 

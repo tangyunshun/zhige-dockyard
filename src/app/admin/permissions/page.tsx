@@ -225,6 +225,7 @@ function PermissionsContent() {
   const [isAddingPerm, setIsAddingPerm] = useState(false);
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
   const [isResettingCatalog, setIsResettingCatalog] = useState(false);
+  const [isSyncingKeys, setIsSyncingKeys] = useState(false);
   const [newPermForm, setNewPermForm] = useState<{
     group: string;
     isNewGroup: boolean;
@@ -931,6 +932,37 @@ function PermissionsContent() {
     }
   };
 
+  // 同步代码权限点：调用脚本扫描逻辑，把代码中已用但目录缺失的权限点补录进来（只增不删）
+  const handleSyncCodeKeys = async () => {
+    try {
+      setIsSyncingKeys(true);
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/permissions/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(
+          data.message || (data.added > 0 ? `发现并补录 ${data.added} 个新权限点` : "目录已齐全")
+        );
+        if (Array.isArray(data.keys) && data.keys.length > 0) {
+          console.log("[权限] 本次补录的权限点：", data.keys);
+        }
+        await loadData(true);
+      } else {
+        toast.error(data.error || "同步代码权限点失败");
+      }
+    } catch {
+      toast.error("同步异常，请稍后重试");
+    } finally {
+      setIsSyncingKeys(false);
+    }
+  };
+
   // 保存管理员权限配置到数据库
   const handleSavePermissions = async () => {
     if (!selectedAdminId) return;
@@ -1071,6 +1103,18 @@ function PermissionsContent() {
             <RotateCcw className={`w-3.5 h-3.5 ${isResettingCatalog ? "animate-spin" : ""}`} />
             <span>{isResettingCatalog ? "恢复中..." : "恢复官方标准"}</span>
             <HelpCircle className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#3182ce] transition-colors" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSyncCodeKeys}
+            disabled={isSyncingKeys}
+            className="group px-3 py-1.5 text-xs font-bold text-[#3182ce] bg-blue-50 hover:bg-blue-100 rounded-[4px] transition-colors flex items-center gap-1.5 border border-blue-200/80 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+            title="扫描代码中已使用但权限目录缺失的权限点，自动补录到对应模块组（只增不删）"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingKeys ? "animate-spin" : ""}`} />
+            <span>{isSyncingKeys ? "同步中..." : "同步代码权限点"}</span>
+            <HelpCircle className="w-3.5 h-3.5 text-blue-500/70 group-hover:text-[#3182ce] transition-colors" />
           </button>
 
           <button

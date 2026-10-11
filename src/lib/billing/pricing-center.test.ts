@@ -13,7 +13,7 @@ import { parseBillingConfig, BILLING_CONFIG_KEYS } from "./billing-config";
  */
 
 const CONFIG = {
-  markupCoefficientBps: 20_000, // k = 2.0
+  markupCoefficientBps: 2_000, // 全局加价率 +20%
   byokServiceRateBps: 1_500, // 15%
 };
 
@@ -42,10 +42,10 @@ describe("算账中心：纯逻辑换算（BigInt / 向上取整）", () => {
     expect(r.snapshot.numerator).toBe("0");
   });
 
-  it("基准换算：100 万 Token × 5 元/百万 × k2.0 = 10 元 = 1000 点", () => {
+  it("基准换算：100 万 Token × 5 元/百万 × 1.2（全局 +20%）= 6 元 = 600 点", () => {
     const r = platform({ inputTokens: 1_000_000 });
-    expect(r.points).toBe(1000);
-    expect(r.snapshot.multiplierBps).toBe(20_000);
+    expect(r.points).toBe(600);
+    expect(r.snapshot.multiplierBps).toBe(12_000);
     expect(r.snapshot.markupOverriddenByModel).toBe(false);
   });
 
@@ -53,12 +53,12 @@ describe("算账中心：纯逻辑换算（BigInt / 向上取整）", () => {
     expect(platform({ inputTokens: 1 }).points).toBe(1);
   });
 
-  it("超大数不丢精度：1e12 Token × 30 元/百万 × k2.0 = 6_000_000_000 点", () => {
+  it("超大数不丢精度：1e12 Token × 30 元/百万 × 1.2 = 3_600_000_000 点", () => {
     const r = platform({
       unit: { input: 30_000_000, output: 30_000_000 },
       inputTokens: 1_000_000_000_000,
     });
-    expect(r.points).toBe(6_000_000_000);
+    expect(r.points).toBe(3_600_000_000);
     expect(Number.isSafeInteger(r.points as number)).toBe(true);
     // 用 BigInt 复算验证中间量未被浮点污染
     const num = BigInt(r.snapshot.numerator);
@@ -119,10 +119,10 @@ describe("算账中心：加价系数与 BYOK 费率", () => {
     expect(
       effectiveMultiplierBps({
         priceKind: "COST_PLUS_MARKUP",
-        markupCoefficientBps: 20_000,
+        markupCoefficientBps: 2_000,
         byokServiceRateBps: 1_500,
       }),
-    ).toEqual({ multiplierBps: 20_000, markupOverriddenByModel: false });
+    ).toEqual({ multiplierBps: 12_000, markupOverriddenByModel: false });
     expect(
       effectiveMultiplierBps({
         priceKind: "BYOK_OFFICIAL",
@@ -205,9 +205,9 @@ describe("算账中心：来源判定与 Token 拆分", () => {
 });
 
 describe("计费配置：systemconfig 解析（非法值回退默认，绝不静默取 0）", () => {
-  it("空配置 → 负责人拍板的默认值（k=2.0 / 15% / 3 月 / 100 点 / 500 元）", () => {
+  it("空配置 → 负责人拍板的默认值（+20% / 15% / 3 月 / 100 点 / 500 元）", () => {
     const c = parseBillingConfig([]);
-    expect(c.markupCoefficientBps).toBe(20_000);
+    expect(c.markupCoefficientBps).toBe(2_000);
     expect(c.byokServiceRateBps).toBe(1_500);
     expect(c.freeMonths).toBe(3);
     expect(c.freePointsPerMonth).toBe(100);
@@ -216,10 +216,10 @@ describe("计费配置：systemconfig 解析（非法值回退默认，绝不静
 
   it("合法配置被采纳", () => {
     const c = parseBillingConfig([
-      { key: BILLING_CONFIG_KEYS.markupCoefficientBps, value: "25000" },
+      { key: BILLING_CONFIG_KEYS.markupCoefficientBps, value: "1500" },
       { key: BILLING_CONFIG_KEYS.byokServiceRateBps, value: "2000" },
     ]);
-    expect(c.markupCoefficientBps).toBe(25_000);
+    expect(c.markupCoefficientBps).toBe(1_500);
     expect(c.byokServiceRateBps).toBe(2_000);
   });
 
@@ -229,13 +229,23 @@ describe("计费配置：systemconfig 解析（非法值回退默认，绝不静
       { key: BILLING_CONFIG_KEYS.byokServiceRateBps, value: "-1" },
       { key: BILLING_CONFIG_KEYS.freeMonths, value: "9999" },
     ]);
-    expect(c.markupCoefficientBps).toBe(20_000);
+    expect(c.markupCoefficientBps).toBe(2_000);
     expect(c.byokServiceRateBps).toBe(1_500);
     expect(c.freeMonths).toBe(3);
   });
 
-  it("k < 1（亏本系数）被拒绝，回退默认 k=2.0", () => {
+  it("加价率 0%~合法范围内均采纳（如 5000 = +50%）", () => {
     const c = parseBillingConfig([{ key: BILLING_CONFIG_KEYS.markupCoefficientBps, value: "5000" }]);
-    expect(c.markupCoefficientBps).toBe(20_000);
+    expect(c.markupCoefficientBps).toBe(5_000);
+  });
+
+  it("遗留 k×10000 值（20000 = 旧 k 2.0 = +100%）自动折算为加价率基点 2000", () => {
+    const c = parseBillingConfig([{ key: BILLING_CONFIG_KEYS.markupCoefficientBps, value: "20000" }]);
+    expect(c.markupCoefficientBps).toBe(2_000);
+  });
+
+  it("负值等越界值回退默认 +20%", () => {
+    const c = parseBillingConfig([{ key: BILLING_CONFIG_KEYS.markupCoefficientBps, value: "-1" }]);
+    expect(c.markupCoefficientBps).toBe(2_000);
   });
 });

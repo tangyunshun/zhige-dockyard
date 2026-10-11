@@ -8,6 +8,9 @@ import {
   PRICE_SOURCES,
   PRICE_STATUSES,
   resolvePriceStatus,
+  resolveEffectiveUserPrice,
+  resolveUserPriceStatus,
+  resolvePricingMode,
   microsToYuanPerMillion,
   type PriceSource,
   type PriceStatus,
@@ -17,15 +20,19 @@ import {
 // 用户前台只读接口：随数据实时变化，禁止静态缓存
 export const dynamic = "force-dynamic";
 
-/** 把微元/百万字段转换为元/百万视图（仅含用户售价，不暴露成本） */
+/** 把微元/百万字段转换为元/百万视图（仅含用户售价，不暴露成本）。
+ *  售价统一走「有效用户售价」：DIRECT_PRICE 直取；COST_PLUS_MARKUP 由成本×(1+加价率) 推导。 */
 function toPriceView(p: DeploymentPricing) {
+  const eff = resolveEffectiveUserPrice(p);
   return {
-    input: microsToYuanPerMillion(p.priceInputMicrosPerMillion),
-    output: microsToYuanPerMillion(p.priceOutputMicrosPerMillion),
-    cacheRead: microsToYuanPerMillion(p.priceCacheReadMicrosPerMillion),
-    cacheWrite: microsToYuanPerMillion(p.priceCacheWriteMicrosPerMillion),
+    input: microsToYuanPerMillion(eff.inputMicrosPerMillion),
+    output: microsToYuanPerMillion(eff.outputMicrosPerMillion),
+    cacheRead: microsToYuanPerMillion(eff.cacheReadMicrosPerMillion),
+    cacheWrite: microsToYuanPerMillion(eff.cacheWriteMicrosPerMillion),
     source: p.priceSource,
-    status: p.priceStatus,
+    status: resolveUserPriceStatus(p),
+    markupRateBps: p.markupRateBps ?? null,
+    pricingMode: resolvePricingMode(p),
   };
 }
 
@@ -80,6 +87,8 @@ export async function GET(request: NextRequest) {
                   ],
                 })
               : status;
+          // 时段价同样走「有效用户售价」推导（成本×加价率），与计费口径一致
+          const peff = resolveEffectiveUserPrice(p as unknown as DeploymentPricing);
           return {
             id: p.id,
             name: p.name,
@@ -92,13 +101,14 @@ export async function GET(request: NextRequest) {
             startDate: p.startDate ? p.startDate.toISOString().slice(0, 10) : null,
             endDate: p.endDate ? p.endDate.toISOString().slice(0, 10) : null,
             prices: {
-              input: microsToYuanPerMillion(p.priceInputMicrosPerMillion),
-              output: microsToYuanPerMillion(p.priceOutputMicrosPerMillion),
-              cacheRead: microsToYuanPerMillion(p.priceCacheReadMicrosPerMillion),
-              cacheWrite: microsToYuanPerMillion(p.priceCacheWriteMicrosPerMillion),
+              input: microsToYuanPerMillion(peff.inputMicrosPerMillion),
+              output: microsToYuanPerMillion(peff.outputMicrosPerMillion),
+              cacheRead: microsToYuanPerMillion(peff.cacheReadMicrosPerMillion),
+              cacheWrite: microsToYuanPerMillion(peff.cacheWriteMicrosPerMillion),
             },
             source,
             status: resolved,
+            markupRateBps: p.markupRateBps ?? null,
           };
         });
 

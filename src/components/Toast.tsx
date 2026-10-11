@@ -1,22 +1,30 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 
 export type ToastType = "success" | "error" | "warning" | "info" | "sms-code";
+
+interface ToastLink {
+  text: string;
+  href: string;
+}
 
 interface ToastMessage {
   id: string;
   type: ToastType;
   message: string;
   duration?: number;
+  /** 可选的可点击入口（如「算力不足」提示里的「去充值」链接） */
+  link?: ToastLink;
 }
 
 interface ToastContextType {
-  showToast: (type: ToastType, message: string, duration?: number) => void;
-  success: (message: string, duration?: number) => void;
-  error: (message: string, duration?: number) => void;
-  warning: (message: string, duration?: number) => void;
-  info: (message: string, duration?: number) => void;
+  showToast: (type: ToastType, message: string, duration?: number, link?: ToastLink) => void;
+  success: (message: string, duration?: number, link?: ToastLink) => void;
+  error: (message: string, duration?: number, link?: ToastLink) => void;
+  warning: (message: string, duration?: number, link?: ToastLink) => void;
+  info: (message: string, duration?: number, link?: ToastLink) => void;
   dismissAll: () => void;
 }
 
@@ -69,13 +77,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     type: ToastType,
     message: string,
     duration?: number,
+    link?: ToastLink,
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
     
     // 如果没有指定 duration，根据消息长度智能计算
     const calculatedDuration = duration !== undefined ? duration : calculateDuration(message);
     
-    const toast: ToastMessage = { id, type, message, duration: calculatedDuration };
+    const toast: ToastMessage = { id, type, message, duration: calculatedDuration, link };
 
     setToasts((prev) => {
       // 检查是否有相同消息的 toast 正在显示（防重复）
@@ -99,18 +108,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
-  const showToast = (type: ToastType, message: string, duration?: number) => {
-    addToast(type, message, duration);
+  const showToast = (type: ToastType, message: string, duration?: number, link?: ToastLink) => {
+    addToast(type, message, duration, link);
   };
 
-  const success = (message: string, duration?: number) =>
-    showToast("success", message, duration);
-  const error = (message: string, duration?: number) =>
-    showToast("error", message, duration);
-  const warning = (message: string, duration?: number) =>
-    showToast("warning", message, duration);
-  const info = (message: string, duration?: number) =>
-    showToast("info", message, duration);
+  const success = (message: string, duration?: number, link?: ToastLink) =>
+    showToast("success", message, duration, link);
+  const error = (message: string, duration?: number, link?: ToastLink) =>
+    showToast("error", message, duration, link);
+  const warning = (message: string, duration?: number, link?: ToastLink) =>
+    showToast("warning", message, duration, link);
+  const info = (message: string, duration?: number, link?: ToastLink) =>
+    showToast("info", message, duration, link);
 
   const dismissAll = () => setToasts([]);
 
@@ -313,6 +322,18 @@ function ToastItem({
       </div>
       <div className="flex-1 text-xs md:text-[13px] font-bold text-slate-800 tracking-tight leading-relaxed break-words">
         {toast.message}
+        {toast.link && (
+          <Link
+            href={toast.link.href}
+            onClick={onClose}
+            className="ml-2 inline-flex items-center gap-0.5 text-[#3182ce] hover:underline font-black"
+          >
+            {toast.link.text}
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        )}
       </div>
       <button
         onClick={onClose}

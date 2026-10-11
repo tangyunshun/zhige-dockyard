@@ -14,6 +14,7 @@
     "cron:expire-points": "tsx --tsconfig tsconfig.json scripts/expire-points-cron.ts",
     "cron:zombie-scan": "tsx --tsconfig tsconfig.json scripts/zombie-scan-cron.ts",
     "cron:token-settlement-recovery": "tsx --tsconfig tsconfig.json scripts/run-token-settlement-recovery.ts",
+    "cron:token-settlement-reconciliation": "tsx --tsconfig tsconfig.json scripts/run-token-settlement-reconciliation.ts",
     "cron:purge-deleted-users": "tsx --tsconfig tsconfig.json scripts/purge-deleted-users-cron.ts",
     "check:permissions": "tsx --tsconfig tsconfig.json scripts/check-permission-wiring.ts",
     "verify:permissions": "tsx --tsconfig tsconfig.json scripts/verify-permission-matrix.ts",
@@ -23,7 +24,8 @@
     "verify:model-registry": "tsx --tsconfig tsconfig.json scripts/verify-model-registry-integrity.ts",
     "init:model-registry": "tsx --tsconfig tsconfig.json scripts/init-c07-model-registry.ts",
     "hooks:install": "tsx --tsconfig tsconfig.json scripts/install-git-hooks.ts",
-    "prepare": "tsx --tsconfig tsconfig.json scripts/install-git-hooks.ts"
+    "prepare": "tsx --tsconfig tsconfig.json scripts/install-git-hooks.ts",
+    "permissions:sync": "tsx --tsconfig tsconfig.json scripts/sync-permission-keys.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed-components.ts && npx tsx prisma/seed-membership.ts && npx tsx prisma/seed-positions.ts && npx tsx prisma/seed-system-documents.ts && npx tsx prisma/seed-audit-dict.ts && npx tsx prisma/seed-test-data.ts"

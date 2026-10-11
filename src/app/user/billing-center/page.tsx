@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
+import { Wallet,
   CreditCard,
   Zap,
   ChevronRight,
@@ -146,6 +146,8 @@ export default function BillingCenterPage() {
     totalUsedTokens: 0,
   });
   const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
+  /** 算力点流水（pointledger，经 /api/user/points）：组件执行的押金/实扣/退款等真实流水 */
+  const [pointsLedger, setPointsLedger] = useState<Array<{ id: string; type: string; direction: string; points: number; title: string; createdAt: string; balanceAfter: number }>>([]);
   /** 账单 API 错误信息（用于表格顶部显式提示用户） */
   const [billingError, setBillingError] = useState<string | null>(null);
 
@@ -263,6 +265,30 @@ export default function BillingCenterPage() {
             storageUsed: sData.data.storageUsed || 0,
           });
         }
+      }
+
+      // 算力点流水（押金/实扣/退款/赠送）：与账单记录并列展示，补齐对账链路
+      try {
+        const pointsRes = await fetch("/api/user/points?type=all&pageSize=20", {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        });
+        if (pointsRes.ok) {
+          const pData = await pointsRes.json();
+          const list = Array.isArray(pData?.list) ? pData.list : Array.isArray(pData?.data?.list) ? pData.data.list : [];
+          setPointsLedger(
+            list.slice(0, 20).map((r: any) => ({
+              id: String(r.id ?? ""),
+              type: String(r.type ?? ""),
+              direction: String(r.direction ?? ""),
+              points: Number(r.points ?? 0),
+              title: String(r.title ?? r.sourceType ?? "算力点流水"),
+              createdAt: String(r.createdAt ?? ""),
+              balanceAfter: Number(r.balanceAfter ?? 0),
+            })),
+          );
+        }
+      } catch (pointsErr) {
+        console.error("加载算力点流水失败:", pointsErr);
       }
 
       await loadBillingRecords();
@@ -884,6 +910,78 @@ export default function BillingCenterPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </section>
+
+          {/* 算力点流水（组件执行押金/实扣/退款等真实流水，来自 pointledger） */}
+          <section className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-[#3182ce]" />
+                算力点流水
+              </h3>
+              <span className="text-[10px] text-slate-400 font-bold">
+                组件执行的押金、实扣、退款等每笔流水（最近 20 笔）
+              </span>
+            </div>
+            <div className="bg-white/90 rounded-2xl border border-slate-200/80 overflow-x-auto">
+              <table className="w-full text-left text-xs table-auto">
+                <thead>
+                  <tr className="border-b border-slate-200/60 bg-slate-50/50 text-slate-500 font-bold">
+                    <th className="py-3 px-4 rounded-l-lg whitespace-nowrap">发生时间</th>
+                    <th className="py-3 px-4 whitespace-nowrap">类型</th>
+                    <th className="py-3 px-4 whitespace-nowrap">说明</th>
+                    <th className="py-3 px-4 whitespace-nowrap">点数变动</th>
+                    <th className="py-3 px-4 rounded-r-lg whitespace-nowrap">变动后余额</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {pointsLedger.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-10 text-center text-slate-400 text-xs font-semibold">
+                        暂无算力点流水，执行组件或充值后将在此展示每笔明细
+                      </td>
+                    </tr>
+                  ) : (
+                    pointsLedger.map((p) => {
+                      const isIn = p.direction === "IN" || p.points >= 0;
+                      const typeLabel: Record<string, string> = {
+                        CONSUME: "组件执行扣点",
+                        REFUND: "退款",
+                        RECHARGE: "充值",
+                        OFFLINE_RECHARGE: "线下充值",
+                        GIFT_REGISTER: "注册赠送",
+                        GIFT_EXPIRE: "赠送过期",
+                        MEMBERSHIP_GRANT: "会员发放",
+                        MANUAL_ADJUST: "手动调整",
+                        PILOT_FUND: "试点发放",
+                      };
+                      return (
+                        <tr key={p.id} className="hover:bg-blue-50/20 transition-colors">
+                          <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-600">
+                            {p.createdAt ? new Date(p.createdAt).toLocaleString("zh-CN", { hour12: false }) : "—"}
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap font-bold">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${isIn ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-600"}`}>
+                              {typeLabel[p.type] || p.type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 max-w-[280px] truncate" title={p.title}>
+                            {p.title}
+                          </td>
+                          <td className={`py-3 px-4 whitespace-nowrap font-mono font-black ${isIn ? "text-emerald-600" : "text-rose-600"}`}>
+                            {isIn ? "+" : "-"}
+                            {Math.abs(p.points).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-700">
+                            {p.balanceAfter.toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </section>
         </>

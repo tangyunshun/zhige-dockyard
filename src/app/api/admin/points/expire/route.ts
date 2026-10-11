@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { isPlatformAdminRole, requirePlatformPermission  } from "@/lib/security";
 import { expireExpiredGrants } from "@/lib/credit-service";
 
 /**
@@ -15,10 +15,6 @@ import { expireExpiredGrants } from "@/lib/credit-service";
  *   2. 系统级：scripts/expire-points-cron.ts（npm run cron:expire-points），由 crontab / 任务计划程序每日调用。
  * 此接口供运维在需要时手动立即执行。
  */
-function isPlatformAdmin(role?: string | null): boolean {
-  const r = (role || "").toUpperCase();
-  return r === "ADMIN" || r === "SUPER_ADMIN" || r === "PLATFORM_ADMIN";
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,7 +30,7 @@ export async function POST(request: NextRequest) {
     if (!permCheck.authorized) {
       return permCheck.errorResponse || NextResponse.json({ error: "无权限触发算力到期清算" }, { status: 403 });
     }
-    if (!isPlatformAdmin(auth.user.role)) {
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可触发清算" }, { status: 403 });
     }
 

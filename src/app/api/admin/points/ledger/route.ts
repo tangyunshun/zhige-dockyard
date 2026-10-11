@@ -1,3 +1,4 @@
+import { isPlatformAdminRole } from "@/lib/security";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -8,10 +9,6 @@ import { validateUser } from "@/lib/auth";
  * GET /api/admin/points/ledger
  * 平台级算力点流水查询（全空间），支持筛选与分页，用于后台算力财务对账与审计。
  */
-function isPlatformAdmin(role?: string | null): boolean {
-  const r = (role || "").toUpperCase();
-  return r === "ADMIN" || r === "SUPER_ADMIN" || r === "PLATFORM_ADMIN";
-}
 
 const TYPE_META: Record<string, { label: string }> = {
   GIFT_REGISTER: { label: "注册赠送" },
@@ -30,7 +27,7 @@ export async function GET(request: NextRequest) {
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
-    if (!isPlatformAdmin(auth.user.role)) {
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可查看算力流水" }, { status: 403 });
     }
 

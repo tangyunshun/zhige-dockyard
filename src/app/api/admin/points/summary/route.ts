@@ -1,3 +1,4 @@
+import { isPlatformAdminRole } from "@/lib/security";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -8,10 +9,6 @@ import { validateUser } from "@/lib/auth";
  * GET /api/admin/points/summary
  * 平台级算力点总账与对账：发放/消耗/充值 GMV/赠送到期，以及"流水与账户余额"一致性校验。
  */
-function isPlatformAdmin(role?: string | null): boolean {
-  const r = (role || "").toUpperCase();
-  return r === "ADMIN" || r === "SUPER_ADMIN" || r === "PLATFORM_ADMIN";
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +16,7 @@ export async function GET(request: NextRequest) {
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
-    if (!isPlatformAdmin(auth.user.role)) {
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可查看算力总账" }, { status: 403 });
     }
 

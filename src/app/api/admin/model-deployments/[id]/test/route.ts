@@ -19,7 +19,9 @@ export async function POST(
     const { id } = await params;
     if (!id) return NextResponse.json({ success: false, error: "缺少 deploymentId" }, { status: 400 });
 
-    const result = await testDeploymentConnection(id);
+    // ignoreDisabled：后台编辑弹窗内的连通性健康探测属管理员受权诊断，允许对禁用中通道
+    // 发起一次最小探测（max_tokens: 1），实现「先测通、再启用」闭环，不受业务门禁阻断。
+    const result = await testDeploymentConnection(id, { ignoreDisabled: true });
     return NextResponse.json({ success: result.ok, ...result });
   } catch (error) {
     console.error("[model-deployment] TEST 失败:", (error as Error)?.message);
