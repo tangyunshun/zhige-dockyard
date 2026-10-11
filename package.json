@@ -14,7 +14,6 @@
     "cron:expire-points": "tsx --tsconfig tsconfig.json scripts/expire-points-cron.ts",
     "cron:zombie-scan": "tsx --tsconfig tsconfig.json scripts/zombie-scan-cron.ts",
     "cron:token-settlement-recovery": "tsx --tsconfig tsconfig.json scripts/run-token-settlement-recovery.ts",
-    "cron:token-settlement-reconciliation": "tsx --tsconfig tsconfig.json scripts/run-token-settlement-reconciliation.ts",
     "cron:purge-deleted-users": "tsx --tsconfig tsconfig.json scripts/purge-deleted-users-cron.ts",
     "check:permissions": "tsx --tsconfig tsconfig.json scripts/check-permission-wiring.ts",
     "verify:permissions": "tsx --tsconfig tsconfig.json scripts/verify-permission-matrix.ts",
