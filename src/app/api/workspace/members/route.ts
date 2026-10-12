@@ -201,21 +201,34 @@ export async function PATCH(request: NextRequest) {
       rolesArray.includes("OWNER") ? "OWNER" :
       rolesArray.includes("ADMIN") ? "ADMIN" : "MEMBER";
 
-    // 更新角色（采用 upsert 容错，防止记录不存在时更新抛错）
-    const updatedMember = await prisma.workspacemember.upsert({
+    // 加入空间仅允许两条路径：①自行创建空间（成为 OWNER）②被空间管理员邀请加入（邀请码/邀请链接）。
+    // 角色变更只能作用于「已加入的成员」；若目标尚未加入，一律拒绝并引导走邀请流程，
+    // 杜绝所有者通过本接口把任意用户（含平台超管/管理员）不经邀请直接拉进空间。
+    const targetMembership = await prisma.workspacemember.findUnique({
       where: {
         userId_workspaceId: {
           userId: targetUserId,
           workspaceId,
         },
       },
-      update: {
-        role: validDbRole,
+      select: { id: true },
+    });
+    if (!targetMembership) {
+      return NextResponse.json(
+        { error: "该用户尚未加入此空间，请通过邀请链接/邀请码邀请其加入后再分配角色" },
+        { status: 403 }
+      );
+    }
+
+    // 更新角色（仅更新已存在成员，绝不新建成员关系）
+    const updatedMember = await prisma.workspacemember.update({
+      where: {
+        userId_workspaceId: {
+          userId: targetUserId,
+          workspaceId,
+        },
       },
-      create: {
-        id: `wm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        userId: targetUserId,
-        workspaceId,
+      data: {
         role: validDbRole,
       },
     });
