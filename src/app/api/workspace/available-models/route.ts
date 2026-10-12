@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
           id: string;
           name: string;
           kind: string;
-          discountRate: number | null;
+          markupRate: number | null;
         } | null = null;
 
         if (activePeriodId) {
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
                 id: periodRow.id,
                 name: periodRow.name,
                 kind: periodRow.kind,
-                discountRate: periodRow.markupRateBps != null ? periodRow.markupRateBps / 10000 : null,
+                markupRate: periodRow.markupRateBps != null ? periodRow.markupRateBps / 10000 : null,
               };
             }
           } catch {
@@ -118,10 +118,10 @@ export async function GET(request: NextRequest) {
               markupRateBps: pricing.markupRateBps,
               // 时段信息：闲时、忙时、假日、日常主流
               activePeriodId: activePeriodId || null,
-              activePeriodName: activePeriodInfo?.name || (activePeriodId ? "时段特惠价" : "日常主流基准价"),
+              activePeriodName: activePeriodInfo?.name || (activePeriodId ? "时段价" : "日常主流基准价"),
               activePeriodKind: activePeriodInfo?.kind || "REGULAR",
-              isDiscountActive: Boolean(activePeriodId),
-              discountRate: activePeriodInfo?.discountRate || null,
+              isPeriodActive: Boolean(activePeriodId),
+              markupRate: activePeriodInfo?.markupRate || null,
               // 防 undefined 兼容换算字段（微元 / 10,000 = 分/千Tokens，换算点数）
               unitType: "PER_TOKEN",
               inputPricePerK:

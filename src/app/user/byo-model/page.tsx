@@ -49,8 +49,8 @@ interface SystemAvailableModel {
     outputPricePerK: number;
     pricePerCall: number;
     unitType: string;
-    discountRate: number;
-    isDiscountActive: boolean;
+    markupRate: number;
+    isPeriodActive: boolean;
   };
   isDefault: boolean;
 }
@@ -755,9 +755,9 @@ export default function UserByoModelPage() {
                           )}
                           <div className="flex items-center justify-between text-[10px] text-slate-500 font-sans pt-0.5">
                             <span>生效时段:</span>
-                            <span className={`font-bold ${pricingAny?.isDiscountActive ? "text-amber-600" : "text-emerald-600"}`}>
+                            <span className={`font-bold ${pricingAny?.isPeriodActive ? "text-amber-600" : "text-emerald-600"}`}>
                               {pricingAny?.activePeriodName || "日常主流定价"}
-                              {pricingAny?.discountRate ? ` (${(pricingAny.discountRate * 100).toFixed(0)}% 优惠)` : ""}
+                              {pricingAny?.markupRate ? ` (+${(pricingAny.markupRate * 100).toFixed(0)}% 加价)` : ""}
                             </span>
                           </div>
                         </div>

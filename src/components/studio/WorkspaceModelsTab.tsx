@@ -30,8 +30,8 @@ interface ModelPricing {
   outputPricePerK?: number;
   pricePerCall?: number;
   unitType?: string;
-  discountRate?: number | null;
-  isDiscountActive?: boolean;
+  markupRate?: number | null;
+  isPeriodActive?: boolean;
   currency?: string;
   priceInputMicrosPerMillion?: number | null;
   priceOutputMicrosPerMillion?: number | null;
@@ -654,13 +654,13 @@ export default function WorkspaceModelsTab({
                       <span className="text-slate-400">生效时段:</span>
                       <span
                         className={`font-bold px-1.5 py-0.5 rounded ${
-                          m.pricing?.isDiscountActive
+                          m.pricing?.isPeriodActive
                             ? "bg-amber-50 text-amber-700 border border-amber-200"
                             : "bg-blue-50 text-[#3182ce] border border-blue-100"
                         }`}
                       >
                         {m.pricing?.activePeriodName || "日常主流定价"}
-                        {m.pricing?.discountRate ? ` (${(m.pricing.discountRate * 100).toFixed(0)}% 优惠)` : ""}
+                        {m.pricing?.markupRate ? ` (+${(m.pricing.markupRate * 100).toFixed(0)}% 加价)` : ""}
                       </span>
                     </div>
                   </div>
