@@ -70,7 +70,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: "加入企业空间成功",
-        member,
+        // 仅回传前端所需标量字段：workspacemember 含 BigInt（tokenBalance/monthlyTokenUsed/monthlyTokenLimit），
+        // 直接序列化整行会抛 "Do not know how to serialize a BigInt" 导致加入接口 500。
+        member: {
+          id: member.id,
+          userId: member.userId,
+          workspaceId: member.workspaceId,
+          role: member.role,
+          joinedAt: member.joinedAt,
+        },
       });
     }
 
@@ -158,7 +166,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: "加入企业空间成功",
-        member,
+        // 仅回传前端所需标量字段：workspacemember 含 BigInt（tokenBalance/monthlyTokenUsed/monthlyTokenLimit），
+        // 直接序列化整行会抛 "Do not know how to serialize a BigInt" 导致加入接口 500。
+        member: {
+          id: member.id,
+          userId: member.userId,
+          workspaceId: member.workspaceId,
+          role: member.role,
+          joinedAt: member.joinedAt,
+        },
       });
     }
 
