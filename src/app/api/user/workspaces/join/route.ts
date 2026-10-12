@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { getInvitePolicy, checkInviteEligibility } from "@/lib/invitation-policy";
 
 /**
  * 加入企业空间
@@ -13,6 +14,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: authResult.error || "UNAUTHORIZED" }, { status: 401 });
     }
     const userId = authResult.user.id;
+
+    // 邀请加入安全策略：域名白名单 + 平台管理员开关（此时才确定加入者身份，邀请码/邀请ID 两条路径统一生效）
+    const policy = await getInvitePolicy();
+    const eligibility = checkInviteEligibility(authResult.user, policy);
+    if (!eligibility.ok) {
+      return NextResponse.json({ error: eligibility.error }, { status: 403 });
+    }
 
     const body = await request.json();
     const { inviteCode, invitationId } = body;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { randomBytes } from "crypto";
+import { getInvitePolicy } from "@/lib/invitation-policy";
 
 // 生成邀请码
 function generateInvitationCode(): string {
@@ -58,9 +59,10 @@ export async function POST(request: NextRequest) {
       ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
       : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 默认 7 天有效期
 
-    // 仅允许 MEMBER / ADMIN，其余一律降级为普通成员
+    // 仅允许 MEMBER / ADMIN，其余一律降级为普通成员；若策略禁止 ADMIN 邀请，则一律 MEMBER
+    const policy = await getInvitePolicy();
     const invitationRole =
-      role === "ADMIN" || role === "OWNER" ? "ADMIN" : "MEMBER";
+      policy.allowAdminRole && (role === "ADMIN" || role === "OWNER") ? "ADMIN" : "MEMBER";
 
     // 保存邀请码到数据库
     const invitation = await prisma.workspaceinvitation.create({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { getInvitePolicy, checkInviteEligibility } from "@/lib/invitation-policy";
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,6 +47,16 @@ export async function GET(request: NextRequest) {
     // 2. 验证邮箱（身份可选：已登录时用合法 JWT 校验出的真实 userId，未登录时为 null）
     const authResult = await validateUser(request.headers.get("Authorization"), request);
     const userId = authResult.valid && authResult.user ? authResult.user.id : null;
+
+    // 邀请策略预检：域名白名单 + 平台管理员开关（已登录即可校验；未登录则交由 join 端兜底）
+    if (userId) {
+      const policy = await getInvitePolicy();
+      const eligibility = checkInviteEligibility(authResult.user, policy);
+      if (!eligibility.ok) {
+        return NextResponse.json({ error: eligibility.error }, { status: 403 });
+      }
+    }
+
     if (invitation.email && userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
