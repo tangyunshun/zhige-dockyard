@@ -660,7 +660,6 @@ export default function WorkspaceModelsTab({
                         }`}
                       >
                         {m.pricing?.activePeriodName || "日常主流定价"}
-                        {m.pricing?.markupRate ? ` (+${(m.pricing.markupRate * 100).toFixed(0)}% 加价)` : ""}
                       </span>
                     </div>
                   </div>

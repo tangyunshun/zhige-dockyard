@@ -757,7 +757,6 @@ export default function UserByoModelPage() {
                             <span>生效时段:</span>
                             <span className={`font-bold ${pricingAny?.isPeriodActive ? "text-amber-600" : "text-emerald-600"}`}>
                               {pricingAny?.activePeriodName || "日常主流定价"}
-                              {pricingAny?.markupRate ? ` (+${(pricingAny.markupRate * 100).toFixed(0)}% 加价)` : ""}
                             </span>
                           </div>
                         </div>
