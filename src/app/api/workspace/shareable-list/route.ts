@@ -106,9 +106,21 @@ export async function GET(request: NextRequest) {
       joinedCount: codeCounts[inv.code] || 0,
     }));
 
+    // BigInt 安全转换：workspacemember 的 token 字段为 BigInt，直接 JSON.stringify 会抛
+    // "Do not know how to serialize a BigInt"，导致整表 500（分享弹窗「加载失败」）。转为 Number 后再下发。
+    const safeWorkspaces = workspaces.map((w) => ({
+      ...w,
+      workspacemember: w.workspacemember.map((m) => ({
+        ...m,
+        monthlyTokenLimit: m.monthlyTokenLimit != null ? Number(m.monthlyTokenLimit) : null,
+        monthlyTokenUsed: Number(m.monthlyTokenUsed),
+        tokenBalance: Number(m.tokenBalance),
+      })),
+    }));
+
     return NextResponse.json({
       success: true,
-      data: workspaces,
+      data: safeWorkspaces,
       invitations: invitationsWithCount,
     });
   } catch (error) {
