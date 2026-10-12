@@ -324,13 +324,14 @@ export default function UserByoModelPage() {
           : manageable.length > 0
             ? manageable[0].id
             : "";
-      setSelectedWs(target);
+      // 仅在没有选中任何空间时设置初始值；已手动选择时绝不覆盖（函数式更新读取最新 prev）
+      setSelectedWs((prev) => prev || target);
     } catch (e) {
       toast.error((e as Error)?.message || "加载空间列表失败");
     } finally {
       setLoadingList(false);
     }
-  }, [toast, selectedWs]);
+  }, [toast]);
 
   useEffect(() => {
     loadWorkspaces();
