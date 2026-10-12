@@ -337,14 +337,26 @@ export default function WorkspaceModelsTab({
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
             <span className="text-slate-400 font-medium">任务缺省或自动模式均以此运行</span>
             {isPrivileged && (
-              <button
-                type="button"
-                onClick={() => router.push(`/user/byo-model?workspaceId=${encodeURIComponent(workspaceId)}`)}
-                className="text-[#3182ce] hover:underline font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <span>修改策略</span>
-                <ExternalLink className="w-3 h-3" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/model-policy`)}
+                  className="text-[#3182ce] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                  title="配置本空间的默认模型与官方模型白名单"
+                >
+                  <span>空间模型策略</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/user/byo-model?workspaceId=${encodeURIComponent(workspaceId)}`)}
+                  className="text-amber-600 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                  title="配置空间自带私有模型（BYO）"
+                >
+                  <span>自带模型 (BYO)</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -547,13 +559,21 @@ export default function WorkspaceModelsTab({
             </p>
           </div>
           {isPrivileged && (
-            <div className="pt-2">
+            <div className="pt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/model-policy`)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-blue-50 text-[#3182ce] text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-all cursor-pointer"
+              >
+                <span>前往配置「空间模型策略」分配模型</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
               <button
                 type="button"
                 onClick={() => router.push(`/user/byo-model?workspaceId=${encodeURIComponent(workspaceId)}`)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-blue-50 text-[#3182ce] text-xs font-bold border border-blue-100 hover:bg-blue-100 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-50 text-amber-700 text-xs font-bold border border-amber-100 hover:bg-amber-100 transition-all cursor-pointer"
               >
-                <span>前往「工作空间模型策略管理」分配模型</span>
+                <span>配置自带模型 (BYO)</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </button>
             </div>
