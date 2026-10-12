@@ -259,6 +259,93 @@ export async function resolveActivePricingWithPeriod(
   return { pricing: active, activePeriodId };
 }
 
+/** 计价时段类型中文标签 */
+const PERIOD_KIND_LABEL: Record<string, string> = {
+  IDLE: "闲时",
+  PEAK: "高峰",
+  HOLIDAY: "节假日",
+  CUSTOM: "自定义",
+};
+
+const WEEKDAY_LABEL = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+
+/** 把时段的日期区间 / 周计划 / 时间段约束格式化为人类可读的生效范围 */
+function formatPeriodSchedule(p: PricingPeriodRow): string {
+  const parts: string[] = [];
+  if (p.startDate || p.endDate) {
+    const fmt = (d: Date | null) =>
+      d ? `${d.getMonth() + 1}.${String(d.getDate()).padStart(2, "0")}` : "";
+    if (p.startDate && p.endDate) parts.push(`${fmt(p.startDate)}–${fmt(p.endDate)}`);
+    else if (p.startDate) parts.push(`${fmt(p.startDate)} 起`);
+    else if (p.endDate) parts.push(`至 ${fmt(p.endDate)}`);
+  }
+  if (p.weekdays) {
+    const days = p.weekdays
+      .split(",")
+      .map((s) => Number(s.trim()))
+      .filter((n) => n >= 1 && n <= 7);
+    if (days.length === 7) parts.push("每天");
+    else if (days.length === 5 && days.every((d) => d >= 1 && d <= 5)) parts.push("工作日");
+    else if (days.length === 2 && days.includes(6) && days.includes(7)) parts.push("周末");
+    else if (days.length > 0) parts.push(days.map((d) => WEEKDAY_LABEL[d]).join("/"));
+  }
+  if (p.startTime && p.endTime) parts.push(`${p.startTime}–${p.endTime}`);
+  if (parts.length === 0) parts.push(p.kind === "HOLIDAY" ? "法定节假日" : "全时段");
+  return parts.join(" ");
+}
+
+/** 计价时段展示视图（前台罗列某部署全部分时段，而非仅当前生效项） */
+export interface PricingPeriodView {
+  id: string;
+  name: string;
+  kind: string;
+  kindLabel: string;
+  priority: number;
+  isActiveNow: boolean;
+  /** 人类可读的生效范围（日期区间 / 周计划 / 时间段 / 全时段 / 法定节假日） */
+  scheduleText: string;
+  inputMicrosPerMillion: number | null;
+  outputMicrosPerMillion: number | null;
+}
+
+/**
+ * 罗列某部署的全部已启用计价时段（按优先级 + 类型权重排序），
+ * 标注当前是否生效与各时段有效售价，供前台展示完整分时段计价（高峰 / 闲时 / 节假日等）。
+ */
+export async function listDeploymentPricingPeriods(
+  deploymentId: string,
+  now: Date = new Date(),
+): Promise<PricingPeriodView[]> {
+  let periods: PricingPeriodRow[] = [];
+  try {
+    periods = (await prisma.modelpricingperiod.findMany({
+      where: { deploymentId, enabled: true },
+      orderBy: [{ priority: "desc" }],
+    })) as unknown as PricingPeriodRow[];
+  } catch {
+    periods = [];
+  }
+  return periods
+    .map((p) => {
+      const eff = resolveEffectiveUserPrice(periodRowToDeploymentPricing(p));
+      return {
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        kindLabel: PERIOD_KIND_LABEL[p.kind] || "自定义",
+        priority: p.priority,
+        isActiveNow: periodMatchesNow(p, now) && Boolean(eff.mode),
+        scheduleText: formatPeriodSchedule(p),
+        inputMicrosPerMillion: eff.inputMicrosPerMillion,
+        outputMicrosPerMillion: eff.outputMicrosPerMillion,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.priority - a.priority || (PERIOD_KIND_WEIGHT[b.kind] ?? 0) - (PERIOD_KIND_WEIGHT[a.kind] ?? 0),
+    );
+}
+
 /** 执行计划来源：正式路径只允许数据库注册表 */
 export type PlanSource = "DATABASE" | "WORKSPACE_BYO";
 

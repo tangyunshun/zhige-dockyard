@@ -5,6 +5,7 @@ import {
   loadSpaceModelPolicy,
   resolveActivePricingWithPeriod,
   resolveDefaultDeployment,
+  listDeploymentPricingPeriods,
 } from "@/lib/model-registry";
 import { resolveEffectiveUserPrice } from "@/lib/model-pricing";
 import {
@@ -143,6 +144,8 @@ export async function GET(request: NextRequest) {
           contextLimit: dep.contextLimit,
           isSpaceDefault: policy.defaultDeploymentId === dep.id,
           pricing: pricingDto,
+          // 该部署的全部已启用计价时段（高峰/闲时/节假日等），供前台罗列完整分时段计价
+          pricingPeriods: await listDeploymentPricingPeriods(dep.id),
         };
       }),
     );
