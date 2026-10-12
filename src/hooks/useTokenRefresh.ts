@@ -8,6 +8,8 @@ interface TokenRefreshState {
   retryCount: number;
   /** 下次 AT 过期时间，用于提前静默刷新（A-06） */
   accessTokenExpireAt: number | null;
+  /** 最近一次据以计算过期时间的本地 token，用于检测 token 变化（新登录/其他标签页刷新） */
+  lastToken: string | null;
 }
 
 // A-06：AT 有效期 5 分钟（来自后端 /refresh 的 expiresIn），提前 60 秒静默续期
@@ -16,15 +18,26 @@ const REFRESH_AHEAD_MS = 60 * 1000;
 const MAX_RETRY = 3;
 const RETRY_DELAY = 5000;
 
+/**
+ * 解析 JWT 的过期时间（exp，秒）→ 毫秒时间戳；解析失败返回 null。
+ * 用于按 accessToken 的真实过期时间调度「提前静默刷新」。
+ */
+function parseJwtExp(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 function hasValidLocalSession(): boolean {
   if (typeof window === "undefined") return false;
-  const hasLocalToken = !!localStorage.getItem("auth_token");
-  const cookies = document.cookie.split(";");
-  const hasToken = cookies.some((c) => {
-    const [name, value] = c.trim().split("=");
-    return name === "auth_token" && value && value.length > 0;
-  });
-  return hasLocalToken && hasToken;
+  // 仅判断本地 accessToken 是否存在。刷新凭据是 httpOnly 的 refresh_token Cookie（由服务端读取），
+  // 不再用 document.cookie 探测 HttpOnly 的 auth_token——那样恒读不到，会导致本 Hook 永久失效。
+  return !!localStorage.getItem("auth_token");
 }
 
 function clearLocalSession() {
@@ -51,6 +64,7 @@ export function useTokenRefresh() {
     lastRefreshTime: null,
     retryCount: 0,
     accessTokenExpireAt: null,
+    lastToken: null,
   });
 
   const refreshToken = useCallback(async (): Promise<boolean> => {
@@ -76,8 +90,10 @@ export function useTokenRefresh() {
         const data = await res.json();
         if (data.token) {
           localStorage.setItem("auth_token", data.token);
-          const expSeconds = data.expiresIn ?? AT_TTL_SECONDS;
-          stateRef.current.accessTokenExpireAt = Date.now() + expSeconds * 1000;
+          stateRef.current.lastToken = data.token;
+          // 优先按新 JWT 的真实 exp 调度下次刷新；解析失败再退回 expiresIn 兜底
+          stateRef.current.accessTokenExpireAt =
+            parseJwtExp(data.token) ?? Date.now() + (data.expiresIn ?? AT_TTL_SECONDS) * 1000;
           stateRef.current.lastRefreshTime = Date.now();
           stateRef.current.retryCount = 0;
 
@@ -120,9 +136,11 @@ export function useTokenRefresh() {
       channel = new BroadcastChannel("zhige-session-channel");
       channel.onmessage = (e) => {
         if (e.data?.type === "REFRESH_TOKEN" && e.data?.payload?.token) {
-          localStorage.setItem("auth_token", e.data.payload.token);
-          const exp = (e.data?.payload?.expiresIn ?? AT_TTL_SECONDS) * 1000;
-          stateRef.current.accessTokenExpireAt = Date.now() + exp;
+          const t = e.data.payload.token as string;
+          localStorage.setItem("auth_token", t);
+          stateRef.current.lastToken = t;
+          stateRef.current.accessTokenExpireAt =
+            parseJwtExp(t) ?? Date.now() + (e.data?.payload?.expiresIn ?? AT_TTL_SECONDS) * 1000;
         }
       };
     } catch {
@@ -131,11 +149,23 @@ export function useTokenRefresh() {
 
     // A-06：每 30s 检查一次，AT 即将过期（<60s）则静默续期
     const interval = setInterval(() => {
-      const { accessTokenExpireAt, isRefreshing } = stateRef.current;
-      if (isRefreshing) return;
-      if (!hasValidLocalSession()) return;
+      if (stateRef.current.isRefreshing) return;
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      if (!token) {
+        // 无本地 token：未登录或已登出，清理调度状态即可（跳转交由 AuthCheck 处理）
+        stateRef.current.accessTokenExpireAt = null;
+        stateRef.current.lastToken = null;
+        return;
+      }
+      // token 发生变化（新登录 / 其他标签页刷新广播）时，按新 token 的真实 exp 重新调度
+      if (token !== stateRef.current.lastToken) {
+        stateRef.current.lastToken = token;
+        stateRef.current.accessTokenExpireAt = parseJwtExp(token);
+      }
       const now = Date.now();
-      if (!accessTokenExpireAt || now >= accessTokenExpireAt - REFRESH_AHEAD_MS) {
+      // 解析不到 exp 时按默认 AT_TTL 保守兜底，确保仍会定时续期
+      const expireAt = stateRef.current.accessTokenExpireAt ?? now + AT_TTL_SECONDS * 1000;
+      if (now >= expireAt - REFRESH_AHEAD_MS) {
         refreshToken();
       }
     }, 30 * 1000);

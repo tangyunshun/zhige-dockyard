@@ -42,6 +42,11 @@ export async function POST(request: NextRequest) {
           sessionToken: null,
           sessionExpiresAt: null,
           sessionRememberMe: false, // 会话销毁时复位「7天内免登录」标记，防脏状态残留
+          // 同步清空 refreshToken 三字段：否则 cookie 虽已清除，DB 中的 RT 仍有效，
+          // 存在被重新利用的风险；手动退出后应彻底失效，需重新登录（落实验收 4）。
+          refreshToken: null,
+          refreshTokenPrev: null,
+          refreshTokenExpiresAt: null,
           lastLoginAt: null,
         },
       });

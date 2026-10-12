@@ -31,6 +31,20 @@ export default function ActivityMonitor() {
       const idleMs = now - lastActivityTimeRef.current;
 
       if (idleMs >= IDLE_TIMEOUT) {
+        // 「7天内免登录」长会话豁免空闲超时：与后端 validateUser 一致——
+        // remember 会话仅受 7 天绝对超时约束，不因前端空闲而被登出。
+        // （此前不识别 rememberMe，10 分钟空闲即 logout + localStorage.clear()，
+        //   把凭证全部清空，导致随后所有请求命中中间件「未提供身份凭证」401。）
+        let rememberMe = false;
+        try {
+          rememberMe =
+            typeof window !== "undefined" && localStorage.getItem("rememberMe") === "true";
+        } catch {
+          rememberMe = false;
+        }
+        if (rememberMe) {
+          return;
+        }
         if (!loggedOutRef.current) {
           loggedOutRef.current = true;
           try {
