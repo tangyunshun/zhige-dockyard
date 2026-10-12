@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import type { ComponentDefinition, ComponentCategory } from "@/constants/components";
 import { getAuthToken } from "@/utils/auth";
 import { describeAcceptedMimes } from "@/lib/fileConstraintsFormat";
+import ModelPricingRules from "@/components/ModelPricingRules";
 
 const getDispatcherStageIcon = (category: string, categoryToStageId: Record<string, number>, className?: string) => {
   const stageId = categoryToStageId[category] || 1;
@@ -945,11 +946,15 @@ export default function ComponentDispatcherPanel({
                         const priceIn = curSysModel.pricing?.priceInputMicrosPerMillion != null ? (curSysModel.pricing.priceInputMicrosPerMillion / 1000000).toFixed(2) : "--";
                         const priceOut = curSysModel.pricing?.priceOutputMicrosPerMillion != null ? (curSysModel.pricing.priceOutputMicrosPerMillion / 1000000).toFixed(2) : "--";
                         return (
-                          <div className="flex items-center justify-between text-[9.5px] bg-blue-50/70 border border-blue-200/60 px-2 py-1 rounded text-[#2b6cb0]">
-                            <span className="font-semibold truncate max-w-[140px]">当前模型: {curSysModel.displayName}</span>
-                            <span className="font-mono font-bold">
-                              当前时段生效价: 入 ¥{priceIn} / 出 ¥{priceOut} 元/百万Token
-                            </span>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between text-[9.5px] bg-blue-50/70 border border-blue-200/60 px-2 py-1 rounded text-[#2b6cb0]">
+                              <span className="font-semibold truncate max-w-[140px]">当前模型: {curSysModel.displayName}</span>
+                              <span className="font-mono font-bold">
+                                当前时段生效价: 入 ¥{priceIn} / 出 ¥{priceOut} 元/百万Token
+                              </span>
+                            </div>
+                            {/* 完整计价规则：闲时/高峰/节假日分层 + 可展开全时段表，便于用户判断成本 */}
+                            <ModelPricingRules periods={(curSysModel as any).pricingPeriods} />
                           </div>
                         );
                       }

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import ModelPricingRules from "@/components/ModelPricingRules";
 import {
   KeyRound,
   Link2,
@@ -754,36 +755,8 @@ export default function UserByoModelPage() {
                               </span>
                             </div>
                           )}
-                          {/* 计价时段：罗列该部署全部分时段（高峰/闲时/节假日等），当前生效项高亮 */}
-                          <div className="pt-1.5 border-t border-slate-200/40 space-y-1">
-                            <div className="text-[10px] text-slate-400 font-sans">计价时段</div>
-                            {Array.isArray((m as any).pricingPeriods) && (m as any).pricingPeriods.length > 0 ? (
-                              (m as any).pricingPeriods.map((p: any) => (
-                                <div
-                                  key={p.id}
-                                  className={`flex items-center justify-between gap-2 text-[10px] font-sans rounded px-1.5 py-0.5 ${
-                                    p.isActiveNow ? "bg-amber-50 text-amber-700 font-bold" : "text-slate-500"
-                                  }`}
-                                >
-                                  <span className="flex items-center gap-1 min-w-0">
-                                    <span className="shrink-0 px-1 rounded bg-white border border-slate-200 text-[9px] font-bold text-slate-600">
-                                      {p.kindLabel}
-                                    </span>
-                                    <span className="truncate">{p.name}</span>
-                                    <span className="text-slate-400 truncate">· {p.scheduleText}</span>
-                                  </span>
-                                  <span className="shrink-0 font-mono flex items-center gap-1">
-                                    {p.inputMicrosPerMillion != null
-                                      ? `¥${(p.inputMicrosPerMillion / 1000000).toFixed(2)}/¥${(Number(p.outputMicrosPerMillion || 0) / 1000000).toFixed(2)}`
-                                      : "--"}
-                                    {p.isActiveNow && <span className="text-amber-600">生效中</span>}
-                                  </span>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="text-[10px] text-emerald-600 font-bold font-sans">日常主流基准价（未分时段）</div>
-                            )}
-                          </div>
+                          {/* 计价规则：统一组件呈现全部分时段（闲时/高峰/节假日）与当前生效项 */}
+                          <ModelPricingRules periods={(m as any).pricingPeriods} />
                         </div>
                       </div>
                     );
