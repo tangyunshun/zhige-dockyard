@@ -791,7 +791,7 @@ const processSelectedFile = async (file: File) => {
                 />
                 <div>
                   <span className="block font-black text-slate-800">🔒 个人私密资料</span>
-                  <span className="text-[10px] text-slate-400 font-medium block">仅自己可见，随时物理删除</span>
+                  <span className="text-[10px] text-slate-400 font-medium block">仅自己可见，可随时删除</span>
                 </div>
               </label>
             </div>

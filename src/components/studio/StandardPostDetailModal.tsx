@@ -450,7 +450,7 @@ export function StandardPostDetailModal({
                         title={`查看【${ws.name}】空间岗位权限矩阵`}
                       >
                         <Shield className="w-3 h-3 text-[#3182ce]" />
-                        <span>空间权限矩阵</span>
+                        <span>空间权限</span>
                       </button>
                     </div>
                   ))}

@@ -44,7 +44,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      // E-06：检测旧 RT 重放 —— 若提供的 RT 是"上一代已废弃 Token"，判定为盗用，永久封禁
+      // E-06：检测旧 RT 重放 —— 该 RT 属于已被轮换废弃的「上一代」令牌。
+      // 处置：吊销整个令牌族（清空 RT/会话字段，全端强制重新登录），不再自动永久封禁。
+      // 根因说明：本仓库 RT 是 user 行上的单列（全端共用一份），多标签页并发刷新、
+      // 网络超时重试等日常场景都会拿着旧 RT 再打一次本接口——原实现直接永久封禁，
+      // 曾导致超级管理员被无日志误封（status=banned、bannedUntil=null、banReason=null 且无 operationlog）。
+      // 真实盗用场景下吊销令牌族同样能让被盗会话立即失效，风险敞口可控。
       const replayed = await prisma.user.findFirst({
         where: { refreshTokenPrev: refreshToken },
         select: { id: true },
@@ -52,12 +57,25 @@ export async function POST(request: NextRequest) {
       if (replayed) {
         await prisma.user.update({
           where: { id: replayed.id },
-          data: { status: "banned", bannedUntil: null }, // PERM_BANNED 永久封禁
+          data: {
+            refreshToken: null,
+            refreshTokenPrev: null,
+            sessionToken: null,
+            sessionExpiresAt: null,
+            sessionRememberMe: false,
+          },
         });
-        console.warn(`[RT防重放] 账号 ${replayed.id} 检测到旧 refreshToken 重放，已永久封禁`);
+        // 同步清理内存会话
+        for (const [key, value] of sessionCache.entries()) {
+          if (value.userId === replayed.id) {
+            sessionCache.delete(key);
+          }
+        }
+        console.warn(`[RT防重放] 账号 ${replayed.id} 检测到旧 refreshToken 重放，已吊销令牌族并强制全端重新登录`);
         return NextResponse.json(
-          { error: "ACCOUNT_DISABLED", message: "检测到令牌重放，账号已封禁" },
-          { status: 403 }
+          // 保持 REFRESH_TOKEN_INVALID 错误码以兼容前端统一登出处理
+          { error: "REFRESH_TOKEN_INVALID", message: "登录状态已失效，请重新登录" },
+          { status: 401 }
         );
       }
       return NextResponse.json(

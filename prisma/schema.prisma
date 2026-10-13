@@ -1340,12 +1340,12 @@ model modelprovider {
   name        String   @unique(map: "ModelProvider_name_key")
   /// 对接协议：本期仅 OPENAI_COMPATIBLE
   protocol    String   @default("OPENAI_COMPATIBLE")
-  /// 服务端直连地址（不向前端下发完整密钥信息）
-  baseUrl     String
+  /// 服务端直连地址（不向前端下发完整密钥信息；用户可输入，统一为 TEXT 避免超长 URL 落库报错）
+  baseUrl     String   @db.Text
   /// API Key 所在环境变量名（禁止把密钥明文写入数据库）
   apiKeyEnv   String   @default("MODEL_API_KEY")
   /// API Key 密文（AES-256-GCM，base64）：后台直接录入密钥时落库；为空时回退到 apiKeyEnv 对应环境变量
-  apiKeyCipher String?
+  apiKeyCipher String?  @db.Text
   enabled     Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
@@ -1544,12 +1544,14 @@ model workspace_byo_model {
   workspaceId   String   @unique(map: "WorkspaceByoModel_workspaceId_key")
   /// 展示名（同时作为调用时下发的 upstreamModel）
   label         String
+  /// 供应商（厂商）名称，如 DeepSeek / OpenAI / Ollama / 通义千问
+  providerName  String   @default("")
   /// 对接协议：本期仅 OPENAI_COMPATIBLE
   protocol      String   @default("OPENAI_COMPATIBLE")
-  /// 服务端直连地址
-  baseUrl       String
+  /// 服务端直连地址（用户可输入，统一为 TEXT 避免超长 URL 落库报错）
+  baseUrl       String   @db.Text
   /// API Key 密文（AES-256-GCM base64）
-  apiKeyCipher  String
+  apiKeyCipher  String   @db.Text
   /// 模型能力声明（规范化 JSON 字符串数组，取值须来自抽象能力白名单）
   capabilities  Json     @default("[]")
   /// 上下文上限（tokens）
@@ -1569,6 +1571,101 @@ model workspace_byo_model {
   updatedAt     DateTime @updatedAt
 
   @@index([workspaceId], map: "WorkspaceByoModel_workspaceId_idx")
+}
+
+/// 中央「我的模型库」定义：归属某个用户，集中维护端点/密钥/能力/单价。
+/// 一处维护、多处引用：通过 user_byo_model_assignment 绑定到多个空间。
+model user_byo_model_def {
+  id            String   @id @default(uuid())
+  /// 模型库归属用户（创建者）
+  ownerUserId   String
+  /// 展示名（同时作为调用时下发的 upstreamModel）
+  label         String
+  /// 供应商（厂商）名称，如 DeepSeek / OpenAI / Ollama / 通义千问
+  providerName  String   @default("")
+  /// 对接协议：OPENAI_COMPATIBLE / ANTHROPIC / GEMINI
+  protocol      String   @default("OPENAI_COMPATIBLE")
+  /// 服务端直连地址（用户可输入，统一为 TEXT 避免超长 URL 落库报错）
+  baseUrl       String   @db.Text
+  /// API Key 密文（AES-256-GCM base64）；库类型必须为 TEXT 以容纳密文（MySQL 下 String 默认 varchar(191) 会在长密钥时报错）
+  apiKeyCipher  String   @db.Text
+  /// 模型能力声明（规范化 JSON 字符串数组）
+  capabilities  Json     @default("[]")
+  /// 上下文上限（tokens）
+  contextLimit  Int      @default(32000)
+  /// 厂商官方单价（微元 / 100 万 Token）
+  priceInputMicrosPerMillion   Int?
+  priceOutputMicrosPerMillion  Int?
+  priceStatus   String   @default("UNCONFIGURED")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignments   user_byo_model_assignment[]
+
+  @@index([ownerUserId], map: "UserByoModelDef_ownerUserId_idx")
+}
+
+/// 中央模型库 → 空间的绑定关系（多空间引用）。
+/// 单空间在任一时刻仅允许绑定到一个模型定义（写入时清理同空间的其他绑定，保证 materialize 唯一）。
+model user_byo_model_assignment {
+  id              String   @id @default(uuid())
+  /// 关联的中央模型库定义
+  defId           String
+  /// 绑定的工作空间
+  workspaceId     String
+  /// 该空间内是否启用（禁用则回落到空间/平台默认模型）
+  enabled         Boolean  @default(true)
+  /// 是否允许空间成员共享使用（false 时仅空间所有者可使用）
+  shareWithMembers Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  def             user_byo_model_def @relation(fields: [defId], references: [id], onDelete: Cascade)
+
+  @@unique([defId, workspaceId], map: "UserByoAssignment_def_workspace_key")
+  @@index([workspaceId], map: "UserByoAssignment_workspaceId_idx")
+  @@index([defId], map: "UserByoAssignment_defId_idx")
+}
+
+/// 模型使用申请（普通成员 → 空间所有者审批）。
+/// 仅普通成员（MEMBER）可发起；空间管理员(ADMIN)与所有者(OWNER)无需此流程（可直接设默认）。
+/// 审批通过后，按 (userId, workspaceId) 落地到 workspace_member_model_preference，仅改变该申请人默认模型，不影响他人。
+model modelapplication {
+  id            String   @id @default(uuid())
+  workspaceId   String // 申请所属工作空间
+  applicantId   String // 申请人 userId
+  applicantName String? // 冗余：申请人展示名（便于所有者后台展示）
+  deploymentId  String // 申请使用的系统模型部署 id（白名单内、非空间默认）
+  modelLabel    String? // 冗余：申请模型展示名
+  providerName  String? // 冗余：供应商名
+  reason        String? @db.Text // 申请事由
+  status        String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewerId    String? // 审批人（空间所有者）userId
+  reviewerName  String? // 冗余：审批人展示名
+  rejectReason  String? @db.Text // 拒绝原因（拒绝时必填）
+  reviewedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceId], map: "ModelApplication_workspaceId_idx")
+  @@index([applicantId], map: "ModelApplication_applicantId_idx")
+  @@index([status], map: "ModelApplication_status_idx")
+}
+
+/// 成员级获批默认模型（按 用户×空间 唯一）。
+/// 由模型使用申请审批通过 upsert 写入：仅影响该成员在本空间的默认模型，不影响其他成员（满足“变更范围仅限本人”）。
+model workspace_member_model_preference {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  userId       String
+  deploymentId String // 获批默认的系统模型部署 id（与 modeldeployment.id 对应）
+  isAuto       Boolean  @default(false) // true=智能调度/auto；审批通过固定为具体模型时为 false
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([workspaceId, userId], map: "WSMemberModelPref_workspace_user_key")
+  @@index([workspaceId], map: "WSMemberModelPref_workspaceId_idx")
+  @@index([userId], map: "WSMemberModelPref_userId_idx")
 }
 /// 模型注册表「引用完整性」串行锁（单行单例）。
 /// 通过 SELECT ... FOR UPDATE 获取：InnoDB 行锁由数据库持有至事务 COMMIT/ROLLBACK 自动释放，

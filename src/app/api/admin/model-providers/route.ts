@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission } from "@/lib/security";
-import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS } from "@/lib/model-endpoint";
+import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS, MODEL_INPUT_LIMITS, validateModelNameField, validateModelBaseUrlLength, validateModelApiKeyLength } from "@/lib/model-endpoint";
 import { encryptSecret, decryptSecret } from "@/lib/crypto-secrets";
 
 /** GET：列出全部模型供应商（不含任何密钥，仅暴露环境变量名） */
@@ -60,8 +60,10 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
-    if (!name) return NextResponse.json({ success: false, error: "供应商名称不能为空" }, { status: 400 });
-    if (!baseUrl) return NextResponse.json({ success: false, error: "Base URL 不能为空" }, { status: 400 });
+    const nameErr = validateModelNameField(name, "供应商名称", MODEL_INPUT_LIMITS.label);
+    if (nameErr) return NextResponse.json({ success: false, error: nameErr }, { status: 400 });
+    const urlErr = validateModelBaseUrlLength(baseUrl);
+    if (urlErr) return NextResponse.json({ success: false, error: urlErr }, { status: 400 });
     const protocol =
       typeof body.protocol === "string" && body.protocol.trim()
         ? body.protocol.trim().toUpperCase()
@@ -82,6 +84,10 @@ export async function POST(request: NextRequest) {
     //  - apiKeyEnv：仅记录环境变量名，运行时从服务端环境变量读取（兼容旧配置/本地免密钥留空）。
     const apiKeyEnv = typeof body.apiKeyEnv === "string" ? body.apiKeyEnv.trim() : "";
     const apiKeyPlain = typeof body.apiKey === "string" ? body.apiKey : "";
+    if (apiKeyPlain) {
+      const keyErr = validateModelApiKeyLength(apiKeyPlain);
+      if (keyErr) return NextResponse.json({ success: false, error: keyErr }, { status: 400 });
+    }
     const apiKeyCipher = apiKeyPlain ? encryptSecret(apiKeyPlain) : undefined;
 
     const row = await prisma.modelprovider.create({

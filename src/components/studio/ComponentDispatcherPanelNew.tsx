@@ -202,6 +202,8 @@ export default function ComponentDispatcherPanel({
       targetDeploymentId: string;
       label: string;
     };
+    /** 当前用户在本空间获批的默认模型 id（按 用户×空间 持久化），运行时默认选用依据 */
+    myApprovedDefaultDeploymentId?: string | null;
   } | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>("auto");
@@ -258,6 +260,23 @@ export default function ComponentDispatcherPanel({
       cancelled = true;
     };
   }, [isOpen, isLoggedIn, selectedWorkspaceId]);
+
+  // 运行时默认：本机未显式选择（auto/未设置）且存在服务端获批默认模型时，默认选用该模型。
+  // 用户手动选择（handleSelectModel 会写入 localStorage）后，不再被该默认覆盖。
+  useEffect(() => {
+    if (typeof window === "undefined" || !selectedWorkspaceId) return;
+    const approved = availableModels?.myApprovedDefaultDeploymentId;
+    if (!approved) return;
+    let local: string | null = null;
+    try {
+      local = localStorage.getItem(`zhige_last_selected_model_${selectedWorkspaceId}`);
+    } catch {
+      /* localStorage 不可用时忽略 */
+    }
+    if (!local || local === "auto") {
+      setSelectedDeploymentId(approved);
+    }
+  }, [availableModels, selectedWorkspaceId]);
 
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -1207,7 +1226,7 @@ export default function ComponentDispatcherPanel({
                 ) : loadingConfig ? (
                   <div className="bg-white rounded-xl p-6 border border-slate-200/50 shadow-sm flex flex-col items-center justify-center">
                     <div className="w-6 h-6 border-2 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mb-1.5" />
-                    <p className="text-[9.5px] text-slate-400 font-bold">读取空间矩阵...</p>
+                    <p className="text-[9.5px] text-slate-400 font-bold">读取空间组件列表...</p>
                   </div>
                 ) : workspaces.length === 0 ? (
                   <div className="bg-white rounded-xl p-5 border border-slate-200 border-dashed text-center">

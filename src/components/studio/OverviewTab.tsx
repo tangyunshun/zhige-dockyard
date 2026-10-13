@@ -469,7 +469,7 @@ export default function OverviewTab({
       <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs space-y-4 text-left">
         <div className="flex justify-between items-center pb-3 border-b border-slate-100">
           <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-            <Layers className="w-4 h-4 text-[#3182ce]" /> 已装配效能组件 <span className="text-[#3182ce] font-mono">({allCommonComps.length})</span>
+            <Layers className="w-4 h-4 text-[#3182ce]" /> 已装配组件 <span className="text-[#3182ce] font-mono">({allCommonComps.length})</span>
           </h4>
           <button type="button" onClick={viewAllComponents} className="text-xs text-[#3182ce] hover:underline font-bold cursor-pointer transition-colors">
             查看全部组件 ➔

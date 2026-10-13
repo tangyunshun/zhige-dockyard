@@ -239,7 +239,7 @@ export default function KnowledgeTab({
             className="h-9 px-4 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#1a365d] text-white text-xs font-black rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            <span>+ 沉淀/录入新知识</span>
+            <span>+ 录入新知识</span>
           </button>
         )}
       </div>
@@ -270,8 +270,8 @@ export default function KnowledgeTab({
                 className="bg-transparent font-bold outline-none cursor-pointer text-slate-800"
               >
                 <option value="ALL">全部时间</option>
-                <option value="7DAYS">近 7 天沉淀</option>
-                <option value="30DAYS">近 30 天沉淀</option>
+                <option value="7DAYS">近 7 天录入</option>
+                <option value="30DAYS">近 30 天录入</option>
                 <option value="CUSTOM">📅 自定义时间段...</option>
               </select>
             </div>
@@ -339,7 +339,7 @@ export default function KnowledgeTab({
             <BookOpen className="w-6 h-6" />
           </div>
           <p className="text-xs font-bold text-slate-600">空间知识库当前无匹配条目</p>
-          <p className="text-[11px] text-slate-400 font-semibold mt-1">在任务成果中点击“保存沉淀”或在此主动录入知识，即可归档至知识库。</p>
+          <p className="text-[11px] text-slate-400 font-semibold mt-1">在处理结果中点击“保存到知识库”，或在此录入新知识。</p>
         </div>
       ) : (
         <div className="space-y-4">

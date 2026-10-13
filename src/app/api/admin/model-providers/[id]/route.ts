@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission } from "@/lib/security";
-import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS } from "@/lib/model-endpoint";
+import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS, MODEL_INPUT_LIMITS, validateModelBaseUrlLength, validateModelApiKeyLength } from "@/lib/model-endpoint";
 import { encryptSecret } from "@/lib/crypto-secrets";
 import { withModelRegistryLock, ModelRegistryLockTimeoutError } from "@/lib/model-registry-lock";
 import { PLATFORM_DEFAULT_DEPLOYMENT_KEY } from "@/lib/model-registry";
@@ -48,6 +48,9 @@ export async function PATCH(
       data.protocol = protocol;
     }
     if (typeof body.baseUrl === "string" && body.baseUrl.trim()) {
+      // 长度规范：避免超长 URL 落库失败
+      const urlLenErr = validateModelBaseUrlLength(body.baseUrl);
+      if (urlLenErr) return NextResponse.json({ success: false, error: urlLenErr }, { status: 400 });
       // SSRF 防护：复用与创建接口一致的校验
       const endpoint = await validateModelBaseUrlForRequest(body.baseUrl);
       if (!endpoint.ok) {
@@ -59,6 +62,8 @@ export async function PATCH(
     if (typeof body.apiKeyEnv === "string") data.apiKeyEnv = body.apiKeyEnv.trim();
     // apiKey：后台直接录入明文时加密落库；不传则不改动（与 apiKeyEnv 二选一，密文优先）
     if (typeof body.apiKey === "string" && body.apiKey.length > 0) {
+      const keyErr = validateModelApiKeyLength(body.apiKey);
+      if (keyErr) return NextResponse.json({ success: false, error: keyErr }, { status: 400 });
       data.apiKeyCipher = encryptSecret(body.apiKey);
     }
     if (typeof body.enabled === "boolean") data.enabled = body.enabled;

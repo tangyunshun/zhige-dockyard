@@ -1,15 +1,15 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { 
-  Building2, 
-  ArrowRight, 
-  Settings, 
-  MoreVertical, 
-  Users, 
-  LayoutGrid, 
-  Sliders, 
-  TrendingUp, 
+import {
+  Building2,
+  ArrowRight,
+  Settings,
+  MoreVertical,
+  Users,
+  LayoutGrid,
+  Sliders,
+  TrendingUp,
   ArrowUpRight,
   LogOut,
   Trash2,
@@ -110,18 +110,16 @@ export default function EnterpriseWorkspaceCard({
   };
 
   return (
-    <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg transition-all duration-300 gap-3 group relative overflow-visible ${
-      workspace.status === "DISABLED"
+    <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg transition-all duration-300 gap-3 group relative overflow-visible ${workspace.status === "DISABLED"
         ? "bg-red-50/20 border border-red-200/80 hover:border-red-300"
         : "bg-white/60 border border-slate-200/50 hover:border-[#d97706]/25"
-    }`}>
+      }`}>
       <div className="flex items-center gap-3.5 min-w-0">
         {/* 企业专属橙色背景图标框 (停用时呈现红色警示态) */}
-        <div className={`w-9 h-9 rounded border-none flex items-center justify-center flex-shrink-0 shadow-sm transition-transform duration-300 group-hover:scale-105 ${
-          workspace.status === "DISABLED"
+        <div className={`w-9 h-9 rounded border-none flex items-center justify-center flex-shrink-0 shadow-sm transition-transform duration-300 group-hover:scale-105 ${workspace.status === "DISABLED"
             ? "bg-red-100 text-red-600"
             : "bg-amber-50 text-[#d97706]"
-        }`}>
+          }`}>
           {workspace.status === "DISABLED" ? (
             <AlertCircle className="w-4.5 h-4.5" />
           ) : (
@@ -168,12 +166,12 @@ export default function EnterpriseWorkspaceCard({
                     <span className="font-mono text-red-950 font-black">
                       {workspace.disabledUntil
                         ? (() => {
-                            const d = new Date(workspace.disabledUntil);
-                            const msLeft = d.getTime() - Date.now();
-                            const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-                            const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-                            return `${dateStr} (${daysLeft > 0 ? `剩余 ${daysLeft} 天` : "即将到期"} · 到期自动恢复)`;
-                          })()
+                          const d = new Date(workspace.disabledUntil);
+                          const msLeft = d.getTime() - Date.now();
+                          const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+                          const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+                          return `${dateStr} (${daysLeft > 0 ? `剩余 ${daysLeft} 天` : "即将到期"} · 到期自动恢复)`;
+                        })()
                         : "永久管控（需人工申诉审核解封）"}
                     </span>
                   </span>
@@ -304,7 +302,7 @@ export default function EnterpriseWorkspaceCard({
                     </button>
 
                     <div className="border-t border-slate-100 my-1" />
-                    
+
                     <button
                       onClick={() => {
                         setMenuOpen(false);

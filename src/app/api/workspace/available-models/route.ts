@@ -54,6 +54,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "无权访问该工作空间模型池" }, { status: 403 });
     }
 
+    // 当前用户获批默认模型 & 我的申请状态（用于「申请使用」状态展示与运行时默认）
+    const myPref = await prisma.workspace_member_model_preference
+      .findUnique({ where: { workspaceId_userId: { workspaceId, userId } } })
+      .catch(() => null);
+    const myApprovedDefaultDeploymentId = myPref && !myPref.isAuto ? myPref.deploymentId : null;
+
+    const myApps = await prisma.modelapplication
+      .findMany({
+        where: { workspaceId, applicantId: userId },
+        select: { deploymentId: true, status: true },
+      })
+      .catch(() => [] as { deploymentId: string; status: string }[]);
+    const appStatusByDeployment: Record<string, string> = {};
+    for (const a of myApps) appStatusByDeployment[a.deploymentId] = a.status;
+
     // 1. 读取空间策略与白名单
     const policy = await loadSpaceModelPolicy(workspaceId);
 
@@ -143,6 +158,8 @@ export async function GET(request: NextRequest) {
           capabilities: Array.isArray(dep.capabilities) ? (dep.capabilities as string[]) : [],
           contextLimit: dep.contextLimit,
           isSpaceDefault: policy.defaultDeploymentId === dep.id,
+          // 当前用户对该模型的申请状态（PENDING/APPROVED/REJECTED/null），用于「申请使用」入口展示
+          myApplicationStatus: appStatusByDeployment[dep.id] || null,
           pricing: pricingDto,
           // 该部署的全部已启用计价时段（高峰/闲时/节假日等），供前台罗列完整分时段计价
           pricingPeriods: await listDeploymentPricingPeriods(dep.id),
@@ -156,7 +173,7 @@ export async function GET(request: NextRequest) {
     const wsType: string = (ws?.type as string) || "PERSONAL";
 
     // 构造单条 BYO 脱敏视图（密钥绝不返回）
-    const buildByoView = (
+    const buildByoView = async (
       row: any,
       sourceWorkspaceId: string,
       sourceOwnerId: string,
@@ -171,12 +188,19 @@ export async function GET(request: NextRequest) {
       const shared = row.shareWithMembers !== false;
       const isSourceOwner = userId === sourceOwnerId;
       const canUse = shared || isSourceOwner;
+      // 反查该空间生效行对应的中央模型库定义 id（用于「绑定到本空间」与跨空间去重）
+      const assignment = await prisma.user_byo_model_assignment
+        .findFirst({ where: { workspaceId: sourceWorkspaceId }, select: { defId: true } })
+        .catch(() => null);
       return {
         configured: true,
         id: `byo:${sourceWorkspaceId}`,
         sourceWorkspaceId,
+        defId: assignment?.defId ?? null,
+        boundToCurrentSpace: sourceWorkspaceId === workspaceId,
         scope, // SPACE=空间共享模型；PERSONAL_MEMBER=成员个人模型（仅本人可见）
         label: row.label,
+        providerName: (row.providerName as string) || "",
         protocol: row.protocol,
         endpointHost,
         capabilities: normCapabilities(row.capabilities),
@@ -196,11 +220,20 @@ export async function GET(request: NextRequest) {
     };
 
     const byoModels: any[] = [];
+    const seenDefIds = new Set<string>();
+    // 推入并按 defId 去重：同一模型绑定多个空间时只展示一条（优先“已绑本空间”的那条，因 3a 先入）
+    const pushByo = async (view: any) => {
+      if (view.defId) {
+        if (seenDefIds.has(view.defId)) return;
+        seenDefIds.add(view.defId);
+      }
+      byoModels.push(view);
+    };
 
     // 3a. 当前空间自身 BYO（空间内所有成员可见/可用）
     const currentByoRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId } });
     if (currentByoRow) {
-      byoModels.push(buildByoView(currentByoRow, workspaceId, ws?.ownerId || "", "SPACE"));
+      await pushByo(await buildByoView(currentByoRow, workspaceId, ws?.ownerId || "", "SPACE"));
     }
 
     if (wsType === "ENTERPRISE") {
@@ -220,7 +253,7 @@ export async function GET(request: NextRequest) {
           if (pw.ownerId !== userId) continue;
           const pRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId: pw.id } });
           if (pRow) {
-            byoModels.push(buildByoView(pRow, pw.id, pw.ownerId, "PERSONAL_MEMBER"));
+            await pushByo(await buildByoView(pRow, pw.id, pw.ownerId, "PERSONAL_MEMBER"));
           }
         }
       }
@@ -233,7 +266,7 @@ export async function GET(request: NextRequest) {
       for (const ew of ownedEnterprise) {
         const eRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId: ew.id } });
         if (eRow) {
-          byoModels.push(buildByoView(eRow, ew.id, ew.ownerId, "SPACE"));
+          await pushByo(await buildByoView(eRow, ew.id, ew.ownerId, "SPACE"));
         }
       }
     }
@@ -275,6 +308,8 @@ export async function GET(request: NextRequest) {
         defaultTarget,
         policyConfigured: policy.configured,
         configuredAllowedCount: policy.configured ? policy.allowedDeploymentIds.length : null,
+        // 当前用户在本空间获批的默认模型（按 用户×空间 持久化），运行时默认选用依据
+        myApprovedDefaultDeploymentId: myApprovedDefaultDeploymentId || null,
         // 兼容层别名映射（彻底保障前后端消费统一与健壮性）
         models: systemModels,
         byo: byoModel,

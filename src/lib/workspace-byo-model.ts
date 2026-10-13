@@ -12,7 +12,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { ContractValidationError } from "@/lib/component-runtime-utils";
-import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS } from "@/lib/model-endpoint";
+import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS, MODEL_INPUT_LIMITS, validateModelNameField, validateModelBaseUrlLength, validateModelApiKeyLength, validateModelNumericFields } from "@/lib/model-endpoint";
 import { createModelAdapter, ModelAdapterError } from "@/lib/model-adapter";
 import { encryptSecret, decryptSecret } from "@/lib/crypto-secrets";
 import type { DeploymentPricing, PriceSource, PriceStatus } from "@/lib/model-pricing";
@@ -70,15 +70,20 @@ export function validateByoInput(
   const contextLimit = typeof body.contextLimit === "number" ? body.contextLimit : 32000;
   const enabled = body.enabled !== false;
 
-  if (!label) return { ok: false, error: "展示名不能为空" };
+  const nameErr = validateModelNameField(label, "展示名", MODEL_INPUT_LIMITS.label);
+  if (nameErr) return { ok: false, error: nameErr };
   if (!isSupportedModelProtocol(protocol)) {
     return { ok: false, error: `协议暂不支持：${protocol}（可选：${SUPPORTED_MODEL_PROTOCOLS.join(" / ")}）` };
   }
-  if (!baseUrl) return { ok: false, error: "Base URL 不能为空" };
+  const urlErr = validateModelBaseUrlLength(baseUrl);
+  if (urlErr) return { ok: false, error: urlErr };
   let keepExistingKey = false;
   if (!apiKey) {
     if (requireApiKey) return { ok: false, error: "API Key 不能为空" };
     keepExistingKey = true;
+  } else {
+    const keyErr = validateModelApiKeyLength(apiKey);
+    if (keyErr) return { ok: false, error: keyErr };
   }
   if (contextLimit < 1) return { ok: false, error: "上下文上限必须为正整数" };
   for (const c of capabilities) {
@@ -91,9 +96,8 @@ export function validateByoInput(
   if (priceInput === null || priceOutput === null) {
     return { ok: false, error: "平台服务费（输入/输出）必须配置，系统按此向用户收费" };
   }
-  if (priceInput < 0 || priceOutput < 0) {
-    return { ok: false, error: "平台服务费不能为负数" };
-  }
+  const numErr = validateModelNumericFields({ contextLimit, priceInputMicros: priceInput, priceOutputMicros: priceOutput });
+  if (numErr) return { ok: false, error: numErr };
   const shareWithMembers = body.shareWithMembers !== false;
   return {
     ok: true,

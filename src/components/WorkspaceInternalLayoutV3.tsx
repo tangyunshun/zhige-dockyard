@@ -55,6 +55,7 @@ import { ResultViewer, ResultViewerTask } from "@/components/studio/ResultViewer
 import KnowledgeTab from "@/components/studio/KnowledgeTab";
 import LogsTab from "@/components/studio/LogsTab";
 import PointsLedgerTab from "@/components/studio/PointsLedgerTab";
+import WorkspaceModelPolicyTab from "@/components/studio/WorkspaceModelPolicyTab";
 import SafeUninstallModal from "@/components/studio/SafeUninstallModal";
 import { PostIcon } from "@/components/studio/PostIcon";
 import type { PositionDefinition } from "@/constants/positions";
@@ -823,7 +824,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     if (workspaceType === "ENTERPRISE") {
       const isEnabled = componentStates?.[compId]?.enabled !== false;
       if (isEnabled) {
-        toast.error(`组件 [${compName}] 处于开启启用状态，强行阻断卸载！请先禁用该组件以切断服务。`);
+        toast.error(`组件 [${compName}] 正在启用中，请先禁用再卸载`);
         return;
       }
     }
@@ -855,10 +856,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         
         if (hasTaskData || hasResultData || hasKnowledgeData) {
           const blockedLog = `ℹ️ 检测到该组件存在 ${hasTaskData ? "任务运行历史、" : ""}${hasResultData ? "成果数据文件、" : ""}${hasKnowledgeData ? "沉淀知识资产" : ""}等数据依存关系。`;
-          setCheckLogs(prev => [...prev, blockedLog, "✔ 解绑仅移除组件绑定关系，任务/结果/知识库数据资产将完整保留，可直接继续。"]);
+          setCheckLogs(prev => [...prev, blockedLog, "✔ 解绑只移除组件绑定，任务、结果和知识库数据会保留"]);
           setUninstallStep("confirm");
         } else {
-          setCheckLogs(prev => [...prev, "✔ 诊断通过：组件没有任何历史任务数据与存储挂载占用！"]);
+          setCheckLogs(prev => [...prev, "✔ 诊断通过：该组件没有历史任务数据"]);
           setUninstallStep("confirm");
         }
       }
@@ -982,22 +983,22 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     
     const lower = trimmed.toLowerCase();
     if (lower.includes("标书") || lower.includes("rfp") || lower.includes("投标") || lower.includes("合同")) {
-      return "我需要对上传的 RFP 招标 PDF 材料及技术偏离文件进行格式自检，通过深度文本适配自动提取偏离差异条款，并快速生成规范的可视化风险比对报告。";
+      return "检查上传的招标 PDF 和技术偏离文件，提取与招标要求不一致的条款，生成风险比对报告。";
     }
     if (lower.includes("api") || lower.includes("接口") || lower.includes("后端") || lower.includes("swagger")) {
-      return "我需要对给定的 RESTful API 协议契约进行分析，逆向生成对应的 Spring Boot/Next.js 后端接口模板与业务控制器框架，并自动对齐契约定义。";
+      return "分析接口文档，生成对应的后端接口代码和控制器框架，与接口定义保持一致。";
     }
     if (lower.includes("测试") || lower.includes("单测") || lower.includes("jest") || lower.includes("junit")) {
-      return "我需要对项目核心业务代码自动生成覆盖率达标的单元测试用例，并配套构建 Docker 自动化部署镜像及流水线配置文件。";
+      return "为项目核心代码生成单元测试用例，并生成 Docker 部署配置和流水线配置文件。";
     }
     if (lower.includes("react") || lower.includes("vue") || lower.includes("前端") || lower.includes("页面")) {
-      return "我希望将手写或导出的交互原型 schema 自动转换生成为符合现代化设计系统规范的响应式 React 大前端组件代码。";
+      return "把原型设计转换生成 React 前端组件代码。";
     }
     if (lower.includes("数据库") || lower.includes("er") || lower.includes("sql") || lower.includes("建表")) {
-      return "我需要对现有的 DDL 建表 SQL 脚本进行实体逆向映射，生成直观清晰的 ER 拓扑图模型，并导出为标准数据字典。";
+      return "读取建表 SQL，生成 ER 图和数据字典。";
     }
     
-    return `我需要在当前工作空间中，基于“${trimmed}”的具体研发场景，通过配置化效能组件进行数据流自适应处理，自动生成规范成果，并沉淀为团队 SOP 避坑规约。`;
+    return `基于“${trimmed}”这个场景，用组件处理材料并生成结果文档。`;
   };
 
   const [aiMatchedComponent, setAiMatchedComponent] = useState<ComponentDefinition | null>(null);
@@ -1720,6 +1721,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         }
         toast.success("专属邀请链接已生成，可复制发给团队成员！");
         loadTabMembers();
+
+        // 准确定位到生成的邀请码结果
+        setTimeout(() => {
+          const resEl =
+            document.getElementById("modal-tab-invite-result") ||
+            document.getElementById(`tab-invitation-card-${data.invitationCode}`) ||
+            document.getElementById("tab-active-invitations-section");
+          if (resEl) {
+            resEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 120);
       } else {
         const err = await res.json();
         throw new Error(err.error || "生成失败");
@@ -1752,7 +1764,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       });
 
       if (res.ok) {
-        toast.success(action === "revoke" ? "邀请链接已成功作废！" : "邀请记录已成功物理删除！");
+        toast.success(action === "revoke" ? "邀请链接已作废" : "邀请记录已删除");
         loadTabMembers();
       } else {
         const err = await res.json();
@@ -2002,7 +2014,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       });
 
       if (res.ok) {
-        toast.success("空间核心数据、任务历史与归档文档已全量重置");
+        toast.success("空间数据、任务历史和文档已重置");
         // 清理本地渲染的运行时内存 State
         setRecentTasks([]);
         setAssets([]);
@@ -2042,7 +2054,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       });
 
       if (res.ok) {
-        toast.success("工作空间已成功注销停用，正在返回空间中枢...");
+        toast.success("空间已注销，正在返回工作空间列表...");
         setShowDeleteConfirm(false);
         setDeleteConfirmText("");
         setTimeout(() => {
@@ -2095,7 +2107,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         isInitializingRef.current = false;
         setLoadState("error");
         setLoading(false);
-        setErrorMessage("工作空间加载超时，可能是网络波动或鉴权链路较慢。请点击下方按钮重新重试。");
+        setErrorMessage("空间加载超时，请点击下方按钮重试。");
       }
     }, 12000);
 
@@ -2545,7 +2557,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     setActiveTab("quick");
     setQuickSelectedCompId(newBoundComp.id);
     setQuickSubStep("material");
-    toast.success(`已成功装载组件 [${newBoundComp.name}] 到快速通道！`);
+    toast.success(`组件 [${newBoundComp.name}] 已添加到快速任务`);
   };
 
   const handleGoBack = () => {
@@ -2603,7 +2615,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       setAiMatchFiles([]);
       toast.info("已成功清空未提交材料并加载新组件");
     } else if (actionType === "keep") {
-      toast.success(`已成功将已有材料草稿与新组件 [${comp.name}] 绑定并载入！`);
+      toast.success(`材料已关联到组件 [${comp.name}]`);
     }
 
     addRecentUsed(comp.id, workspaceId);
@@ -2616,10 +2628,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const handleComponentClick = (comp: ZhiGeComponent) => {
     if (!hasComponentPermission(comp.id)) {
       if (authData?.workspaceType === "PERSONAL") {
-        toast.error("该组件为高阶功能，请升级当前空间包以解锁使用");
+        toast.error("该组件需要升级空间套餐后才能使用");
         setShowUpgradeModal(true);
       } else {
-        toast.error("越权警告：您的角色权限不支持此组件的执行授权");
+        toast.error("无权执行：当前角色不能运行该组件");
       }
       return;
     }
@@ -2643,7 +2655,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("已成功复制处理成果 Markdown 到剪贴板！");
+    toast.success("已复制处理结果");
   };
 
   // 自动化执行处理 (校验状态机)
@@ -2662,7 +2674,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     const execSelectedAsset = overrides?.selectedAsset !== undefined ? overrides.selectedAsset : selectedAsset;
 
     if (!execCompId) {
-      toast.error("请先在列表中选定要调用的效能组件！");
+      toast.error("请先选择要运行的组件！");
       return;
     }
     const execComp = componentCatalog.find(c => c.id === execCompId);
@@ -2698,7 +2710,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     }
     const estimatedCost = Number(componentCatalog.find(c => c.id === execCompId)?.estimatedModelTokens) || 0;
     const selectedComp = componentCatalog.find(c => c.id === execCompId);
-    const taskName = `${selectedComp?.name || "效能组件"}自动化任务`;
+    const taskName = `${selectedComp?.name || "组件"}自动化任务`;
     const finalExecInputMaterial = execInputMaterial.trim();
     let inputSource: Record<string, any> = { sourceType: "text" };
     if (execMaterialInputMode === "file" && execUploadedFileMeta) {
@@ -2717,7 +2729,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       };
     }
     if (workspaceType === "ENTERPRISE" && !isManager && restrictedComponentIds.includes(execCompId)) {
-      toast.error("执行拦截：当前用户岗位受矩阵规则限制，无法执行该受限组件！");
+      toast.error("无法执行：当前岗位无权运行该组件");
       return;
     }
     // 合同诚实化：无有效 PUBLISHED 激活合同一律拦截，绝不发送 Studio 执行请求、绝不产生模拟结果
@@ -2725,10 +2737,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     if (execCompDef && execCompDef.contractReady !== true) {
       toast.error(
         execCompDef.activeContractLifecycle === "DRAFT"
-          ? "执行拦截：该组件合同处于草稿状态（即将上线），暂不可执行。"
+          ? "暂不可执行：该组件合同还在草稿状态，即将上线"
           : execCompDef.activeContractLifecycle === "ARCHIVED"
-            ? "执行拦截：该组件合同已归档，暂不可执行。"
-            : "执行拦截：该组件尚未配置有效可执行合同（缺少 PUBLISHED 激活合同），暂不可执行。",
+            ? "暂不可执行：该组件合同已归档"
+            : "暂不可执行：该组件还没有配置可执行合同",
       );
       return;
     }
@@ -2754,8 +2766,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     if (workspaceType === "ENTERPRISE" && availableTokenForUser !== -1 && availableTokenForUser < gateCost) {
       toast.error(
         isMemberView
-          ? `执行拦截：您的独立算力点不足（需要 ${gateCost} 点，当前 ${availableTokenForUser} 点），请向空间管理员申请分配！`
-          : `执行拦截：当前空间剩余服务调用额度不足（需要 ${gateCost} 算力点），请联系空间管理员！`,
+          ? `算力点不足：需要 ${gateCost} 点，当前 ${availableTokenForUser} 点，请向空间管理员申请`
+          : `空间剩余额度不足：需要 ${gateCost} 算力点，请联系空间管理员`,
       );
       return;
     }
@@ -2953,7 +2965,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       setAssets(prev => [newAsset, ...prev]);
       setShowImportAssetModal(false);
       if (newAsset.status === "PENDING") {
-        toast.info("已成功上传！由于您上传的是【空间公开】资料，现已提交进入 ⏳ 待审核 状态，等待管理员合规审核。");
+        toast.info("上传成功！这是【空间公开】资料，需要等待管理员审核");
       } else {
         toast.success("文件已成功作为输入材料导入空间资料库！");
       }
@@ -3006,7 +3018,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       setKnowledges(prev => [newKnowledge, ...prev]);
       setShowImportAssetModal(false);
       setImportAssetMode("asset");
-      toast.success(kd.status === "APPROVED" ? "已成功归档至【知识沉淀规范库】！" : "已提交归档申请，等待管理员审核");
+      toast.success(kd.status === "APPROVED" ? "已保存到知识库" : "已提交归档申请，等待管理员审核");
     } catch (error: any) {
       console.error("知识沉淀失败:", error);
       toast.error(error.message || "知识沉淀失败，请稍后重试");
@@ -3104,7 +3116,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const handleSaveToKnowledge = async (task: TaskRecord) => {
     const isExist = knowledges.find(k => k.sourceTaskId === task.id);
     if (isExist) {
-      toast.info("成果已归档在【知识沉淀规范库】，可随时在知识库中查阅");
+      toast.info("结果已保存到知识库，可随时查看");
       return;
     }
     try {
@@ -3147,9 +3159,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       };
       setKnowledges(prev => [newKnowledge, ...prev]);
       if (kd.status === "APPROVED") {
-        toast.success("已成功归档至【知识沉淀规范库】！");
+        toast.success("已保存到知识库");
       } else {
-        toast.success("已提交归档申请！已向知识库管理员发起审批流");
+        toast.success("已提交归档申请，等待知识库管理员审核");
       }
     } catch (error: any) {
       console.error("知识沉淀失败:", error);
@@ -3180,7 +3192,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         setKnowledges(prev => prev.filter(k => k.id !== rd.id));
       }
       toast.success(approve 
-        ? (comment ? `归档批示: "${comment}"` : "知识沉淀审核已通过！")
+        ? (comment ? `审核意见: "${comment}"` : "审核已通过！")
         : (comment ? `驳回意见: "${comment}"` : "知识沉淀申请已驳回！")
       );
     } catch (error: any) {
@@ -3245,10 +3257,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       }
       const { isDirectPublic } = body.data;
       if (isDirectPublic) {
-        toast.success(`管理员特权：资料「${asset.title}」已直接公开发布！`);
+        toast.success(`资料「${asset.title}」已公开发布`);
         setAssets(prev => prev.map(a => a.id === asset.id ? { ...a, status: "APPROVED", visibility: "PUBLIC" } : a));
       } else {
-        toast.success(`公开申请已提交！资料已发送至管理员待审核列表中。`);
+        toast.success(`公开申请已提交，等待管理员审核`);
         setAssets(prev => prev.map(a => a.id === asset.id ? { ...a, status: "PENDING", visibility: "PUBLIC" } : a));
       }
     } catch (err: any) {
@@ -3273,7 +3285,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       if (!res.ok || !body.success) {
         throw new Error(body.error || "批量删除失败");
       }
-      toast.success(`已成功批量物理删除 ${body.count} 项资料数据！`);
+      toast.success(`已删除 ${body.count} 项资料`);
       setAssets(prev => prev.filter(a => !assetIds.includes(a.id)));
     } catch (err: any) {
       toast.error(err.message || "批量删除失败");
@@ -3298,7 +3310,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       }
       const { isDirectPublic, count } = body;
       if (isDirectPublic) {
-        toast.success(`管理员特权：已成功将 ${count} 项资料批量直接公开发布！`);
+        toast.success(`已公开发布 ${count} 项资料`);
         setAssets(prev => prev.map(a => assetIds.includes(a.id) ? { ...a, status: "APPROVED", visibility: "PUBLIC" } : a));
       } else {
         toast.success(`批量公开申请已提交！共 ${count} 项资料已发送至管理员待审核列表中。`);
@@ -3449,7 +3461,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     );
     if (matched) {
       setAiMatchedComponent(matched);
-      toast.success("已成功自动定位并匹配效能组件！");
+      toast.success("已自动匹配到组件");
     } else {
       setAiMatchedComponent(null);
       toast.info("未能自动识别到高度匹配的组件，建议手动选择。");
@@ -3572,7 +3584,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     {!isCompBlockedOrDraft
                       ? "✔ 合同已激活"
                       : selCatalogCompRight?.readinessStatus === "BLOCKED" || (selCatalogCompRight?.blockingReasons && selCatalogCompRight.blockingReasons.length > 0)
-                        ? "✕ 门禁阻断 (BLOCKED)"
+                        ? "✕ 不可执行"
                         : "✕ 待配置/草稿"}
                   </span>
                 </div>
@@ -3596,7 +3608,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 {selCatalogCompRight?.blockingReasons && selCatalogCompRight.blockingReasons.length > 0 && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-medium text-red-800 leading-relaxed text-left space-y-1">
                     <p className="font-bold text-red-900 flex items-center gap-1">
-                      ⚠️ 门禁阻断原因说明（BLOCKED）
+                      ⚠️ 不可执行原因
                     </p>
                     <p>{selCatalogCompRight.blockingReasons.join("；")}</p>
                   </div>
@@ -3628,8 +3640,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               <Layers className="w-3.5 h-3.5 text-[#3182ce]" /> 组件装配说明
             </h4>
             <div className="text-xs font-medium text-slate-600 space-y-2.5 leading-relaxed">
-              <p>• <span className="text-slate-900 font-bold">已装配组件</span> 即当前工作空间拥有的自动化工具链线。</p>
-              <p>• <span className="text-slate-900 font-bold">授权保护</span> 企业空间遵循岗位安全授权矩阵，不同角色对应不同的运行权限。</p>
+              <p>• <span className="text-slate-900 font-bold">已装配组件</span> 即当前工作空间已添加的组件。</p>
+              <p>• <span className="text-slate-900 font-bold">权限控制</span> 企业空间按岗位控制组件能否运行，不同角色权限不同。</p>
             </div>
             <button onClick={() => router.push(`/studio?workspaceId=${workspaceId}`)} className="w-full h-9 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-lg shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5">
               <Plus className="w-3.5 h-3.5" />
@@ -3686,10 +3698,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         return (
           <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs text-left space-y-3.5 animate-in fade-in duration-200">
             <h3 className="text-xs font-black text-slate-900 pb-2 border-b border-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-indigo-600" /> 团队 SOP 规范归档
+              <BookOpen className="w-3.5 h-3.5 text-indigo-600" /> 知识库使用说明
             </h3>
             <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs font-semibold text-slate-600 leading-relaxed text-left">
-              在任务成果中心可将规范标准一键沉淀至知识库中，形成规范体系。
+              任务处理完成后，可以把结果文档保存到知识库，方便以后查阅。
             </div>
           </div>
         );
@@ -3698,10 +3710,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         return (
           <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs text-left space-y-3.5 animate-in fade-in duration-200">
             <h3 className="text-xs font-black text-slate-900 pb-2 border-b border-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-emerald-600" /> 协同成员管理指南
+              <Users className="w-3.5 h-3.5 text-emerald-600" /> 成员管理说明
             </h3>
             <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs font-semibold text-slate-600 leading-relaxed">
-              企业空间支持多角色研发协同（所有者、管理员、开发者等），可自由分配职责。
+              企业空间可以添加多名成员，并分配所有者、管理员、成员等角色。
             </div>
           </div>
         );
@@ -3710,10 +3722,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         return (
           <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs text-left space-y-3.5 animate-in fade-in duration-200">
             <h3 className="text-xs font-black text-slate-900 pb-2 border-b border-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-red-500" /> 授权矩阵安全策略
+              <ShieldCheck className="w-3.5 h-3.5 text-red-500" /> 权限说明
             </h3>
             <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs font-semibold text-slate-600 leading-relaxed">
-              基于岗位定义组件执行权限，可防止非授权角色误触发高算力消耗组件。
+              按岗位设置每个组件能否运行，避免成员误运行高消耗组件。
             </div>
           </div>
         );
@@ -3722,10 +3734,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         return (
           <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs text-left space-y-3.5 animate-in fade-in duration-200">
             <h3 className="text-xs font-black text-slate-900 pb-2 border-b border-slate-100 uppercase tracking-wider flex items-center gap-1.5">
-              <BarChart2 className="w-3.5 h-3.5 text-blue-600" /> 空间算力大盘指南
+              <BarChart2 className="w-3.5 h-3.5 text-blue-600" /> 统计说明
             </h3>
             <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs font-semibold text-slate-600 leading-relaxed">
-              这里是调用分析快速统计面板，详细费用与转化明细可切换大盘页。
+              这里显示调用统计摘要，详细数据见「使用统计」页。
             </div>
           </div>
         );
@@ -3763,76 +3775,82 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   // 12 个子页面的核心业务价值与作用说明字典
   const TAB_HERO_META: Record<string, { title: string; subtitle: string; icon: React.ReactNode; tagText: string }> = {
     overview: {
-      title: "工作空间全景总览",
-      subtitle: "聚合当前空间的自动化任务流水、可用算力配额、已装配工具与多维指标，提供全流程研发效能的总控视角。",
+      title: "工作空间总览",
+      subtitle: "汇总本空间的任务记录、剩余算力点、已装配组件等关键数据。",
       icon: <Layout className="w-4 h-4 text-[#3182ce]" />,
-      tagText: "全景仪表盘"
+      tagText: "数据汇总"
     },
     quick: {
-      title: "快速自动化任务中心",
-      subtitle: "支持上传本地文档（PDF/Word/JSON等）、粘贴源码或自然语言识别，一键提交源材料并快速发起自动化处理与架构检测。",
+      title: "快速任务",
+      subtitle: "上传文档、粘贴源码或用一句话描述需求，选择组件后自动执行处理。",
       icon: <Play className="w-4 h-4 text-amber-500" />,
-      tagText: "核心操作流"
+      tagText: "任务发起"
     },
     components: {
-      title: "研发效能组件大厅",
-      subtitle: "管理当前工作空间已装配的自动化组件大纲，提供组件的离线卸载、岗位运行权限保护与新组件的挑选装配。",
+      title: "组件装配",
+      subtitle: "管理本空间已装配的组件：卸载组件、按岗位分配使用权限、装配新组件。",
       icon: <Layers className="w-4 h-4 text-[#3182ce]" />,
-      tagText: "工具链管理"
+      tagText: "组件管理"
     },
     stats: {
-      title: "结构与研发效能大盘",
-      subtitle: "分析空间内全流程 10 大阶段工具覆盖分布结构、计算自动化节省的研发工时，并实时监控项目执行成功率。",
+      title: "使用统计",
+      subtitle: "统计各组件的使用次数、任务成功率和算力点消耗情况。",
       icon: <BarChart2 className="w-4 h-4 text-blue-600" />,
-      tagText: "效能量化"
+      tagText: "数据统计"
     },
     tasks: {
-      title: "自动化任务流水看板",
-      subtitle: "全量监控历次任务的运行状态、执行耗时与处理进度，提供失败重试、日志排查与一键导出任务报告能力。",
+      title: "任务记录",
+      subtitle: "查看历次任务的状态、耗时和处理结果，支持重试、查看日志和导出报告。",
       icon: <CheckCircle2 className="w-4 h-4 text-emerald-600" />,
-      tagText: "任务监控"
+      tagText: "执行记录"
     },
     assets: {
-      title: "空间原始资料与文档库",
-      subtitle: "安全存储用于自动化处理的原始招标文件、需求 PRD、接口 JSON 与源码文件，作为工具处理的标准化输入源。",
+      title: "资料库",
+      subtitle: "存放任务需要处理的原始文件：招标文件、需求文档、接口 JSON、源码等。",
       icon: <Database className="w-4 h-4 text-blue-600" />,
-      tagText: "源材料归档"
+      tagText: "文件存储"
     },
     results: {
-      title: "成果预览与导出中心",
-      subtitle: "归档历次自动化工具处理成功后生成的偏离报告、架构契约与代码产物，支持在线实时预览、离线下载与 SOP 入库。",
+      title: "处理结果",
+      subtitle: "存放任务处理完成后生成的报告、文档和代码，可在线预览和下载。",
       icon: <FileText className="w-4 h-4 text-emerald-600" />,
-      tagText: "产物下发"
+      tagText: "结果导出"
     },
     knowledge: {
-      title: "团队 SOP 与规约知识库",
-      subtitle: "沉淀团队架构规范、代码避坑指南与研发 SOP，让大团队形成统一的开发审核标准，大幅减少重复踩坑。",
+      title: "知识库",
+      subtitle: "存放团队的规范文档和使用经验，方便成员查阅，避免重复踩坑。",
       icon: <BookOpen className="w-4 h-4 text-indigo-600" />,
-      tagText: "规约沉淀"
+      tagText: "文档沉淀"
     },
     members: {
-      title: "团队协同与角色管理",
-      subtitle: "管理工作空间协同成员、分配岗位角色（所有者/管理员/开发者），建立企业级敏捷团队安全协同防线。",
+      title: "成员管理",
+      subtitle: "管理空间成员，分配所有者 / 管理员 / 成员角色。",
       icon: <Users className="w-4 h-4 text-emerald-600" />,
-      tagText: "团队权限"
+      tagText: "成员与角色"
     },
     permissions: {
-      title: "岗位组件权限配置矩阵",
-      subtitle: "按岗位职责（如项目经理、架构师、前端/后端、测试）精细化控制各组件的调度使用权限，保障敏捷开发协同安全。",
+      title: "岗位权限",
+      subtitle: "按岗位控制每个组件能否使用，例如只允许测试岗位运行测试类组件。",
       icon: <ShieldCheck className="w-4 h-4 text-red-500" />,
-      tagText: "团队安全"
+      tagText: "权限控制"
     },
     logs: {
-      title: "空间操作审计与变更日志",
-      subtitle: "本模块透明化记录工作空间内的每一次组件装配、成员角色变更、配置修改与资产操作。所有关键行为均具备明确的时间戳与操作人记录，保障企业级研发数据合规与追溯。",
+      title: "操作日志",
+      subtitle: "记录空间内的组件装配、成员变更、配置修改等操作，含操作时间和操作人。",
       icon: <FileText className="w-4 h-4 text-slate-700" />,
-      tagText: "数据合规追溯"
+      tagText: "操作记录"
+    },
+    models: {
+      title: "模型管理",
+      subtitle: "查看平台分配给本空间的模型并设置空间默认模型；也可管理工作台创建的自带模型，查看调用统计。",
+      icon: <Cpu className="w-4 h-4 text-[#3182ce]" />,
+      tagText: "模型配置"
     },
     settings: {
-      title: "工作空间基本与高级配置",
-      subtitle: "本模块管理工作空间的基本名称、项目描述与空间 Logo 徽章图标。同时提供数据重置与空间注销等管理功能。",
+      title: "空间设置",
+      subtitle: "修改空间名称、描述和图标；也可重置空间数据或注销空间。",
       icon: <Settings className="w-4 h-4 text-slate-700" />,
-      tagText: "全生命周期设置"
+      tagText: "基础设置"
     }
   };
 
@@ -4253,7 +4271,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                   <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-[11px] text-amber-800 font-semibold space-y-1 animate-in fade-in">
                                     <div className="flex items-center gap-1.5 font-bold text-amber-900">
                                       <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                      <span>安全防线：检测到敏感词列项</span>
+                                      <span>检测到敏感词，请修改后再提交</span>
                                     </div>
                                     <p className="leading-normal text-amber-700">
                                       命中词汇: <span className="font-mono font-bold text-amber-900 bg-amber-100/90 px-1.5 py-0.2 rounded border border-amber-200">[{sensitivity.foundWords.join(", ")}]</span>
@@ -4436,13 +4454,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                           const isShortOnTokens = hasSelectedComp && availableTokenForUser !== -1 && (availableTokenForUser < estimatedCost);
 
                           if (!hasSelectedComp) {
-                            disableReason = "请先选择需要执行的效能组件";
+                            disableReason = "请先选择要执行的组件";
                           } else if (selCatalogCompLeft && selCatalogCompLeft.contractReady !== true) {
                             // 优先消费服务端就绪状态与阻断原因，未就绪直接禁用并如实说明
                             if (selCatalogCompLeft.blockingReasons && selCatalogCompLeft.blockingReasons.length > 0) {
-                              disableReason = `阻断：${selCatalogCompLeft.blockingReasons[0]}`;
+                              disableReason = `不可执行：${selCatalogCompLeft.blockingReasons[0]}`;
                             } else if (selCatalogCompLeft.readinessStatus === "BLOCKED") {
-                              disableReason = "阻断：组件存在未满足的业务依赖门禁，当前不能发布/执行";
+                              disableReason = "不可执行：组件还有未满足的前置条件";
                             } else if (selCatalogCompLeft.readinessStatus === "NOT_EXECUTABLE") {
                               disableReason = "不可执行：平台当前模型部署未满足合同所需能力";
                             } else if (selCatalogCompLeft.readinessStatus === "UNCONFIGURED" || selCatalogCompLeft.isCandidateEligible || selCatalogCompLeft.activeContractLifecycle === "DRAFT") {
@@ -4533,7 +4551,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                                     <span>
                                       {(selCatalogCompLeft.blockingReasons && selCatalogCompLeft.blockingReasons.length > 0) || selCatalogCompLeft.readinessStatus === "BLOCKED"
-                                        ? "组件发布阻断说明（BLOCKED）"
+                                        ? "组件不可执行说明"
                                         : selCatalogCompLeft.readinessStatus === "NOT_EXECUTABLE"
                                           ? "运行能力不足（NOT_EXECUTABLE）"
                                           : "组件当前不可发布/执行（待配置/不可执行）"}
@@ -4661,7 +4679,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-[11px] text-amber-800 font-semibold space-y-1 animate-in fade-in">
                                 <div className="flex items-center gap-1.5 font-bold text-amber-900">
                                   <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                  <span>安全防线：检测到敏感词列项</span>
+                                  <span>检测到敏感词，请修改后再提交</span>
                                 </div>
                                 <p className="leading-normal text-amber-700">
                                   命中词汇: <span className="font-mono font-bold text-amber-900 bg-amber-100/90 px-1.5 py-0.2 rounded border border-amber-200">[{sensitivity.foundWords.join(", ")}]</span>
@@ -5352,8 +5370,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   </div>
                   <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
                     {canTabManage
-                      ? "管理工作空间协同成员、分配岗位角色（所有者/管理员/开发者），建立企业级敏捷研发团队安全协同防线。"
-                      : "实时查看当前工作空间下的研发协同伙伴、开发岗位与成员授权情况。"}
+                      ? "管理空间成员，分配所有者 / 管理员 / 成员角色。"
+                      : "查看空间成员及其角色。"}
                   </p>
                 </div>
               </div>
@@ -5884,7 +5902,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   <h4 className="text-xs font-black">个人版空间协作受限提示</h4>
                 </div>
                 <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                  当前处于个人版工作空间，系统不支持多用户协同参与自动化研发设计。升级为企业协同空间后，您可以一键分配开发岗位，并按照安全矩阵执行算力管控。
+                  个人空间不支持多成员协作。升级为企业空间后，可添加成员并分配角色。
                 </p>
                 <button
                   onClick={handleUpgradeClick}
@@ -5920,7 +5938,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
                 {/* 新增：高保真待加入邀请码历史列表，同步空间中枢体验 */}
                 {activeInvitations.length > 0 && (
-                  <div className="border-t border-slate-100 pt-5 space-y-3.5 text-left">
+                  <div id="tab-active-invitations-section" className="border-t border-slate-100 pt-5 space-y-3.5 text-left scroll-mt-10">
                     <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                       <FileText className="w-3.5 h-3.5 text-[#3182ce]" />
                       <span>已生成的邀请码 ({activeInvitations.length})</span>
@@ -5931,20 +5949,34 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         const isExpired = invitation.expiresAt ? new Date(invitation.expiresAt).getTime() < Date.now() : false;
                         const isRevoked = invitation.status === "REVOKED";
                         const isInvalid = isExpired || isRevoked;
+                        const isJustCreated = invitationCode === invitation.code;
                         const joinUrl = `${window.location.origin}/workspace-hub?inviteCode=${invitation.code}`;
                         return (
-                          <div key={invitation.code} className="border border-slate-200 rounded-lg p-2.5 bg-white hover:shadow-sm transition-shadow space-y-2">
+                          <div
+                            id={`tab-invitation-card-${invitation.code}`}
+                            key={invitation.code}
+                            className={`border rounded-lg p-2.5 transition-all space-y-2 ${
+                              isJustCreated
+                                ? "border-indigo-400 bg-indigo-50/60 ring-2 ring-indigo-400/40 shadow-sm"
+                                : "border-slate-200 bg-white hover:shadow-sm"
+                            }`}
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-mono text-base font-extrabold text-slate-800 tracking-tight break-all">{invitation.code}</span>
+                                  {isJustCreated && (
+                                    <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-indigo-600 text-white shadow-xs animate-pulse">
+                                      ✨ 刚生成
+                                    </span>
+                                  )}
                                   {isExpired && (
                                     <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-100 text-amber-600">已过期</span>
                                   )}
                                   {isRevoked && (
                                     <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-slate-100 text-slate-500">已作废</span>
                                   )}
-                                  {!isInvalid && (
+                                  {!isInvalid && !isJustCreated && (
                                     <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-500 text-white shadow-sm">有效</span>
                                   )}
                                 </div>
@@ -6037,9 +6069,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               <button
                                 disabled={isInvalid}
                                 onClick={() => {
-                                  const promoText = `【知阁·舟坊】项目协同邀请 🚢\n\n您已被邀请加入当前的项目工作空间参与协同研发！\n\n🔑 专属协同邀请码：${invitation.code}\n🔗 一键快捷加入通道：${joinUrl}\n\n—— 知阁·舟坊：高效、自动化的现代化一站式全栈架构与协同开发平台`;
+                                  const promoText = `你被邀请加入工作空间\n\n邀请码：${invitation.code}\n加入链接：${joinUrl}`;
                                   navigator.clipboard.writeText(promoText);
-                                  toast.success("已成功复制全部邀请卡片信息！");
+                                  toast.success("已复制邀请信息");
                                 }}
                                 className={`px-2 py-2 border text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
                                   isInvalid
@@ -6355,9 +6387,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   {/* 操作1：重置空间数据 */}
                   <div className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-0.5 pr-2">
-                      <h4 className="text-xs font-black text-slate-800">重置清空当前空间效能数据</h4>
+                      <h4 className="text-xs font-black text-slate-800">清空当前空间数据</h4>
                       <p className="text-[11px] text-slate-400 font-bold leading-normal">
-                        清空当前空间下绑定的所有岗位契约配置和仿真审计日志。该操作仅清空计算记录，不影响账号本身。
+                        清空当前空间的岗位配置和操作日志，只清理使用记录，不影响账号。
                       </p>
                     </div>
                     <button
@@ -6396,6 +6428,15 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       case "logs":
         return (
           <LogsTab logs={operationLogs} workspaceId={workspaceId} isWorkspaceAdmin={userRole === "Owner" || userRole === "Admin" || userRole === "OWNER" || userRole === "ADMIN"} />
+        );
+
+      case "models":
+        return (
+          <WorkspaceModelPolicyTab
+            workspaceId={workspaceId}
+            userRole={userRole}
+            workspaceType={workspaceType}
+          />
         );
 
       case "points": {
@@ -6478,7 +6519,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               onClick={() => router.push("/workspace-hub")}
               className="px-5 py-2.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
             >
-              返回空间中枢
+              返回工作空间列表
             </button>
             <button
               type="button"
@@ -6529,6 +6570,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     { key: "assets", label: "资料" },
     { key: "knowledge", label: "知识库" },
     { key: "stats", label: "统计" },
+    { key: "models", label: "模型" },
     { key: "points", label: "算力点" },
   ];
 
@@ -6690,7 +6732,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       onClick={() => router.push("/workspace-hub")}
                       className="w-full text-center py-1.5 bg-slate-50 hover:bg-slate-100 text-[#3182ce] text-xs font-black rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1"
                     >
-                      <span>前往工作空间中枢 ➔</span>
+                      <span>前往工作空间列表 ➔</span>
                     </button>
                   </div>
                 </div>
@@ -6737,7 +6779,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 <span className="text-xs font-black">✕</span>
               </button>
               <p className="text-xs text-slate-700 font-semibold leading-normal truncate">
-                您刚刚装配了 <span className="text-[#2b6cb0] font-black">[{newBoundComp.name}]</span> 效能组件，现在即可
+                已添加组件 <span className="text-[#2b6cb0] font-black">[{newBoundComp.name}]</span>，现在即可
                 <button
                   onClick={handleUseNewBoundComp}
                   className="text-[#3182ce] hover:text-[#2b6cb0] hover:underline font-black cursor-pointer bg-transparent border-none p-0 inline ml-1 font-sans text-xs"
@@ -6788,8 +6830,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             </div>
             <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-2xl leading-relaxed">
               {workspaceType === "PERSONAL" 
-                ? "个人空间用于个人组件的安全运行、私有开发资料的分类归档以及处理结果的标准化规范沉淀。"
-                : "企业空间支持团队研发协作、组件安全授权、企业文档共享、开发标准 SOP 归档及操作日志审计。"}
+                ? "个人空间用于运行组件、存放个人文件和管理处理结果。"
+                : "企业空间支持团队协作、按岗位控制组件权限、共享文件、归档文档和记录操作日志。"}
             </p>
           </div>
           
@@ -6935,7 +6977,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                    全量真实文件预览: <span className="text-[#3182ce]">{previewData.title}</span>
+                    文件预览: <span className="text-[#3182ce]">{previewData.title}</span>
                   </h3>
                   <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-2 flex-wrap">
                     {/* 格式类型：由文件真实类型判定，输出中文类型名 */}
@@ -6951,7 +6993,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     <span>·</span>
                     {/* 容量：优先文件真实字节数 */}
                     <span className="text-slate-500 font-mono">
-                      真实容量:{" "}
+                      文件大小:{" "}
                       {previewData.sizeStr ||
                         resolveAssetSize({
                           fileSize: previewData.fileSize,
@@ -6960,7 +7002,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     </span>
                     <span>·</span>
                     <span className="text-slate-400 font-mono">
-                      全量总字数: {previewData.content ? previewData.content.length : 0} 字符
+                      总字数: {previewData.content ? previewData.content.length : 0} 字符
                     </span>
                   </p>
                 </div>
@@ -6982,11 +7024,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     onClick={() => {
                       if (previewData.content) {
                         navigator.clipboard.writeText(previewData.content);
-                        toast.success("已将该资料100%全量原文复制到剪贴板");
+                        toast.success("已复制资料全文");
                       }
                     }}
                     className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                    title="复制全量原文"
+                    title="复制全文"
                   >
                     📋 复制全文
                   </button>
@@ -7185,7 +7227,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             {/* Footer 底部状态防线 */}
             <div className="px-6 py-3.5 bg-white border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0 select-none">
               <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1">
-                🛡️ 已验证完整原文 100% 全量展示（零改写、零打折），可滑动查阅全部内容
+                🛡️ 以下为文件完整内容，可滑动查看
               </span>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -7270,7 +7312,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       <div className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{aiMatchDetailModal.description}</div>
                     </div>
                     <div className="space-y-1">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">深度解读</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">需求分析</div>
                       <div className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{d.fullDescription}</div>
                     </div>
                     {d.usage && (
@@ -7446,7 +7488,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
               {/* 生成结果 */}
               {invitationCode && (
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                <div
+                  id="modal-tab-invite-result"
+                  className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/60 space-y-3 ring-2 ring-indigo-400/40 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300 scroll-mt-6"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-xs text-slate-500 font-semibold">邀请码</span>
                     <span className="text-base font-mono font-extrabold text-indigo-600">{invitationCode}</span>
@@ -7517,10 +7562,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             {/* 警告原因及后果详情卡片 */}
             <div className="bg-red-50/60 border border-red-100/80 p-3.5 rounded-xl space-y-1.5 text-left">
               <p className="text-xs text-red-800 font-bold leading-relaxed">
-                ⚠️ 此操作将物理清空该空间下的所有组件执行历史、分析报告、资料文档和归档知识规约。
+                ⚠️ 此操作会清空该空间的所有任务历史、处理结果、资料和知识库文档。
               </p>
               <p className="text-[11px] text-red-500 font-extrabold">
-                清空后，所有数据资产将彻底消失且无法恢复，请谨慎操作。
+                清空后数据无法恢复，请谨慎操作。
               </p>
             </div>
 
@@ -7556,7 +7601,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 disabled={clearing || clearConfirmText !== "确认重置"}
                 className="px-5 h-9 bg-gradient-to-r from-amber-500 to-red-500 hover:from-amber-600 hover:to-red-600 text-white disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-amber-500 text-xs font-black rounded-xl shadow-md shadow-red-500/20 transition-all cursor-pointer flex items-center gap-1.5"
               >
-                {clearing ? "正在重置数据..." : "确认物理清空"}
+                {clearing ? "正在清空..." : "确认清空"}
               </button>
             </div>
           </div>
@@ -7580,7 +7625,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   确认注销停用此工作空间？
                 </h3>
                 <p className="text-xs text-slate-500 font-bold mt-1 leading-relaxed">
-                  高危空间注销警示：极度不可逆操作！
+                  停用后无法恢复，请谨慎操作。
                 </p>
               </div>
             </div>
@@ -7588,17 +7633,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             {/* 警告原因及后果详情卡片 */}
             <div className="bg-red-50/70 border border-red-200/80 p-3.5 rounded-xl space-y-1.5 text-left">
               <p className="text-xs text-red-800 font-bold leading-relaxed">
-                🚨 此操作将物理停用该协作工作空间，强制踢出所有协同团队成员。
+                🚨 此操作会停用该工作空间，所有成员将被移出。
               </p>
               <p className="text-[11px] text-red-500 font-extrabold">
-                空间解散后，所有协作者将永久无法访问此空间及历史产物，该过程完全不可逆！
+                停用后，成员将无法访问该空间及其历史数据，且无法恢复。
               </p>
             </div>
 
             {/* 校验输入框区 */}
             <div className="space-y-2 pt-1">
               <label className="text-xs font-black text-slate-700 block">
-                请输入 <span className="text-red-500 font-mono bg-red-50 px-1.5 py-0.5 rounded border border-red-200">确认停用</span> 以确认此高危操作：
+                请输入 <span className="text-red-500 font-mono bg-red-50 px-1.5 py-0.5 rounded border border-red-200">确认停用</span> 以确认此操作：
               </label>
               <input
                 type="text"
@@ -7718,7 +7763,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">完整研发材料全景预览与编辑</h3>
+                  <h3 className="text-base font-black text-slate-900">材料预览与编辑</h3>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">支持大段需求文本、代码段落或 PRD 规则的长文本舒适编辑</p>
                 </div>
               </div>
@@ -8253,7 +8298,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </div>
                 <div>
                   <h3 className="font-black text-sm">配置成员个人月度算力额度</h3>
-                  <p className="text-[11px] text-blue-100">将该成员独立算力余额对齐到所设上限（差额从空间共享池分配/回收）</p>
+                  <p className="text-[11px] text-blue-100">把该成员的算力余额调整到所设上限（差额从空间共享池分配或回收）</p>
                 </div>
               </div>
               <button

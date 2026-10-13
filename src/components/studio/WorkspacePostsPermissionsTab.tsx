@@ -1060,7 +1060,7 @@ export default function WorkspacePostsPermissionsTab({
                 </button>
               </div>
             ) : (
-              <span className="text-[11px] text-slate-300 font-medium font-mono">1/1 单页全量</span>
+              <span className="text-[11px] text-slate-300 font-medium font-mono">第 1 / 1 页</span>
             )}
           </div>
         </div>
@@ -1228,7 +1228,7 @@ export default function WorkspacePostsPermissionsTab({
                 </button>
               </div>
             ) : (
-              <span className="text-[11px] text-slate-300 font-medium font-mono">1/1 单页全量</span>
+              <span className="text-[11px] text-slate-300 font-medium font-mono">第 1 / 1 页</span>
             )}
           </div>
         </div>

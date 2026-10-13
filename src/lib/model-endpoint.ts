@@ -215,3 +215,72 @@ export const SUPPORTED_MODEL_PROTOCOLS = [
 export function isSupportedModelProtocol(protocol: string): boolean {
   return (SUPPORTED_MODEL_PROTOCOLS as readonly string[]).includes((protocol || "").trim().toUpperCase());
 }
+
+/**
+ * 模型录入字段长度 / 范围上限（前后端共用）。
+ * 与「列改为 TEXT」配套：即便极端超长也会被这里拦截并返回清晰错误，
+ * 而不是落到数据库再报隐晦的 "value too long"。
+ */
+export const MODEL_INPUT_LIMITS = {
+  /** 展示名 / 供应商名称最大长度 */
+  label: 128,
+  /** BYO 供应商（厂商）名称最大长度 */
+  providerName: 128,
+  /** Base URL 最大长度（仍建议 ≤ 2048，远超常规 URL） */
+  baseUrl: 2048,
+  /** API Key 明文最大长度（密文更长，列已为 TEXT） */
+  apiKey: 4096,
+  /** 上下文上限上限（token） */
+  contextLimitMax: 10_000_000,
+  /** 单价上限（微元 / 百万 token），折合 1000 元 / 百万 token */
+  priceMicrosMax: 1_000_000_000,
+} as const;
+
+/** 校验短文本字段（展示名 / 供应商名）：非空 + 长度上限。返回错误文案或 null。 */
+export function validateModelNameField(value: string, fieldLabel: string, max: number): string | null {
+  const v = (value ?? "").trim();
+  if (!v) return `${fieldLabel}不能为空`;
+  if (v.length > max) return `${fieldLabel}过长（最长 ${max} 个字符）`;
+  return null;
+}
+
+/** 校验 Base URL 长度（SSRF / 格式校验由调用方异步进行）。返回错误文案或 null。 */
+export function validateModelBaseUrlLength(value: string): string | null {
+  const v = (value ?? "").trim();
+  if (!v) return "Base URL 不能为空";
+  if (v.length > MODEL_INPUT_LIMITS.baseUrl) return `Base URL 过长（最长 ${MODEL_INPUT_LIMITS.baseUrl} 个字符）`;
+  return null;
+}
+
+/** 校验 API Key 明文长度（可选字段，仅在录入时校验）。返回错误文案或 null。 */
+export function validateModelApiKeyLength(value: string): string | null {
+  const v = value ?? "";
+  if (v.length > MODEL_INPUT_LIMITS.apiKey) return `API Key 过长（最长 ${MODEL_INPUT_LIMITS.apiKey} 个字符）`;
+  return null;
+}
+
+/** 校验上下文上限与单价格（微元）。返回错误文案或 null。 */
+export function validateModelNumericFields(opts: {
+  contextLimit?: number;
+  priceInputMicros?: number | null;
+  priceOutputMicros?: number | null;
+}): string | null {
+  if (opts.contextLimit !== undefined) {
+    if (!Number.isInteger(opts.contextLimit) || opts.contextLimit < 1) return "上下文上限必须为正整数";
+    if (opts.contextLimit > MODEL_INPUT_LIMITS.contextLimitMax) {
+      return `上下文上限过大（上限 ${MODEL_INPUT_LIMITS.contextLimitMax} tokens）`;
+    }
+  }
+  const checks: Array<[string, number | null | undefined]> = [
+    ["输入单价", opts.priceInputMicros],
+    ["输出单价", opts.priceOutputMicros],
+  ];
+  for (const [name, v] of checks) {
+    if (v === null || v === undefined) continue;
+    if (v < 0) return `${name}不能为负数`;
+    if (v > MODEL_INPUT_LIMITS.priceMicrosMax) {
+      return `${name}过大（上限 ${MODEL_INPUT_LIMITS.priceMicrosMax / 1_000_000} 元 / 百万 token）`;
+    }
+  }
+  return null;
+}

@@ -120,6 +120,14 @@ export default function WorkspaceMembersPage() {
           setInvitationExpires(new Date(data.expiresAt).toLocaleDateString("zh-CN"));
         }
         toast.success("邀请码生成成功，快去复制发给您的协同成员吧！");
+
+        // 准确定位到生成的邀请码结果
+        setTimeout(() => {
+          const el = document.getElementById("members-page-invite-result");
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 100);
       } else {
         const err = await res.json();
         throw new Error(err.error || "生成失败");
@@ -276,7 +284,10 @@ export default function WorkspaceMembersPage() {
               </button>
 
               {invitationCode && (
-                <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div
+                  id="members-page-invite-result"
+                  className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 rounded-xl border border-indigo-200 bg-indigo-50/40 ring-2 ring-indigo-400/40 shadow-xs animate-in fade-in slide-in-from-left-2 duration-300 scroll-mt-6"
+                >
                   <div className="flex-1 bg-slate-50 border rounded-lg px-3 py-2 text-xs font-mono text-slate-700 flex items-center justify-between gap-3">
                     <span className="truncate">邀请码: <strong className="text-indigo-600 font-black">{invitationCode}</strong> (有效期至 {invitationExpires})</span>
                     <button

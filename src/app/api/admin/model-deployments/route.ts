@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission } from "@/lib/security";
 import { ALLOWED_MODEL_CAPABILITIES } from "@/lib/component-contract/capabilities";
+import { MODEL_INPUT_LIMITS, validateModelNumericFields } from "@/lib/model-endpoint";
 
 /** GET：列出模型部署（可按 providerId 过滤） */
 export async function GET(request: NextRequest) {
@@ -54,6 +55,21 @@ export async function POST(request: NextRequest) {
     const upstreamModel =
       typeof body.upstreamModel === "string" && body.upstreamModel.trim() ? body.upstreamModel.trim() : modelId;
 
+    // 录入规范：模型标识 / 供应商侧模型名 / 展示名长度上限（库列为 varchar，超长会落库失败）
+    if (modelId.length > MODEL_INPUT_LIMITS.label) {
+      return NextResponse.json({ success: false, error: `模型标识过长（最长 ${MODEL_INPUT_LIMITS.label} 个字符）` }, { status: 400 });
+    }
+    if (upstreamModel.length > MODEL_INPUT_LIMITS.label) {
+      return NextResponse.json({ success: false, error: `供应商侧模型名过长（最长 ${MODEL_INPUT_LIMITS.label} 个字符）` }, { status: 400 });
+    }
+    const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+    if (displayName.length > MODEL_INPUT_LIMITS.label) {
+      return NextResponse.json({ success: false, error: `展示名过长（最长 ${MODEL_INPUT_LIMITS.label} 个字符）` }, { status: 400 });
+    }
+    const contextLimit = Number.isFinite(Number(body.contextLimit)) ? Number(body.contextLimit) : 32000;
+    const numErr = validateModelNumericFields({ contextLimit });
+    if (numErr) return NextResponse.json({ success: false, error: numErr }, { status: 400 });
+
     // 数据库驱动的模型能力声明（仅接受抽象能力白名单；contextLimit 不得作为能力替代表达）
     let capabilities: string[] = [];
     if (Array.isArray(body.capabilities)) {
@@ -77,8 +93,8 @@ export async function POST(request: NextRequest) {
         providerId,
         modelId,
         upstreamModel,
-        displayName: typeof body.displayName === "string" ? body.displayName.trim() : "",
-        contextLimit: Number.isFinite(Number(body.contextLimit)) ? Number(body.contextLimit) : 32000,
+        displayName,
+        contextLimit,
         capabilities,
         enabled: body.enabled !== false,
       },

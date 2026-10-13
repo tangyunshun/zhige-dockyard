@@ -96,9 +96,9 @@ export default function UserDashboardLayout({
         },
         {
           icon: KeyRound,
-          label: "空间自带模型",
+          label: "我的模型",
           href: "/user/byo-model",
-          description: "为你的空间登记自有模型",
+          description: "工作台个人模型管理：系统分配与自建模型",
           group: "我的资产",
         },
         {

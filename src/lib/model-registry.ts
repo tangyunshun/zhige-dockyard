@@ -23,6 +23,7 @@ import {
   type PriceStatus,
 } from "@/lib/model-pricing";
 import { isHoliday } from "@/lib/holiday-calendar";
+import { formatPeriodSchedule } from "@/lib/period-schedule-text";
 import { decryptSecret } from "@/lib/crypto-secrets";
 import {
   tryResolveWorkspaceByoDefault,
@@ -266,33 +267,6 @@ const PERIOD_KIND_LABEL: Record<string, string> = {
   HOLIDAY: "节假日",
   CUSTOM: "自定义",
 };
-
-const WEEKDAY_LABEL = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-
-/** 把时段的日期区间 / 周计划 / 时间段约束格式化为人类可读的生效范围 */
-function formatPeriodSchedule(p: PricingPeriodRow): string {
-  const parts: string[] = [];
-  if (p.startDate || p.endDate) {
-    const fmt = (d: Date | null) =>
-      d ? `${d.getMonth() + 1}.${String(d.getDate()).padStart(2, "0")}` : "";
-    if (p.startDate && p.endDate) parts.push(`${fmt(p.startDate)}–${fmt(p.endDate)}`);
-    else if (p.startDate) parts.push(`${fmt(p.startDate)} 起`);
-    else if (p.endDate) parts.push(`至 ${fmt(p.endDate)}`);
-  }
-  if (p.weekdays) {
-    const days = p.weekdays
-      .split(",")
-      .map((s) => Number(s.trim()))
-      .filter((n) => n >= 1 && n <= 7);
-    if (days.length === 7) parts.push("每天");
-    else if (days.length === 5 && days.every((d) => d >= 1 && d <= 5)) parts.push("工作日");
-    else if (days.length === 2 && days.includes(6) && days.includes(7)) parts.push("周末");
-    else if (days.length > 0) parts.push(days.map((d) => WEEKDAY_LABEL[d]).join("/"));
-  }
-  if (p.startTime && p.endTime) parts.push(`${p.startTime}–${p.endTime}`);
-  if (parts.length === 0) parts.push(p.kind === "HOLIDAY" ? "法定节假日" : "全时段");
-  return parts.join(" ");
-}
 
 /** 计价时段展示视图（前台罗列某部署全部分时段，而非仅当前生效项） */
 export interface PricingPeriodView {
@@ -1031,7 +1005,7 @@ export async function setPlatformDefaultDeploymentId(deploymentId: string | null
   });
 }
 
-export type DefaultDeploymentSource = "SPACE_DEFAULT" | "PLATFORM_DEFAULT" | "WORKSPACE_BYO";
+export type DefaultDeploymentSource = "SPACE_DEFAULT" | "PLATFORM_DEFAULT" | "SPACE_SINGLE_AUTO" | "WORKSPACE_BYO";
 
 export interface DefaultDeploymentPlan extends ResolvedModelPlan {
   /** 本次裁决实际采用的默认来源 */
@@ -1081,10 +1055,17 @@ export async function resolveDefaultDeployment(params: {
   const allowedList = policy.configured ? policy.allowedDeploymentIds : null;
 
   const spaceDefaultId = policy.defaultDeploymentId;
-  // 空间默认优先：仅当空间未配置默认时才读取平台默认
-  const platformDefaultId = spaceDefaultId ? null : await getPlatformDefaultDeploymentId();
 
-  const chosenId = spaceDefaultId || platformDefaultId;
+  // 单模型自动默认：空间已配置白名单且恰好 1 款、且未显式设置空间默认时，
+  // 系统自动将该唯一模型作为默认（与模型页「系统默认」一致），优先于平台默认
+  const singleAutoDefaultId =
+    !spaceDefaultId && allowedList && allowedList.length === 1 ? allowedList[0] : null;
+
+  // 空间默认优先；无空间默认时优先取单模型自动默认，最后回落平台默认
+  const platformDefaultId =
+    spaceDefaultId || singleAutoDefaultId ? null : await getPlatformDefaultDeploymentId();
+
+  const chosenId = spaceDefaultId || singleAutoDefaultId || platformDefaultId;
   if (!chosenId) {
     throw new ContractValidationError(
       "MODEL_NOT_ALLOWED",
@@ -1167,7 +1148,7 @@ export async function resolveDefaultDeployment(params: {
   return {
     ...buildDatabasePlan(dep, providerRow),
     pricing: await resolveActivePricingAt(dep.id),
-    defaultSource: spaceDefaultId ? "SPACE_DEFAULT" : "PLATFORM_DEFAULT",
+    defaultSource: spaceDefaultId ? "SPACE_DEFAULT" : singleAutoDefaultId ? "SPACE_SINGLE_AUTO" : "PLATFORM_DEFAULT",
   };
 }
 

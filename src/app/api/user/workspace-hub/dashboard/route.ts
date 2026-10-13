@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
           const parsed = JSON.parse(app.appealEvidence);
           if (parsed.workspaceId) approvedWsIdSet.add(parsed.workspaceId);
         }
-      } catch {}
+      } catch { }
     });
 
     const workspaceMap = new Map<string, any>();

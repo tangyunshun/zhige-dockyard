@@ -170,4 +170,17 @@ describe("默认执行模型数据库唯一裁决（空间默认 -> 平台默认
     assert.equal(row?.value, depOld);
     await setPlatformDefaultDeploymentId(null);
   });
+
+  test("⑪ 白名单恰好 1 款且未显式设默认 → 系统自动默认该款（SPACE_SINGLE_AUTO，优先于平台默认）", async () => {
+    // 清空空间默认与平台默认，仅保留白名单 1 款
+    await prisma.workspace_model_policy.deleteMany({ where: { workspaceId: WS } });
+    await setPlatformDefaultDeploymentId(null);
+    await prisma.modeldeployment.update({ where: { id: depOld }, data: { capabilities: ["TEXT_GENERATION"] } });
+    await prisma.workspace_model_policy.create({
+      data: { id: `wmp-auto-${uid()}`, workspaceId: WS, defaultDeploymentId: null, allowedDeploymentIds: [depOld] },
+    });
+    const plan = await resolveDefaultDeployment({ workspaceId: WS, requiredCapabilities: ["TEXT_GENERATION"] });
+    assert.equal(plan.deploymentId, depOld, "白名单唯一种子必须被自动选为默认");
+    assert.equal(plan.defaultSource, "SPACE_SINGLE_AUTO", "来源必须为单模型自动默认");
+  });
 });

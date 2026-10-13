@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, Clock, Tag, Cpu, Search, Zap, Calculator, AlertTriangle, Sparkles } from "lucide-react";
 import { yuanToPoints, formatYuanFromPoints, POINT_UNIT_HINT, POINTS_PER_YUAN } from "@/lib/point-rate";
+import { formatPeriodSchedule, buildTierCaption } from "@/lib/period-schedule-text";
 
 interface PriceView {
   input: number | null;
@@ -83,7 +84,6 @@ const ORIGIN_CLASS: Record<string, string> = {
   PLATFORM: "bg-blue-50 text-[#2b6cb0] border-blue-200",
   USER_BYOK: "bg-violet-50 text-violet-600 border-violet-200",
 };
-const WEEK_CN: Record<number, string> = { 1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日" };
 const CAP_LABELS: Record<string, string> = {
   TEXT_GENERATION: "文本生成",
   STRUCTURED_OUTPUT: "结构化输出",
@@ -102,22 +102,7 @@ const fmtPoints = (v: number | null): string =>
   v == null ? "—" : `${yuanToPoints(v).toLocaleString("zh-CN")}`;
 
 function timeRule(p: PeriodView): string {
-  // 自动节假日：无日期/星期约束，由官方日历自动命中
-  if (p.kind === "HOLIDAY" && !p.startDate && !p.endDate && !p.weekdays && !p.startTime && !p.endTime) {
-    return "法定节假日自动套用（按国务院官方日历）";
-  }
-  const parts: string[] = [];
-  if (p.weekdays && p.weekdays.trim()) {
-    const days = p.weekdays
-      .split(",")
-      .map((s) => WEEK_CN[Number(s.trim())])
-      .filter(Boolean);
-    if (days.length) parts.push(days.join("、"));
-  }
-  if (p.startTime && p.endTime) parts.push(`${p.startTime}~${p.endTime}`);
-  let s = parts.length ? parts.join(" ") : "全天";
-  if (p.startDate || p.endDate) s += `（${p.startDate ?? "起"} ~ ${p.endDate ?? "止"}）`;
-  return s;
+  return formatPeriodSchedule(p);
 }
 
 /** 按当前生效价估算扣点：费用 = 输入/百万×单价 + 输出/百万×单价；保底 MIN_POINTS_PER_TASK 点 */
@@ -159,10 +144,17 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
       : null);
   const peakTier = ownPeriods.find((p) => p.kind === "PEAK")?.prices ?? null;
   const holidayTier = ownPeriods.find((p) => p.kind === "HOLIDAY")?.prices ?? null;
-  const peakCaption = ownPeriods
-    .filter((p) => p.kind === "PEAK")
-    .map((p) => (p.startTime && p.endTime ? `${p.startTime}-${p.endTime}` : timeRule(p)))
-    .join("/");
+  const idlePeriod = ownPeriods.find((p) => p.kind === "IDLE") ?? null;
+  const peakPeriods = ownPeriods.filter((p) => p.kind === "PEAK");
+  const holidayPeriod = ownPeriods.find((p) => p.kind === "HOLIDAY") ?? null;
+  const peakCaption =
+    peakPeriods.length > 0
+      ? buildTierCaption(
+          "PEAK",
+          peakPeriods.map((p) => ({ kind: "PEAK", scheduleText: formatPeriodSchedule(p) })),
+          "周一至周五 高峰窗口",
+        )
+      : "";
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 flex flex-col">
@@ -262,7 +254,7 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
             {
               kind: "IDLE",
               label: "闲时",
-              caption: "全天默认",
+              caption: idlePeriod ? formatPeriodSchedule(idlePeriod) : "除高峰时段外的所有时间（含周末及法定节假日全天）",
               tier: idleTier,
               box: "bg-emerald-50/60 border-emerald-100",
               dot: "bg-emerald-500",
@@ -280,7 +272,7 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
             {
               kind: "HOLIDAY",
               label: "节假日",
-              caption: "按官方日历自动",
+              caption: holidayPeriod ? formatPeriodSchedule(holidayPeriod) : "中国法定节假日全天",
               tier: holidayTier,
               box: "bg-amber-50/60 border-amber-100",
               dot: "bg-amber-500",
@@ -415,7 +407,7 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
       {open && (
         <div className="mt-2 space-y-2">
           {it.periods.length === 0 ? (
-            <p className="text-[11px] text-slate-400 px-1 py-2">该模型未配置分时段价格，全时段使用主流基准价。</p>
+            <p className="text-[11px] text-slate-400 px-1 py-2">该模型未配置分时段价格，全天统一使用主流基准价。</p>
           ) : (
             sortedPeriods.map((p) => {
               const isActive = p.id === it.activePeriodId;

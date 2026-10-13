@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 export type ToastType = "success" | "error" | "warning" | "info" | "sms-code";
@@ -123,8 +123,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const dismissAll = () => setToasts([]);
 
+  // 稳定 context value：否则每次 ToastProvider 渲染都生成新对象，会导致消费组件里
+  // 以 toast 为依赖的 useCallback/useEffect 反复重建与重跑（曾引发请求死循环）。
+  const contextValue = useMemo(
+    () => ({ showToast, success, error, warning, info, dismissAll }),
+    // showToast/success/... 均为组件内普通函数，仅在挂载时稳定即可（dismissAll 同）；
+    // 这些函数不依赖会频繁变化的状态，故用空依赖保持引用恒定。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   return (
-    <ToastContext.Provider value={{ showToast, success, error, warning, info, dismissAll }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
       {/* 所有 Toast - 中间顶部（严格遵循设计系统规范，层级置顶防止被遮罩遮挡） */}
       <div

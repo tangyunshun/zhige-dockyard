@@ -79,6 +79,61 @@ export default function ShareWorkspaceModal({
     );
   }, [invitations]);
 
+  // 记录高亮邀请码与生成后自动定位
+  const [highlightCode, setHighlightCode] = React.useState<string | null>(null);
+  const prevGeneratingRef = React.useRef(generating);
+  const prevCodesRef = React.useRef<Set<string>>(new Set());
+
+  // 弹窗初次打开时记录已有邀请码集合
+  React.useEffect(() => {
+    if (isOpen) {
+      prevCodesRef.current = new Set((sortedInvitations || []).map((i: any) => i.code));
+    }
+  }, [isOpen]);
+
+  // 监听生成状态变化，生成成功后精确定位到生成的邀请码
+  React.useEffect(() => {
+    if (prevGeneratingRef.current && !generating && sortedInvitations.length > 0) {
+      // 找出新增的邀请码
+      let newCode: string | null = null;
+      for (const inv of sortedInvitations) {
+        if (!prevCodesRef.current.has(inv.code)) {
+          newCode = inv.code;
+          break;
+        }
+      }
+      // 兜底：若未匹配到差集，则取有效项中的最新一条
+      if (!newCode) {
+        const validInvs = sortedInvitations.filter(
+          (i: any) => i.status !== "REVOKED" && (!i.expiresAt || new Date(i.expiresAt).getTime() >= Date.now())
+        );
+        if (validInvs.length > 0) {
+          newCode = validInvs[validInvs.length - 1].code;
+        }
+      }
+
+      if (newCode) {
+        setHighlightCode(newCode);
+        setTimeout(() => {
+          const targetEl = document.getElementById(`share-invitation-card-${newCode}`);
+          if (targetEl) {
+            targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          } else {
+            const sec = document.getElementById("share-generated-invitations-section");
+            if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 120);
+
+        const timer = setTimeout(() => {
+          setHighlightCode(null);
+        }, 4000);
+        return () => clearTimeout(timer);
+      }
+    }
+    prevCodesRef.current = new Set(sortedInvitations.map((i: any) => i.code));
+    prevGeneratingRef.current = generating;
+  }, [generating, sortedInvitations]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
@@ -242,7 +297,7 @@ export default function ShareWorkspaceModal({
 
           {/* 邀请码列表 */}
           {sortedInvitations.length > 0 && (
-            <div>
+            <div id="share-generated-invitations-section" className="scroll-mt-6">
               <h3 className="text-xs font-bold text-slate-700 mb-3 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-[#3182ce]" />
                 已生成的邀请码
@@ -252,13 +307,17 @@ export default function ShareWorkspaceModal({
                   const isRevoked = invitation.status === "REVOKED";
                   const isExpired = invitation.expiresAt && new Date(invitation.expiresAt).getTime() < Date.now();
                   const isInvalid = isRevoked || !!isExpired;
+                  const isHighlighted = highlightCode === invitation.code;
                   return (
                       <div
+                        id={`share-invitation-card-${invitation.code}`}
                         key={invitation.id}
                         className={`p-4 rounded-xl border transition-all duration-300 ${
-                          isInvalid
+                          isHighlighted
+                            ? "bg-emerald-50/80 border-[#10b981] ring-2 ring-[#10b981]/50 shadow-md"
+                            : isInvalid
                             ? "opacity-60 bg-slate-100/50 border-slate-200"
-                            : "bg-slate-50 border-slate-200"
+                            : "bg-slate-50 border-slate-200 hover:border-slate-300"
                         }`}
                       >
                         {/* 头部：邀请码 + 状态徽标（左），操作按钮（右，正常流布局避免遮挡） */}
@@ -267,6 +326,12 @@ export default function ShareWorkspaceModal({
                             <span className={`text-base font-mono font-bold break-all ${isInvalid ? "text-slate-400 line-through" : "text-[#10b981]"}`}>
                               {invitation.code}
                             </span>
+                            {isHighlighted && (
+                              <span className="text-[10px] px-2 py-0.5 bg-[#10b981] text-white rounded font-black shadow-xs shrink-0 leading-none animate-pulse flex items-center gap-1">
+                                <span>✨</span>
+                                <span>刚刚生成</span>
+                              </span>
+                            )}
                             {isRevoked && (
                               <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded font-black border border-amber-200/60 shrink-0 leading-none">
                                 已作废

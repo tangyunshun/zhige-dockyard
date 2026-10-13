@@ -1003,7 +1003,7 @@ export function ResultViewer({
                   title={!artifactActionsEnabled ? "任务失败或成果物缺失，无法沉淀至知识库" : "将本次分析决策成果一键沉淀存入【知识沉淀规范库】"}
                 >
                   <BookOpen className="w-3.5 h-3.5" />
-                  <span>📖 沉淀至【知识沉淀规范库】</span>
+                  <span>📖 保存到知识库</span>
                 </button>
               ) : <div />}
 

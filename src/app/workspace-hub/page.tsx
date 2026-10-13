@@ -189,7 +189,7 @@ export default function WorkspaceHub() {
     async function checkBindings() {
       if (!showSelectWorkspaceModal || !selectedComponentId) return;
       const status: Record<string, boolean> = {};
-      
+
       if (enterpriseData?.workspaces) {
         await Promise.all(
           enterpriseData.workspaces.map(async (ws: any) => {
@@ -243,12 +243,12 @@ export default function WorkspaceHub() {
       if (enterpriseData?.workspaces) {
         workspaces.push(...enterpriseData.workspaces.map((w: any) => ({ id: w.id, name: w.name, type: "ENTERPRISE" })));
       }
-      
+
       if (workspaces.length === 0) return;
-      
+
       const bindingNames: Record<string, string[]> = {};
       const targetComponentIds = getRecommendedComponentIds();
-      
+
       await Promise.all(
         workspaces.map(async (ws) => {
           // 个人空间拥有所有权限，默认接入所有推荐组件
@@ -259,7 +259,7 @@ export default function WorkspaceHub() {
             });
             return;
           }
-          
+
           try {
             const checkRes = await fetch(`/api/studio?action=bound&workspaceId=${ws.id}`);
             if (checkRes.ok) {
@@ -279,10 +279,10 @@ export default function WorkspaceHub() {
           }
         })
       );
-      
+
       setComponentWorkspaceBoundNames(bindingNames);
     }
-    
+
     fetchAllWorkspaceBindings();
   }, [personalWorkspace, enterpriseData, dashboardData]);
 
@@ -311,7 +311,7 @@ export default function WorkspaceHub() {
   // 任务路由分流：统一执行真实后端物理装配，装配成功后带上 newBoundComponentId 触发高亮跳转
   const navigateToWorkspaceComponent = async (workspaceId: string, type: "PERSONAL" | "ENTERPRISE", componentId: string) => {
     toast.info("正在装配组件并连接环境...", 1000);
-    
+
     try {
       // 1. 检查是否已经绑定
       const checkRes = await fetch(`/api/studio?action=bound&workspaceId=${workspaceId}`);
@@ -514,7 +514,7 @@ export default function WorkspaceHub() {
     try {
       const authToken = localStorage.getItem("auth_token");
       const startTime = Date.now();
-      
+
       // 真实请求后端盘点接口
       const res = await fetch(`/api/workspace/member-stats?workspaceId=${workspaceId}`, {
         headers: {
@@ -528,7 +528,7 @@ export default function WorkspaceHub() {
           // 为了确保用户能看清扫描过程，至少停留 1.2 秒
           const elapsedTime = Date.now() - startTime;
           const waitTime = Math.max(1200 - elapsedTime, 0);
-          
+
           setTimeout(() => {
             clearInterval(progressTimer);
             setScanProgress(100);
@@ -718,7 +718,7 @@ export default function WorkspaceHub() {
 
       {/* 主核心区 (统一全站大厂 max-w-[1400px] 黄金标准，两侧留白与组件大厅、文档中心 100% 物理对齐) */}
       <main className="relative z-10 max-w-[1400px] w-full mx-auto px-4 sm:px-6 md:px-8 pt-8 pb-0 space-y-6 flex-1">
-        
+
         {/* 0. 第三方登录用户未设密码与绑定全局安全建议横幅 */}
         {showSecurityBanner && user?.needsProfileCompletion && (
           <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-amber-50/95 via-amber-50/80 to-orange-50/70 border border-amber-200/90 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -760,8 +760,8 @@ export default function WorkspaceHub() {
 
         {/* 1. UserGreeting (100% 宽度大顶通栏) */}
         <div className="w-full">
-          <UserGreeting 
-            user={user} 
+          <UserGreeting
+            user={user}
             personalWorkspace={defaultWorkspace}
             needsPersonalWorkspace={!hasWorkspace}
             onEnterPersonal={() => handleEnterWorkspace(defaultWorkspace)}
@@ -1005,7 +1005,7 @@ export default function WorkspaceHub() {
             <h3 className="text-sm font-extrabold text-slate-800 mb-2.5 flex items-center gap-1.5">
               <span>选择装配的目标空间</span>
             </h3>
-            
+
             {selectedCompInfo && (
               <div className="mb-4 px-3 py-2.5 bg-blue-50/70 border border-blue-100/90 rounded-xl flex items-center gap-2 text-xs">
                 <span className="font-mono font-black text-[#2b6cb0] shrink-0 bg-white/80 px-1.5 py-0.5 rounded border border-blue-200/60 shadow-2xs">
@@ -1014,9 +1014,9 @@ export default function WorkspaceHub() {
                 <span className="font-bold text-slate-700 truncate">{selectedCompInfo.name || "组件"}</span>
               </div>
             )}
-            
+
             <p className="text-xs text-slate-400 font-semibold mb-4 leading-normal">请选择要将该组件装配并运行的目标空间环境：</p>
-            
+
             <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
               {/* 个人空间 */}
               {personalWorkspace && (
@@ -1044,7 +1044,7 @@ export default function WorkspaceHub() {
                   </span>
                 </button>
               )}
-              
+
               {/* 企业空间 */}
               {enterpriseData?.workspaces?.map((ws: any) => {
                 const isBound = boundStatus[ws.id] || false;
@@ -1110,14 +1110,14 @@ export default function WorkspaceHub() {
             <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto mb-4 text-xl font-bold">
               ✓
             </div>
-            
+
             <h3 className="text-base font-black text-slate-800 mb-2">加入工作空间成功</h3>
-            
+
             <p className="text-xs text-slate-500 font-medium leading-relaxed px-2">
               恭喜您已成功加入 <strong className="text-emerald-600 font-extrabold">{joinedWorkspace.name}</strong> 工作空间，快去进行使用吧！
             </p>
             <span className="text-[10px] text-slate-400 block mt-2 font-semibold">( 本提示将在数秒后自动隐去 )</span>
-            
+
             <div className="flex flex-col gap-2 mt-6 pt-3 border-t border-slate-100">
               <button
                 onClick={() => {
@@ -1128,7 +1128,7 @@ export default function WorkspaceHub() {
               >
                 立即进入工作空间
               </button>
-              
+
               <button
                 onClick={() => setShowJoinSuccessModal(false)}
                 className="w-full h-9 bg-slate-50 hover:bg-slate-100 text-slate-500 border border-slate-200 text-xs font-bold rounded-lg cursor-pointer transition-colors"
@@ -1153,7 +1153,7 @@ export default function WorkspaceHub() {
                     {scanProgress}%
                   </span>
                 </div>
-                
+
                 <div className="space-y-1">
                   <h3 className="text-sm font-extrabold text-slate-800">系统正在深度审计中</h3>
                   <p className="text-[11px] text-slate-400 font-semibold animate-pulse">
@@ -1163,8 +1163,8 @@ export default function WorkspaceHub() {
 
                 {/* 科技感进度条 */}
                 <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-[#4299e1] to-[#2b6cb0] transition-all duration-150 rounded-full" 
+                  <div
+                    className="h-full bg-gradient-to-r from-[#4299e1] to-[#2b6cb0] transition-all duration-150 rounded-full"
                     style={{ width: `${scanProgress}%` }}
                   />
                 </div>

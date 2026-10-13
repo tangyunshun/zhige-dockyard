@@ -48,6 +48,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { GlobalMarkupSync } from "./global-markup-sync";
+import { formatPeriodSchedule } from "@/lib/period-schedule-text";
 
 /** 加价率双模式折算：表单统一存「整数基点 bp」（1bp = 0.01%，1% = 100bp），显示层按所选模式折算 */
 const bpsToPercentStr = (bps: string) => {
@@ -1460,28 +1461,7 @@ export default function AdminModelsPage() {
     }
   };
 
-  const periodScheduleText = (p: PricePeriodRow): string => {
-    // 自动节假日时段：无日期/星期约束，由官方日历自动命中
-    if (p.kind === "HOLIDAY" && !p.startDate && !p.endDate && !p.weekdays && !p.startTime && !p.endTime) {
-      return "法定节假日自动套用 · 按国务院官方日历（当前及后续已配置年份）命中即按闲时价";
-    }
-    const parts: string[] = [];
-    const wdNames = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-    if (p.weekdays && p.startTime && p.endTime) {
-      const wd = p.weekdays
-        .split(",")
-        .map((s) => wdNames[Number(s)] ?? s)
-        .filter(Boolean)
-        .join("、");
-      parts.push(`${wd} ${p.startTime}-${p.endTime}`);
-    } else if (p.startTime && p.endTime) {
-      parts.push(`每日 ${p.startTime}-${p.endTime}`);
-    }
-    if (p.startDate && p.endDate) parts.push(`${String(p.startDate).slice(0, 10)} ~ ${String(p.endDate).slice(0, 10)}`);
-    else if (p.startDate) parts.push(`自 ${String(p.startDate).slice(0, 10)} 起`);
-    else if (p.endDate) parts.push(`至 ${String(p.endDate).slice(0, 10)}`);
-    return parts.length ? parts.join("；") : "长期生效";
-  };
+  const periodScheduleText = (p: PricePeriodRow): string => formatPeriodSchedule(p);
 
   const openPeriodEditor = (p?: PricePeriodRow) => {
     if (p) {

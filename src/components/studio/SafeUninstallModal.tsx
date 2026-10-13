@@ -87,7 +87,7 @@ export default function SafeUninstallModal({
         {uninstallStep === "blocked" && (
           <div className="space-y-4">
             <div className="bg-red-50 border border-red-100 rounded-lg p-3.5 text-xs text-red-800 font-semibold leading-relaxed">
-              ⚠️ <strong>合规安全拦截警告</strong>：由于该组件在此空间内已有了任务运行记录或自动生成文件（如下所示），为了保证运行数据和审计链的可回溯性，**系统目前已强制阻断直接卸载**。
+              ⚠️ <strong>无法直接卸载</strong>：该组件在本空间已有任务记录或生成的文件（如下所示），直接卸载会丢失这些数据，请先按下方指引处理。
             </div>
             
             <div className="bg-slate-900 text-slate-200 p-3 rounded-lg font-mono text-[10px] space-y-1 max-h-24 overflow-y-auto leading-relaxed shadow-inner">
