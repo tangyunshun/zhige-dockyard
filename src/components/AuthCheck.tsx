@@ -181,7 +181,8 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
       const res = await dedupeFetch("/api/auth/me", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         credentials: "include",
-        signal: AbortSignal.timeout(10000),
+        // dev 容忍 Turbopack 首次按需编译（可能 >10s），生产保持 10s 快速失败
+        signal: AbortSignal.timeout(process.env.NODE_ENV === "production" ? 10_000 : 60_000),
       });
 
       if (res.status === 401 || res.status === 403) {

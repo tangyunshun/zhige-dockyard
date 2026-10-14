@@ -24,8 +24,9 @@
  */
 const inFlightMap = new Map<string, Promise<Response>>();
 
-/** 共享请求的安全上限：超时即中止并释放槽位，避免个别接口无响应时永久阻塞后续同接口请求 */
-const SHARED_REQUEST_TIMEOUT_MS = 20_000;
+/** 共享请求的安全上限：超时即中止并释放槽位，避免个别接口无响应时永久阻塞后续同接口请求。
+ *  dev 下放宽以容忍 Turbopack 首次按需编译（冷启动可能 >20s），生产保持紧凑快速失败。 */
+const SHARED_REQUEST_TIMEOUT_MS = process.env.NODE_ENV === "production" ? 20_000 : 60_000;
 
 function toAbortReason(signal: AbortSignal): unknown {
   return (
