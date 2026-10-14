@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { MODEL_CAPABILITY_LABELS } from "@/lib/model-capability-labels";
 import ModelPricingRules, { type PricingPeriodLike } from "@/components/ModelPricingRules";
 import {
   KeyRound,
@@ -99,13 +100,8 @@ const BYO_CAPABILITIES = [
   "FILE_ANALYSIS",
 ] as const;
 
-const CAP_LABELS: Record<string, string> = {
-  TEXT_GENERATION: "文本生成",
-  STRUCTURED_OUTPUT: "结构化输出",
-  VISION: "视觉理解",
-  LONG_CONTEXT: "长上下文",
-  FILE_ANALYSIS: "文件分析",
-};
+// 能力展示名全站唯一真源（数据库 systemsetting.model_capability_labels 为准，此处为内置兜底）
+const CAP_LABELS: Record<string, string> = MODEL_CAPABILITY_LABELS;
 
 const CAP_DESCRIPTIONS: Record<string, string> = {
   TEXT_GENERATION: "基础文本对话与问答创作",
@@ -628,7 +624,7 @@ export default function UserByoModelPage() {
                 我的模型
               </h1>
               <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-blue-100/70 text-[#2b6cb0] border border-blue-200/60">
-                BYO & 空间模型
+                自建模型 & 空间模型
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
@@ -1394,20 +1390,12 @@ export default function UserByoModelPage() {
                           </span>
                         </span>
                       </div>
-                      <ModelPricingRules
-                        periods={[
-                          {
-                            id: `${def.id}:byo-idle`,
-                            name: "自建参考价",
-                            kind: "IDLE",
-                            kindLabel: "闲时",
-                            isActiveNow: def.priceInputMicrosPerMillion != null,
-                            scheduleText: "全天生效",
-                            inputMicrosPerMillion: def.priceInputMicrosPerMillion,
-                            outputMicrosPerMillion: def.priceOutputMicrosPerMillion,
-                          },
-                        ]}
-                      />
+                      {/* 自带模型仅单一官方价、无分时段配置：不渲染闲时/高峰等时段标签（未配置分段价一律不显示） */}
+                      <div className="text-[10px] text-slate-400 font-sans">
+                        {def.priceInputMicrosPerMillion != null
+                          ? "官方单一价（未分时段）：全天统一按上方单价折算计费"
+                          : "官方单价未登记：登记后按官方单价折算并另收平台服务费"}
+                      </div>
                     </div>
 
                     {/* 空间绑定状态栏 */}

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
 import { getAuthToken } from "@/utils/auth";
 import {
   Filter,
@@ -235,6 +236,17 @@ export default function AdminWorkspacesPage() {
       setLoading(false);
     }
   };
+
+  // 空间 Logo 变更时即时重拉列表（避免后台停留在旧图标）
+  // 注意：必须在 loadWorkspaces 定义之后声明，否则触发 "Cannot access before initialization"
+  const loadWorkspacesRef = useRef(loadWorkspaces);
+  useEffect(() => {
+    loadWorkspacesRef.current = loadWorkspaces;
+  });
+  useEffect(
+    () => onWorkspaceLogoUpdated(() => void loadWorkspacesRef.current(currentPage)),
+    [currentPage],
+  );
 
   const handleSearch = useCallback(
     (searchValue: string = searchQuery) => {

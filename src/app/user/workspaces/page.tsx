@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
 import {
   FolderOpen,
   Building2,
@@ -60,6 +61,9 @@ export default function UserWorkspacesPage() {
   useEffect(() => {
     loadWorkspaces();
   }, []);
+
+  // 空间 Logo 变更时即时重拉（其他页面改了 Logo 回到这里也是最新）
+  useEffect(() => onWorkspaceLogoUpdated(() => void loadWorkspaces()), []);
 
   const loadWorkspaces = async (isManualRefresh = false) => {
     try {
@@ -362,13 +366,20 @@ export default function UserWorkspacesPage() {
                   <div className="flex items-start justify-between gap-3 mb-2.5">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 overflow-hidden ${
                           workspace.type === "ENTERPRISE"
                             ? "bg-emerald-50 text-emerald-600 border border-emerald-200/60"
                             : "bg-blue-50 text-[#2b6cb0] border border-blue-200/60"
                         }`}
                       >
-                        {workspace.type === "ENTERPRISE" ? (
+                        {workspace.logo ? (
+                          // 已上传自定义 Logo：显示真实图标（来自数据库地址），否则回落通用图标
+                          <img
+                            src={workspace.logo}
+                            alt={workspace.name}
+                            className="w-10 h-10 rounded-lg object-cover"
+                          />
+                        ) : workspace.type === "ENTERPRISE" ? (
                           <Building2 className="w-5 h-5" />
                         ) : (
                           <FolderOpen className="w-5 h-5" />

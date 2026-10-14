@@ -14,7 +14,7 @@ export default function GlobalHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
-  const { userState, isLoading } = useAppContext();
+  const { userState } = useAppContext();
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -174,7 +174,10 @@ export default function GlobalHeader() {
   // 已登录状态：只由 userState.isLoggedIn 驱动
   const showLoggedInNav = mounted && userState.isLoggedIn;
   const showLoggedInRight = mounted && userState.isLoggedIn;
-  const isHeaderLoading = isLoading || !mounted;
+  // 骨架屏只由水合屏障（!mounted）驱动，绝不能包含 isLoading：
+  // refreshUserState 每次运行都会 setIsLoading(true/false)，若据此切换骨架屏，
+  // AvatarDropdown 会被反复卸载重挂载（邮箱补齐守卫随之重置），形成请求死循环与顶栏闪烁。
+  const isHeaderLoading = !mounted;
 
   // 路径高亮判定
   const getTabClass = (key: string) => {

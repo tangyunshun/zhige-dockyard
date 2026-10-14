@@ -45,7 +45,7 @@ interface ExecutionEstimate {
   yuan: number | null;
   basis: "CONVERTED_PRICE" | "BLOCKED_PRICE_UNREGISTERED";
   blockedReason: string | null;
-  /** 服务端生成的计价说明文案（含 BYOK 服务费说明） */
+  /** 服务端生成的计价说明文案（含自带密钥 BYOK 服务费说明） */
   explanation: string;
   deployment: {
     id: string;
@@ -204,9 +204,21 @@ export default function ComponentDispatcherPanel({
     };
     /** 当前用户在本空间获批的默认模型 id（按 用户×空间 持久化），运行时默认选用依据 */
     myApprovedDefaultDeploymentId?: string | null;
+    /** BYO 平台服务费率（后台可配，单一真源 billing.byokServiceRateBps），单位基点 */
+    byoServiceRateBps?: number;
   } | null>(null);
+
+  // BYO 平台服务费率百分比（后台可配；未加载到位时回退 15% 展示）
+  const byoServiceRatePct = Math.round(
+    (availableModels?.byoServiceRateBps ??
+      availableModels?.byoModel?.pricing?.byokServiceRateBps ??
+      1500) / 100,
+  );
   const [loadingModels, setLoadingModels] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>("auto");
+
+  // 空间未配置默认模型时，无论选择「智能调度」还是手动指定具体模型，都无法执行，需先去配置
+  const noSpaceDefault = availableModels?.defaultTarget?.source === "NONE";
 
   // 本地记忆加载：读取上次选定的模型（默认 auto）
   useEffect(() => {
@@ -910,17 +922,17 @@ export default function ComponentDispatcherPanel({
                       {/* 分组 1：智能调度 */}
                       <optgroup label="⚡ 智能调度">
                         <option value="auto">
-                          自动默认（优先空间自带 ➔ 次选空间默认 ➔ 兜底平台）
+                          智能调度（按空间默认模型执行）
                           {availableModels?.defaultTarget?.label ? ` [当前: ${availableModels.defaultTarget.label}]` : ""}
                         </option>
                       </optgroup>
 
                       {/* 分组 2：空间私有模型 */}
                       {availableModels?.byoModel?.configured && (
-                        <optgroup label="🏷️ 空间私有模型 (自备端点 · 仅付 15% 服务费)">
+                        <optgroup label={`🏷️ 空间私有模型 (自备端点 · 仅付 ${byoServiceRatePct}% 服务费)`}>
                           {availableModels.byoModel.enabled && availableModels.byoModel.canUse ? (
                             <option value="byo">
-                              [自带] {availableModels.byoModel.label} ({availableModels.byoModel.endpointHost}) · 仅付 15% 服务费
+                              [自带] {availableModels.byoModel.label} ({availableModels.byoModel.endpointHost}) · 仅付 {byoServiceRatePct}% 服务费
                             </option>
                           ) : (
                             <option value="byo" disabled>
@@ -956,7 +968,7 @@ export default function ComponentDispatcherPanel({
                         return (
                           <div className="flex items-center justify-between text-[9.5px] bg-amber-50/80 border border-amber-200/60 px-2 py-1 rounded text-amber-800 font-mono">
                             <span>当前生效: 自带私有模型</span>
-                            <span>端点定价 ¥{pIn}/¥{pOut}/M · 仅计 15% 平台服务费</span>
+                            <span>端点定价 ¥{pIn}/¥{pOut}/M · 仅计 {byoServiceRatePct}% 平台服务费</span>
                           </div>
                         );
                       }
@@ -982,6 +994,21 @@ export default function ComponentDispatcherPanel({
                   </div>
                 )}
                 
+                {/* 未配置默认模型：无论选「智能调度」还是手动指定具体模型都无法执行，引导先去空间「模型」页设置 */}
+                {noSpaceDefault && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[9.5px] leading-relaxed text-rose-700 font-semibold shrink-0 z-10 space-y-1">
+                    <div>当前空间尚未配置默认模型，无法执行任务。</div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/workspace/${encodeURIComponent(selectedWorkspaceId)}?tab=models`)}
+                      className="inline-flex items-center gap-0.5 text-[#3182ce] underline underline-offset-2 hover:text-[#2b6cb0] cursor-pointer"
+                    >
+                      前往空间「模型」页设置默认模型
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
                 {/* 成本基准诚实提示：平台真实历史基准未配置时必须标注为「假设估算」，不得显示为真实报价 */}
                 {costBaselineStatus === "ASSUMPTION" && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[9.5px] leading-relaxed text-amber-800 font-semibold shrink-0 z-10">
@@ -994,8 +1021,9 @@ export default function ComponentDispatcherPanel({
                   </div>
                 )}
 
-                {/* 执行前价格提示：当前生效单价来自模型定价唯一真源（空间裁决 + 时段价），执行前如实告知，只读不可配置 */}
-                {isLoggedIn && selectedWorkspaceId ? (
+                {/* 执行前价格提示：当前生效单价来自模型定价唯一真源（空间裁决 + 时段价），执行前如实告知，只读不可配置。
+                    空间未配置默认模型时执行被拦截，不再展示预估扣点以免误导。 */}
+                {isLoggedIn && selectedWorkspaceId && !noSpaceDefault ? (
                   pricingHintLoading || !pricingHintResolved ? (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[9.5px] text-slate-500 font-semibold shrink-0 z-10">
                       正在估算本次扣点…
@@ -1106,7 +1134,7 @@ export default function ComponentDispatcherPanel({
 
                     <button
                       onClick={handleStructuredSubmit}
-                      disabled={!dispatcherContractReady || formRunning}
+                      disabled={!dispatcherContractReady || formRunning || noSpaceDefault}
                       className={`w-full h-8.5 text-white text-[10px] font-black rounded shadow-md transition-all flex items-center justify-center gap-1 ${
                         !dispatcherContractReady
                           ? "bg-slate-300 cursor-not-allowed"
@@ -1126,6 +1154,16 @@ export default function ComponentDispatcherPanel({
                         <div>
                           执行失败 [{formRunError.code}]：{formRunError.message}
                         </div>
+                        {formRunError.code === "MODEL_DEFAULT_NOT_CONFIGURED" && (
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/workspace/${encodeURIComponent(selectedWorkspaceId)}?tab=models`)}
+                            className="inline-flex items-center gap-0.5 text-[#3182ce] hover:underline font-black cursor-pointer"
+                          >
+                            前往空间「模型」页设置默认模型
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        )}
                         {formRunError.code === "POINTS_INSUFFICIENT" && (
                           <Link
                             href="/user/pay"
@@ -1190,15 +1228,15 @@ export default function ComponentDispatcherPanel({
                     )}
                     <button
                       onClick={handleQuickUse}
-                      disabled={!dispatcherContractReady}
+                      disabled={!dispatcherContractReady || noSpaceDefault}
                       className={`w-full h-8.5 text-white text-[10px] font-black rounded shadow-md transition-all flex items-center justify-center gap-1 ${
-                        dispatcherContractReady
+                        dispatcherContractReady && !noSpaceDefault
                           ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#2b6cb0] hover:shadow-lg cursor-pointer"
                           : "bg-slate-300 cursor-not-allowed"
                       }`}
                     >
                       <Layers className="w-3.5 h-3.5 fill-current text-white/20" />
-                      <span>{dispatcherContractReady ? "立即使用 (一键转场)" : dispatcherContractLabel}</span>
+                      <span>{noSpaceDefault ? "请先设置默认模型" : dispatcherContractReady ? "立即使用 (一键转场)" : dispatcherContractLabel}</span>
                     </button>
                   </div>
                 )}

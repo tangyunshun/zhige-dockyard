@@ -6,6 +6,7 @@ import { useToast } from "@/components/Toast";
 import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Settings, Shield, Users, Save, RefreshCw, AlertTriangle, Upload, ArrowLeft, Copy } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { emitWorkspaceLogoUpdated } from "@/lib/workspace-events";
 import { DissolveWorkspaceCheckModal } from "@/components/workspace/DissolveWorkspaceCheckModal";
 import { StatusBadge } from "@/components/common";
 
@@ -134,8 +135,22 @@ export default function WorkspaceSettingsPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.iconUrl) {
+          // 上传即落库：立即生效，避免刷新后丢失
+          const saveRes = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ logo: data.iconUrl }),
+          });
+          if (!saveRes.ok) {
+            const serr = await saveRes.json().catch(() => ({}));
+            throw new Error(serr.error || "图标保存失败");
+          }
           setWorkspace((prev: any) => ({ ...prev, logo: data.iconUrl }));
-          toast.success("空间图标上传成功，请点击下方 “保存空间修改” 按钮生效");
+          emitWorkspaceLogoUpdated({ workspaceId, logo: data.iconUrl });
+          toast.success("空间图标已上传并立即生效");
         }
       } else {
         const err = await res.json();

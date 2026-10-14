@@ -3,8 +3,12 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { getAuthToken } from "@/utils/auth";
 import { dedupeFetch } from "@/lib/requestDedupe";
+import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
 import type { ComponentDefinition, ComponentCategory, CategoryDetails } from "@/constants/components";
 import type { PositionDefinition } from "@/constants/positions";
+
+// 网络层失败冷却时长：弱网 / 离线 / HMR 重载风暴下，避免对同一接口反复无效请求、刷屏终端并造成顶栏 loading 闪烁
+const AUTH_ME_NETWORK_COOLDOWN_MS = 8_000;
 
 interface UserState {
   isLoggedIn: boolean;
@@ -404,7 +408,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const refreshUserState = async () => {
+  // 网络失败冷却计时器：避免弱网 / 离线 / HMR 重载风暴下对同一接口反复无效请求、刷屏并造成顶栏 loading 闪烁
+  const lastAuthMeNetworkFailRef = useRef(0);
+
+  // 注意：必须用 useCallback 固定引用身份。否则每次 Provider 重渲染都会生成新函数，
+  // 而 AvatarDropdown 的 useEffect 依赖了该引用，会判定依赖变化而反复执行，
+  // 在 userInfo.email 为空或 /api/auth/me 请求失败时（!email 守卫恒成立）形成无限循环，
+  // 表现为整页闪烁、终端日志刷屏（Maximum update depth exceeded）。
+  const refreshUserState = useCallback(async () => {
+    // 网络失败冷却期内直接跳过，避免重复刷屏 / 顶栏闪烁
+    if (Date.now() - lastAuthMeNetworkFailRef.current < AUTH_ME_NETWORK_COOLDOWN_MS) {
+      return;
+    }
     setIsLoading(true);
     
     // 检查是否正在退出登录
@@ -431,6 +446,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             credentials: "include",
           })
         : null;
+      // 防御：当上方 meReq 失败提前走 catch 时，listReq 不会被 await，其潜在 reject 会成为
+      // 未处理拒绝（unhandledRejection）。统一挂 no-op 处理器，避免 Edge 等网络异常环境刷 ⨯ unhandledRejection。
+      if (listReq) listReq.catch(() => {});
       const res = await meReq;
 
       if (res.ok) {
@@ -527,16 +545,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
       }
     } catch (error: any) {
-      if (error?.name !== "TimeoutError" && error?.name !== "AbortError") {
-        console.error("Refresh user state error:", error);
-      } else {
-        console.warn("[AppContext] 刷新用户状态请求超时或中断，保持当前状态");
+      const isNetworkError =
+        error?.name === "TypeError" ||
+        error?.message?.includes("Failed to fetch") ||
+        error?.name === "TimeoutError" ||
+        error?.name === "AbortError";
+      // 网络层失败：记录冷却时间戳并静默保持当前状态，避免弱网/离线环境反复刷屏终端与顶栏闪烁
+      if (isNetworkError) {
+        lastAuthMeNetworkFailRef.current = Date.now();
+        if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+          console.warn("[AppContext] 刷新用户状态请求超时或中断，保持当前状态");
+        }
+        return;
       }
+      console.error("Refresh user state error:", error);
       // 网络错误时保持现有状态
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [setIsLoading, setUserState]);
+
+  // 空间 Logo 等变更时即时重拉空间列表（顶部导航 / 空间切换列表等依赖此状态）
+  useEffect(() => onWorkspaceLogoUpdated(() => void refreshUserState()), [refreshUserState]);
 
   useEffect(() => {
     // 先从本地缓存快速恢复登录态（此时已挂载，可安全访问 localStorage）

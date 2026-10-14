@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { Logo } from "@/components/Logo";
 import { getAuthToken } from "@/utils/auth";
+import { emitWorkspaceLogoUpdated } from "@/lib/workspace-events";
 import {
   Settings,
   ArrowLeft,
@@ -250,8 +251,22 @@ export default function PersonalWorkspaceSettings() {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.iconUrl) {
+          // 上传即落库：立即生效，避免刷新后丢失
+          const saveRes = await fetch(`/api/workspace/update?workspaceId=${workspaceData.id}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ logo: data.iconUrl }),
+          });
+          if (!saveRes.ok) {
+            const serr = await saveRes.json().catch(() => ({}));
+            throw new Error(serr.error || "头像保存失败");
+          }
           setWorkspaceData((prev: any) => ({ ...prev, logo: data.iconUrl }));
-          toast.success("头像上传成功，请点击右上角『保存修改』生效");
+          emitWorkspaceLogoUpdated({ workspaceId: workspaceData.id, logo: data.iconUrl });
+          toast.success("头像已上传并立即生效");
         }
       } else {
         const err = await res.json();
@@ -642,12 +657,31 @@ export default function PersonalWorkspaceSettings() {
                             </label>
                             {workspaceData.logo && (
                               <button
-                                onClick={() => {
-                                  setWorkspaceData({
-                                    ...workspaceData,
-                                    logo: "",
-                                  });
-                                  toast.info("已重置头像为默认图标，请点击右上角『保存修改』生效");
+                                onClick={async () => {
+                                  // 恢复默认头像：点击即落库生效（与上传一致），不再依赖"保存修改"
+                                  try {
+                                    const authToken = getAuthToken();
+                                    const res = await fetch(
+                                      `/api/workspace/update?workspaceId=${workspaceData.id}`,
+                                      {
+                                        method: "PATCH",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                          Authorization: `Bearer ${authToken}`,
+                                        },
+                                        body: JSON.stringify({ logo: "" }),
+                                      },
+                                    );
+                                    if (!res.ok) {
+                                      const err = await res.json().catch(() => ({}));
+                                      throw new Error(err.error || "恢复默认失败");
+                                    }
+                                    setWorkspaceData((prev: any) => ({ ...prev, logo: "" }));
+                                    emitWorkspaceLogoUpdated({ workspaceId: workspaceData.id, logo: "" });
+                                    toast.success("已恢复默认头像，立即生效");
+                                  } catch (err: any) {
+                                    toast.error(err?.message || "恢复默认失败，请重试");
+                                  }
                                 }}
                                 className="h-[38px] px-[18px] rounded-[8px] text-[14px] font-[600] border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-all cursor-pointer inline-flex items-center gap-2"
                               >

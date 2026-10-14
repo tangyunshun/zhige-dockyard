@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { dedupeFetch } from "@/lib/requestDedupe";
+import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
 
 export interface Workspace {
   id: string;
@@ -290,6 +291,9 @@ export function useWorkspaceHubData() {
       window.removeEventListener("zhige_workspace_components_updated", handleComponentUpdate);
     };
   }, []);
+
+  // 空间 Logo 等变更时即时重拉中枢数据（否则工作台一直显示旧图标）
+  useEffect(() => onWorkspaceLogoUpdated(() => void loadUserInfo()), []);
 
   // 派生出来的个人工作空间状态
   const personalState = derivePersonalState(personalWorkspace, upgradeMode, personalWorkspaceDeleted);

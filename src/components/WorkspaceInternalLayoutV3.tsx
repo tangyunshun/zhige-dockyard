@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useParams, usePathname, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { confirm } from "@/components/GlobalConfirmProvider";
@@ -56,11 +57,16 @@ import KnowledgeTab from "@/components/studio/KnowledgeTab";
 import LogsTab from "@/components/studio/LogsTab";
 import PointsLedgerTab from "@/components/studio/PointsLedgerTab";
 import WorkspaceModelPolicyTab from "@/components/studio/WorkspaceModelPolicyTab";
+import ModelPricingRules from "@/components/ModelPricingRules";
+import type { PricingPeriodLike } from "@/components/ModelPricingRules";
 import SafeUninstallModal from "@/components/studio/SafeUninstallModal";
 import { PostIcon } from "@/components/studio/PostIcon";
 import type { PositionDefinition } from "@/constants/positions";
 import { getAuthToken, getCurrentUserId } from "@/utils/auth";
 import { formatTokenBalance, isUnlimitedToken } from "@/utils/quota";
+// 能力展示名：数据库 systemsetting 下发为准，此处内置值仅作缺失兜底
+import { MODEL_CAPABILITY_LABELS } from "@/lib/model-capability-labels";
+import { emitWorkspaceLogoUpdated } from "@/lib/workspace-events";
 
 // 组件与阶段类型定义
 interface ZhiGeComponent {
@@ -423,6 +429,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [loadState, setLoadState] = useState<"loading" | "ready" | "redirecting" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [hasMounted, setHasMounted] = useState(false);
+
+  // 顶部展示用：当前空间的 Logo（取自空间列表数据；Logo 变更后由全局事件触发重拉，实时同步）
+  const currentWsLogo = userState?.workspaces?.find((w) => w.id === workspaceId)?.logo || "";
   const [authData, setAuthData] = useState<CurrentAuth | null>(null);
 
   // 新装配通知 Banner 状态
@@ -476,6 +485,28 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [isCompDropdownOpen, setIsCompDropdownOpen] = useState(false);
   const compDropdownRef = useRef<HTMLDivElement>(null);
   const [compSearchQuery, setCompSearchQuery] = useState("");
+  // 任务分析模型预检（口径与后端执行链一致：先验证模型、再验证算力点）；null=尚未取得，不前端拦截
+  const [quickModelGate, setQuickModelGate] = useState<{
+    hasDefault: boolean;
+    label: string;
+    detail?: {
+      kind: "SYSTEM" | "BYO";
+      name: string;
+      provider: string;
+      upstream: string;
+      capabilities: string[];
+      contextLimit: number | null;
+      priceIn: number | null;
+      priceOut: number | null;
+      pricingPeriods: PricingPeriodLike[] | null;
+      /** 自带模型（BYO）的平台服务费率（基点，10000=100%）；系统模型为 null */
+      serviceRateBps: number | null;
+    } | null;
+    /** 能力展示名字典（来自数据库 systemsetting.model_capability_labels，管理员可配） */
+    capabilityLabels?: Record<string, string> | null;
+  } | null>(null);
+  // 任务分析模型详情弹窗
+  const [showQuickModelDetail, setShowQuickModelDetail] = useState(false);
 
   const [quickInputMaterial, setQuickInputMaterial] = useState<string>("");
   /** 结构化表单输入（合同声明 STRUCTURED_FORM 时使用，如 C04 的「汇报对象」） */
@@ -1920,9 +1951,31 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.iconUrl) {
+          // 上传即落库：不再依赖"保存空间修改"，避免刷新后丢失，
+          // 同时让工作台/空间中枢/管理后台等处即时取到新 logo
+          const saveRes = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ logo: data.iconUrl }),
+          });
+          if (!saveRes.ok) {
+            const serr = await saveRes.json().catch(() => ({}));
+            throw new Error(serr.error || "图标保存失败");
+          }
           setWorkspaceInfo((prev: any) => ({ ...prev, logo: data.iconUrl }));
+          setUserState((prev) => ({
+            ...prev,
+            workspaces: prev.workspaces.map((ws) =>
+              ws.id === workspaceId ? { ...ws, logo: data.iconUrl } : ws
+            ),
+          }));
+          // 广播变更：顶部导航 / 工作台 / 空间中枢 / 管理后台等处即时重拉显示新 Logo
+          emitWorkspaceLogoUpdated({ workspaceId, logo: data.iconUrl });
           setLogoUploadError("");
-          toast.success("空间图标上传成功，请点击下方 “保存空间修改” 按钮生效");
+          toast.success("空间图标已上传并立即生效");
         }
       } else {
         const err = await res.json();
@@ -1990,6 +2043,49 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     } catch (error: any) {
       console.error("保存失败:", error);
       toast.error(error.message || "保存失败，请重试");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // 恢复默认 Logo：点击即真正落库生效（清空 logo 字段，界面立即回落系统默认图标），无需再点"保存修改"
+  const handleResetLogo = async () => {
+    const ok = await confirm({
+      title: "恢复默认 Logo？",
+      message: "将清除当前自定义 Logo 并立即保存生效，空间将显示系统默认图标。确定继续吗？",
+      type: "warning",
+      confirmText: "恢复默认",
+    });
+    if (!ok) return;
+    try {
+      setSavingSettings(true);
+      const authToken = getAuthToken();
+      const res = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        // 只传 logo：后端对其余未传字段按"不更新"处理，不会动到空间名称等其他配置
+        body: JSON.stringify({ logo: "" }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "恢复默认 Logo 失败");
+      }
+      setWorkspaceInfo((prev: any) => ({ ...prev, logo: "" }));
+      setUserState((prev) => ({
+        ...prev,
+        workspaces: prev.workspaces.map((ws) =>
+          ws.id === workspaceId ? { ...ws, logo: "" } : ws
+        ),
+      }));
+      // 广播变更：让顶部 / 工作台 / 中枢 / 后台等处同步显示默认图标
+      emitWorkspaceLogoUpdated({ workspaceId, logo: "" });
+      toast.success("已恢复默认 Logo，立即生效");
+    } catch (error: any) {
+      console.error("恢复默认 Logo 失败:", error);
+      toast.error(error.message || "恢复默认 Logo 失败，请重试");
     } finally {
       setSavingSettings(false);
     }
@@ -2526,6 +2622,71 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       setActiveTab("quick");
     }
   }, [searchParams]);
+
+  // 快速任务页打开时预检空间默认模型（available-models 内部即用执行链的 resolveDefaultDeployment，
+  // 含 BYO 与成员获批默认，source=NONE/目标为空 即"未设默认模型"）
+  useEffect(() => {
+    if (activeTab !== "quick" || !workspaceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/workspace/available-models?workspaceId=${encodeURIComponent(workspaceId)}`, {
+          headers: getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {},
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const target = json?.data?.defaultTarget;
+        const depId: string = target?.targetDeploymentId || "";
+        const sysModels: any[] = json?.data?.systemModels || json?.data?.models || [];
+        const byoList: any[] = json?.data?.byoModels || [];
+        const sys = sysModels.find((m) => m?.id === depId) || null;
+        const byo = byoList.find((b) => b?.id === depId) || null;
+        setQuickModelGate({
+          hasDefault: !!depId,
+          label: target?.label || "",
+          capabilityLabels: (json?.data?.capabilityLabels as Record<string, string>) ?? null,
+          detail: sys
+            ? {
+                kind: "SYSTEM" as const,
+                name: sys.displayName || sys.modelId || depId,
+                provider: sys.providerName || sys.providerId || "平台模型池",
+                upstream: sys.upstreamModel || sys.modelId || "",
+                capabilities: Array.isArray(sys.capabilities) ? sys.capabilities : [],
+                contextLimit: sys.contextLimit ?? null,
+                priceIn: sys.pricing?.priceInputMicrosPerMillion != null ? +(sys.pricing.priceInputMicrosPerMillion / 1e6).toFixed(4) : null,
+                priceOut: sys.pricing?.priceOutputMicrosPerMillion != null ? +(sys.pricing.priceOutputMicrosPerMillion / 1e6).toFixed(4) : null,
+                pricingPeriods: Array.isArray(sys.pricingPeriods) ? sys.pricingPeriods : null,
+                serviceRateBps: null,
+              }
+            : byo
+              ? {
+                  kind: "BYO" as const,
+                  name: byo.label || "自带私有模型",
+                  // 供应商即厂商名本身（如 通义千问），不拼接"自建端点"等字样；
+                  // 「接入方式」已单独说明自建调用，避免用户误读为"厂商自建端点"
+                  provider: byo.providerName || byo.endpointHost || "—",
+                  // 上游模型名 = 库定义 label（与调用时下发的 upstreamModel 一致）
+                  upstream: byo.modelId || "",
+                  capabilities: Array.isArray(byo.capabilities) ? byo.capabilities : [],
+                  contextLimit: byo.contextLimit ?? null,
+                  // 官方登记单价（微元/百万 Token），供详情弹窗展示完整价格信息
+                  priceIn: byo.pricing?.priceInputMicrosPerMillion ?? null,
+                  priceOut: byo.pricing?.priceOutputMicrosPerMillion ?? null,
+                  pricingPeriods: Array.isArray(byo.pricingPeriods) ? byo.pricingPeriods : null,
+                  // 服务费率由平台管理员在后台配置（单一真源 billing.byokServiceRateBps），此处动态取用
+                  serviceRateBps:
+                    json?.data?.byoServiceRateBps ?? byo.pricing?.byokServiceRateBps ?? null,
+                }
+              : null,
+        });
+      } catch {
+        // 预检不可用 → 不在前端拦截，交给后端执行链统一报错
+        if (!cancelled) setQuickModelGate(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, workspaceId]);
 
   // 供自动化测试无缝唤起历史任务结果弹窗（不改变任何既有业务逻辑）
   useEffect(() => {
@@ -4486,6 +4647,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
                             if (!disableReason && restrictedComponentIds.includes(quickSelectedCompId)) {
                               disableReason = "当前企业岗位无权限执行此受限组件";
+                            } else if (!disableReason && quickModelGate && !quickModelGate.hasDefault) {
+                              // 先验证模型、再验证算力点：未设默认模型时优先提示模型问题
+                              disableReason = "未配置默认模型，请先配置默认模型再执行任务。";
                             } else if (!disableReason && isShortOnTokens) {
                               disableReason = "当前空间服务算力点不足，请升级或联系管理员";
                             }
@@ -4493,55 +4657,98 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
                           return (
                             <div className="space-y-3 pt-2 border-t border-slate-100">
-                              {/* 明晰清晰的算力收支对比面板 */}
-                              <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/80 space-y-1.5 text-xs font-sans">
-                                <div className="flex items-center justify-between text-slate-500 font-semibold">
-                                  <span>当前空间剩余算力:</span>
-                                  <span className={`font-mono font-black ${isShortOnTokens ? "text-red-600" : "text-emerald-600 font-bold"}`}>
-                                    {isUnlimitedToken(availableTokenForUser) ? "无限" : `${availableTokenForUser.toLocaleString()} 算力点`}
-                                    {!isUnlimitedToken(availableTokenForUser) && <span className="text-[10px] opacity-80 font-bold"> ({formatYuanFromPoints(availableTokenForUser)})</span>}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between text-slate-500 font-semibold">
-                                  <span>本次组件所需算力:</span>
-                                  {hasSelectedComp ? (
-                                    <span className="font-mono font-black text-[#3182ce]">
-                                      {/* estimatedModelTokens 是 Token 用量估算，非算力点；不得再据此推导金额 */}
-                                      {estimatedCost} Token（估算）
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 font-medium">请先在上方选择组件</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center justify-between border-t border-red-200/60 pt-1.5 text-red-600 font-bold text-[11px]">
-                                  <span>算力额度缺口:</span>
-                                  <span className="font-mono font-black text-red-600">
-                                    {hasSelectedComp && isShortOnTokens ? `-${estimatedCost - availableTokenForUser} 算力点` : "0 算力点"}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {disableReason && (
+                              {quickModelGate && !quickModelGate.hasDefault ? (
+                                /* 未配置默认模型：只提示模型问题 + 快捷配置入口，不混入算力点验证 */
                                 <div className="text-[11px] font-semibold text-red-600 bg-red-50/90 p-2.5 rounded-xl border border-red-200/80 space-y-2">
                                   <div className="flex items-center gap-1.5">
                                     <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
-                                    <span>{disableReason}</span>
+                                    <span>未配置默认模型，请先配置默认模型再执行任务。</span>
                                   </div>
-                                  {isShortOnTokens && (
-                                    <div className="pt-1 border-t border-red-200/60 flex items-center justify-between">
-                                      <span className="text-[10px] text-red-500">可联系企业管理员分配算力包</span>
-                                      {!isMemberView && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveTab("models")}
+                                    className="w-full px-2.5 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-black rounded-lg text-[11px] shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1"
+                                  >
+                                    前往「模型」页配置默认模型 →
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* 已配置任务分析模型：先显示模型（可点看详情 + 更换入口），再做算力点验证 */}
+                                  {quickModelGate?.hasDefault && (
+                                    <div className="flex items-center justify-between gap-2 bg-blue-50/60 p-2.5 rounded-xl border border-blue-200/70 text-xs">
+                                      <span className="font-bold text-slate-500 shrink-0">任务分析模型</span>
+                                      <span className="flex items-center gap-1.5 min-w-0">
                                         <button
                                           type="button"
-                                          onClick={() => setShowRechargeModal(true)}
-                                          className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-black rounded-lg text-[10px] shadow-2xs transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                                          onClick={() => setShowQuickModelDetail(true)}
+                                          className="min-w-0 font-black text-[#3182ce] hover:underline cursor-pointer truncate"
+                                          title="查看模型详细信息"
                                         >
-                                          <span>⚡ 充值/升级算力点</span>
+                                          {quickModelGate.label || "已配置"}
                                         </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActiveTab("models")}
+                                          className="px-1.5 py-0.5 rounded bg-white hover:bg-blue-50 text-[#3182ce] border border-blue-200 font-bold text-[10px] shrink-0 cursor-pointer transition-all"
+                                          title="前往「模型」页更换任务分析模型"
+                                        >
+                                          更换模型
+                                        </button>
+                                      </span>
+                                    </div>
+                                  )}
+                                  {/* 明晰清晰的算力收支对比面板 */}
+                                  <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/80 space-y-1.5 text-xs font-sans">
+                                    <div className="flex items-center justify-between text-slate-500 font-semibold">
+                                      <span>当前空间剩余算力:</span>
+                                      <span className={`font-mono font-black ${isShortOnTokens ? "text-red-600" : "text-emerald-600 font-bold"}`}>
+                                        {isUnlimitedToken(availableTokenForUser) ? "无限" : `${availableTokenForUser.toLocaleString()} 算力点`}
+                                        {!isUnlimitedToken(availableTokenForUser) && <span className="text-[10px] opacity-80 font-bold"> ({formatYuanFromPoints(availableTokenForUser)})</span>}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-slate-500 font-semibold">
+                                      <span>本次组件所需算力:</span>
+                                      {hasSelectedComp ? (
+                                        <span className="font-mono font-black text-[#3182ce]">
+                                          {/* estimatedModelTokens 是 Token 用量估算，非算力点；不得再据此推导金额 */}
+                                          {estimatedCost} Token（估算）
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 font-medium">请先在上方选择组件</span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center justify-between border-t border-red-200/60 pt-1.5 text-red-600 font-bold text-[11px]">
+                                      <span>算力额度缺口:</span>
+                                      <span className="font-mono font-black text-red-600">
+                                        {hasSelectedComp && isShortOnTokens ? `-${estimatedCost - availableTokenForUser} 算力点` : "0 算力点"}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {disableReason && (
+                                    <div className="text-[11px] font-semibold text-red-600 bg-red-50/90 p-2.5 rounded-xl border border-red-200/80 space-y-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                                        <span>{disableReason}</span>
+                                      </div>
+                                      {isShortOnTokens && (
+                                        <div className="pt-1 border-t border-red-200/60 flex items-center justify-between">
+                                          <span className="text-[10px] text-red-500">可联系企业管理员分配算力包</span>
+                                          {!isMemberView && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setShowRechargeModal(true)}
+                                              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-black rounded-lg text-[10px] shadow-2xs transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                                            >
+                                              <span>⚡ 充值/升级算力点</span>
+                                            </button>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
                                   )}
-                                </div>
+                                </>
                               )}
 
                               {/* 阻断状态与原因展示卡片 */}
@@ -4607,6 +4814,117 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                         : "启动组件分析"}
                                 </span>
                               </button>
+
+                              {/* 任务分析模型详情弹窗（Portal 挂 body，防止被祖先 transform/backdrop-filter 容器劫持 fixed 定位） */}
+                              {showQuickModelDetail && quickModelGate?.detail && typeof document !== "undefined" &&
+                                createPortal(
+                                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+                                  <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" onClick={() => setShowQuickModelDetail(false)} />
+                                  <div className="relative bg-white w-full max-w-lg max-h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                    {/* 头部：模型名牌 */}
+                                    <div className="relative bg-gradient-to-br from-[#2b6cb0] to-[#3182ce] px-5 py-4">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowQuickModelDetail(false)}
+                                        className="absolute top-3 right-3 w-6 h-6 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center text-xs font-black cursor-pointer transition-all"
+                                      >
+                                        ✕
+                                      </button>
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+                                          <span className="text-white font-black text-base">{(quickModelGate.detail.name || "?").charAt(0).toUpperCase()}</span>
+                                        </div>
+                                        <div className="min-w-0">
+                                          <div className="text-[10px] font-bold text-white/70 tracking-wider uppercase">任务分析模型</div>
+                                          <div className="text-white font-black text-sm truncate">{quickModelGate.detail.name}</div>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* 可滚动内容区 */}
+                                    <div className="flex-1 overflow-y-auto">
+                                      {/* 信息行（单列通栏：长域名/长值不再被窄列硬折行） */}
+                                      <div className="px-5 pt-3 pb-1 grid grid-cols-1">
+                                        {([
+                                          ["供应商", quickModelGate.detail.provider],
+                                          [
+                                            "上游模型",
+                                            quickModelGate.detail.upstream ||
+                                              (quickModelGate.detail.kind === "SYSTEM"
+                                                ? "—"
+                                                : "自建端点直连（未登记上游模型名）"),
+                                          ],
+                                          ["接入方式", quickModelGate.detail.kind === "SYSTEM" ? "系统分配 · 平台模型池" : "自建调用模型"],
+                                          [
+                                            "上下文长度",
+                                            // 展示数据库登记的真实精确值（如 131,072），不再四舍五入成 K/M 近似
+                                            quickModelGate.detail.contextLimit
+                                              ? `${quickModelGate.detail.contextLimit.toLocaleString("zh-CN")} Tokens`
+                                              : "—",
+                                          ],
+                                          [
+                                            "Token 单价",
+                                            quickModelGate.detail.priceIn != null
+                                              ? `输入 ¥${(quickModelGate.detail.priceIn / 1_000_000).toFixed(2)} · 输出 ¥${((quickModelGate.detail.priceOut ?? 0) / 1_000_000).toFixed(2)} 元/百万 Token` +
+                                                (quickModelGate.detail.kind === "BYO"
+                                                  ? quickModelGate.detail.serviceRateBps != null
+                                                    ? `（官方价，另收平台服务费 ${Math.round(quickModelGate.detail.serviceRateBps / 100)}%）`
+                                                    : "（官方价，另收平台服务费）"
+                                                  : "")
+                                              : "—",
+                                          ],
+                                        ] as [string, string][]).map(([k, v], i, arr) => (
+                                          <div key={k} className={`flex items-center justify-between gap-3 py-2.5 ${i < arr.length - 1 ? "border-b border-slate-100" : ""}`}>
+                                            <span className="text-[11px] text-slate-400 font-semibold shrink-0">{k}</span>
+                                            <span className="text-[11px] font-bold text-slate-800 text-right break-all">{v}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+
+                                      {/* 计价规则（分时段） */}
+                                      <div className="px-5 py-2">
+                                      <div className="flex items-center gap-1.5 mb-1.5">
+                                        <Clock className="w-3 h-3 text-slate-400" />
+                                        <span className="text-[11px] text-slate-400 font-semibold">计价规则（时段）</span>
+                                      </div>
+                                      <ModelPricingRules periods={quickModelGate.detail.pricingPeriods} />
+                                    </div>
+
+                                    {/* 模型能力 */}
+                                    {quickModelGate.detail.capabilities.length > 0 && (
+                                      <div className="px-5 pb-4 flex flex-wrap gap-1.5">
+                                        {(() => {
+                                          // 展示名一律取数据库下发的字典（管理员可配置），仅在缺失时回退内置兜底
+                                          const capLabels =
+                                            quickModelGate.capabilityLabels ?? MODEL_CAPABILITY_LABELS;
+                                          return quickModelGate.detail!.capabilities.map((c, i) => (
+                                            <span key={i} className="px-2 py-0.5 rounded-full bg-blue-50 text-[#3182ce] text-[10px] font-bold border border-blue-100">
+                                              {capLabels[c] || c}
+                                            </span>
+                                          ));
+                                        })()}
+                                      </div>
+                                    )}
+                                    </div>
+
+                                    {/* 底部操作 */}
+                                    <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
+                                      <span className="text-[10px] text-slate-400">如需更换，请前往「模型」页配置</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowQuickModelDetail(false);
+                                          setActiveTab("models");
+                                        }}
+                                        className="px-3 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-black rounded-lg text-[11px] shadow-xs hover:shadow-md cursor-pointer transition-all"
+                                      >
+                                        更换模型 →
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>,
+                                document.body
+                              )}
                             </div>
                           );
                         })()}
@@ -6202,23 +6520,27 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 <div className="space-y-1 text-center md:text-left flex-1">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h3 className="text-sm font-extrabold text-slate-800">空间标志 (Logo)</h3>
-                    {workspaceInfo.logo && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setWorkspaceInfo((prev: any) => ({ ...prev, logo: "" }));
-                          toast.info("已重置 Logo 为系统默认图标，点击下方 “保存修改” 后在全空间生效");
-                        }}
-                        className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95 shrink-0"
-                        title="移除自定义 Logo 并恢复为默认空间图标"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                        <span>恢复默认 Logo</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleResetLogo()}
+                      disabled={savingSettings || !workspaceInfo.logo}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 active:scale-95 shrink-0 disabled:cursor-not-allowed ${
+                        workspaceInfo.logo
+                          ? "bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 cursor-pointer disabled:opacity-60"
+                          : "bg-slate-50 text-slate-400 border border-slate-200"
+                      }`}
+                      title={
+                        workspaceInfo.logo
+                          ? "移除自定义 Logo 并立即恢复为默认空间图标"
+                          : "当前未设置自定义 Logo，已是系统默认图标"
+                      }
+                    >
+                      <Trash2 className={`w-3.5 h-3.5 ${workspaceInfo.logo ? "text-red-600" : "text-slate-400"}`} />
+                      <span>恢复默认 Logo</span>
+                    </button>
                   </div>
                   <p className="text-xs text-slate-400 font-semibold leading-relaxed">
-                    支持 JPG、PNG 格式，大小不能超过 2MB。上传新图标或重置后，点击下方 “保存修改” 按钮在全局生效。
+                    支持 JPG、PNG 格式，大小不能超过 2MB。上传新图标后点击下方 “保存修改” 生效；「恢复默认 Logo」点击确认后立即生效。
                   </p>
                   {logoUploadError && (
                     <div className="text-xs text-red-600 font-extrabold mt-1 flex items-center gap-1">
@@ -6617,7 +6939,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           <div className="h-5 w-px bg-slate-300/70 flex-shrink-0" />
           
           <div className="flex items-center gap-2 min-w-0 text-left">
-            <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white shadow-md shadow-[#3182ce]/25 font-bold">🏢</span>
+            <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white shadow-md shadow-[#3182ce]/25 font-bold overflow-hidden">
+              {currentWsLogo ? (
+                <img src={currentWsLogo} alt={workspaceName} className="w-9 h-9 rounded-xl object-cover" />
+              ) : (
+                "🏢"
+              )}
+            </span>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-slate-800 text-sm truncate">{workspaceName}</span>

@@ -216,6 +216,20 @@ export async function tryResolveWorkspaceByoDefault(
     }
   }
 
+  // 私有归属校验（负责人 2026-10-15 拍板）：自带模型归其模型库创建者所有，
+  // 非创建者一律不可用（回落空间默认）；legacy 无主数据（无绑定关系）沿用共享规则
+  if (userId) {
+    const assignment = await prisma.user_byo_model_assignment
+      .findFirst({
+        where: { workspaceId },
+        select: { def: { select: { ownerUserId: true } } },
+      })
+      .catch(() => null);
+    if (assignment?.def?.ownerUserId && assignment.def.ownerUserId !== userId) {
+      return null;
+    }
+  }
+
   const required = Array.isArray(requiredCapabilities)
     ? Array.from(new Set(requiredCapabilities.filter((c) => typeof c === "string" && c.trim()).map((c) => c.trim().toUpperCase())))
     : [];

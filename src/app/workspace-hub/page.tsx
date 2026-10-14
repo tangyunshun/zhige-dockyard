@@ -1029,6 +1029,9 @@ export default function WorkspaceHub() {
                 >
                   <div>
                     <div className="flex items-center gap-1.5">
+                      {personalWorkspace.logo ? (
+                        <img src={personalWorkspace.logo} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
+                      ) : null}
                       <span className="text-sm font-bold text-slate-700 block leading-none">{personalWorkspace.name}</span>
                       <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100/80 rounded font-black shrink-0 leading-none flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block animate-pulse"></span>
@@ -1068,7 +1071,11 @@ export default function WorkspaceHub() {
                         )}
                       </div>
                       <span className="text-xs text-slate-400 font-semibold block mt-1.5 leading-none flex items-center gap-1">
-                        <span>🏢</span> 企业空间
+                        {ws.logo ? (
+                          <img src={ws.logo} alt="" className="w-4 h-4 rounded object-cover" />
+                        ) : (
+                          <span>🏢</span>
+                        )} 企业空间
                       </span>
                     </div>
                     <span className="text-xs font-bold text-[#2b6cb0] transition-transform group-hover:translate-x-0.5">

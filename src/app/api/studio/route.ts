@@ -2502,7 +2502,10 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             }
           }
         } catch (estimateErr) {
-          // 估价失败不得在此阻断执行：交由后续正式模型裁决抛出稳定错误码，此处维持既有扣点口径
+          // 模型策略门禁（默认模型未配置 / 模型不在白名单 / 能力不满足等 ContractValidationError）：
+          // 必须在任何算力点、额度检查之前裁决 —— 向上抛出，由外层统一返回明确错误码（先验证模型，再验证算力点）。
+          // 仅「单价未登记」等纯算账估价失败才在此兼容吞掉，维持既有估算扣点口径。
+          if (estimateErr instanceof ContractValidationError) throw estimateErr;
           console.warn("[算账中心] 估价失败，兼容期维持既有估算扣点口径:", (estimateErr as Error)?.message);
         }
 
@@ -3860,6 +3863,10 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           },
         });
       } catch (simError: any) {
+        // 模型策略门禁（默认模型未配置等）：返回明确业务错误码与 403，而非笼统 500 内部异常
+        if (simError instanceof ContractValidationError) {
+          return NextResponse.json({ success: false, code: simError.code, error: simError.message }, { status: simError.status });
+        }
         console.error("执行 simulate 分支发生内部异常:", simError);
         return NextResponse.json({
           success: false,

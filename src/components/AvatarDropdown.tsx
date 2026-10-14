@@ -15,6 +15,12 @@ import { useAppContext } from "@/contexts/AppContext";
 import { useLogout } from "@/hooks/useLogout";
 import { getMembershipLevelIcon } from "@/utils/membership-icon";
 
+// 邮箱补齐的「整个页面会话只尝试一次」守卫。
+// 必须放在模块级而不是 useRef：GlobalHeader 在 isLoading 期间会用骨架屏替换本组件，
+// 导致本组件被反复卸载/重挂载，ref 守卫每次挂载都归零；叠加"账号无邮箱"的场景，
+// 会形成「补齐 → setIsLoading → 卸载重挂载 → 再补齐」的 me/list 请求死循环与顶栏闪烁。
+let emailRefillAttempted = false;
+
 interface AvatarDropdownProps {
   workspaceId?: string | null;
   workspaceType?: "PERSONAL" | "ENTERPRISE";
@@ -82,9 +88,18 @@ export default function AvatarDropdown({
     (typeof window !== "undefined" ? localStorage.getItem("userEmail") : "") ||
     "";
 
-  // 若用户处于登录态但内存中尚未获取到邮箱，触发一次后台静默补齐
+  // 若用户处于登录态但内存中尚未获取到邮箱，触发一次后台静默补齐。
+  // 守卫为模块级变量（见文件顶部说明）：无论本组件被卸载重挂载多少次，整个页面会话最多尝试一次，
+  // 从源头杜绝 me/list 请求循环刷屏与顶栏闪烁。
   useEffect(() => {
-    if (userState.isLoggedIn && userInfo && !userInfo.email && refreshUserState) {
+    if (
+      !emailRefillAttempted &&
+      userState.isLoggedIn &&
+      userInfo &&
+      !userInfo.email &&
+      refreshUserState
+    ) {
+      emailRefillAttempted = true;
       refreshUserState().catch(() => {});
     }
   }, [userState.isLoggedIn, userInfo?.email, refreshUserState]);

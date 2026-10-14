@@ -7,6 +7,11 @@ import {
   resolveDefaultDeployment,
   listDeploymentPricingPeriods,
 } from "@/lib/model-registry";
+import { loadBillingConfig } from "@/lib/billing/billing-config";
+import {
+  mergeCapabilityLabels,
+  MODEL_CAPABILITY_LABELS_KEY,
+} from "@/lib/model-capability-labels";
 import { resolveEffectiveUserPrice } from "@/lib/model-pricing";
 import {
   normCapabilities,
@@ -172,6 +177,15 @@ export async function GET(request: NextRequest) {
 
     const wsType: string = (ws?.type as string) || "PERSONAL";
 
+    // 计费配置（含 BYO 平台服务费率，单一真源 billing.byokServiceRateBps，后台可配）
+    const billing = await loadBillingConfig();
+
+    // 能力展示名字典：数据库 systemsetting 优先（管理员可配），未配置时回退内置字典
+    const capSetting = await prisma.systemsetting
+      .findUnique({ where: { key: MODEL_CAPABILITY_LABELS_KEY }, select: { value: true } })
+      .catch(() => null);
+    const capabilityLabels = mergeCapabilityLabels(capSetting?.value);
+
     // 构造单条 BYO 脱敏视图（密钥绝不返回）
     const buildByoView = async (
       row: any,
@@ -188,18 +202,28 @@ export async function GET(request: NextRequest) {
       const shared = row.shareWithMembers !== false;
       const isSourceOwner = userId === sourceOwnerId;
       const canUse = shared || isSourceOwner;
-      // 反查该空间生效行对应的中央模型库定义 id（用于「绑定到本空间」与跨空间去重）
+      // 反查该空间生效行对应的中央模型库定义 id（用于「绑定到本空间」与跨空间去重），并取创建者
       const assignment = await prisma.user_byo_model_assignment
-        .findFirst({ where: { workspaceId: sourceWorkspaceId }, select: { defId: true } })
+        .findFirst({
+          where: { workspaceId: sourceWorkspaceId },
+          select: { defId: true, def: { select: { ownerUserId: true } } },
+        })
         .catch(() => null);
+      const creatorUserId = assignment?.def?.ownerUserId ?? null;
+      // 私有归属（负责人 2026-10-15 拍板）：自带模型归其模型库创建者所有，
+      // 非创建者一律不可见、不可用（仅 legacy 无主数据沿用 shareWithMembers 旧规则）
+      if (creatorUserId && creatorUserId !== userId) return null;
       return {
         configured: true,
         id: `byo:${sourceWorkspaceId}`,
         sourceWorkspaceId,
         defId: assignment?.defId ?? null,
+        creatorUserId,
         boundToCurrentSpace: sourceWorkspaceId === workspaceId,
         scope, // SPACE=空间共享模型；PERSONAL_MEMBER=成员个人模型（仅本人可见）
         label: row.label,
+        // 上游模型名：库定义的 label 同时作为调用时下发的 upstreamModel，供详情弹窗准确展示
+        modelId: row.label,
         providerName: (row.providerName as string) || "",
         protocol: row.protocol,
         endpointHost,
@@ -214,7 +238,7 @@ export async function GET(request: NextRequest) {
           priceOutputMicrosPerMillion: row.priceOutputMicrosPerMillion,
           priceCacheReadMicrosPerMillion: null,
           priceCacheWriteMicrosPerMillion: null,
-          byokServiceRateBps: 1500, // 平台基础服务费 15%
+          byokServiceRateBps: billing.byokServiceRateBps, // 平台基础服务费（后台可配，单一真源 billing.byokServiceRateBps）
         },
       };
     };
@@ -230,10 +254,11 @@ export async function GET(request: NextRequest) {
       byoModels.push(view);
     };
 
-    // 3a. 当前空间自身 BYO（空间内所有成员可见/可用）
+    // 3a. 当前空间自身 BYO（仅模型创建者本人可见/可用；非创建者返回 null 跳过）
     const currentByoRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId } });
     if (currentByoRow) {
-      await pushByo(await buildByoView(currentByoRow, workspaceId, ws?.ownerId || "", "SPACE"));
+      const view = await buildByoView(currentByoRow, workspaceId, ws?.ownerId || "", "SPACE");
+      if (view) await pushByo(view);
     }
 
     if (wsType === "ENTERPRISE") {
@@ -253,7 +278,8 @@ export async function GET(request: NextRequest) {
           if (pw.ownerId !== userId) continue;
           const pRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId: pw.id } });
           if (pRow) {
-            await pushByo(await buildByoView(pRow, pw.id, pw.ownerId, "PERSONAL_MEMBER"));
+            const view = await buildByoView(pRow, pw.id, pw.ownerId, "PERSONAL_MEMBER");
+            if (view) await pushByo(view);
           }
         }
       }
@@ -266,7 +292,8 @@ export async function GET(request: NextRequest) {
       for (const ew of ownedEnterprise) {
         const eRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId: ew.id } });
         if (eRow) {
-          await pushByo(await buildByoView(eRow, ew.id, ew.ownerId, "SPACE"));
+          const view = await buildByoView(eRow, ew.id, ew.ownerId, "SPACE");
+          if (view) await pushByo(view);
         }
       }
     }
@@ -288,10 +315,8 @@ export async function GET(request: NextRequest) {
       defaultTarget = {
         source: defaultPlan.defaultSource,
         targetDeploymentId: defaultPlan.deploymentId,
-        label:
-          defaultPlan.defaultSource === "WORKSPACE_BYO"
-            ? `空间自带模型（${defaultPlan.modelId}）`
-            : defaultPlan.modelId,
+        // 仅显示完整模型名（不带"空间自带模型"等描述前缀），空间不足时由前端省略号截断
+        label: defaultPlan.modelId,
       };
     } catch {
       // 无法自动裁决时保持 NONE
@@ -314,6 +339,8 @@ export async function GET(request: NextRequest) {
         models: systemModels,
         byo: byoModel,
         defaultDeploymentId: defaultTarget.targetDeploymentId || null,
+        byoServiceRateBps: billing.byokServiceRateBps,
+        capabilityLabels,
       },
     });
   } catch (error) {

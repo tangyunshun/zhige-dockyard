@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, Clock, Tag, Cpu, Search, Zap, Calculator, AlertTriangle, Sparkles } from "lucide-react";
 import { yuanToPoints, formatYuanFromPoints, POINT_UNIT_HINT, POINTS_PER_YUAN } from "@/lib/point-rate";
 import { formatPeriodSchedule, buildTierCaption } from "@/lib/period-schedule-text";
+import { MODEL_CAPABILITY_LABELS } from "@/lib/model-capability-labels";
 
 interface PriceView {
   input: number | null;
@@ -84,13 +85,8 @@ const ORIGIN_CLASS: Record<string, string> = {
   PLATFORM: "bg-blue-50 text-[#2b6cb0] border-blue-200",
   USER_BYOK: "bg-violet-50 text-violet-600 border-violet-200",
 };
-const CAP_LABELS: Record<string, string> = {
-  TEXT_GENERATION: "文本生成",
-  STRUCTURED_OUTPUT: "结构化输出",
-  VISION: "视觉理解",
-  LONG_CONTEXT: "长上下文",
-  FILE_ANALYSIS: "文件分析",
-};
+// 能力展示名全站唯一真源（数据库 systemsetting.model_capability_labels 为准，此处为内置兜底）
+const CAP_LABELS: Record<string, string> = MODEL_CAPABILITY_LABELS;
 
 /** 单次执行保底扣点（与后端 systemconfig billing.minPointsPerTask 默认一致，前端仅作展示参考） */
 const MIN_POINTS_PER_TASK = 5;
@@ -245,7 +241,8 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
         )}
         {it.mainstream && it.activePeriodId && hasPrice && (
           <p className="text-[10px] text-slate-400 mt-2 border-t border-blue-100 pt-2">
-            主流基准价（闲时）：输入 {fmtYuan(it.mainstream.input)} · 输出 {fmtYuan(it.mainstream.output)} 元/百万 Token
+            {/* 未配置分时段的模型不挂"闲时"标签，仅显示主流基准价 */}
+            {hasOwnTiers ? "主流基准价（闲时）" : "主流基准价"}：输入 {fmtYuan(it.mainstream.input)} · 输出 {fmtYuan(it.mainstream.output)} 元/百万 Token
           </p>
         )}
         {hasOwnTiers && (idleTier || peakTier || holidayTier) && (() => {

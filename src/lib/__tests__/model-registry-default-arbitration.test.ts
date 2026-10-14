@@ -12,10 +12,10 @@ import { ContractValidationError } from "@/lib/component-execution-profile";
 
 /**
  * 默认执行模型「数据库唯一裁决」专项测试
- *  - 空间 defaultDeploymentId 优先；
- *  - 未配置空间默认时使用平台默认；
- *  - 无平台默认时明确 MODEL_NOT_ALLOWED；
- *  - 部署禁用 / 供应商禁用 / 白名单不允许 一律拒绝；
+ *  - 空间自带模型（BYO）优先；
+ *  - 其次空间 defaultDeploymentId（显式「设为空间默认」）；
+ *  - 二者皆无 → MODEL_DEFAULT_NOT_CONFIGURED（不静默回落平台默认，也不以白名单恰 1 款自动默认）；
+ *  - 部署禁用 / 供应商禁用 / 白名单不允许 一律拒绝（仍报 MODEL_NOT_ALLOWED）；
  *  - 新增更早 createdAt 的部署**不得**改变裁决结果（禁止 findFirst(createdAt) 隐式选模）。
  */
 
@@ -40,7 +40,7 @@ async function expectRejected(fn: () => Promise<unknown>, hint: string): Promise
   }, hint);
 }
 
-describe("默认执行模型数据库唯一裁决（空间默认 -> 平台默认 -> 拒绝）", () => {
+describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未配置则拦截）", () => {
   before(async () => {
     await prisma.user.create({
       data: { id: USER, email: `${USER}@zhige.test`, name: USER, role: "USER", status: "active", password: "x" },
@@ -98,15 +98,29 @@ describe("默认执行模型数据库唯一裁决（空间默认 -> 平台默认
     assert.deepEqual(residue, { policy: 0, ws: 0, dep: 0, prov: 0, user: 0 }, `零残留断言失败: ${JSON.stringify(residue)}`);
   });
 
-  test("① 无空间默认且无平台默认 → 明确 MODEL_NOT_ALLOWED（不猜测、不按创建时间挑）", async () => {
-    await expectRejected(() => resolveDefaultDeployment({ workspaceId: WS }), "无默认时必须拒绝");
+  test("① 无空间默认 → 明确 MODEL_DEFAULT_NOT_CONFIGURED（不猜测、不按创建时间挑、不回落平台默认）", async () => {
+    await assert.rejects(
+      () => resolveDefaultDeployment({ workspaceId: WS }),
+      (e: unknown) => {
+        assert.ok(e instanceof ContractValidationError, "必须抛出 ContractValidationError");
+        assert.equal((e as ContractValidationError).code, "MODEL_DEFAULT_NOT_CONFIGURED", "无显式默认时必须拦截并提示配置");
+        return true;
+      },
+      "无默认时必须拦截",
+    );
   });
 
-  test("② 仅配置平台默认 → 使用平台默认", async () => {
+  test("② 仅配置平台默认不再被当作执行默认：必须显式配置空间默认", async () => {
     await setPlatformDefaultDeploymentId(depOld);
-    const plan = await resolveDefaultDeployment({ workspaceId: WS });
-    assert.equal(plan.deploymentId, depOld);
-    assert.equal(plan.defaultSource, "PLATFORM_DEFAULT");
+    await assert.rejects(
+      () => resolveDefaultDeployment({ workspaceId: WS }),
+      (e: unknown) => {
+        assert.ok(e instanceof ContractValidationError, "必须抛出 ContractValidationError");
+        assert.equal((e as ContractValidationError).code, "MODEL_DEFAULT_NOT_CONFIGURED", "平台默认不再作为执行兜底");
+        return true;
+      },
+      "平台默认不再被 resolveDefaultDeployment 使用",
+    );
   });
 
   test("③ 空间默认优先：空间已配置时不得回落到平台默认", async () => {
@@ -150,11 +164,19 @@ describe("默认执行模型数据库唯一裁决（空间默认 -> 平台默认
     await expectRejected(() => resolveDefaultDeployment({ workspaceId: WS }), "默认部署不在白名单时必须拒绝");
   });
 
-  test("⑧ 清空空间与平台默认 → 再次明确拒绝", async () => {
+  test("⑧ 清空空间与平台默认 → 再次明确 MODEL_DEFAULT_NOT_CONFIGURED（不回落平台默认）", async () => {
     await prisma.workspace_model_policy.deleteMany({ where: { workspaceId: WS } });
     await setPlatformDefaultDeploymentId(null);
     assert.equal(await getPlatformDefaultDeploymentId(), null);
-    await expectRejected(() => resolveDefaultDeployment({ workspaceId: WS }), "全部默认清空时必须拒绝");
+    await assert.rejects(
+      () => resolveDefaultDeployment({ workspaceId: WS }),
+      (e: unknown) => {
+        assert.ok(e instanceof ContractValidationError, "必须抛出 ContractValidationError");
+        assert.equal((e as ContractValidationError).code, "MODEL_DEFAULT_NOT_CONFIGURED", "全部默认清空时必须拦截");
+        return true;
+      },
+      "全部默认清空时必须拦截",
+    );
   });
 
   test("⑨ 平台默认不得写入不存在的部署（防悬挂配置）", async () => {
@@ -171,16 +193,22 @@ describe("默认执行模型数据库唯一裁决（空间默认 -> 平台默认
     await setPlatformDefaultDeploymentId(null);
   });
 
-  test("⑪ 白名单恰好 1 款且未显式设默认 → 系统自动默认该款（SPACE_SINGLE_AUTO，优先于平台默认）", async () => {
-    // 清空空间默认与平台默认，仅保留白名单 1 款
+  test("⑪ 白名单恰好 1 款但未显式设默认 → 不再自动默认，必须显式配置空间默认", async () => {
+    // 清空空间默认与平台默认，仅保留白名单 1 款（未显式设默认）
     await prisma.workspace_model_policy.deleteMany({ where: { workspaceId: WS } });
     await setPlatformDefaultDeploymentId(null);
     await prisma.modeldeployment.update({ where: { id: depOld }, data: { capabilities: ["TEXT_GENERATION"] } });
     await prisma.workspace_model_policy.create({
       data: { id: `wmp-auto-${uid()}`, workspaceId: WS, defaultDeploymentId: null, allowedDeploymentIds: [depOld] },
     });
-    const plan = await resolveDefaultDeployment({ workspaceId: WS, requiredCapabilities: ["TEXT_GENERATION"] });
-    assert.equal(plan.deploymentId, depOld, "白名单唯一种子必须被自动选为默认");
-    assert.equal(plan.defaultSource, "SPACE_SINGLE_AUTO", "来源必须为单模型自动默认");
+    await assert.rejects(
+      () => resolveDefaultDeployment({ workspaceId: WS, requiredCapabilities: ["TEXT_GENERATION"] }),
+      (e: unknown) => {
+        assert.ok(e instanceof ContractValidationError, "必须抛出 ContractValidationError");
+        assert.equal((e as ContractValidationError).code, "MODEL_DEFAULT_NOT_CONFIGURED", "白名单唯一种子未显式设默认时必须拦截");
+        return true;
+      },
+      "单模型白名单未显式设默认时必须拦截",
+    );
   });
 });

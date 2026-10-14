@@ -1005,7 +1005,7 @@ export async function setPlatformDefaultDeploymentId(deploymentId: string | null
   });
 }
 
-export type DefaultDeploymentSource = "SPACE_DEFAULT" | "PLATFORM_DEFAULT" | "SPACE_SINGLE_AUTO" | "WORKSPACE_BYO";
+export type DefaultDeploymentSource = "SPACE_DEFAULT" | "WORKSPACE_BYO";
 
 export interface DefaultDeploymentPlan extends ResolvedModelPlan {
   /** 本次裁决实际采用的默认来源 */
@@ -1014,10 +1014,12 @@ export interface DefaultDeploymentPlan extends ResolvedModelPlan {
 
 /**
  * 默认执行模型的唯一裁决入口：
- *   1. 当前空间 workspace_model_policy.defaultDeploymentId **优先**；
- *   2. 未配置空间默认时，读取 system_config 中的显式平台默认部署；
- *   3. 均无有效默认部署 → MODEL_NOT_ALLOWED（不猜测、不兜底环境变量、不按创建时间挑选）。
+ *   1. 空间自带模型（BYO）若已登记且满足合同能力/上下文要求，**优先**于系统默认；
+ *   2. 当前空间 workspace_model_policy.defaultDeploymentId（空间所有者/管理员显式「设为空间默认」）；
+ *   3. 二者皆无 → MODEL_DEFAULT_NOT_CONFIGURED（不静默回落平台默认，也不以「白名单恰 1 款」自动默认）。
  *
+ * 即：执行任务前必须由空间显式配置一个默认模型；未配置则在任务入口明确拦截，
+ * 提示用户前往空间「模型」页配置，而不是由系统替空间强加一个默认。
  * 所有候选统一校验：部署存在、部署启用、供应商启用、空间白名单、协议与端点完备。
  */
 export async function resolveDefaultDeployment(params: {
@@ -1045,33 +1047,53 @@ export async function resolveDefaultDeployment(params: {
     );
   }
 
-  // 0. 空间自带模型（BYO）优先：用户已登记且满足合同能力/上下文要求时，覆盖系统默认模型
-  const byoPlan = await tryResolveWorkspaceByoDefault(params.workspaceId, requiredCaps, params.userId);
-  if (byoPlan) {
-    return { ...byoPlan, defaultSource: "WORKSPACE_BYO" };
+  // 个人成员偏好（「仅我使用」模型）：最高优先级，覆盖空间默认，但仅影响该成员本人，
+  // 不改变空间默认模型配置、也不影响其他成员。仅当为显式指定（isAuto=false 且有 deploymentId）时生效。
+  let memberPrefId: string | null = null;
+  if (params.userId) {
+    try {
+      const pref = await prisma.workspace_member_model_preference.findUnique({
+        where: { workspaceId_userId: { workspaceId: params.workspaceId, userId: params.userId } },
+      });
+      // 兼容历史脏数据：早期前端把「自带模型默认」存成字面量 "byo"，读取时规范化为 byo:<workspaceId>
+      if (pref && !pref.isAuto && pref.deploymentId) {
+        memberPrefId =
+          pref.deploymentId === "byo" ? `byo:${params.workspaceId}` : pref.deploymentId;
+      }
+    } catch {
+      // 偏好读取失败不阻断执行，回落空间默认
+    }
   }
 
   const policy = await loadSpaceModelPolicy(params.workspaceId);
   const allowedList = policy.configured ? policy.allowedDeploymentIds : null;
-
   const spaceDefaultId = policy.defaultDeploymentId;
 
-  // 单模型自动默认：空间已配置白名单且恰好 1 款、且未显式设置空间默认时，
-  // 系统自动将该唯一模型作为默认（与模型页「系统默认」一致），优先于平台默认
-  const singleAutoDefaultId =
-    !spaceDefaultId && allowedList && allowedList.length === 1 ? allowedList[0] : null;
-
-  // 空间默认优先；无空间默认时优先取单模型自动默认，最后回落平台默认
-  const platformDefaultId =
-    spaceDefaultId || singleAutoDefaultId ? null : await getPlatformDefaultDeploymentId();
-
-  const chosenId = spaceDefaultId || singleAutoDefaultId || platformDefaultId;
+  // 解析顺序：① 个人「仅我使用」偏好 → ② 空间显式默认（含显式 BYO 默认）；两者皆空才拦截。
+  // 「绑定即默认」的语义已废弃：绑定仅代表可用，默认须显式设置（空间默认或个人偏好）。
+  let chosenId: string | null = memberPrefId || spaceDefaultId;
   if (!chosenId) {
     throw new ContractValidationError(
-      "MODEL_NOT_ALLOWED",
-      "当前空间未配置默认模型，且平台未配置显式默认模型部署，无法裁决执行模型。请联系管理员在空间模型策略或后台模型管理中配置默认模型。",
+      "MODEL_DEFAULT_NOT_CONFIGURED",
+      "当前空间尚未配置默认模型，无法执行任务。请前往空间「模型」页面设置一个默认模型后再试。",
       403,
     );
+  }
+
+  // 分支 0：解析目标指向自建模型（byo:xxx）——个人偏好或空间默认显式指向 BYO 时
+  if (chosenId === `byo:${params.workspaceId}`) {
+    const byoPlan = await tryResolveWorkspaceByoDefault(params.workspaceId, requiredCaps, params.userId);
+    if (byoPlan) return { ...byoPlan, defaultSource: "WORKSPACE_BYO" };
+    // 个人 BYO 偏好不可用时回落到空间默认；空间默认本身即 BYO 不可用则明确报错
+    if (memberPrefId && memberPrefId === chosenId && spaceDefaultId && spaceDefaultId !== chosenId) {
+      chosenId = spaceDefaultId;
+    } else {
+      throw new ContractValidationError(
+        "MODEL_NOT_ALLOWED",
+        "自带模型当前不可用（可能已停用、能力不满足或密钥解密失败），请前往空间「模型」页重新配置默认模型。",
+        403,
+      );
+    }
   }
 
   const dep = await prisma.modeldeployment.findUnique({ where: { id: chosenId } });
@@ -1148,7 +1170,7 @@ export async function resolveDefaultDeployment(params: {
   return {
     ...buildDatabasePlan(dep, providerRow),
     pricing: await resolveActivePricingAt(dep.id),
-    defaultSource: spaceDefaultId ? "SPACE_DEFAULT" : singleAutoDefaultId ? "SPACE_SINGLE_AUTO" : "PLATFORM_DEFAULT",
+    defaultSource: "SPACE_DEFAULT",
   };
 }
 
@@ -1197,6 +1219,23 @@ export async function resolveDeploymentForWorkspace(params: {
     );
   }
 
+  // 空间必须已配置可用的默认模型才能执行任务（无论使用「智能调度」还是手动指定具体模型）。
+  // 默认模型 = 空间显式设置的系统默认，或已启用的空间自带模型(BYO)；二者皆无 → 统一拦截，
+  // 提示用户先前往空间「模型」页配置默认模型。口径与 available-models 的 defaultTarget.source==="NONE" 一致。
+  const gatePolicy = await loadSpaceModelPolicy(params.workspaceId);
+  let hasConfiguredDefault = Boolean(gatePolicy.defaultDeploymentId);
+  if (!hasConfiguredDefault) {
+    const gateByo = await prisma.workspace_byo_model.findUnique({ where: { workspaceId: params.workspaceId } });
+    hasConfiguredDefault = Boolean(gateByo && gateByo.enabled);
+  }
+  if (!hasConfiguredDefault) {
+    throw new ContractValidationError(
+      "MODEL_DEFAULT_NOT_CONFIGURED",
+      "当前空间尚未配置默认模型，无法执行任务。请前往空间「模型」页面设置一个默认模型后再试。",
+      403,
+    );
+  }
+
   // 分支 1：指定自带模型（byo 或 byo:xxx）
   if (target.toLowerCase() === "byo" || target.toLowerCase().startsWith("byo:")) {
     await ensureByoShareWithMembersColumn();
@@ -1221,6 +1260,23 @@ export async function resolveDeploymentForWorkspace(params: {
         throw new ContractValidationError(
           "MODEL_NOT_ALLOWED",
           "当前空间的自带模型仅限空间所有者使用，未对空间成员开放共享。",
+          403,
+        );
+      }
+    }
+    // 私有归属校验（负责人 2026-10-15 拍板）：自带模型归其模型库创建者所有，
+    // 非创建者不可指定执行；legacy 无主数据（无绑定关系）沿用共享规则
+    if (params.userId) {
+      const assignment = await prisma.user_byo_model_assignment
+        .findFirst({
+          where: { workspaceId: params.workspaceId },
+          select: { def: { select: { ownerUserId: true } } },
+        })
+        .catch(() => null);
+      if (assignment?.def?.ownerUserId && assignment.def.ownerUserId !== params.userId) {
+        throw new ContractValidationError(
+          "MODEL_NOT_ALLOWED",
+          "该自带模型为创建者私有，仅创建者可指定执行。",
           403,
         );
       }

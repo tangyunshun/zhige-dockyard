@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { getAuthToken } from "@/utils/auth";
 import { dedupeFetch } from "@/lib/requestDedupe";
+import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
 
 export interface Workspace {
   id: string;
@@ -62,6 +63,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const refreshWorkspaces = useCallback(async () => {
     await fetchWorkspacesFromAPI();
   }, [fetchWorkspacesFromAPI]);
+
+  // 空间 Logo 等变更时即时重拉（否则顶部/工作台等处会一直显示旧图）
+  useEffect(
+    () => onWorkspaceLogoUpdated(() => void fetchWorkspacesFromAPI()),
+    [fetchWorkspacesFromAPI],
+  );
 
   const updateWorkspaces = useCallback((newWorkspaces: Workspace[]) => {
     setWorkspaces(newWorkspaces);

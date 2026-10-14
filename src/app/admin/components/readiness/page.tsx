@@ -216,7 +216,7 @@ export default function ComponentReadinessPage() {
             }
             {metric("真实 Token 结算", data.billing.settlementEnabled ? "已开启" : "未开启", data.billing.settlementEnabled ? "bad" : "ok")}
             {metric("计费口径", data.billing.billingMode)}
-            {metric("BYOK", data.billing.byokImplemented ? "已实现" : "未实现")}
+            {metric("自带密钥（BYOK）", data.billing.byokImplemented ? "已实现" : "未实现")}
             {metric("用户售价", data.billing.userPriceConfigured ? "已配置" : "未配置")}
             {metric("平台加价", data.billing.markupRateBpsConfigured ? "已配置" : "未配置")}
           </div>

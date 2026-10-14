@@ -48,6 +48,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { GlobalMarkupSync } from "./global-markup-sync";
+import { ByokServiceRateSync } from "./byok-service-rate";
 import { formatPeriodSchedule } from "@/lib/period-schedule-text";
 
 /** 加价率双模式折算：表单统一存「整数基点 bp」（1bp = 0.01%，1% = 100bp），显示层按所选模式折算 */
@@ -1877,6 +1878,9 @@ export default function AdminModelsPage() {
           void loadGlobalMarkup();
         }}
       />
+
+      {/* BYO 平台服务费率：单一真源，对所有自带模型统一生效 */}
+      <ByokServiceRateSync onApplied={() => void load()} />
 
       {/* Part4：价格凭证确认 + 每日对账进度（Day X/7） */}
       <div className="bg-white rounded-lg border border-slate-200/80 shadow-2xs p-4.5 space-y-3">

@@ -136,8 +136,11 @@ export default function WorkspaceSwitcher({
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 bg-white/60 hover:bg-white/80 backdrop-blur-sm rounded-lg border border-[#e2e8f0] hover:border-[#3182ce] transition-all"
       >
-        <div className="w-6 h-6 rounded bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs">
-          {current?.type === "PERSONAL" ? (
+        <div className="w-6 h-6 rounded bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-xs overflow-hidden">
+          {current?.logo ? (
+            // 已上传自定义 Logo 时显示真实图标（数据库地址），否则回落通用图标
+            <img src={current.logo} alt={current?.name || "空间"} className="w-6 h-6 rounded object-cover" />
+          ) : current?.type === "PERSONAL" ? (
             <User className="w-3 h-3" />
           ) : (
             <Building className="w-3 h-3" />
@@ -175,8 +178,10 @@ export default function WorkspaceSwitcher({
                   className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/80 transition-all disabled:opacity-50 rounded-lg"
                 >
                   {/* 图标 */}
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white flex-shrink-0">
-                    {workspace.type === "PERSONAL" ? (
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white flex-shrink-0 overflow-hidden">
+                    {workspace.logo ? (
+                      <img src={workspace.logo} alt={workspace.name} className="w-8 h-8 rounded-lg object-cover" />
+                    ) : workspace.type === "PERSONAL" ? (
                       <User className="w-4 h-4" />
                     ) : (
                       <Building className="w-4 h-4" />

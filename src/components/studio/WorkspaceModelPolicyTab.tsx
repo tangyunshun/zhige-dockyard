@@ -6,13 +6,14 @@
  * 三个子页签：
  *  ① 系统分配模型：只读展示平台管理员分配给本空间的模型；空间所有者/管理员可「设为空间默认」；
  *     全体成员可在已分配模型中「选用」（与组件工坊运行抽屉同源，工坊运行时默认生效）。
- *  ② 自建调用模型(自带私有模型)：展示本空间配置的自带私有模型（BYO），可跳转完整管理页。
+ *  ② 自建调用模型(自带私有模型)：展示本空间配置的自带私有模型，可跳转完整管理页。
  *  ③ 模型调用详细情况：按模型聚合 + 任务级调用明细（来源：tokensettlement.pricingSnapshot）。
  */
 import { useCallback, useEffect, useMemo, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
+import { MODEL_CAPABILITY_LABELS } from "@/lib/model-capability-labels";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import ModelPricingRules from "@/components/ModelPricingRules";
 import {
@@ -191,13 +192,8 @@ const POOL_CAP_STYLE: Record<string, { label: string; bg: string; text: string; 
   FILE_ANALYSIS: { label: "文件分析", bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200" },
 };
 
-const CAP_LABELS: Record<string, string> = {
-  TEXT_GENERATION: "文本生成",
-  STRUCTURED_OUTPUT: "结构化输出",
-  VISION: "视觉理解",
-  LONG_CONTEXT: "长上下文",
-  FILE_ANALYSIS: "文件解析",
-};
+// 能力展示名全站唯一真源（数据库 systemsetting.model_capability_labels 为准，此处为内置兜底）
+const CAP_LABELS: Record<string, string> = MODEL_CAPABILITY_LABELS;
 
 const PRICE_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   VERIFIED: { label: "价格已确认", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -252,7 +248,7 @@ function fmtTime(iso: string): string {
 
 /** 系统分配模型的统计匹配 key：与 model-usage 接口聚合口径一致（providerId::modelId） */
 const platformUsageKey = (m: PoolModel) => `${m.providerId || m.providerCode || m.providerName || ""}::${m.modelId || m.upstreamModel || m.id}`;
-/** BYO 的统计匹配 key：providerId = `BYO:${sourceWorkspaceId}`，modelId = label */
+/** 自带模型的统计匹配 key：providerId = `BYO:${sourceWorkspaceId}`，modelId = label */
 const byoUsageKey = (b: ByoSummary) => `BYO:${b.sourceWorkspaceId || ""}::${b.label || ""}`;
 
 export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspaceType }: WorkspaceModelPolicyTabProps) {
@@ -444,19 +440,13 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
 
   const myApprovedDefaultDeploymentId = pool?.myApprovedDefaultDeploymentId ?? null;
 
-  // 仅分配 1 款时，系统自动将其作为默认模型（无需手动设定）；显式空间默认优先于自动默认
-  const singleModelAutoDefault = allocatedModels.length === 1;
-
   const spaceDefaultModel = useMemo(
     () => allocatedModels.find((m) => m.isSpaceDefault) || null,
     [allocatedModels]
   );
 
-  // 实际生效的默认模型：显式空间默认 > 单模型自动默认
-  const effectiveDefaultModel = useMemo(
-    () => spaceDefaultModel || (singleModelAutoDefault ? allocatedModels[0] : null),
-    [spaceDefaultModel, singleModelAutoDefault, allocatedModels]
-  );
+  // 实际生效的默认模型：仅以空间所有者/管理员显式「设为空间默认」为准
+  const effectiveDefaultModel = spaceDefaultModel;
 
   const byoModels: ByoSummary[] = useMemo(() => {
     if (Array.isArray(pool?.byoModels)) return pool.byoModels as ByoSummary[];
@@ -465,32 +455,28 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
     return [];
   }, [pool]);
 
-  // 个人空间实际默认：以选用 chosenId 为准（系统模型 / BYO / 智能调度），与卡片展示保持一致
-  const personalDefaultInfo = useMemo<{ name: string; sub: string; source: "SYSTEM" | "BYO" } | null>(() => {
-    if (!isPersonal) return null;
-    if (chosenId === "byo") {
-      const b = byoModels.find((x) => x.enabled) || byoModels[0];
-      if (b) {
-        return {
-          name: b.label || "自带私有模型",
-          sub: `自建调用模型 · 端点: ${b.endpointHost || b.baseUrl || "—"}`,
-          source: "BYO",
-        };
-      }
-      return null;
-    }
+  // BYO 平台服务费率（后台可配，单一真源 billing.byokServiceRateBps）；未加载到位时回退 15% 展示
+  const byoServiceRatePct = useMemo(() => {
+    const bps = pool?.byoServiceRateBps ?? byoModels?.[0]?.pricing?.byokServiceRateBps ?? 1500;
+    return Math.round(bps / 100);
+  }, [pool, byoModels]);
+
+  // 可作为默认的自带模型：必须已绑定当前空间且启用，否则不能作为默认（避免“未绑定却显示默认”）
+  const usableByoDefault = useMemo(
+    () => byoModels.find((b) => b.boundToCurrentSpace !== false && b.enabled !== false) || null,
+    [byoModels]
+  );
+
+  // 实际生效的默认模型 id：与任务执行链路 resolveDefaultDeployment 口径一致（空间显式配置的默认，不自动选）。
+  // 个人空间：未显式配置默认时回落到空间策略中已落库的 defaultDeploymentId / BYO（即 defaultTarget）。
+  const effectiveDefaultId = useMemo<string | null>(() => {
+    if (!isPersonal) return effectiveDefaultModel?.id || null;
     if (chosenId && chosenId !== "auto") {
-      const m = allocatedModels.find((x) => x.id === chosenId);
-      if (m) {
-        return {
-          name: m.displayName || m.name || m.modelId || "未命名模型",
-          sub: `供应商: ${m.providerName || m.providerCode} · 上游模型: ${m.upstreamModel || m.modelCode || m.modelId}`,
-          source: "SYSTEM",
-        };
-      }
+      if (chosenId === "byo") return null; // BYO 在「自建调用模型」卡片单独体现
+      return chosenId;
     }
-    return null; // auto → 智能调度
-  }, [isPersonal, chosenId, byoModels, allocatedModels]);
+    return pool?.defaultTarget?.targetDeploymentId || null;
+  }, [isPersonal, chosenId, pool, effectiveDefaultModel]);
 
   const poolCapabilities = useMemo(() => {
     const caps = new Set<string>();
@@ -518,12 +504,25 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
 
   /* ---------- 选用逻辑 ---------- */
 
-  // 初始化：读取 localStorage；若历史上选用的模型已被管理员收回，则回落智能调度
+  // 初始化：读取 localStorage；若历史上选用的模型已被收回/未绑定，则回落智能调度
   useEffect(() => {
+    // 模型池未加载完成前不做校验：此时 usableByoDefault 必为空，
+    // 若贸然校验会把合法的 "byo" 误判为失效并清掉本地记录（切页签回来后选中态丢失的根因）
+    if (!pool) return;
     try {
-      const saved = localStorage.getItem(lastSelectedKey(workspaceId));
+      let saved = localStorage.getItem(lastSelectedKey(workspaceId));
+      if (!saved && myApprovedDefaultDeploymentId) {
+        // 本地无记录时回退服务端已持久化的个人偏好（清缓存/换设备后仍能回显选中态）
+        saved =
+          myApprovedDefaultDeploymentId === `byo:${workspaceId}`
+            ? "byo"
+            : myApprovedDefaultDeploymentId;
+      }
       if (!saved) return;
-      const valid = saved === "auto" || saved === "byo" || allocatedModels.some((m) => m.id === saved);
+      const valid =
+        saved === "auto" ||
+        (saved === "byo" && !!usableByoDefault) ||
+        allocatedModels.some((m) => m.id === saved);
       if (valid) setChosenId(saved);
       else {
         localStorage.removeItem(lastSelectedKey(workspaceId));
@@ -532,7 +531,19 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
     } catch {
       /* localStorage 不可用时静默保持 auto */
     }
-  }, [workspaceId, allocatedModels]);
+  }, [workspaceId, allocatedModels, usableByoDefault, pool, myApprovedDefaultDeploymentId]);
+
+  // 纠正：当前选中的是自带模型，但该模型已未绑定/停用时，静默回落智能调度（不弹提示）
+  useEffect(() => {
+    if (chosenId === "byo" && !usableByoDefault) {
+      setChosenId("auto");
+      try {
+        localStorage.removeItem(lastSelectedKey(workspaceId));
+      } catch {
+        /* 忽略 */
+      }
+    }
+  }, [chosenId, usableByoDefault, workspaceId]);
 
   const applyChoice = (val: string) => {
     setChosenId(val);
@@ -542,14 +553,35 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
     } catch {
       /* localStorage 不可用时仅本次会话生效 */
     }
-    toast.success(val === "auto" ? "已恢复智能调度（自动选择）" : isPersonal ? "已设为默认模型，组件工坊运行时将默认使用该模型" : "已设为默认使用模型（仅我生效），组件工坊运行时将默认使用该模型");
+    // 落库「仅我使用」偏好：供快速任务等依赖后端 resolveDefaultDeployment 的路径读取（最高优先级，仅本人生效）
+    void (async () => {
+      try {
+        const payload =
+          val === "auto"
+            ? { isAuto: true, deploymentId: null }
+            // 自带模型在组件内以字面量 "byo" 表示，落库须规范化为后端裁决可识别的 byo:<workspaceId>
+            : { isAuto: false, deploymentId: val === "byo" ? `byo:${workspaceId}` : val };
+        const res = await fetch(`/api/workspace/${encodeURIComponent(workspaceId)}/model-preference`, {
+          method: "PUT",
+          headers: headers(),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          toast.error(j?.error || "保存「仅我」偏好失败，但本次会话已生效");
+        }
+      } catch {
+        /* 网络异常时不阻断：localStorage 仍兜底工坊运行抽屉 */
+      }
+    })();
+    toast.success(val === "auto" ? "已经取消此默认模型，恢复为使用空间默认模型" : isPersonal ? "已设为默认模型，组件工坊运行时将默认使用该模型" : "已设为默认使用模型（仅我生效），组件工坊运行时将默认使用该模型");
   };
 
   /* 当前个人已默认模型的可读名称（用于二次确认文案） */
   const currentDefaultLabel = useMemo(() => {
     if (!chosenId || chosenId === "auto") return null;
     if (chosenId === "byo") {
-      const b = byoModels.find((x) => x.enabled) || byoModels[0];
+      const b = usableByoDefault;
       return b?.label || (byoModels.length ? "自带私有模型" : "自带模型");
     }
     const m = allocatedModels.find((x) => x.id === chosenId);
@@ -661,7 +693,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
 
   /* ---------- 设为空间默认（仅空间所有者/管理员） ---------- */
 
-  /* BYO 默认：自建模型必须先在「工作台·我的模型」绑定到本空间，才能在此设为/取消默认 */
+  /* 自建模型默认：自带模型必须先在「工作台·我的模型」绑定到本空间，才能在此设为/取消默认 */
   const handleByoDefault = (b: ByoSummary) => {
     // 已是默认 → 取消默认（恢复智能调度 / 空间默认）
     if (chosenId === "byo") {
@@ -677,13 +709,13 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
     requestChoice("byo");
   };
 
-  const setSpaceDefault = async (depId: string) => {
+  const setSpaceDefault = async (depId: string | null) => {
     // 白名单必须原样带回：PUT 为整体覆盖语义，缺失会把管理员分配的模型清空
     if (!policy?.configured || policy.allowedDeploymentIds.length === 0) {
       toast.error("当前空间未配置模型策略，请联系平台管理员分配");
       return;
     }
-    setSettingDefault(depId);
+    setSettingDefault(depId ?? "__unset__");
     try {
       const res = await fetch(`/api/workspace/${encodeURIComponent(workspaceId)}/model-policy`, {
         method: "PUT",
@@ -695,8 +727,35 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json?.success) {
-        toast.success(isPersonal ? "已设为默认模型" : "已设为空间默认模型");
-        await loadPool();
+        toast.success(
+          depId
+            ? isPersonal
+              ? "已设为默认模型"
+              : "已设为空间默认模型"
+            : isPersonal
+              ? "已取消默认模型"
+              : "已取消空间默认模型",
+        );
+        // 局部刷新：只更新「哪个是默认」这一小块，不重拉整个模型列表（避免整页闪烁）
+        setPolicy((prev) => (prev ? { ...prev, defaultDeploymentId: depId } : prev));
+        setPool((prev) => {
+          if (!prev) return prev;
+          const patch = (arr?: PoolModel[]) =>
+            arr?.map((m) => ({ ...m, isSpaceDefault: m.id === depId }));
+          const nextSystem = patch(prev.systemModels);
+          const nextModels = patch(prev.models);
+          const target = (nextSystem || nextModels || []).find((m) => m.id === depId);
+          return {
+            ...prev,
+            systemModels: nextSystem,
+            models: nextModels,
+            defaultDeploymentId: depId,
+            defaultTarget: depId
+              ? { source: "SPACE_DEFAULT", targetDeploymentId: depId, label: target?.displayName || target?.name || target?.modelId || "" }
+              : { source: "NONE", targetDeploymentId: null, label: null },
+          };
+        });
+        // 轻量确认空间策略（不触发整页 loading）
         await loadPolicy();
       } else {
         toast.error(json?.error || "设置失败");
@@ -806,42 +865,40 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                 )}
               </span>
             </div>
-            <div className="text-base font-black text-slate-900 tracking-tight truncate">
+            <div className="text-base font-black text-slate-900 tracking-tight break-words">
               {isPersonal ? (
-                personalDefaultInfo ? (
-                  personalDefaultInfo.name
+                pool?.defaultTarget?.targetDeploymentId ? (
+                  <>{pool.defaultTarget.label || "默认模型"}</>
                 ) : hasAllocated || byoModels.length > 0 ? (
-                  <span className="text-slate-500 font-bold">未单独指定 · 智能调度</span>
+                  <span className="text-slate-500 font-bold">未配置默认模型</span>
                 ) : (
-                  <span className="text-slate-400">尚未分配</span>
+                  <span className="text-slate-400">尚未分配模型</span>
                 )
               ) : effectiveDefaultModel ? (
                 effectiveDefaultModel.displayName || effectiveDefaultModel.name || effectiveDefaultModel.modelId
               ) : hasAllocated ? (
-                <span className="text-slate-500 font-bold">未单独指定 · 智能调度</span>
+                <span className="text-slate-500 font-bold">未设置</span>
               ) : (
                 <span className="text-slate-400">尚未分配</span>
               )}
             </div>
-            <p className="text-xs text-slate-500 font-mono truncate">
+            <p className="text-xs text-slate-500 font-mono leading-relaxed break-words">
               {isPersonal
-                ? personalDefaultInfo
-                  ? personalDefaultInfo.sub
+                ? pool?.defaultTarget?.targetDeploymentId
+                  ? `已配置默认模型：${pool.defaultTarget.label || ""} · 任务将自动使用此模型，如需更换可在下方卡片「设为默认」`
                   : hasAllocated || byoModels.length > 0
-                  ? "任务未指定模型时，系统在可用模型中按能力自动调度"
-                  : "管理员尚未为本空间分配默认模型"
+                    ? "未配置默认模型，请先配置默认模型再执行任务。"
+                    : "尚未分配模型"
                 : effectiveDefaultModel
-                ? spaceDefaultModel
-                  ? `供应商: ${effectiveDefaultModel.providerName || effectiveDefaultModel.providerCode} · 上游模型: ${effectiveDefaultModel.upstreamModel || effectiveDefaultModel.modelCode || effectiveDefaultModel.modelId}`
-                  : `仅分配 1 款，系统自动默认 · 供应商: ${effectiveDefaultModel.providerName || effectiveDefaultModel.providerCode} · 上游模型: ${effectiveDefaultModel.upstreamModel || effectiveDefaultModel.modelCode || effectiveDefaultModel.modelId}`
+                ? `供应商: ${effectiveDefaultModel.providerName || effectiveDefaultModel.providerCode} · 上游模型: ${effectiveDefaultModel.upstreamModel || effectiveDefaultModel.modelCode || effectiveDefaultModel.modelId}`
                 : hasAllocated
-                ? "任务未指定模型时，系统在已分配模型中按能力自动调度"
-                : "管理员尚未为本空间分配默认模型"}
+                ? "尚未设置默认模型：请在下方卡片点击「设为空间默认」，否则任务无法自动执行。"
+                : "管理员尚未为本空间分配模型"}
             </p>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
             <span className="text-slate-400 flex items-center gap-1">
-              {isPersonal && personalDefaultInfo?.source === "BYO" ? (
+              {pool?.defaultTarget?.source === "WORKSPACE_BYO" ? (
                 <>
                   <KeyRound className="w-3 h-3" /> 自建调用模型
                 </>
@@ -854,7 +911,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
           </div>
         </div>
 
-        {/* 卡片 3：自建调用模型（BYO） */}
+        {/* 卡片 3：自建调用模型（自带私有模型） */}
         <div className="bg-white rounded-lg border border-slate-200/80 p-5 shadow-2xs flex flex-col justify-between">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -888,7 +945,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                             : "bg-amber-50 text-amber-700 border-amber-200"
                         }`}
                       >
-                        {b.enabled ? "已启用" : "停用维护"}
+                        {b.enabled ? "已绑定" : "停用维护"}
                       </span>
                     </div>
                     <div className="text-[11px] font-mono text-slate-500 truncate mt-1">
@@ -903,7 +960,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
             )}
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">BYO 走自有网关，平台按服务费计费</span>
+            <span className="text-slate-400">自带私有模型：调用直连你的私有端点，平台另收 {byoServiceRatePct}% 服务费</span>
             <button
               type="button"
               onClick={() => setSection("byo")}
@@ -984,6 +1041,10 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
             </div>
             )}
           </div>
+
+          <p className="text-[11px] text-slate-400">
+            所有者可「设为空间默认」（<strong className="text-slate-600">全员生效</strong>）；普通成员点「我选用」仅<strong className="text-slate-600">本人生效</strong>，不会覆盖空间默认、也不影响其他成员。
+          </p>
 
           {/* 空间所有者：模型使用申请审批面板（仅企业空间；个人空间无成员/审批概念） */}
           {isOwnerRole && isEnterprise && (
@@ -1179,9 +1240,8 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredModels.map((m) => {
                 const isSpaceDefault = m.isSpaceDefault === true;
-                const isAutoDefault = singleModelAutoDefault && !isSpaceDefault;
-                // 个人空间：唯一默认模型（系统/BYO 二选一，走选用 chosenId）；企业空间：空间默认/系统自动默认
-                const isDefault = isPersonal ? chosenId === m.id : isSpaceDefault || isAutoDefault;
+                // 实际生效默认：个人空间以落库的空间默认为准；企业空间边框高亮保留「空间默认」语义
+                const isDefault = isPersonal ? effectiveDefaultId === m.id : isSpaceDefault;
                 const modelName = m.displayName || m.name || m.modelId || "未命名模型";
                 const modelCode = m.upstreamModel || m.modelCode || m.modelId || m.id;
                 const providerName = m.providerName || m.providerCode || m.providerId || "系统供应商";
@@ -1205,11 +1265,11 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                             </span>
                             <span className="text-sm font-black text-slate-900 truncate">{modelName}</span>
                             {isPersonal ? (
-                              chosenId === m.id && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0 flex items-center gap-0.5">
-                                  <Star className="w-2.5 h-2.5" /> 默认使用中
+                              effectiveDefaultId === m.id ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-blue-50 text-[#3182ce] border border-blue-100 shrink-0 flex items-center gap-0.5">
+                                  <Star className="w-2.5 h-2.5" /> 默认模型
                                 </span>
-                              )
+                              ) : null
                             ) : (
                               <>
                                 {isSpaceDefault && (
@@ -1217,13 +1277,8 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                                     <Users className="w-2.5 h-2.5" /> 空间默认
                                   </span>
                                 )}
-                                {!isSpaceDefault && isAutoDefault && (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200 shrink-0 flex items-center gap-0.5">
-                                    <Sparkles className="w-2.5 h-2.5" /> 系统默认
-                                  </span>
-                                )}
                                 {chosenId === m.id &&
-                                  (isSpaceDefault || isAutoDefault ? (
+                                  (isSpaceDefault ? (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0 flex items-center gap-0.5" title="同时作为空间默认（全员）与你的个人默认生效">
                                       <Users className="w-2.5 h-2.5" /> 全员（含所有者）默认使用中
                                     </span>
@@ -1320,8 +1375,8 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                             </span>
                             <button
                               type="button"
-                              onClick={() => void setSpaceDefault(m.id)}
-                              disabled={!policy?.configured || settingDefault === m.id || isAutoDefault || isSpaceDefault}
+                              onClick={() => void (isSpaceDefault ? setSpaceDefault(null) : setSpaceDefault(m.id))}
+                              disabled={!policy?.configured || settingDefault === m.id}
                               className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                                 isSpaceDefault
                                   ? "bg-[#3182ce] text-white border border-[#3182ce] shadow-2xs"
@@ -1329,7 +1384,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                               }`}
                               title={
                                 isSpaceDefault
-                                  ? "企业空间默认模型（必须保留一个；如需更换，请在其它模型上点「设为空间默认」）"
+                                  ? "已设为空间默认模型（点击取消默认；取消后本空间未配置默认模型，成员执行任务将被拦截提示去配置）"
                                   : policy?.configured
                                   ? "设为空间默认模型：对本空间所有成员的任务缺省生效"
                                   : "需平台管理员先分配模型"
@@ -1338,14 +1393,12 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                               {settingDefault === m.id ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
                               ) : isSpaceDefault ? (
-                                <Check className="w-3 h-3" />
+                                <X className="w-3 h-3" />
                               ) : (
                                 <Star className="w-3 h-3" />
                               )}
                               {isSpaceDefault
-                                ? "默认使用中"
-                                : isAutoDefault
-                                ? "系统自动默认"
+                                ? "取消默认"
                                 : "设为空间默认"}
                             </button>
                           </div>
@@ -1366,7 +1419,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                               }`}
                               title={
                                 chosenId === m.id
-                                  ? "取消我的默认：恢复为空间默认/智能调度"
+                                  ? "取消我的默认：恢复为空间默认（沿用空间默认模型）"
                                   : "仅你在组件工坊运行时的默认选择，不影响其他成员"
                               }
                             >
@@ -1420,15 +1473,16 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                           </span>
                           <button
                             type="button"
-                            onClick={() => (chosenId === m.id ? applyChoice("auto") : requestChoice(m.id))}
-                            className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer flex items-center justify-center gap-1 transition-all ${
-                              chosenId === m.id
+                            onClick={() => void (policy?.defaultDeploymentId === m.id ? setSpaceDefault(null) : setSpaceDefault(m.id))}
+                            disabled={!policy?.configured || settingDefault === m.id}
+                            className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer flex items-center justify-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                              policy?.defaultDeploymentId === m.id
                                 ? "bg-[#3182ce] text-white border border-[#3182ce] shadow-2xs"
                                 : "bg-white hover:bg-blue-50 text-[#3182ce] border border-blue-200"
                             }`}
-                            title={chosenId === m.id ? "取消默认：恢复为智能调度（自动选择）" : "设为默认模型：组件工坊运行任务时默认使用"}
+                            title={policy?.defaultDeploymentId === m.id ? "已设为默认模型（点击「取消默认」；取消后未配置默认模型将无法执行任务）" : "设为默认模型：组件工坊运行任务时默认使用"}
                           >
-                            {chosenId === m.id ? (
+                            {policy?.defaultDeploymentId === m.id ? (
                               <>
                                 <X className="w-3 h-3" /> 取消默认
                               </>
@@ -1483,7 +1537,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
               {byoModels.length === 0 ? (
                 <>本空间尚未绑定任何自带模型；请先到工作台「我的模型」创建自备私有端点，并把它绑定到本空间后，即可在此设为默认。</>
               ) : (
-                <>本空间已有 <strong>{byoModels.length}</strong> 款自带模型。仅「已绑定本空间」的模型可设为默认；未绑定的需先到工作台「我的模型」绑定到本空间（密钥 AES-256 加密落库，平台按服务费计费）。</>
+                <>本空间已有 <strong>{byoModels.length}</strong> 款自带模型。绑定仅代表可用，不等于默认：要作为任务默认，请点「设为默认」。自带模型调用直连你自己的私有端点，平台另收 <strong>{byoServiceRatePct}%</strong> 服务费。</>
               )}
             </span>
           </div>
@@ -1552,7 +1606,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                               : "bg-amber-50 text-amber-700 border-amber-200"
                           }`}
                         >
-                          {b.enabled ? "已启用" : "停用维护"}
+                          {b.enabled ? "已绑定" : "停用维护"}
                         </span>
                       </div>
 
@@ -1618,8 +1672,8 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                               ? "未绑定本空间：请先在工作台「我的模型」中把该模型绑定到本空间"
                               : chosenId === "byo"
                               ? isPersonal
-                                ? "取消默认：恢复为智能调度（自动选择）"
-                                : "取消我的默认：恢复为空间默认/智能调度"
+                                ? "取消默认：恢复为不单独指定（沿用空间默认）"
+                                : "取消我的默认：恢复为空间默认"
                               : isPersonal
                               ? "设为默认模型：组件工坊运行任务时默认使用"
                               : "仅你在组件工坊运行时的默认选择，不影响其他成员"
