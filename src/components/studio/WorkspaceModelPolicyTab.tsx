@@ -775,7 +775,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
               {allocatedModels.length}
               <span className="text-xs font-normal text-slate-500 ml-1.5">个授权部署</span>
             </div>
-            <p className="text-xs text-slate-500">仅展示平台管理员为本空间分配的模型；未分配的模型不可见也不可调用。</p>
+            <p className="text-xs text-slate-500">仅展示系统为本空间分配的模型；未分配的模型不可见也不可调用。</p>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
             <span className="text-slate-400 font-mono flex items-center gap-1">
@@ -851,7 +851,6 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                 </>
               )}
             </span>
-            <span className="text-slate-400 font-medium">任务缺省以此运行</span>
           </div>
         </div>
 
