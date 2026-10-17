@@ -11,7 +11,7 @@ import path from "path";
  */
 const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
 
-const ROUTE = "src/app/api/studio/route.ts";
+const ROUTE = "src/app/api/studio/handler.ts";
 const REGISTRY = "src/lib/model-registry.ts";
 const ADAPTER = "src/lib/model-adapter.ts";
 
@@ -48,7 +48,7 @@ describe("模型执行入口架构守护", () => {
 
   test("生产路径不得再出现旧价格字段与旧快照构建器", () => {
     const files = [
-      "src/app/api/studio/route.ts",
+      "src/app/api/studio/handler.ts",
       "src/lib/model-registry.ts",
       "src/lib/model-pricing.ts",
       "src/lib/component-execution-profile.ts",
@@ -73,7 +73,7 @@ describe("模型执行入口架构守护", () => {
   });
 
   test("结算判断唯一入口：生产路径不得出现旧 isSettlementReady", () => {
-    const files = ["src/lib/model-registry.ts", "src/lib/model-pricing.ts", "src/app/api/studio/route.ts"];
+    const files = ["src/lib/model-registry.ts", "src/lib/model-pricing.ts", "src/app/api/studio/handler.ts"];
     for (const f of files) {
       assert.ok(!read(f).includes("isSettlementReady"), `${f} 不得使用旧结算判断入口`);
     }
@@ -157,7 +157,7 @@ describe("价格唯一真源架构守护（旧价格链路必须彻底移除）"
 
 describe("模型选择旧链路架构守护（用户不可自选模型）", () => {
   test("studio 路由不得再出现旧引擎折算与用户引擎偏好读取", () => {
-    const src = read("src/app/api/studio/route.ts");
+    const src = read("src/app/api/studio/handler.ts");
     assert.ok(!src.includes("resolveEngineProviderId"), "已删除的 resolveEngineProviderId 不得回归");
     assert.ok(!src.includes("aiEngine"), "studio 路由不得读取用户引擎偏好（模型由合同+注册表+策略决定）");
   });

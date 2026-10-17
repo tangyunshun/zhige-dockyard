@@ -533,9 +533,10 @@ export async function runCliAudit(options?: { generatedAt?: string; dryRun?: boo
 
     // 2. 读取生产源码证据
     const sourceFiles = new Map<string, string>();
-    const studioRoutePath = path.resolve(process.cwd(), "src", "app", "api", "studio", "route.ts");
+    // 执行核心已迁移至 handler.ts（route.ts 仅做转发薄壳）
+    const studioRoutePath = path.resolve(process.cwd(), "src", "app", "api", "studio", "handler.ts");
     if (fs.existsSync(studioRoutePath)) {
-      sourceFiles.set("src/app/api/studio/route.ts", fs.readFileSync(studioRoutePath, "utf-8"));
+      sourceFiles.set("src/app/api/studio/handler.ts", fs.readFileSync(studioRoutePath, "utf-8"));
     }
     // 说明：旧模块 src/lib/pilot-contract-binding.ts 已退役（不再通过 parseExecutionProfileValue
     // 校验旧 JSON 合同），因此不再纳入审计扫描输入。

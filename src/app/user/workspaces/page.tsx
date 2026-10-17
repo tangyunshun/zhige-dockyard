@@ -33,6 +33,7 @@ interface Workspace {
   createdAt: string;
   updatedAt: string;
   memberCount?: number;
+  logo?: string;
   componentCount?: number;
   tokenBalance?: number;
   storageUsed?: number;

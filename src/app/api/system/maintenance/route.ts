@@ -466,12 +466,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "操作失败" }, { status: 500 });
   }
 }
-
-/**
- * 供 check-maintenance 路由使用的同步检查
- */
-export async function isInMaintenance(): Promise<{ inMaintenance: boolean; message?: string }> {
-  const inMaintenance = await isMaintenanceMode();
-  if (!inMaintenance) return { inMaintenance: false };
-  return { inMaintenance: true, message: await getMaintenanceMessage() };
-}

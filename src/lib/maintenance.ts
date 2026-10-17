@@ -42,3 +42,13 @@ export async function getMaintenanceMessage(): Promise<string> {
   const row = await prisma.systemconfig.findUnique({ where: { key: "maintenance_message" } });
   return row?.value || "系统正在维护中，请稍后再试";
 }
+
+/**
+ * 供 check-maintenance 路由使用的同步检查
+ * （从 maintenance/route.ts 移入：Next.js 路由文件只允许导出 HTTP handler）
+ */
+export async function isInMaintenance(): Promise<{ inMaintenance: boolean; message?: string }> {
+  const inMaintenance = await isMaintenanceMode();
+  if (!inMaintenance) return { inMaintenance: false };
+  return { inMaintenance: true, message: await getMaintenanceMessage() };
+}

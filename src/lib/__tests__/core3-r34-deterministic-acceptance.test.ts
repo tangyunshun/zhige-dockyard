@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const helpersSrc = fs.readFileSync(path.join(process.cwd(), "src/lib/task-query-helpers.ts"), "utf-8");
-const routeSrc = fs.readFileSync(path.join(process.cwd(), "src/app/api/studio/route.ts"), "utf-8");
+const routeSrc = fs.readFileSync(path.join(process.cwd(), "src/app/api/studio/handler.ts"), "utf-8");
 const workspaceSrc = fs.readFileSync(path.join(process.cwd(), "src/components/WorkspaceInternalLayoutV3.tsx"), "utf-8");
 
 describe("R3.4 确定性验收：/api/tasks 列表最小化", () => {

@@ -26,6 +26,21 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+
+# mysqldump 路径：优先使用 PATH，否则兜底到本机常见安装位置（避免依赖手工配置 PATH）
+$mysqldump = "mysqldump"
+$knownPaths = @(
+  "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe",
+  "C:\Program Files\MySQL\MySQL Server 5.7\bin\mysqldump.exe",
+  "C:\Program Files\MariaDB\MariaDB 10*\bin\mysqldump.exe",
+  "C:\xampp\mysql\bin\mysqldump.exe"
+)
+if (-not (Get-Command mysqldump -ErrorAction SilentlyContinue)) {
+  foreach ($cand in $knownPaths) {
+    $resolved = Resolve-Path $cand -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($resolved) { $mysqldump = $resolved.Path; break }
+  }
+}
 $workDir = Join-Path $env:TEMP "zhige-backup-$stamp"
 
 Write-Host "[1/4] 准备临时工作目录 $workDir"
@@ -48,7 +63,7 @@ if (Test-Path $envFile) {
     $dbUser = $Matches[1]; $dbPass = $Matches[2]; $dbHost = $Matches[3]; $dbPort = $Matches[4]; $dbName = $Matches[5]
     Write-Host "[3/4] 导出数据库 $dbName ..."
     try {
-      & mysqldump --host=$dbHost --port=$dbPort --user=$dbUser "--password=$dbPass" --single-transaction --routines --triggers $dbName | Out-File -Encoding utf8 (Join-Path $workDir "database.sql")
+      & $mysqldump --host=$dbHost --port=$dbPort --user=$dbUser "--password=$dbPass" --single-transaction --routines --triggers $dbName | Out-File -Encoding utf8 (Join-Path $workDir "database.sql")
       if ($LASTEXITCODE -ne 0) { throw "mysqldump 退出码 $LASTEXITCODE" }
     } catch {
       Write-Warning "数据库导出失败（$($_.Exception.Message)）。请确认 mysqldump 可用；本次仅备份文件部分。"

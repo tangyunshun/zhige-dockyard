@@ -32,7 +32,7 @@ import { deriveRefundStatus } from "@/lib/refund-status";
 import { extractTaskExecutionMeta } from "@/lib/task-execution-meta";
 import { validateModelOutput, validateComponentInput } from "@/lib/component-contract/validators";
 
-const ROUTE_SRC = readFileSync("src/app/api/studio/route.ts", "utf8");
+const ROUTE_SRC = readFileSync("src/app/api/studio/handler.ts", "utf8");
 const RESULT_VIEWER_SRC = readFileSync("src/components/studio/ResultViewer.tsx", "utf8");
 
 // 有效合同快照 fixture（取自真实 C01 / C02 / C07 生产合同结构规范）

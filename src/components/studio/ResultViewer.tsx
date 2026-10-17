@@ -1057,8 +1057,11 @@ export function ResultViewer({
               )}
               <span>·</span>
               {exec.billingMode === "ESTIMATED_COMPATIBILITY" ? (
-                <span className="text-amber-600 font-bold" title="按管理员配置的固定点数扣费（1 算力点 = ¥0.01）">
-                  按配置点数扣费（1 算力点 = ¥0.01）
+                <span
+                  className="text-amber-600 font-bold"
+                  title="按预估算力点扣减，未按真实 Token 精确结算（按管理员配置的固定点数扣费，1 算力点 = ¥0.01）"
+                >
+                  按预估算力点扣减，未按真实 Token 精确结算（1 算力点 = ¥0.01）
                 </span>
               ) : (
                 <span className="text-slate-400 font-mono">耗时算力: {pointsCost} 算力点</span>

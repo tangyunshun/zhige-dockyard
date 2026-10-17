@@ -599,6 +599,11 @@ export default function WorkspacePlansAdminPage() {
                                 默认
                               </span>
                             )}
+                            {plan.key === "CUSTOM" && (
+                              <span className="px-2 py-0.5 bg-violet-50 text-violet-700 border border-violet-200 text-[10px] rounded-md font-black">
+                                线下定制
+                              </span>
+                            )}
                             <Link
                               href={`/admin/workspaces?search=${encodeURIComponent(plan.name)}`}
                               className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 text-[10px] rounded-md font-black flex items-center gap-1 transition-colors"
@@ -611,6 +616,21 @@ export default function WorkspacePlansAdminPage() {
                           <div className="font-mono text-[11px] text-slate-400 font-bold mt-0.5">
                             ID: {plan.key}
                           </div>
+                          {/* 线下定制说明直接展示在套餐名下（不做悬停），并提供处理页快捷跳转 */}
+                          {plan.key === "CUSTOM" && (
+                            <div className="mt-1.5 p-1.5 bg-violet-50/60 border border-violet-100 rounded-lg">
+                              <p className="text-[10px] leading-relaxed text-slate-500 font-bold">
+                                不在用户端阶梯售卖；用户在定价页「申请定制方案」提交咨询后，由此跟进处理。
+                              </p>
+                              <Link
+                                href="/admin/upgrade-applications"
+                                className="mt-1 inline-flex items-center gap-1 text-[10px] font-black text-violet-700 hover:text-violet-900 hover:underline cursor-pointer transition-colors"
+                              >
+                                前往「定制咨询处理」
+                                <span aria-hidden>→</span>
+                              </Link>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>

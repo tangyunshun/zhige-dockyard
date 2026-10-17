@@ -17,7 +17,7 @@ import path from "node:path";
 const root = process.cwd();
 const read = (p: string) => fs.readFileSync(path.join(root, p), "utf-8");
 
-const ROUTE_SRC = read("src/app/api/studio/route.ts");
+const ROUTE_SRC = read("src/app/api/studio/handler.ts");
 const WORKSPACE_SRC = read("src/components/WorkspaceInternalLayoutV3.tsx");
 const RESULT_VIEWER_SRC = read("src/components/studio/ResultViewer.tsx");
 const TASKS_PAGE_SRC = read("src/app/tasks/page.tsx");

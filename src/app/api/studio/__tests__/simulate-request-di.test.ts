@@ -24,7 +24,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
-import { runStudioPost, runStudioGet, type StudioExecutionDeps } from "../route";
+import { runStudioPost, runStudioGet, type StudioExecutionDeps } from "../handler";
 import {
   C01_ACTIVE_CONTRACT,
   C02_ACTIVE_CONTRACT,

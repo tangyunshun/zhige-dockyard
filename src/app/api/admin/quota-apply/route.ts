@@ -27,30 +27,47 @@ export async function GET(request: NextRequest) {
 
     const where = status && status !== "ALL" ? { status } : {};
 
+    // quotaapply 模型未声明关联字段，无法用 include 关联查询；
+    // 两步走 + JS 组装（与 /api/admin/user 路由同一模式）
     const [rows, total] = await Promise.all([
       prisma.quotaapply.findMany({
         where,
         orderBy: [{ status: "asc" }, { createdAt: "desc" }],
         skip: (page - 1) * limit,
         take: limit,
-        include: {
-          workspace: { select: { id: true, name: true, type: true } },
-          user: { select: { id: true, name: true, email: true } },
-        },
       }),
       prisma.quotaapply.count({ where }),
     ]);
+
+    const wsIds = [...new Set(rows.map((r) => r.workspaceId))];
+    const userIds = [...new Set(rows.map((r) => r.userId))];
+    const [workspaces, users] = await Promise.all([
+      wsIds.length
+        ? prisma.workspace.findMany({
+            where: { id: { in: wsIds } },
+            select: { id: true, name: true, type: true },
+          })
+        : Promise.resolve([]),
+      userIds.length
+        ? prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, name: true, email: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const wsMap = new Map(workspaces.map((w) => [w.id, w]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
 
     return NextResponse.json({
       success: true,
       data: rows.map((r) => ({
         id: r.id,
         workspaceId: r.workspaceId,
-        workspaceName: r.workspace?.name || r.workspaceId,
-        workspaceType: r.workspace?.type || null,
+        workspaceName: wsMap.get(r.workspaceId)?.name || r.workspaceId,
+        workspaceType: wsMap.get(r.workspaceId)?.type || null,
         userId: r.userId,
-        userName: r.user?.name || null,
-        userEmail: r.user?.email || null,
+        userName: userMap.get(r.userId)?.name || null,
+        userEmail: userMap.get(r.userId)?.email || null,
         applyPoints: Number(r.applyPoints),
         approvedPoints: r.approvedPoints != null ? Number(r.approvedPoints) : null,
         reason: r.reason,

@@ -105,6 +105,8 @@ interface ByoSummary {
   enabled?: boolean;
   shareWithMembers?: boolean;
   capabilities?: string[];
+  /** BYO 模型计费信息（含平台服务费率 byokServiceRateBps） */
+  pricing?: { byokServiceRateBps?: number } | null;
   canUse?: boolean;
   reason?: string | null;
 }
@@ -113,12 +115,18 @@ interface AvailableModelsData {
   workspaceId: string;
   policyConfigured?: boolean;
   defaultDeploymentId?: string | null;
-  defaultTarget?: { source?: string; targetDeploymentId?: string; label?: string } | null;
+  defaultTarget?: {
+    source?: string | null;
+    targetDeploymentId?: string | null;
+    label?: string | null;
+  } | null;
   models?: PoolModel[];
   systemModels?: PoolModel[];
   byo?: ByoSummary | null;
   byoModel?: ByoSummary | null;
   byoModels?: ByoSummary[];
+  /** BYO 平台服务费率（bps，后台可配；未下发时前端回退展示值） */
+  byoServiceRateBps?: number;
   /** 当前用户在本空间获批的默认模型 id（按 用户×空间 持久化） */
   myApprovedDefaultDeploymentId?: string | null;
 }

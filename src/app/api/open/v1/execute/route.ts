@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { authenticateApiKey } from "@/lib/api-key-auth";
 import { requireWorkspaceMembership } from "@/lib/security";
 import { checkOpenApiRateLimit } from "@/lib/open-api-rate-limit";
-import { runStudioPost, buildProductionDeps } from "@/app/api/studio/route";
+import { runStudioPost, buildProductionDeps } from "@/app/api/studio/handler";
 
 export const dynamic = "force-dynamic";
 

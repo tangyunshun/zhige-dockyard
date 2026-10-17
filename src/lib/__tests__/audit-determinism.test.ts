@@ -86,11 +86,11 @@ test("组件能力盘点确定性与证据驱动分析套件", async (t) => {
 
     const mockCodeEvidence: SourceCodeEvidence = {
       specialCaseComponentIds: new Set(["C07"]),
-      specialCaseLocations: new Map([["C07", "src/app/api/studio/route.ts [符号: PILOT_COMPONENT_ID 特判分支]"]]),
+      specialCaseLocations: new Map([["C07", "src/app/api/studio/handler.ts [符号: PILOT_COMPONENT_ID 特判分支]"]]),
       realExecutionComponentIds: new Set(["C07"]),
-      realExecutionLocations: new Map([["C07", "src/app/api/studio/route.ts [执行链路: assertPilotContractOrThrow -> resolveModelExecutionPlan]"]]),
+      realExecutionLocations: new Map([["C07", "src/app/api/studio/handler.ts [执行链路: assertPilotContractOrThrow -> resolveModelExecutionPlan]"]]),
       knownFileParsers: new Map([
-        ["TEXT_AND_FILE_EXTRACTOR", "src/app/api/studio/route.ts [符号: extractTextFromBufferWithTimeout]"],
+        ["TEXT_AND_FILE_EXTRACTOR", "src/app/api/studio/handler.ts [符号: extractTextFromBufferWithTimeout]"],
       ]),
     };
 
@@ -129,7 +129,7 @@ test("组件能力盘点确定性与证据驱动分析套件", async (t) => {
   await t.test("2. 源码证据扫描动态提取特判符号与执行链", () => {
     const mockFiles = new Map<string, string>();
     mockFiles.set(
-      "src/app/api/studio/route.ts",
+      "src/app/api/studio/handler.ts",
       `
       if (comp.id === "CUSTOM_PILOT_X") {
         doSomething();
@@ -268,7 +268,7 @@ test("组件能力盘点确定性与证据驱动分析套件", async (t) => {
   await t.test("5. 构造两个不同组件 ID 的真实执行证据，确认扫描器能动态识别", () => {
     const mockFiles = new Map<string, string>();
     mockFiles.set(
-      "src/app/api/studio/route.ts",
+      "src/app/api/studio/handler.ts",
       `
       if (comp.id === "ALPHA_01") {
         const plan = resolveModelExecutionPlan(comp);
@@ -293,7 +293,7 @@ test("组件能力盘点确定性与证据驱动分析套件", async (t) => {
   await t.test("6. 构造无法建立组件 ID 映射的执行链，确认结果为 UNKNOWN", () => {
     const mockFiles = new Map<string, string>();
     mockFiles.set(
-      "src/app/api/studio/route.ts",
+      "src/app/api/studio/handler.ts",
       `
       // 通用执行函数，未与任何具体组件 ID 建立映射
       function executeGenericModel(context: unknown) {

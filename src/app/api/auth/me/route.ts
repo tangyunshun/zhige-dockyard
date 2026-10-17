@@ -133,6 +133,8 @@ export async function GET(request: NextRequest) {
           adminStatus, // 管理员后台管理特权生效状态 (active | inactive)
           // 超级管理员默认按最高会员等级（皇冠版）展示，其余按数据库存储值
           membershipLevel: resolveEffectiveMembershipLevel(user.role, user.membershipLevel),
+          // 真实订阅等级（数据库存储值，未经管理员展示提升）：用于价格方案页"当前方案/可否降级"等订阅状态判断
+          subscriptionLevel: user.membershipLevel || "FREE",
           deletionDaysRemaining,
           deletionCooldownDays,
           isOAuthUser,

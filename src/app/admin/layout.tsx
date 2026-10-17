@@ -37,6 +37,7 @@ import {
   ChevronRight,
   Quote,
   Scale,
+  MessagesSquare,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
@@ -275,6 +276,14 @@ const adminMenuItems: AdminMenuItem[] = [
     description: "审批用户提交的算力点提升申请",
     group: "财务与订单",
     requiredPermissions: ["system:manage", "billing:manage", "billing:read"],
+  },
+  {
+    icon: MessagesSquare,
+    label: "定制咨询处理",
+    href: "/admin/upgrade-applications",
+    description: "查看并跟进用户在定价页提交的定制版方案咨询",
+    group: "财务与订单",
+    requiredPermissions: ["system:manage"],
   },
   {
     icon: Wrench,

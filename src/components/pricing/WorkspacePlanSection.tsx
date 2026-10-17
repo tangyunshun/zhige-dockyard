@@ -11,10 +11,12 @@ import {
   ShieldCheck,
   Building2,
   Gift,
+  MessagesSquare,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { getAuthToken } from "@/utils/auth";
+import UpgradeRequestModal from "@/components/pricing/UpgradeRequestModal";
 
 interface WorkspacePlanSectionProps {
   /** 目标空间 ID；不传时由后端自动定位当前活跃空间 */
@@ -51,6 +53,24 @@ export default function WorkspacePlanSection({
   const [planData, setPlanData] = useState<any>(null);
   const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // 定制方案咨询弹窗（对应管理端「定制咨询处理」）
+  const [showConsult, setShowConsult] = useState(false);
+
+  // 平台管理员（超级管理员/管理员）不走用户端定制咨询流程：入口条、引导条与弹窗全部隐藏。
+  // 角色命名格式全覆盖（与后端 lib/auth 的 isAdminRole 同口径）：
+  // SUPER_ADMIN / SUPERADMIN / SUPER_ADMIN_ROLE / SUPER / ADMIN / ADMINISTRATOR / PLATFORM_ADMIN
+  const platformAdminUpperRoles = [
+    "SUPER_ADMIN",
+    "SUPERADMIN",
+    "SUPER_ADMIN_ROLE",
+    "SUPER",
+    "ADMIN",
+    "ADMINISTRATOR",
+    "PLATFORM_ADMIN",
+  ];
+  const isPlatformAdmin = platformAdminUpperRoles.includes(
+    String(userState.userInfo?.role ?? "").trim().toUpperCase()
+  );
 
   const loadWorkspacePlan = useCallback(async (wsId: string | null) => {
     try {
@@ -394,23 +414,56 @@ export default function WorkspacePlanSection({
         })}
       </div>
 
-      {/* 已开通最高档 / 包含不可自助购买档时的线下定制提示 */}
-      {!planData.canUpgrade && (
+      {/* 已开通最高档时的进一步扩容提示（在通用定制条之上给出更强引导）；平台管理员不展示 */}
+      {!isPlatformAdmin && !planData.canUpgrade && (
         <div className="mt-4 p-4 bg-emerald-50/60 border border-emerald-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
             <p className="text-xs text-emerald-800 font-bold leading-relaxed">
-              当前空间已开通最高档扩容包。如需进一步扩容席位、存储与调用额度，请联系专属架构师走线下定制方案。
+              当前空间已开通最高档扩容包。如需进一步扩容席位、存储与调用额度，可提交定制方案咨询，客户经理将主动与您联系。
             </p>
           </div>
           <button
-            onClick={() => router.push("/solutions?consult=true")}
+            onClick={() => setShowConsult(true)}
             className="h-8 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap active:scale-[0.98]"
           >
             <Users className="w-3.5 h-3.5" />
-            联系专属架构师
+            申请定制方案
           </button>
         </div>
+      )}
+
+      {/* 定制版咨询入口：让用户知道存在「定制版」选项并可主动发起咨询；平台管理员不展示 */}
+      {!isPlatformAdmin && (
+      <div className="mt-4 p-4 bg-slate-50/80 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <MessagesSquare className="w-3.5 h-3.5 text-[#3182ce]" />
+            需要超出旗舰版的规模？支持定制版方案
+          </p>
+          <p className="text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">
+            定制版按合同约定开放席位、组件装配、存储与调用额度（含私有化部署、独享算力等），不在本页直接售卖。提交咨询后，客户经理将在 1-2 个工作日内与您联系。
+          </p>
+        </div>
+        <button
+          onClick={() => setShowConsult(true)}
+          className="h-8 px-4 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer inline-flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap active:scale-[0.98]"
+        >
+          <MessagesSquare className="w-3.5 h-3.5" />
+          申请定制方案
+        </button>
+      </div>
+      )}
+
+      {!isPlatformAdmin && (
+        <UpgradeRequestModal
+          open={showConsult}
+          onClose={() => setShowConsult(false)}
+          planName="CUSTOM"
+          planDisplayName="定制版"
+          isLoggedIn={userState.isLoggedIn}
+          userInfo={userState.userInfo}
+        />
       )}
     </section>
   );

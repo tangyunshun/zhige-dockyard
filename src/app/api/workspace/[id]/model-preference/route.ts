@@ -55,10 +55,12 @@ export async function PUT(
         create: { workspaceId, userId, isAuto: true, deploymentId: "" },
       });
     } else {
+      // deploymentId 列为 NOT NULL：显式偏好为空时以空字符串表示"未指定具体模型"
+      const finalDeploymentId = deploymentId ?? "";
       await prisma.workspace_member_model_preference.upsert({
         where: { workspaceId_userId: { workspaceId, userId } },
-        update: { isAuto: false, deploymentId, updatedAt: new Date() },
-        create: { workspaceId, userId, isAuto: false, deploymentId },
+        update: { isAuto: false, deploymentId: finalDeploymentId, updatedAt: new Date() },
+        create: { workspaceId, userId, isAuto: false, deploymentId: finalDeploymentId },
       });
     }
 

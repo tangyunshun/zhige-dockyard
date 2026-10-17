@@ -9,7 +9,7 @@ import { resolve } from "path";
  * 生产路径已彻底删除模拟执行开关与全部模拟执行分支，无有效 PUBLISHED 激活合同时
  * 必须返回 COMPONENT_CONTRACT_NOT_READY (409)；任何环境变量都不能恢复生产模拟。
  */
-const ROUTE = resolve(__dirname, "../../app/api/studio/route.ts");
+const ROUTE = resolve(__dirname, "../../app/api/studio/handler.ts");
 
 describe("Studio 生产路径禁止模拟执行（架构守护）", () => {
   const src = readFileSync(ROUTE, "utf8");

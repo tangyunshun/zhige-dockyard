@@ -19,7 +19,7 @@
 import { test, expect, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
-import { runStudioPost, markTaskStatusFailed } from "../route";
+import { runStudioPost, markTaskStatusFailed } from "../handler";
 import { ModelAdapterError } from "@/lib/model-adapter";
 import { ComponentContractError } from "@/lib/component-contract/errors";
 import type { ConsumeResult } from "@/lib/credit-service";

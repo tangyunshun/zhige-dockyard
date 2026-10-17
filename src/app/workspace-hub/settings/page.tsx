@@ -82,11 +82,9 @@ export default function PersonalWorkspaceSettings() {
     },
   ]);
 
-  // 存储数据
-  const [storage, setStorage] = useState({
-    used: 45,
-    total: 500,
-  });
+  // 存储数据（真实用量，单位 GB；从配额接口读取后填充，与全站显示口径一致）
+  const GB = 1073741824;
+  const [storage, setStorage] = useState({ used: 0, total: 0 });
 
   // 清空数据确认
   const [showClearDataModal, setShowClearDataModal] = useState(false);
@@ -168,6 +166,31 @@ export default function PersonalWorkspaceSettings() {
             emoji: personalWorkspace.emoji || "🚀",
             logo: personalWorkspace.logo || detailData.workspace?.logo || "",
           });
+
+          // 读取真实存储配额（统一以 GB 展示，与全站一致）
+          try {
+            const quotaRes = await fetch("/api/user/workspace-hub/quota", {
+              headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+              credentials: "include",
+            });
+            if (quotaRes.ok) {
+              const quotaJson = await quotaRes.json();
+              const wsList: any[] = quotaJson.data?.workspaces || [];
+              const myWs =
+                wsList.find((w: any) => w.id === personalWorkspace.id) ||
+                wsList.find((w: any) => w.type === "PERSONAL");
+              const usedBytes = Number(myWs?.quota?.storageUsed ?? 0);
+              const limitBytes = Number(
+                myWs?.quota?.storageLimit ?? quotaJson.data?.quotas?.maxStorage ?? 0,
+              );
+              setStorage({
+                used: +(usedBytes / GB).toFixed(2),
+                total: +(limitBytes / GB).toFixed(2),
+              });
+            }
+          } catch (e) {
+            console.error("读取存储配额失败:", e);
+          }
         }
       }
     } catch (error) {
@@ -938,7 +961,9 @@ export default function PersonalWorkspaceSettings() {
                           沙盒容量
                         </span>
                         <span className="text-sm font-bold text-slate-600">
-                          {storage.used}MB / {storage.total}MB
+                          {storage.total > 0
+                            ? `${storage.used} / ${storage.total} GB`
+                            : "—"}
                         </span>
                       </div>
                       <div className="relative h-3 bg-slate-200 rounded-full overflow-hidden">
@@ -950,9 +975,15 @@ export default function PersonalWorkspaceSettings() {
                         />
                       </div>
                       <p className="text-xs text-slate-500 mt-2">
-                        已使用{" "}
-                        {Math.round((storage.used / storage.total) * 100)}%
-                        ，剩余 {storage.total - storage.used}MB 可用空间
+                        {storage.total > 0 ? (
+                          <>
+                            已使用{" "}
+                            {Math.round((storage.used / storage.total) * 100)}%
+                            ，剩余 {(storage.total - storage.used).toFixed(2)} GB 可用空间
+                          </>
+                        ) : (
+                          "暂无存储配额数据"
+                        )}
                       </p>
                     </div>
                   </div>

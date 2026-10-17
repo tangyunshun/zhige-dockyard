@@ -165,6 +165,16 @@ export default function PricingPage() {
 
   const currentMembership = userState.userInfo?.membershipLevel;
 
+  // 超级管理员 / 平台管理员默认按最高等级展示（与系统特权一致）：
+  // 将展示等级收敛为套餐列表中的最高档（按 sortOrder 取最大值），用于"当前方案"与降级判断。
+  const isPrivilegedRole =
+    userState.userInfo?.role === "SuperAdmin" || userState.userInfo?.role === "Admin";
+  const highestLevelName =
+    levels.length > 0
+      ? [...levels].sort((a, b) => (b.sortOrder ?? 0) - (a.sortOrder ?? 0))[0]?.name
+      : undefined;
+  const displayLevel = isPrivilegedRole && highestLevelName ? highestLevelName : currentMembership;
+
   /** 在线模拟支付并立即开通会员 */
   const confirmMembershipUpgrade = async () => {
     if (!checkoutPlan) return;
@@ -315,7 +325,11 @@ export default function PricingPage() {
   const getButtonConfig = (level: MembershipLevel) => {
     const baseBtnStyle = "w-full py-3.5 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 cursor-pointer";
     const isFree = level.priceMonthly === 0;
-    const isCurrent = currentMembership === level.name;
+    const isCurrent = displayLevel === level.name;
+    // 档位高低比较：用户当前档位的 sortOrder 高于本卡片时，说明本卡片权益已被当前方案包含
+    const userRank = levels.find((l) => l.name === displayLevel)?.sortOrder ?? 0;
+    const cardRank = level.sortOrder ?? 0;
+    const isHigherTier = userRank > cardRank;
 
     if (!userState.isLoggedIn) {
       return {
@@ -337,9 +351,10 @@ export default function PricingPage() {
       };
     }
 
-    if (isFree) {
+    // 已处于更高档位：本卡片权益已包含在当前方案中，不再可"升级"，也不显示误导性的"不可降级"
+    if (isHigherTier) {
       return {
-        text: currentMembership && currentMembership !== "FREE" ? "不可降级到免费版" : "基础免费可用",
+        text: "已包含在当前方案",
         onClick: () => { },
         className: `${baseBtnStyle} bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-200/50`,
         showCheck: false,
@@ -405,7 +420,7 @@ export default function PricingPage() {
                       <div className="relative shrink-0">
                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#3182ce] via-[#2b6cb0] to-[#1a56a6] flex items-center justify-center shadow-lg shadow-blue-500/25 text-white">
                           {(() => {
-                            const LevelBadgeIcon = getMembershipLevelIcon(currentMembership);
+                            const LevelBadgeIcon = getMembershipLevelIcon(displayLevel);
                             return <LevelBadgeIcon className="w-6 h-6" strokeWidth={2.2} />;
                           })()}
                         </div>
@@ -419,12 +434,12 @@ export default function PricingPage() {
                           当前订阅方案
                         </p>
                         <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5 whitespace-nowrap">
-                          {levels.find((l) => l.name === currentMembership)?.nameZh || "免费版"}
+                          {levels.find((l) => l.name === displayLevel)?.nameZh || "免费版"}
                           {(() => {
-                            const idx = levels.findIndex((l) => l.name === currentMembership);
+                            const idx = levels.findIndex((l) => l.name === displayLevel);
                             return idx >= 0 ? (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 text-[#2b6cb0] border border-blue-100 font-black">
-                                L{idx + 1} 会员
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 text-[#2b6cb0] border border-blue-100 font-black whitespace-nowrap">
+                                L{idx + 1}
                               </span>
                             ) : null;
                           })()}
@@ -608,7 +623,7 @@ export default function PricingPage() {
                 const buttonConfig = getButtonConfig(level);
                 // 数据库价格单位为「分」，展示前换算为元
                 const price = isYearly ? formatPrice(level.priceYearly) : formatPrice(level.priceMonthly);
-                const isCurrentPlan = currentMembership === level.name;
+                const isCurrentPlan = displayLevel === level.name;
                 const discount = calcYearlyDiscount(level.priceMonthly, level.priceYearly);
                 // 由升级中枢选定的目标档位：优先高亮，避免与其它徽章重叠
                 const isTargetPlan = focusLevel === level.name;
@@ -646,8 +661,8 @@ export default function PricingPage() {
 
                     <div className="p-8">
                       {/* Header elements */}
-                      <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-between gap-4 mb-6">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
                           <div
                             className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                             style={{ backgroundColor: `${level.color}1a` }}
@@ -671,10 +686,10 @@ export default function PricingPage() {
                           </div>
                         </div>
                         <span
-                          className="text-white text-[10px] font-black px-2.5 py-1 rounded-md"
+                          className="text-white text-[10px] font-black px-2.5 py-1 rounded-md whitespace-nowrap flex-shrink-0"
                           style={{ backgroundColor: level.color }}
                         >
-                          L{index + 1} 会员
+                          L{index + 1}
                         </span>
                       </div>
 

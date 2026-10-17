@@ -20,6 +20,8 @@ interface UserState {
     avatar: string;
     role: "SuperAdmin" | "Admin" | "User";
     membershipLevel?: string | null;
+    /** 真实订阅等级（数据库存储值，未经管理员展示提升） */
+    subscriptionLevel?: string | null;
     isOAuthUser?: boolean;
     hasCustomPassword?: boolean;
     needsProfileCompletion?: boolean;
@@ -34,6 +36,8 @@ interface Workspace {
   type: "PERSONAL" | "ENTERPRISE";
   isCurrent: boolean;
   role?: string;
+  /** 空间 Logo（/api/workspace/list 返回；空间 Logo 变更后由全局事件触发重拉） */
+  logo?: string;
 }
 
 interface AppContextType {
@@ -117,6 +121,7 @@ const getInitialLoginState = (): Pick<UserState, "isLoggedIn" | "userInfo"> => {
     const userName = localStorage.getItem("userName") || "用户";
     const userAvatar = localStorage.getItem("userAvatar") || "";
     const userMembershipLevel = localStorage.getItem("userMembershipLevel") || "FREE";
+    const userSubscriptionLevel = localStorage.getItem("userSubscriptionLevel") || "FREE";
 
     return {
       isLoggedIn: true,
@@ -127,6 +132,7 @@ const getInitialLoginState = (): Pick<UserState, "isLoggedIn" | "userInfo"> => {
         avatar: userAvatar,
         role,
         membershipLevel: userMembershipLevel,
+        subscriptionLevel: userSubscriptionLevel,
       },
     };
   }
@@ -500,6 +506,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (data.user.name) localStorage.setItem("userName", data.user.name);
         if (data.user.avatar) localStorage.setItem("userAvatar", data.user.avatar);
         if (data.user.membershipLevel) localStorage.setItem("userMembershipLevel", data.user.membershipLevel);
+        if (data.user.subscriptionLevel) localStorage.setItem("userSubscriptionLevel", data.user.subscriptionLevel);
 
         // 关键防御：当用户正停留在 /workspace/[id] 页面（已由 loadWorkspace 明确设置当前空间）时，
         // 保留 prev.currentWorkspaceId。否则 refreshUserState 晚到的响应用服务器 lastWorkspaceId
@@ -519,6 +526,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             avatar: data.user.avatar || "",
             role,
             membershipLevel: data.user.membershipLevel,
+            subscriptionLevel: data.user.subscriptionLevel,
             isOAuthUser: data.user.isOAuthUser,
             hasCustomPassword: data.user.hasCustomPassword,
             needsProfileCompletion: data.user.needsProfileCompletion,
@@ -536,6 +544,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("userName");
         localStorage.removeItem("userAvatar");
         localStorage.removeItem("userMembershipLevel");
+        localStorage.removeItem("userSubscriptionLevel");
         
         setUserState({
           isLoggedIn: false,

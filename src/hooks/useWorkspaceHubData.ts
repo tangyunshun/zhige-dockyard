@@ -18,6 +18,8 @@ export interface Workspace {
   createdAt: string;
   role?: "OWNER" | "ADMIN" | "MEMBER";
   isOwner?: boolean;
+  /** 空间 Logo（Logo 变更后由全局事件触发重拉） */
+  logo?: string;
   description?: string;
   upgraded?: boolean;
   disabledUntil?: string | null;

@@ -75,9 +75,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "单次申请额度不能超过 1,000,000 算力点" }, { status: 400 });
     }
 
-    // 必须是该空间成员
+    // 必须是该空间成员（复合唯一键按字段顺序为 userId_workspaceId）
     const membership = await prisma.workspacemember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId } },
+      where: { userId_workspaceId: { userId, workspaceId } },
       select: { id: true },
     });
     if (!membership) {

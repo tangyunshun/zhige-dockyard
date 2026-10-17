@@ -37,10 +37,14 @@ export async function GET(request: NextRequest) {
       prisma.user.findUnique({ where: { id: targetUserId } }),
       prisma.workspacemember.count({ where: { userId: targetUserId } }),
       prisma.apikey.count({ where: { userId: targetUserId } }),
-      prisma.componentusage.count({
-        where: { userId: targetUserId },
-        distinct: ["componentId"],
-      }),
+      // count 不支持 distinct：改用 findMany(distinct) 后取条数
+      prisma.componentusage
+        .findMany({
+          where: { userId: targetUserId },
+          distinct: ["componentId"],
+          select: { componentId: true },
+        })
+        .then((rows) => rows.length),
       prisma.loginhistory.count({ where: { userId: targetUserId } }),
     ]);
 

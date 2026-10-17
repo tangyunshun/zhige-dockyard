@@ -11,7 +11,7 @@ import {
   CheckCircle2, Play, Users, BarChart2, ShieldAlert, FileDown, Clipboard, Trash2, Edit2, HelpCircle, Info,
   Upload, Save, AlertTriangle, Copy, KeyRound, ExternalLink, Share2, Ban, Clock, History, Zap, PenLine, Eye,
   Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock,
-  SlidersHorizontal, Briefcase, Crown, Loader2
+  SlidersHorizontal, Briefcase, Crown, Loader2, ChevronRight
 } from "lucide-react";
 import AvatarDropdown from "@/components/AvatarDropdown";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";

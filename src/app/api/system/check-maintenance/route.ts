@@ -1,5 +1,5 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
-import { isInMaintenance } from "../maintenance/route";
+import { isInMaintenance } from "@/lib/maintenance";
 
 /**
  * 检查系统是否处于维护模式

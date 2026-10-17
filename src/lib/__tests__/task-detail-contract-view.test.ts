@@ -18,7 +18,7 @@ import {
 import { deriveRefundStatus } from "@/lib/refund-status";
 import { mapDefaultCatalogRecordsToIds } from "@/lib/workspaceInit";
 
-const ROUTE_SRC = readFileSync("src/app/api/studio/route.ts", "utf8");
+const ROUTE_SRC = readFileSync("src/app/api/studio/handler.ts", "utf8");
 
 /** 带完整 disclaimerPolicy 的有效历史快照 */
 const VALID_SNAPSHOT = {
