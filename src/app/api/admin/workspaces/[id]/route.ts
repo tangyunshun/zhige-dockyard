@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { toJsonSafe } from "@/lib/json-safe";
 
 export async function GET(
@@ -20,6 +20,16 @@ export async function GET(
     if (!workspaceId) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
+
+    // 审计：记录管理员查阅空间详情（高危只读操作留痕）
+    void writeAuditLog(
+      authCheck.user?.id || "",
+      "workspace:view_detail",
+      { workspaceId },
+      workspaceId,
+      null,
+      request,
+    );
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },

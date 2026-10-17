@@ -3,6 +3,261 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Clipboard, FileDown, ChevronDown, BookOpen, Layers, FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { describeMimeType } from "@/lib/fileConstraintsFormat";
+
+/** 行内 Markdown 片段渲染：**粗体** / *斜体* / `代码` / [链接](url)，纯 React 元素输出，天然防 XSS */
+function renderInlineMarkdown(text: string, keyBase: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  const parts = text.split(/(`[^`]+`)/g);
+  parts.forEach((part, pi) => {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      nodes.push(
+        <code
+          key={`${keyBase}-c${pi}`}
+          className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-mono text-slate-800"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+      return;
+    }
+    const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)\s]+\))/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    let ki = 0;
+    while ((m = regex.exec(part)) !== null) {
+      if (m.index > last) {
+        nodes.push(<span key={`${keyBase}-t${pi}-${ki++}`}>{part.slice(last, m.index)}</span>);
+      }
+      const token = m[0];
+      if (token.startsWith("**")) {
+        nodes.push(
+          <strong key={`${keyBase}-b${pi}-${ki++}`} className="font-black text-slate-900">
+            {token.slice(2, -2)}
+          </strong>
+        );
+      } else if (token.startsWith("[")) {
+        const mm = token.match(/\[([^\]]+)\]\(([^)]+)\)/);
+        nodes.push(
+          <a
+            key={`${keyBase}-a${pi}-${ki++}`}
+            href={mm?.[2] || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#3182ce] underline hover:text-[#2b6cb0] break-all"
+          >
+            {mm?.[1] || token}
+          </a>
+        );
+      } else {
+        nodes.push(
+          <em key={`${keyBase}-i${pi}-${ki++}`} className="italic">
+            {token.slice(1, -1)}
+          </em>
+        );
+      }
+      last = m.index + token.length;
+    }
+    if (last < part.length) {
+      nodes.push(<span key={`${keyBase}-t${pi}-${ki++}`}>{part.slice(last)}</span>);
+    }
+  });
+  return nodes;
+}
+
+/**
+ * 轻量安全 Markdown 渲染（标题 / 列表 / 表格 / 代码块 / 引用 / 分隔线 / 行内样式）。
+ * 纯 React 元素输出，不使用 dangerouslySetInnerHTML，天然防 XSS；
+ * 用于把组件执行产出的 Markdown 成果按其「能力介绍承诺的文档形态」渲染出来。
+ */
+function MiniMarkdown({ content }: { content: string }) {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const blocks: React.ReactNode[] = [];
+  let i = 0;
+  let bk = 0;
+  const k = () => `b${bk++}`;
+  const isBlockStart = (l: string) =>
+    /^#{1,4}\s/.test(l) ||
+    l.trim().startsWith("```") ||
+    l.trim().startsWith("|") ||
+    /^\s*[-*+]\s+/.test(l) ||
+    /^\s*\d+[.、)]\s+/.test(l) ||
+    l.trim().startsWith(">") ||
+    /^\s*(-{3,}|\*{3,})\s*$/.test(l);
+
+  while (i < lines.length) {
+    const line = lines[i];
+    // 代码块
+    if (line.trim().startsWith("```")) {
+      const lang = line.trim().slice(3).trim();
+      const buf: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith("```")) {
+        buf.push(lines[i]);
+        i++;
+      }
+      i++;
+      blocks.push(
+        <div key={k()} className="my-3 rounded-lg border border-slate-200 overflow-hidden">
+          {lang ? (
+            <div className="px-3 py-1 bg-slate-100 text-[10px] font-mono font-bold text-slate-500 border-b border-slate-200">
+              {lang}
+            </div>
+          ) : null}
+          <pre className="p-3 bg-slate-900 text-emerald-300 text-[11px] font-mono overflow-x-auto leading-relaxed">
+            <code>{buf.join("\n")}</code>
+          </pre>
+        </div>
+      );
+      continue;
+    }
+    // 表格
+    if (
+      line.trim().startsWith("|") &&
+      i + 1 < lines.length &&
+      /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])
+    ) {
+      const parseRow = (l: string) =>
+        l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const header = parseRow(line);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        rows.push(parseRow(lines[i]));
+        i++;
+      }
+      blocks.push(
+        <div key={k()} className="my-3 overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50">
+                {header.map((h, hi) => (
+                  <th key={hi} className="px-3 py-2 text-left font-black text-slate-700 border-b border-slate-200 whitespace-nowrap">
+                    {renderInlineMarkdown(h, `th${bk}-${hi}`)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={ri} className={ri % 2 ? "bg-slate-50/50" : ""}>
+                  {r.map((c, ci) => (
+                    <td key={ci} className="px-3 py-2 text-slate-700 border-b border-slate-100 align-top">
+                      {renderInlineMarkdown(c, `td${bk}-${ri}-${ci}`)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+    // 标题
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
+    if (heading) {
+      const level = heading[1].length;
+      const cls =
+        level === 1
+          ? "text-base font-black text-slate-900 mt-4 mb-2"
+          : level === 2
+            ? "text-sm font-black text-slate-900 mt-4 mb-2 pb-1 border-b border-slate-100"
+            : level === 3
+              ? "text-[13px] font-black text-slate-800 mt-3 mb-1.5"
+              : "text-xs font-black text-slate-700 mt-2.5 mb-1";
+      blocks.push(
+        <div key={k()} className={cls}>
+          {renderInlineMarkdown(heading[2], `h${bk}`)}
+        </div>
+      );
+      i++;
+      continue;
+    }
+    // 分隔线
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+      blocks.push(<hr key={k()} className="my-3 border-slate-200" />);
+      i++;
+      continue;
+    }
+    // 引用
+    if (line.trim().startsWith(">")) {
+      const buf: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith(">")) {
+        buf.push(lines[i].replace(/^\s*>\s?/, ""));
+        i++;
+      }
+      blocks.push(
+        <blockquote
+          key={k()}
+          className="my-3 pl-3 border-l-4 border-[#3182ce]/40 text-slate-600 text-[13px] leading-relaxed"
+        >
+          {renderInlineMarkdown(buf.join(" "), `q${bk}`)}
+        </blockquote>
+      );
+      continue;
+    }
+    // 无序列表
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*+]\s+/, ""));
+        i++;
+      }
+      blocks.push(
+        <ul key={k()} className="my-2 space-y-1">
+          {items.map((it, ii) => (
+            <li key={ii} className="flex items-start gap-2 text-[13px] text-slate-700 leading-relaxed">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3182ce]/60 mt-1.5 shrink-0" />
+              <span>{renderInlineMarkdown(it, `ul${bk}-${ii}`)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+    // 有序列表
+    if (/^\s*\d+[.、)]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+[.、)]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+[.、)]\s+/, ""));
+        i++;
+      }
+      blocks.push(
+        <ol key={k()} className="my-2 space-y-1.5">
+          {items.map((it, ii) => (
+            <li key={ii} className="flex items-start gap-2 text-[13px] text-slate-700 leading-relaxed">
+              <span className="shrink-0 w-4.5 h-4.5 rounded-full bg-[#3182ce]/10 text-[#3182ce] text-[10px] font-black flex items-center justify-center mt-0.5 px-1">
+                {ii + 1}
+              </span>
+              <span>{renderInlineMarkdown(it, `ol${bk}-${ii}`)}</span>
+            </li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+    // 空行
+    if (!line.trim()) {
+      i++;
+      continue;
+    }
+    // 段落（聚合连续普通行）
+    const buf: string[] = [];
+    while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) {
+      buf.push(lines[i]);
+      i++;
+    }
+    if (buf.length) {
+      blocks.push(
+        <p key={k()} className="my-2 text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">
+          {renderInlineMarkdown(buf.join("\n"), `p${bk}`)}
+        </p>
+      );
+    }
+  }
+  return <div className="markdown-body">{blocks}</div>;
+}
 
 export interface ResultViewerTask {
   id?: string;
@@ -525,7 +780,11 @@ export function ResultViewer({
                 {a.type}
               </span>
               <span className="text-xs font-bold text-slate-800">{a.title || "成果物"}</span>
-              {a.mimeType ? <span className="text-[10px] text-slate-400 font-mono">{a.mimeType}</span> : null}
+              {a.mimeType ? (
+                <span className="text-[10px] text-slate-400" title={a.mimeType}>
+                  {describeMimeType(a.mimeType)}
+                </span>
+              ) : null}
               {a.schemaVersion ? (
                 <span className="text-[10px] text-slate-400 font-mono">schema {a.schemaVersion}</span>
               ) : null}
@@ -582,7 +841,7 @@ export function ResultViewer({
     const lines = [
       `# ${task.name} 结构化分析与决策报告`,
       `> 调度组件：${displayBadgeTag ? `[${displayBadgeTag}] ` : ""}${displayCompName}`,
-      `> 执行算力消耗：${pointsCost} 算力点（ESTIMATED_COMPATIBILITY：按预估算力点扣减，未按真实 Token 精确结算）`,
+      `> 执行算力消耗：${pointsCost} 算力点（按管理员配置的固定点数扣费，1 算力点 = ¥0.01）`,
       `> 导出时间：${new Date().toLocaleString("zh-CN")}`,
       `\n## 💡 成果物摘要\n${outputData.summary}`,
     ];
@@ -798,8 +1057,8 @@ export function ResultViewer({
               )}
               <span>·</span>
               {exec.billingMode === "ESTIMATED_COMPATIBILITY" ? (
-                <span className="text-amber-600 font-bold" title="按预估成本扣点，未按真实 Token 精确结算">
-                  按预估成本扣点，未按真实 Token 精确结算
+                <span className="text-amber-600 font-bold" title="按管理员配置的固定点数扣费（1 算力点 = ¥0.01）">
+                  按配置点数扣费（1 算力点 = ¥0.01）
                 </span>
               ) : (
                 <span className="text-slate-400 font-mono">耗时算力: {pointsCost} 算力点</span>
@@ -964,9 +1223,7 @@ export function ResultViewer({
                 <span>DOCUMENT / Markdown 成果文档</span>
                 <span className="text-[10px] text-slate-400 font-mono">DOCUMENT</span>
               </div>
-              <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-800">
-                {documentContent}
-              </pre>
+              <MiniMarkdown content={documentContent} />
             </article>
             {/* DOCUMENT 输出不渲染任何结构化提取卡片或 TABLE/JSON（依据 outputKind，非组件 ID） */}
             {!isDocumentKind && structuredSection}

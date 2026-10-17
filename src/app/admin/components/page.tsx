@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
 import { isValidComponentCost } from "@/lib/component-cost";
+import { YUAN_PER_POINT } from "@/lib/point-rate";
 import {
   Search,
   Plus,
@@ -19,7 +20,7 @@ import {
   Star,
   RotateCcw,
   BookOpen,
-  Zap,
+  Gauge,
   CheckCircle2,
   FileText,
   ShieldCheck,
@@ -33,7 +34,7 @@ import {
   Cloud,
   Code,
   Boxes,
-  Cpu,
+  Server,
   Workflow,
   Clock,
   Coins,
@@ -92,12 +93,12 @@ const AVAILABLE_ICONS = [
   { name: "file-code", label: "代码规范", icon: FileCode },
   { name: "braces", label: "契约接口", icon: Braces },
   { name: "shield-check", label: "安全合规", icon: ShieldCheck },
-  { name: "zap", label: "算力引擎", icon: Zap },
+  { name: "gauge", label: "性能配置", icon: Gauge },
   { name: "wrench", label: "辅助工具", icon: Wrench },
   { name: "cloud", label: "云原生", icon: Cloud },
   { name: "code", label: "核心算法", icon: Code },
   { name: "boxes", label: "模块容器", icon: Boxes },
-  { name: "cpu", label: "算力芯片", icon: Cpu },
+  { name: "server", label: "服务部署", icon: Server },
   { name: "workflow", label: "工作流", icon: Workflow },
 ];
 
@@ -318,6 +319,243 @@ function CategorySelect({
   );
 }
 
+/**
+ * 成本折点参考（配点辅助工具）：按模型注册表登记单价估算一次典型调用的成本折点，
+ * 辅助管理员给组件配置固定点数时参考（建议配点 ≥ 成本折点 × 加价系数，防止定价倒贴）。
+ * 价格唯一真源为模型注册表（modelpricing），本工具不做任何硬编码单价。
+ */
+function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string>("");
+  const [deployments, setDeployments] = useState<
+    Array<{
+      id: string;
+      label: string;
+      costIn: number | null;
+      costOut: number | null;
+      markupBps: number | null;
+    }>
+  >([]);
+  const [globalMarkupBps, setGlobalMarkupBps] = useState<number>(0);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [inputTokens, setInputTokens] = useState(4000);
+  const [outputTokens, setOutputTokens] = useState(2000);
+  // 毛利系数 k（建议配点 = 模型售价折点 × k），管理员可调并本地记住；默认 2.5（毛利 60%）
+  // 仅影响「建议配点」参考值，不影响模型售价折点（成本×20% 加价）与实际扣点
+  const MARGIN_K_KEY = "admin_cost_ref_margin_k";
+  const [marginK, setMarginK] = useState<number>(() => {
+    if (typeof window === "undefined") return 2.5;
+    const v = Number(window.localStorage.getItem(MARGIN_K_KEY));
+    return Number.isFinite(v) && v >= 1 && v <= 20 ? v : 2.5;
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MARGIN_K_KEY, String(marginK));
+    } catch {
+      // 本地存储不可用时忽略，仅本次会话生效
+    }
+  }, [marginK]);
+
+  const loadDeployments = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const token = getAuthToken();
+      const res = await fetch("/api/admin/model-deployments", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        throw new Error(`读取失败（HTTP ${res.status}）`);
+      }
+      const data = await res.json().catch(() => null);
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      const list = rows
+        .map((r: any) => {
+          const p = r?.pricing || {};
+          const num = (v: unknown) =>
+            Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
+          const bps = Number(p?.markupRateBps);
+          return {
+            id: String(r?.id ?? ""),
+            label: `${r?.providerId || ""} · ${r?.modelId || r?.id || ""}`.replace(/^ · /, ""),
+            costIn: num(p.costInputMicrosPerMillion),
+            costOut: num(p.costOutputMicrosPerMillion),
+            markupBps: Number.isFinite(bps) ? bps : null,
+          };
+        })
+        .filter((d: any) => d.id);
+      setDeployments(list);
+      // 全局加价系数（基点）：接口已做旧版乘数口径矫正
+      const g = Number(data?.globalMarkupBps);
+      setGlobalMarkupBps(Number.isFinite(g) && g > 0 ? g : 0);
+      if (list.length > 0) setSelectedId(list[0].id);
+    } catch (e: any) {
+      setLoadError(e?.message || "读取模型注册表失败，请重试");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || deployments.length > 0 || loadError) return;
+    loadDeployments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const selected = deployments.find((d) => d.id === selectedId) || null;
+  // 售价口径与系统一致：用户售价 = 供应商成本价 × 加价系数 k（模型级 markupRateBps 覆盖全局）
+  const calcFor = (dep: (typeof deployments)[number]) => {
+    const effBps = dep.markupBps ?? globalMarkupBps;
+    const kk = (10000 + effBps) / 10000;
+    const hasPrice = dep.costIn != null || dep.costOut != null;
+    const costYuan = hasPrice ? (inputTokens * (dep.costIn ?? 0) + outputTokens * (dep.costOut ?? 0)) / 1e12 : 0;
+    const costPoints = costYuan / YUAN_PER_POINT;
+    const salePoints = costPoints * kk;
+    const suggested = Math.ceil(salePoints * marginK);
+    return { kk, hasPrice, costYuan, costPoints, salePoints, suggested };
+  };
+  const calc = selected ? calcFor(selected) : null;
+  const k = calc?.kk ?? 1;
+  const hasPrice = calc?.hasPrice ?? false;
+  const costYuan = calc?.costYuan ?? 0;
+  const costPoints = calc?.costPoints ?? 0;
+  const salePoints = calc?.salePoints ?? 0;
+  const suggestedPoints = calc?.suggested ?? 0;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full px-3 py-2 flex items-center justify-between text-[11px] font-bold text-slate-600 hover:text-[#3182ce] cursor-pointer transition-colors"
+      >
+        <span className="flex items-center gap-1.5">
+          <Coins className="w-3.5 h-3.5 text-amber-500" />
+          成本折点参考（按模型单价估算一次典型调用的成本，辅助配点定价）
+        </span>
+        <span className="text-slate-400">{open ? "收起 ▲" : "展开 ▼"}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2.5 border-t border-slate-200/70 pt-2.5">
+          {loading ? (
+            <p className="text-[11px] text-slate-400 font-bold">正在读取模型注册表…</p>
+          ) : loadError ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-rose-600 font-bold">{loadError}</p>
+              <button
+                type="button"
+                onClick={loadDeployments}
+                className="text-[11px] font-bold text-[#3182ce] hover:underline cursor-pointer shrink-0"
+              >
+                重试
+              </button>
+            </div>
+          ) : deployments.length === 0 ? (
+            <p className="text-[11px] text-slate-400 font-bold leading-relaxed">
+              模型注册表中暂无模型部署。请先到「模型注册表」添加模型部署后使用本参考。
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">执行模型</label>
+                  <select
+                    value={selectedId}
+                    onChange={(e) => setSelectedId(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-[11px] font-bold bg-white cursor-pointer"
+                  >
+                    {deployments.map((d) => {
+                      const c = calcFor(d);
+                      return (
+                        <option key={d.id} value={d.id}>
+                          {d.label}
+                          {c.hasPrice ? `（建议 ${c.suggested} 点）` : "（未登记成本价）"}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">输入 Token（估）</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={inputTokens}
+                    onChange={(e) => setInputTokens(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-[11px] font-mono font-bold bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">输出 Token（估）</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={outputTokens}
+                    onChange={(e) => setOutputTokens(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-[11px] font-mono font-bold bg-white"
+                  />
+                </div>
+              </div>
+              {selected && !hasPrice ? (
+                <p className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-700 leading-relaxed">
+                  该模型尚未在「模型注册表」登记供应商成本单价，无法折算成本。请先登记成本价后再使用本参考。
+                </p>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>平台成本（付给厂商）：</span>
+                    <span className="font-mono">
+                      ¥{costYuan.toFixed(4)}（折 {costPoints.toFixed(1)} 算力点）
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[#3182ce]">
+                    <span>模型售价折点（成本 × 加价系数 k={k.toFixed(2)}，即你配的 {Math.round(k * 100 - 100)}% 加价）：</span>
+                    <span className="font-mono font-black">{salePoints.toFixed(1)} 算力点</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-emerald-700">建议配点（售价 × 毛利系数）：</span>
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        step={0.1}
+                        value={marginK}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (Number.isFinite(v)) setMarginK(Math.min(20, Math.max(1, v)));
+                        }}
+                        className="w-16 px-2 py-1 border border-slate-200 rounded-lg text-[11px] font-mono font-black bg-white text-center"
+                        title="毛利系数：建议配点 = 模型售价折点 × 此系数（2.5 ≈ 60% 毛利）；仅影响建议值，不影响你的 20% 加价与实际扣点"
+                      />
+                      <span className="font-mono font-black text-emerald-700">≥ {suggestedPoints.toLocaleString("zh-CN")} 算力点</span>
+                    </span>
+                  </div>
+                  {onApply && (
+                    <button
+                      type="button"
+                      onClick={() => onApply(suggestedPoints)}
+                      className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                      title={`把「每次执行扣除算力点数」设置为 ${suggestedPoints} 点，保存后全系统生效`}
+                    >
+                      <Gauge className="w-3.5 h-3.5" />
+                      采用建议配点（{suggestedPoints} 算力点）
+                    </button>
+                  )}
+                  <p className="text-[9.5px] text-slate-400 font-bold leading-relaxed">
+                    毛利系数仅影响建议值（2.5 ≈ 60% 毛利），不影响你的 20% 加价与实际扣点；Token 用量请按组件实际材料规模调整。
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminComponentsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -356,6 +594,9 @@ export default function AdminComponentsPage() {
     Array<{ key: string; name: string; color?: string }>
   >([]);
   
+  // 「每次执行扣除算力点数」输入框：一键采用建议配点后滚动定位 + 高亮闪烁 3 秒
+  const pointsInputRef = useRef<HTMLInputElement>(null);
+  const [pointsInputFlash, setPointsInputFlash] = useState(false);
   const [formData, setFormData] = useState<
     ComponentFormData & { errors?: Record<string, string> }
   >({
@@ -698,7 +939,8 @@ export default function AdminComponentsPage() {
             loadStats();
           } else {
             const error = await res.json();
-            toast.error(error.message || `${actionText}失败`);
+            // 兼容后端 error / message 两种错误字段，把真实失败原因透出给管理员
+            toast.error(error.error || error.message || `${actionText}失败`);
           }
         } catch (error) {
           console.error("Toggle publish error:", error);
@@ -852,7 +1094,11 @@ export default function AdminComponentsPage() {
 
     if (Object.keys(newErrors).length > 0) {
       setFormData({ ...formData, errors: newErrors });
-      if (newErrors.estimatedModelTokens) toast.error("请配置真实算力成本");
+      // 校验失败必须给出明确提示（首个错误），绝不静默失败让"点击没反应"
+      const firstError = newErrors.estimatedModelTokens
+        ? "请配置真实算力成本（合法正整数）"
+        : Object.values(newErrors)[0];
+      toast.error(firstError);
       return;
     }
 
@@ -1182,8 +1428,8 @@ export default function AdminComponentsPage() {
                   className="w-full sm:w-auto px-3 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-bold transition-all bg-white/80 whitespace-nowrap cursor-pointer"
                 >
                   <option value="">全部状态 ({stats.total})</option>
-                  <option value="true">🟢 已上架 ({stats.published})</option>
-                  <option value="false">⚪ 已下架 ({stats.unpublished ?? Math.max(0, stats.total - stats.published)})</option>
+                  <option value="true">已上架 ({stats.published})</option>
+                  <option value="false">已下架 ({stats.unpublished ?? Math.max(0, stats.total - stats.published)})</option>
                 </select>
               </div>
 
@@ -1546,19 +1792,21 @@ export default function AdminComponentsPage() {
 
                           <td className="py-3.5 px-3 font-mono font-black text-slate-800 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 text-[11px]">
-                              <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                              {estimatedModelTokens} 算力点 (¥{(estimatedModelTokens * 0.01).toFixed(2)})
+                              <Gauge className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              {estimatedModelTokens} 算力点 / 次
                             </span>
                           </td>
 
                           <td className="py-3.5 px-3 whitespace-nowrap">
                             {isPub ? (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200/60">
-                                🟢 已上架
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                已上架
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-slate-100 text-slate-500 border border-slate-200/60">
-                                ⚪ 已下架
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                已下架
                               </span>
                             )}
                           </td>
@@ -1782,15 +2030,16 @@ export default function AdminComponentsPage() {
                   <div className="text-xs font-black text-slate-800">{getCategoryName(detailComp.category || detailComp.type)}</div>
                 </div>
                 <div className="p-3 bg-amber-50/60 border border-amber-100 rounded-xl space-y-0.5">
-                  <div className="text-[10px] font-bold text-amber-600 uppercase">分配所需算力点数</div>
-                  <div className="text-xs font-black text-slate-800">{detailComp.estimatedModelTokens || 0} 算力点 (折合 ¥{((detailComp.estimatedModelTokens || 0) * 0.01).toFixed(2)} 元)</div>
+                  <div className="text-[10px] font-bold text-amber-600 uppercase">每次执行扣除算力点</div>
+                  <div className="text-xs font-black text-slate-800">{detailComp.estimatedModelTokens || 0} 算力点</div>
+                  <div className="text-[10px] text-slate-400 font-bold leading-relaxed">用户每次执行固定扣除，各页面展示与实际扣点均为此值</div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-emerald-600 uppercase">发布状态</div>
-                  <div className="text-xs font-black text-emerald-700">{detailComp.isPublished ? "🟢 已上架" : "⚪ 已下架"}</div>
+                  <div className="text-xs font-black text-emerald-700">{detailComp.isPublished ? "已上架" : "已下架"}</div>
                 </div>
                 <div className="p-3 bg-purple-50/60 border border-purple-100 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-purple-600 uppercase">数据库全网调度总数</div>
@@ -1939,13 +2188,14 @@ export default function AdminComponentsPage() {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-                      <span>分配所需算力点数</span>
-                      <span className="text-amber-600 font-mono font-bold">⚡ 算力点</span>
+                      <span>每次执行扣除算力点数</span>
+                      <span className="text-amber-600 font-mono font-bold">算力点</span>
                     </label>
                     <input
+                      ref={pointsInputRef}
                       type="number"
                       min={0}
-                      max={100}
+                      max={1000000}
                       value={formData.estimatedModelTokens}
                       onChange={(e) =>
                         setFormData({
@@ -1953,21 +2203,45 @@ export default function AdminComponentsPage() {
                           estimatedModelTokens: parseInt(e.target.value) || 0,
                         })
                       }
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-mono font-bold transition-all bg-slate-50/50 focus:bg-white"
+                      className={`w-full px-3.5 py-2.5 rounded-xl outline-none text-xs font-mono font-bold transition-all ${
+                        pointsInputFlash
+                          ? "border-2 border-emerald-500 bg-emerald-50 ring-4 ring-emerald-200 animate-pulse"
+                          : "border border-slate-200 focus:border-[#3182ce] bg-slate-50/50 focus:bg-white"
+                      }`}
                     />
                   </div>
                 </div>
 
-                {/* 算力点与人民币对比换算提示栏 */}
-                <div className="bg-gradient-to-r from-blue-50/80 via-amber-50/50 to-blue-50/80 p-3 rounded-xl border border-blue-100/90 flex items-center justify-between font-bold text-[11px] text-slate-700">
+                {/* 固定点数计费说明：管理员配置即扣点数，各页面展示与实际扣点同一真源 */}
+                <div className="bg-gradient-to-r from-blue-50/80 via-amber-50/50 to-blue-50/80 p-3 rounded-xl border border-blue-100/90 space-y-1 font-bold text-[11px] text-slate-700">
                   <div className="flex items-center gap-1.5 text-blue-700">
                     <Coins className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span>算力点与人民币换算规则：1 算力点 = ¥0.01 元</span>
+                    <span>计费口径：用户每次执行该组件固定扣除 {formData.estimatedModelTokens || 0} 算力点（1 算力点 = ¥{YUAN_PER_POINT}，折合 ¥{((formData.estimatedModelTokens || 0) * YUAN_PER_POINT).toFixed(2)} 元 / 次）</span>
                   </div>
-                  <div className="font-mono text-amber-700 bg-white px-2.5 py-1 rounded-lg border border-amber-200 shadow-2xs">
-                    当前配置：{formData.estimatedModelTokens || 0} 点 = ¥{((formData.estimatedModelTokens || 0) * 0.01).toFixed(2)} 元 / 次
-                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    保存后，组件大厅、空间执行面板等各页面展示的扣点数与实际扣除均为此值（全链路统一从数据库读取）。
+                  </p>
                 </div>
+
+                {/* 成本折点参考：按模型单价估算成本折点，辅助配点定价；支持一键采用建议配点 */}
+                <CostReferenceTool
+                  onApply={(points) => {
+                    setFormData({
+                      ...formData,
+                      estimatedModelTokens: points,
+                    });
+                    // 定位到配点输入框并高亮闪烁 3 秒（不打扰、不用弹窗）
+                    requestAnimationFrame(() => {
+                      pointsInputRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                      pointsInputRef.current?.focus({ preventScroll: true });
+                    });
+                    setPointsInputFlash(true);
+                    setTimeout(() => setPointsInputFlash(false), 3000);
+                  }}
+                />
 
                 {/* 可视化图标选择框 */}
                 <div>

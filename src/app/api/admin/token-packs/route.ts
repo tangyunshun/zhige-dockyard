@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { isPlatformAdminRole } from "@/lib/security";
 import { getAllTokenPacks, updateTokenPackMemoryCache } from "@/lib/token-pack-service";
 
 /**
@@ -16,9 +17,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
 
-    const roleUpper = (auth.user.role || "").toUpperCase();
-    const isAdminUser = roleUpper === "ADMIN" || roleUpper === "SUPER_ADMIN" || roleUpper === "PLATFORM_ADMIN";
-    if (!isAdminUser) {
+    // 平台管理员/超级管理员统一判定（认全 ADMIN / SUPERADMIN / SUPER_ADMIN 等所有历史写法）
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅系统管理员可管理算力加油包" }, { status: 403 });
     }
 
@@ -50,9 +50,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "未授权，请重新登录" }, { status: 401 });
     }
 
-    const roleUpper = (auth.user.role || "").toUpperCase();
-    const isAdminUser = roleUpper === "ADMIN" || roleUpper === "SUPER_ADMIN" || roleUpper === "PLATFORM_ADMIN";
-    if (!isAdminUser) {
+    // 平台管理员/超级管理员统一判定（认全 ADMIN / SUPERADMIN / SUPER_ADMIN 等所有历史写法）
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅系统超级管理员可创建算力加油包" }, { status: 403 });
     }
 

@@ -389,7 +389,7 @@ export default function PointsLedgerTab({
             <Inbox className="w-6 h-6 mx-auto mb-2" />
             暂无流水记录
             <div className="text-[11px] font-medium text-slate-400 mt-1">
-              充值算力加油包或执行组件任务后，流水会实时出现在这里
+              充值算力包或执行组件任务后，流水会实时出现在这里
             </div>
           </div>
         ) : (

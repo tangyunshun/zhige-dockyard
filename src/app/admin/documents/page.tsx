@@ -43,6 +43,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Pencil,
 } from "lucide-react";
 
 interface Document {
@@ -493,7 +494,7 @@ export default function AdminDocumentsPage() {
 
     setConfirmModal({
       isOpen: true,
-      title: "⚠️ 删除确认",
+      title: "删除确认",
       message: `文档标题：${doc.title}\n\n此操作不可恢复，删除后将无法找回！\n\n请确认是否继续？`,
       type: "danger",
       onConfirm: async () => {
@@ -989,8 +990,8 @@ export default function AdminDocumentsPage() {
                   className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                 >
                   <option value="">全部发布状态</option>
-                  <option value="true">🟢 已发布上线</option>
-                  <option value="false">⚪ 未发布草稿</option>
+                  <option value="true">已发布上线</option>
+                  <option value="false">未发布草稿</option>
                 </select>
               </div>
 
@@ -1714,24 +1715,26 @@ export default function AdminDocumentsPage() {
                     <button
                       type="button"
                       onClick={() => setEditorTab("edit")}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
                         editorTab === "edit"
                           ? "bg-white text-[#3182ce] shadow-2xs"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
-                      📝 编辑模式
+                      <Pencil className="w-3.5 h-3.5" />
+                      编辑模式
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditorTab("preview")}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
                         editorTab === "preview"
                           ? "bg-white text-[#3182ce] shadow-2xs"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
-                      👁️ 实时效果预览
+                      <Eye className="w-3.5 h-3.5" />
+                      实时效果预览
                     </button>
                   </div>
                 </div>
@@ -1741,7 +1744,7 @@ export default function AdminDocumentsPage() {
                     {/* Markdown 语法快捷插入工具条 */}
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                       <span className="text-[11px] text-slate-400 font-bold whitespace-nowrap">
-                        格式助手:
+                        格式工具:
                       </span>
                       <button
                         type="button"

@@ -37,13 +37,15 @@ describe("组件执行合同读取", () => {
 });
 
 describe("模型策略校验（注册表裁决，纯函数）", () => {
+  // 授权制（方案 A）：白名单 = 该空间被授予的可用模型清单，必须显式包含该部署才允许执行；
+  // null 或空数组 = 未授权任何模型 → 一律拒绝（不再是「留空 = 不限制」）。
   const ok = {
     contractProviderId: "openai-compatible",
     contractModelId: "gpt-4o-mini",
     deploymentId: "dep_1",
     deploymentEnabled: true,
     providerEnabled: true,
-    allowedDeploymentIds: null,
+    allowedDeploymentIds: ["dep_1"],
   };
   const isNotAllowed = (e: unknown) => {
     const err = e as ContractValidationError;
@@ -75,6 +77,28 @@ describe("模型策略校验（注册表裁决，纯函数）", () => {
 
   test("已注册且启用 → 允许执行", () => {
     assert.doesNotThrow(() => assertModelAllowed(ok));
+  });
+
+  test("空间白名单为空列表 → MODEL_NOT_ALLOWED(403)（授权制：未授权任何模型）", () => {
+    assert.throws(() => assertModelAllowed({ ...ok, allowedDeploymentIds: [] }), isNotAllowed);
+  });
+
+  test("空间未配置策略（null）→ MODEL_NOT_ALLOWED(403)（授权制：未授权任何模型）", () => {
+    assert.throws(() => assertModelAllowed({ ...ok, allowedDeploymentIds: null }), isNotAllowed);
+  });
+
+  test("禁用优先于白名单：即使已授权，部署被禁用仍拒绝", () => {
+    assert.throws(
+      () => assertModelAllowed({ ...ok, deploymentEnabled: false }),
+      isNotAllowed,
+    );
+  });
+
+  test("白名单授权后供应商被禁用仍拒绝", () => {
+    assert.throws(
+      () => assertModelAllowed({ ...ok, providerEnabled: false }),
+      isNotAllowed,
+    );
   });
 
   test("用户提交 provider/model 篡改 → MODEL_OVERRIDE_NOT_ALLOWED(400)", () => {

@@ -192,8 +192,9 @@ export const C46_CONTRACT: ComponentContract = draft("C46", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 80,
     estimatedTokens: 80,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
   unsupportedRequirements: [
     {
@@ -255,8 +256,9 @@ export const C47_CONTRACT: ComponentContract = draft("C47", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 60,
     estimatedTokens: 60,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -319,8 +321,9 @@ export const C48_CONTRACT: ComponentContract = draft("C48", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 50,
     estimatedTokens: 50,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -377,8 +380,9 @@ export const C49_CONTRACT: ComponentContract = draft("C49", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 50,
     estimatedTokens: 50,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -441,8 +445,9 @@ export const C50_CONTRACT: ComponentContract = draft("C50", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 200,
     estimatedTokens: 200,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -499,8 +504,9 @@ export const C51_CONTRACT: ComponentContract = draft("C51", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 150,
     estimatedTokens: 150,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -557,8 +563,9 @@ export const C52_CONTRACT: ComponentContract = draft("C52", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 80,
     estimatedTokens: 80,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -621,8 +628,9 @@ export const C53_CONTRACT: ComponentContract = draft("C53", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 150,
     estimatedTokens: 150,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -687,8 +695,9 @@ export const C54_CONTRACT: ComponentContract = draft("C54", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 80,
     estimatedTokens: 80,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -746,8 +755,9 @@ export const C55_CONTRACT: ComponentContract = draft("C55", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 100,
     estimatedTokens: 100,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
   unsupportedRequirements: [
     {
@@ -813,8 +823,9 @@ export const C56_CONTRACT: ComponentContract = draft("C56", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 120,
     estimatedTokens: 120,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -878,8 +889,9 @@ export const C57_CONTRACT: ComponentContract = draft("C57", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 150,
     estimatedTokens: 150,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 }, "1.0.2");
 
@@ -943,8 +955,9 @@ export const C58_CONTRACT: ComponentContract = draft("C58", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 90,
     estimatedTokens: 90,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 }, "1.0.2");
 
@@ -1009,8 +1022,9 @@ export const C59_CONTRACT: ComponentContract = draft("C59", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 140,
     estimatedTokens: 140,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -1068,8 +1082,9 @@ export const C60_CONTRACT: ComponentContract = draft("C60", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 100,
     estimatedTokens: 100,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 

@@ -33,6 +33,12 @@ export interface WorkspacePlanConfig {
   maxApiCalls: number;
   /** 扩容包附赠算力已取消，恒为 0（算力统一由会员等级 + 算力加油包承担） */
   tokenLimit: number;
+  /**
+   * 新空间一次性体验额度赠送（企业套餐差异化）。
+   * 仅当 enabled 为 true 时，创建该套餐的企业空间会按此配置赠送，区别于个人空间的平台统一配置。
+   * points：赠送算力点；expireDays：0 表示永久有效。
+   */
+  trialGift: { enabled: boolean; points: number; expireDays: number };
   /** 企业池余额低于该阈值时触发「补充提醒」（按空间套餐差异化） */
   poolLowThreshold: number;
   features: string[];
@@ -56,6 +62,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: 1024, // 1 GB
     maxApiCalls: 1000,
     tokenLimit: 0,
+    trialGift: { enabled: true, points: 500, expireDays: 30 },
     poolLowThreshold: 1000,
     features: [
       "10 个团队协同席位",
@@ -78,6 +85,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: 10240, // 10 GB
     maxApiCalls: 10000,
     tokenLimit: 0,
+    trialGift: { enabled: true, points: 2000, expireDays: 30 },
     poolLowThreshold: 3000,
     features: [
       "50 个团队协同席位",
@@ -100,6 +108,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: 102400, // 100 GB
     maxApiCalls: 100000,
     tokenLimit: 0,
+    trialGift: { enabled: true, points: 5000, expireDays: 30 },
     poolLowThreshold: 10000,
     features: [
       "团队席位无限制",
@@ -122,6 +131,7 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxStorage: -1,
     maxApiCalls: -1,
     tokenLimit: 0,
+    trialGift: { enabled: false, points: 0, expireDays: 0 },
     poolLowThreshold: 10000,
     features: ["全部能力按合同约定开放"],
     sortOrder: 4,

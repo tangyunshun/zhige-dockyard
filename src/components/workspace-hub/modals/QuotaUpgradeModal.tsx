@@ -8,7 +8,7 @@ import { formatDiscountLabel } from "@/lib/point-rate";
 /**
  * 场景锚定：从哪个入口唤起中枢，就高亮对应的权益维度。
  * - workspace: 企业空间数量（空间列表区「增加空间数量」入口）
- * - token:     可用算力余额不足（升级会员享加油包折扣，降低调用成本）
+ * - token:     可用算力余额不足（升级会员享算力包折扣，降低调用成本）
  * - api:       每月调用额度
  * - component: 可装配组件额度
  * - team:      团队协同人数
@@ -70,10 +70,10 @@ const BENEFIT_ROWS: {
   },
   {
     key: "token",
-    label: "算力加油包折扣",
+    label: "算力包折扣",
     icon: <Zap className="w-4 h-4" />,
     render: (l) =>
-      l.tokenPackDiscount > 0 ? `购加油包享 ${formatDiscountLabel(l.tokenPackDiscount)}` : "无折扣",
+      l.tokenPackDiscount > 0 ? `购算力包享 ${formatDiscountLabel(l.tokenPackDiscount)}` : "无折扣",
   },
   {
     key: "api",
@@ -108,7 +108,7 @@ const getSceneCopy = (highlight: UpgradeHighlight) => {
       return {
         badge: "⚡ 可用算力余额偏低",
         title: "降低算力调用成本",
-        desc: "算力点即充即用、不随会员等级自动发放；升级会员后购买算力加油包可享专属折扣。",
+        desc: "算力点即充即用、不随会员等级自动发放；升级会员后购买算力包可享专属折扣。",
       };
     case "api":
       return {

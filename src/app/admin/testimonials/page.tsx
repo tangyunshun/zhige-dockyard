@@ -133,6 +133,8 @@ export default function AdminTestimonialsPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(true);
+  const [reviewError, setReviewError] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -176,6 +178,8 @@ export default function AdminTestimonialsPage() {
 
   /** 待审核 / 已驳回列表 */
   const loadReview = useCallback(async () => {
+    setReviewLoading(true);
+    setReviewError(false);
     try {
       const res = await fetch("/api/admin/testimonials/review", {
         headers: authHeaders(),
@@ -183,14 +187,22 @@ export default function AdminTestimonialsPage() {
         cache: "no-store",
       });
       const data = await res.json();
-      if (!res.ok || !data?.success) return;
+      if (!res.ok || !data?.success) {
+        setReviewError(true);
+        toast.error(data?.error || "待审核列表加载失败");
+        return;
+      }
       setPendingRows(data.pending ?? []);
       setRejectedRows(data.rejected ?? []);
       setSubmitterMap(data.submitterMap ?? {});
     } catch (error) {
       console.error("Load submissions error:", error);
+      setReviewError(true);
+      toast.error("网络异常，待审核列表加载失败");
+    } finally {
+      setReviewLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, toast]);
 
   useEffect(() => {
     load(1, true);
@@ -549,7 +561,25 @@ export default function AdminTestimonialsPage() {
           <span className="text-[11px] font-bold text-slate-400">用户在首页自助提交，通过后需指定展示分组</span>
         </div>
 
-        {pendingRows.length === 0 ? (
+        {reviewLoading ? (
+          <div className="py-10 flex flex-col items-center gap-2 text-slate-400">
+            <RefreshCw className="w-5 h-5 animate-spin text-[#3182ce]" />
+            <span className="text-xs font-bold">加载中...</span>
+          </div>
+        ) : reviewError ? (
+          <div className="py-10 flex flex-col items-center gap-3 text-slate-500">
+            <ShieldAlert className="w-6 h-6 text-rose-400" />
+            <span className="text-xs font-bold">待审核列表加载失败</span>
+            <button
+              type="button"
+              onClick={() => loadReview()}
+              className="px-3 py-1.5 rounded-lg bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              重新加载
+            </button>
+          </div>
+        ) : pendingRows.length === 0 ? (
           <div className="py-10 flex flex-col items-center gap-2 text-slate-400">
             <Inbox className="w-6 h-6 text-slate-300" />
             <span className="text-xs font-bold">暂无待审核评价</span>

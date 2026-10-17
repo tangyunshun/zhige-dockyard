@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformPermission } from "@/lib/security";
+import { prisma } from "@/lib/prisma";
 import {
   listComponentContracts,
   createDraftContract,
@@ -30,30 +31,58 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const contracts = await listComponentContracts(componentId);
 
+    // 组件当前激活的生效合同外键（用于标记“生效中”与激活切换）
+    const catalog = await prisma.componentcatalog.findUnique({
+      where: { id: componentId },
+      select: { activeContractId: true },
+    });
+    const activeContractId = catalog?.activeContractId ?? null;
+
+    // 批量解析发布人 ID → 姓名/邮箱（仅查询存在 publishedBy 的版本）
+    const publisherIds = Array.from(
+      new Set(contracts.map((c) => c.publishedBy).filter((v): v is string => !!v))
+    );
+    const publisherMap = new Map<string, { name: string; email: string }>();
+    if (publisherIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: publisherIds } },
+        select: { id: true, name: true, email: true },
+      });
+      for (const u of users) {
+        publisherMap.set(u.id, { name: u.name || "", email: u.email || "" });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         componentId,
         total: contracts.length,
-        contracts: contracts.map((c) => ({
-          id: c.id,
-          componentId: c.componentId,
-          contractVersion: c.contractVersion,
-          lifecycle: c.lifecycle,
-          description: c.description,
-          publishedAt: c.publishedAt,
-          publishedBy: c.publishedBy,
-          createdAt: c.createdAt,
-          updatedAt: c.updatedAt,
-          contractSummary: {
-            inputKind: c.contract.input.kind,
-            pipelineStepCount: c.contract.materialPipeline?.steps?.length || 0,
-            executionStepCount: c.contract.executionPlan?.steps?.length || 0,
-            outputKind: c.contract.output.kind,
-            rendererType: c.contract.output.rendererType,
-            billingMode: c.contract.billingPolicy.mode,
-          },
-        })),
+        activeContractId,
+        contracts: contracts.map((c) => {
+          const pub = c.publishedBy ? publisherMap.get(c.publishedBy) : undefined;
+          return {
+            id: c.id,
+            componentId: c.componentId,
+            contractVersion: c.contractVersion,
+            lifecycle: c.lifecycle,
+            description: c.description,
+            publishedAt: c.publishedAt,
+            publishedBy: c.publishedBy,
+            publishedByName: pub?.name || pub?.email || null,
+            createdAt: c.createdAt,
+            updatedAt: c.updatedAt,
+            isActive: !!activeContractId && c.id === activeContractId,
+            contractSummary: {
+              inputKind: c.contract.input.kind,
+              pipelineStepCount: c.contract.materialPipeline?.steps?.length || 0,
+              executionStepCount: c.contract.executionPlan?.steps?.length || 0,
+              outputKind: c.contract.output.kind,
+              rendererType: c.contract.output.rendererType,
+              billingMode: c.contract.billingPolicy.mode,
+            },
+          };
+        }),
       },
     });
   } catch (error) {

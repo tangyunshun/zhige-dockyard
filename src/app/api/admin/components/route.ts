@@ -135,8 +135,20 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
       ? tags.split(",").map((t) => t.trim()).filter(Boolean)
       : [];
   const categoryKey = category || (typeof type === "string" ? type : "");
+  // 是否显式携带了分类字段：上架 / 下架等局部更新只传 isPublished，不携带分类
+  const categoryProvided = category !== undefined || type !== undefined;
 
-  if (!isUpdate && (!name || !categoryKey)) {
+  // 分类校验规则：
+  // 1) 显式携带分类（编辑保存）时必须有效——曾发生过「空分类写库 → 组件从分类筛选中消失」的数据污染；
+  // 2) 新建必须携带分类；
+  // 3) 未携带分类的局部更新（如仅切换上架状态）不校验、也不覆盖数据库原分类
+  if (categoryProvided && !categoryKey) {
+    return NextResponse.json({ error: "缺少必填字段（领域分类）" }, { status: 400 });
+  }
+  if (!isUpdate && !categoryKey) {
+    return NextResponse.json({ error: "缺少必填字段（领域分类）" }, { status: 400 });
+  }
+  if (!isUpdate && !name) {
     return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
   }
 
@@ -159,7 +171,9 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
   const data: any = {
     name,
     description,
-    category: categoryKey,
+    // 仅在携带有效分类时写入：上架 / 下架等局部更新不携带分类，
+    // 若无条件写入会把数据库原分类覆盖为空（历史上多次上下架操作曾因此清空组件分类）
+    ...(categoryKey ? { category: categoryKey } : {}),
     icon,
     tags: tagList.length > 0 ? tagList : undefined,
     inputMode: body.inputMode || "text",

@@ -665,7 +665,7 @@ export default function UsageStatsTab({
               费用折合: {formatYuanFromPoints(totalPointsCostCalculated)}
             </span>
             <span className="text-[10px] font-bold text-slate-400 block mt-1">
-              ESTIMATED_COMPATIBILITY：按预估算力点扣减，未按真实 Token 精确结算
+              ESTIMATED_COMPATIBILITY：按管理员配置的固定点数扣费（1 算力点 = ¥0.01）
             </span>
           </div>
 
@@ -845,19 +845,22 @@ export default function UsageStatsTab({
             </div>
           </div>
 
-          {/* 沙箱物理存储占用 */}
+          {/* 文件存储占用（真实记账：知识库资料上传/删除实时维护，无兜底假值） */}
           {(() => {
-            const used = remoteStats.storage?.used || 1258291200;
-            const limit = remoteStats.storage?.limit || 10737418240;
-            const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+            const used = remoteStats.storage?.used || 0;
+            const limit = remoteStats.storage?.limit ?? 0;
+            const unlimited = limit <= 0;
+            const pct = !unlimited && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
             return (
               <div className="border-t border-slate-100 pt-3 text-xs text-slate-500 font-bold space-y-2">
                 <div className="flex justify-between items-center text-[11px]">
                   <span className="flex items-center gap-1 text-slate-700 font-bold">
-                    <HardDrive className="w-3.5 h-3.5 text-[#3182ce]" /> 沙箱物理存储空间
+                    <HardDrive className="w-3.5 h-3.5 text-[#3182ce]" /> 文件存储空间
                   </span>
                   <span className="text-slate-800 font-black font-mono">
-                    {(used / 1073741824).toFixed(1)}GB / {(limit / 1073741824).toFixed(1)}GB ({pct}%)
+                    {unlimited
+                      ? `${(used / 1073741824).toFixed(2)}GB / 不限`
+                      : `${(used / 1073741824).toFixed(2)}GB / ${(limit / 1073741824).toFixed(1)}GB (${pct}%)`}
                   </span>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">

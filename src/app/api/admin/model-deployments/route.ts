@@ -23,9 +23,35 @@ export async function GET(request: NextRequest) {
       where: { deploymentId: { in: rows.map((r) => r.id) } },
     });
     const priceMap = new Map(pricings.map((p) => [p.deploymentId, p]));
+    // 时段价格（在主流价之上叠加的覆盖价）：按优先级降序返回，供详情弹窗展示真实生效价
+    const periods = await prisma.modelpricingperiod.findMany({
+      where: { deploymentId: { in: rows.map((r) => r.id) } },
+      orderBy: [{ priority: "desc" }],
+    });
+    const periodMap = new Map<string, typeof periods>();
+    periods.forEach((p) => {
+      const list = periodMap.get(p.deploymentId) || [];
+      list.push(p);
+      periodMap.set(p.deploymentId, list);
+    });
+    // 全局默认加价率（模型未独立设置 markupRateBps 时继承此值派生售价）
+    const markupCfg = await prisma.systemconfig.findUnique({
+      where: { key: "billing.markupCoefficientBps" },
+    });
+    const rawBps = markupCfg?.value != null ? Number(markupCfg.value) : null;
+    // 口径矫正：旧版曾以乘数 *10000 存储，正确基点为 *100；检测到超大值自动折算
+    const globalMarkupBps = rawBps != null && rawBps > 10000 ? Math.round(rawBps / 10) : rawBps;
     return NextResponse.json({
       success: true,
-      data: rows.map((r) => ({ ...r, pricing: priceMap.get(r.id) ?? null })),
+      data: rows.map((r) => ({
+        ...r,
+        // 显式下发健康字段（即使客户端未感知该列也保证有确定值，前端据此渲染）
+        health: r.health || "unknown",
+        lastTestedAt: r.lastTestedAt ? r.lastTestedAt.toISOString() : null,
+        pricing: priceMap.get(r.id) ?? null,
+        periods: periodMap.get(r.id) ?? [],
+      })),
+      globalMarkupBps,
     });
   } catch (error) {
     console.error("[model-deployment] 查询失败:", (error as Error)?.message);

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge, ActionButton, RowActions } from "@/components/common";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
+import { WORKSPACE_PLANS } from "@/constants/workspace-plans";
 import {
   Plus,
   Search,
@@ -19,12 +20,12 @@ import {
   X,
   Boxes,
   Coins,
+  Gift,
   ShoppingBag,
   Users,
   Package,
   Database,
   Zap,
-  Tag,
   Building2,
   AlertCircle,
 } from "lucide-react";
@@ -42,6 +43,8 @@ interface WorkspacePlan {
   maxApiCalls: number;
   tokenLimit: number;
   features: string[];
+  /** 新空间一次性赠送额度（企业套餐差异化），来源于 DB，为空时由代码常量兜底 */
+  trialGift?: { enabled: boolean; points: number; expireDays: number };
   sortOrder: number;
   purchasable: boolean;
   isActive: boolean;
@@ -60,7 +63,9 @@ const DEFAULT_PLAN: Partial<WorkspacePlan> = {
   maxMembers: 10,
   maxStorage: 1024,
   maxApiCalls: 1000,
-  tokenLimit: 0, // 扩容包不再附赠月算力（算力由会员等级 + 加油包提供）
+  tokenLimit: 0, // 扩容包不再附赠月算力（算力由会员等级 + 算力包提供）
+  // 新空间赠送额度默认关闭，避免新建套餐即自动赠送造成成本失控
+  trialGift: { enabled: false, points: 0, expireDays: 0 },
   features: [],
   sortOrder: 0,
   purchasable: true,
@@ -152,10 +157,41 @@ export default function WorkspacePlansAdminPage() {
 
   const token = getAuthToken();
 
-  const fetchPlans = async (silent = false) => {
+  // 服务端过滤：把筛选条件拼到查询参数上（后端 GET 已支持 search/priceType/status/purchasable）
+  const buildPlansQuery = (
+    s: string,
+    price: string,
+    status: string,
+    purchasable: string,
+  ) => {
+    const params = new URLSearchParams();
+    if (s.trim()) params.set("search", s.trim());
+    if (price !== "all") params.set("priceType", price);
+    if (status !== "all") params.set("status", status);
+    if (purchasable === "purchasable") params.set("purchasable", "true");
+    else if (purchasable === "not") params.set("purchasable", "false");
+    const q = params.toString();
+    return q ? `/api/admin/workspace-plans?${q}` : "/api/admin/workspace-plans";
+  };
+
+  const fetchPlans = async (
+    silent = false,
+    opts?: {
+      search?: string;
+      price?: string;
+      status?: string;
+      purchasable?: string;
+    },
+  ) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch("/api/admin/workspace-plans", {
+      const url = buildPlansQuery(
+        opts?.search ?? search,
+        opts?.price ?? filterPrice,
+        opts?.status ?? filterStatus,
+        opts?.purchasable ?? filterPurchasable,
+      );
+      const res = await fetch(url, {
         headers: { authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -171,27 +207,19 @@ export default function WorkspacePlansAdminPage() {
     }
   };
 
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSearchChange = (value: string) => {
+    setSearch(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      fetchPlans(true, { search: value });
+    }, 300);
+  };
+
   useEffect(() => {
     fetchPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const filteredPlans = plans.filter((p) => {
-    const matchSearch =
-      p.key.toLowerCase().includes(search.toLowerCase()) ||
-      p.name.includes(search) ||
-      p.description.includes(search);
-    const matchPrice =
-      filterPrice === "all" ||
-      (filterPrice === "free" ? p.priceMonthly === 0 : p.priceMonthly > 0);
-    const matchStatus =
-      filterStatus === "all" ||
-      (filterStatus === "active" ? p.isActive : !p.isActive);
-    const matchPurchase =
-      filterPurchasable === "all" ||
-      (filterPurchasable === "purchasable" ? p.purchasable : !p.purchasable);
-    return matchSearch && matchPrice && matchStatus && matchPurchase;
-  });
 
   const openCreate = () => {
     setEditingPlan(null);
@@ -200,12 +228,25 @@ export default function WorkspacePlansAdminPage() {
     setModalOpen(true);
   };
 
+  // 套餐赠送额度生效值：DB 优先，DB 为 NULL 时回退代码常量，避免弹窗与列表徽章不一致
+  const resolveInitialGift = (plan: WorkspacePlan): {
+    enabled: boolean;
+    points: number;
+    expireDays: number;
+  } =>
+    plan.trialGift ||
+    WORKSPACE_PLANS[plan.key as keyof typeof WORKSPACE_PLANS]?.trialGift || {
+      enabled: false,
+      points: 0,
+      expireDays: 0,
+    };
+
   const openEdit = (plan: WorkspacePlan) => {
     setEditingPlan(plan);
     setFormErrors({});
     // 从 plan.features 中抽离自定义特性，过滤掉属于 4 大核心配额的旧静态文本
     const customFeatures = (plan.features || []).filter((f) => !isCoreQuotaFeatureText(f));
-    setForm({ ...plan, features: customFeatures });
+    setForm({ ...plan, features: customFeatures, trialGift: resolveInitialGift(plan) });
     setModalOpen(true);
   };
 
@@ -219,6 +260,7 @@ export default function WorkspacePlansAdminPage() {
       name: `${plan.name} (副本)`,
       sortOrder: plans.length + 1,
       features: customFeatures,
+      trialGift: resolveInitialGift(plan),
       isActive: false, // 复制出的套餐默认未启用，方便二次审核
     });
     setModalOpen(true);
@@ -403,16 +445,6 @@ export default function WorkspacePlansAdminPage() {
         </div>
       </div>
 
-      {/* 提示条 */}
-      <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl px-4 py-2.5 flex items-center gap-3 text-xs shadow-2xs">
-        <Tag className="w-4 h-4 text-amber-600 shrink-0" />
-        <span className="text-amber-900 font-bold">配置说明：</span>
-        <span className="text-amber-800 font-medium">
-          价格单位均为「分」（如 ¥199/月 请输入 <span className="font-mono">19900</span>）；配额填写
-          <span className="font-mono"> -1 </span>
-          表示「无限制」；套餐需先停用后才能删除，启用中的套餐仅可停用不可删除。
-        </span>
-      </div>
 
       {/* 4 个 Bento 统计卡片 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -477,14 +509,17 @@ export default function WorkspacePlansAdminPage() {
             type="text"
             placeholder="搜索套餐标识、名称或描述..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
           />
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto shrink-0 justify-end">
           <select
             value={filterPrice}
-            onChange={(e) => setFilterPrice(e.target.value)}
+            onChange={(e) => {
+              setFilterPrice(e.target.value);
+              fetchPlans(true, { price: e.target.value });
+            }}
             className="w-full sm:w-auto h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">所有价格分类</option>
@@ -493,7 +528,10 @@ export default function WorkspacePlansAdminPage() {
           </select>
           <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            onChange={(e) => {
+              setFilterStatus(e.target.value);
+              fetchPlans(true, { status: e.target.value });
+            }}
             className="w-full sm:w-auto h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">所有启用状态</option>
@@ -502,7 +540,10 @@ export default function WorkspacePlansAdminPage() {
           </select>
           <select
             value={filterPurchasable}
-            onChange={(e) => setFilterPurchasable(e.target.value)}
+            onChange={(e) => {
+              setFilterPurchasable(e.target.value);
+              fetchPlans(true, { purchasable: e.target.value });
+            }}
             className="w-full sm:w-auto h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
           >
             <option value="all">全部售卖方式</option>
@@ -532,7 +573,7 @@ export default function WorkspacePlansAdminPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {filteredPlans.map((plan) => (
+                {plans.map((plan) => (
                   <tr
                     key={plan.id}
                     className={`group hover:bg-slate-50/80 transition-colors ${
@@ -592,10 +633,37 @@ export default function WorkspacePlansAdminPage() {
                           <Zap className="w-3 h-3 text-slate-400" />
                           <strong className="font-mono text-slate-900">{fmtLimit(plan.maxApiCalls)}</strong> 调用
                         </span>
-                        <span className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0">
-                          <Coins className="w-3 h-3 text-slate-400" />
-                          <strong className="font-mono text-slate-900">{fmtLimit(plan.tokenLimit)}</strong> 算力点
-                        </span>
+                        {/* 套餐默认不打包月算力（算力由会员等级 + 算力包提供），仅在显式配置了额度时才展示 */}
+                        {Number(plan.tokenLimit ?? 0) !== 0 && (
+                          <span className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0">
+                            <Coins className="w-3 h-3 text-slate-400" />
+                            <strong className="font-mono text-slate-900">{fmtLimit(plan.tokenLimit)}</strong> 算力点
+                          </span>
+                        )}
+                        {/* 新空间一次性赠送额度：按套餐差异化，来源为代码常量 WORKSPACE_PLANS.trialGift（DB 无该列） */}
+                        {(() => {
+                          const g =
+                            plan.trialGift ||
+                            WORKSPACE_PLANS[plan.key as keyof typeof WORKSPACE_PLANS]?.trialGift;
+                          if (!g || !g.enabled || g.points <= 0) {
+                            return (
+                              <span className="inline-flex items-center gap-1 bg-slate-100/80 px-2.5 py-1 rounded-lg shrink-0" title="该套餐创建空间时不自动赠送体验额度">
+                                <Gift className="w-3 h-3 text-slate-400" />
+                                <span className="text-slate-500">不赠送</span>
+                              </span>
+                            );
+                          }
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg shrink-0"
+                              title="创建该套餐的企业空间时自动赠送的一次性体验额度（独立于充值额度、优先消耗）"
+                            >
+                              <Gift className="w-3 h-3 text-amber-500" />
+                              <strong className="font-mono text-amber-700">赠 {g.points}</strong>
+                              <span className="text-amber-700">算力点{g.expireDays > 0 ? ` · ${g.expireDays}天` : " · 永久"}</span>
+                            </span>
+                          );
+                        })()}
                       </div>
                     </td>
 
@@ -675,7 +743,11 @@ export default function WorkspacePlansAdminPage() {
                                 variant="danger"
                                 icon={<Trash2 className="w-4 h-4" />}
                                 disabledReason={
-                                  plan.isActive ? "启用中的套餐不可删除，请先停用" : undefined
+                                  plan.isActive
+                                    ? "启用中的套餐不可删除，请先停用"
+                                    : (plan.workspaceCount ?? 0) > 0
+                                      ? `该套餐仍被 ${plan.workspaceCount} 个空间使用，请先迁移这些空间`
+                                      : undefined
                                 }
                                 onClick={() => setDeleteTarget(plan)}
                               >
@@ -688,10 +760,12 @@ export default function WorkspacePlansAdminPage() {
                     </td>
                   </tr>
                 ))}
-                {filteredPlans.length === 0 && (
+                {plans.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-400 font-medium">
-                      {plans.length === 0 ? "暂无空间套餐数据" : "没有符合筛选条件的套餐"}
+                      {search.trim() !== "" || filterPrice !== "all" || filterStatus !== "all" || filterPurchasable !== "all"
+                        ? "没有符合筛选条件的套餐"
+                        : "暂无空间套餐数据"}
                     </td>
                   </tr>
                 )}
@@ -869,10 +943,78 @@ export default function WorkspacePlansAdminPage() {
                           placeholder={isUnlimited ? "无限制 (-1)" : "数量"}
                           className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                         />
+                        {item.key === "tokenLimit" && (
+                          <p className="text-[11px] font-bold text-slate-400 leading-relaxed">
+                            0 = 不附赠算力点；实际可执行量取决于空间算力余额（注册福利 / 充值 / 算力包）。此字段仅作套餐标注，不参与空间配额限制。
+                          </p>
+                        )}
                       </div>
                     );
                   })}
                 </div>
+                <p className="mt-2 text-[11px] font-bold text-slate-400 leading-relaxed">
+                  生效口径：存储上限与 API 调用次数会写入空间配额记录（与会员等级保底取大）；席位与组件数量为套餐标注值，仅供展示，实际成员加入与组件装配的上限由用户所属会员等级决定。
+                </p>
+                {/* 新空间一次性赠送额度：按套餐差异化，管理员可在此直接配置，无需发版 */}
+                {(() => {
+                  const gift = form.trialGift ?? { enabled: false, points: 0, expireDays: 0 };
+                  const setGift = (patch: Partial<typeof gift>) =>
+                    setForm({ ...form, trialGift: { ...gift, ...patch } });
+                  return (
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1.5">
+                          <Gift className="w-4 h-4 text-amber-500" />
+                          <span className="text-xs font-black text-slate-700">
+                            新空间一次性赠送额度（企业套餐差异化）
+                          </span>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={gift.enabled}
+                            onChange={(e) => setGift({ enabled: e.target.checked })}
+                            className="w-4 h-4 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
+                          />
+                          启用赠送
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            赠送算力点
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={gift.enabled ? gift.points : 0}
+                            disabled={!gift.enabled}
+                            onChange={(e) => setGift({ points: Number(e.target.value) || 0 })}
+                            placeholder="0"
+                            className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            有效期（天，0 = 永久）
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={gift.enabled ? gift.expireDays : 0}
+                            disabled={!gift.enabled}
+                            onChange={(e) => setGift({ expireDays: Number(e.target.value) || 0 })}
+                            placeholder="0"
+                            className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
+                          />
+                        </div>
+                      </div>
+                      <p className="mt-2 text-[11px] font-bold text-slate-400">
+                        创建该套餐的企业空间时自动赠送一次性体验额度（独立于充值额度、优先消耗）；不启用则不赠送。
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 价格与策略 */}

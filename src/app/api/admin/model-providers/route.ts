@@ -27,6 +27,10 @@ export async function GET(request: NextRequest) {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       hasApiKey: !!r.apiKeyCipher,
+      // 连通性健康状态（由「测试连接」真实探测后落库）：healthy 健康 | error 异常 | unknown 未探测
+      health: r.health || "unknown",
+      // 最近一次测试连接时间（ISO 字符串；从未测过为 null）
+      lastTestedAt: r.lastTestedAt ? r.lastTestedAt.toISOString() : null,
       // 大厂级脱敏：仅下发「前 6 + 后 4、中间固定掩码」的局部明文，绝不暴露完整密钥到网络响应。
       apiKeyMasked:
         r.apiKeyCipher != null

@@ -894,7 +894,7 @@ export default function ComponentBrowser({
                   </span>
                 </div>
                 <p className="text-[9px] font-bold text-slate-400" title={UNIT_EXPLAIN_HINT}>
-                  💡 1 token = 1 算力点 ｜ {POINT_RATE_TEXT}
+                  💡 组件执行按后台配置的固定点数扣费 ｜ {POINT_RATE_TEXT}
                 </p>
               </div>
 

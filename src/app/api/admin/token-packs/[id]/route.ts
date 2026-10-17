@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, isPlatformAdminRole } from "@/lib/security";
 import { getTokenPackModel, updateTokenPackMemoryCache, removeTokenPackMemoryCache, markTokenPackDeleted } from "@/lib/token-pack-service";
 import { pointsToYuan } from "@/lib/point-rate";
 
@@ -31,9 +31,8 @@ export async function PUT(
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
 
-    const roleUpper = (auth.user.role || "").toUpperCase();
-    const isAdminUser = roleUpper === "ADMIN" || roleUpper === "SUPER_ADMIN" || roleUpper === "PLATFORM_ADMIN";
-    if (!isAdminUser) {
+    // 平台管理员/超级管理员统一判定（认全 ADMIN / SUPERADMIN / SUPER_ADMIN 等所有历史写法）
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅系统超级管理员可修改算力加油包" }, { status: 403 });
     }
 
@@ -131,9 +130,8 @@ export async function DELETE(
       return NextResponse.json({ error: "未授权" }, { status: 401 });
     }
 
-    const roleUpper = (auth.user.role || "").toUpperCase();
-    const isAdminUser = roleUpper === "ADMIN" || roleUpper === "SUPER_ADMIN" || roleUpper === "PLATFORM_ADMIN";
-    if (!isAdminUser) {
+    // 平台管理员/超级管理员统一判定（认全 ADMIN / SUPERADMIN / SUPER_ADMIN 等所有历史写法）
+    if (!isPlatformAdminRole(auth.user.role)) {
       return NextResponse.json({ error: "越权警告：仅系统超级管理员可删除算力加油包" }, { status: 403 });
     }
 

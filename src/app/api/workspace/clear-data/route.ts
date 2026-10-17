@@ -85,9 +85,27 @@ export async function POST(req: NextRequest) {
     });
 
     // 3. 删除归档文档资料与分析报告（含 knowledge 类型的知识库条目）
+    //    先取出物理文件路径逐一删除真实文件（uploads/assets/{workspaceId}/），
+    //    再清空记录并把空间存储用量归零，保证「出厂重置」后存储统计与磁盘一致。
+    const removingDocs = await prisma.document.findMany({
+      where: { workspaceId },
+      select: { filePath: true },
+    });
     await prisma.document.deleteMany({
       where: { workspaceId },
     });
+    if (removingDocs.length > 0) {
+      const { deleteAssetFile } = await import("@/lib/file-store");
+      await Promise.all(removingDocs.map((d) => deleteAssetFile(d.filePath)));
+    }
+    try {
+      await prisma.workspacequota.updateMany({
+        where: { workspaceId },
+        data: { storageUsed: BigInt(0) },
+      });
+    } catch (storageErr) {
+      console.error(`[clear-data] 重置空间存储用量失败:`, storageErr);
+    }
 
     // 4. 删除该空间的历史操作审计日志 (确保空间彻底还原为物理出厂初始状态)
     await prisma.operationlog.deleteMany({

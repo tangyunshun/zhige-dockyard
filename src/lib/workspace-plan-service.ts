@@ -45,6 +45,29 @@ function dbToConfig(row: any): WorkspacePlanConfig {
   const maxStorage = Number(row.maxStorage ?? 0);
   const maxApiCalls = Number(row.maxApiCalls ?? 0);
   const rawFeatures = Array.isArray(row.features) ? row.features : [];
+  // DB 表无 trialGift 列，从常量基线兜底，避免企业套餐差异化赠送字段缺失
+  const fallback = WORKSPACE_PLANS[row.key as WorkspacePlanKey];
+
+  // trialGift：优先取 DB 值（管理员后台可改），解析失败时回退常量；DB 为 NULL 也回退常量
+  const dbGift = row.trialGift as any;
+  const parsedGift =
+    typeof dbGift === "string"
+      ? (() => {
+          try {
+            return JSON.parse(dbGift);
+          } catch {
+            return null;
+          }
+        })()
+      : dbGift;
+  const trialGift: { enabled: boolean; points: number; expireDays: number } =
+    parsedGift && typeof parsedGift === "object" && "enabled" in parsedGift
+      ? {
+          enabled: Boolean(parsedGift.enabled),
+          points: Number(parsedGift.points ?? 0),
+          expireDays: Number(parsedGift.expireDays ?? 0),
+        }
+      : (fallback?.trialGift ?? { enabled: false, points: 0, expireDays: 0 });
 
   return {
     key: row.key as WorkspacePlanKey,
@@ -57,6 +80,7 @@ function dbToConfig(row: any): WorkspacePlanConfig {
     maxStorage,
     maxApiCalls,
     tokenLimit: Number(row.tokenLimit ?? 0),
+    trialGift,
     poolLowThreshold:
       row.poolLowThreshold == null ? DEFAULT_POOL_LOW_THRESHOLD : Number(row.poolLowThreshold),
     features: buildDynamicPlanFeatures({
@@ -144,6 +168,8 @@ export async function seedDefaultWorkspacePlansIfEmpty(): Promise<void> {
           maxStorage: plan.maxStorage,
           maxApiCalls: plan.maxApiCalls,
           tokenLimit: plan.tokenLimit,
+          // 显式写入套餐差异化赠送额度：让初始 DB 行直观携带常量值，而非依赖回退
+          trialGift: plan.trialGift,
           features: plan.features,
           sortOrder: plan.sortOrder,
           purchasable: plan.purchasable,

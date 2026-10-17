@@ -468,43 +468,43 @@ export default function AdminNotificationsPage() {
     switch (type) {
       case "system":
         return {
-          icon: "🔔",
+          icon: "",
           label: "系统通知",
           className: "bg-blue-50 text-[#3182ce] border-blue-200",
         };
       case "update":
         return {
-          icon: "🚀",
+          icon: "",
           label: "功能更新",
           className: "bg-purple-50 text-purple-700 border-purple-200",
         };
       case "alert":
         return {
-          icon: "⚠️",
+          icon: "",
           label: "安全告警",
           className: "bg-rose-50 text-rose-700 border-rose-200",
         };
       case "activity":
         return {
-          icon: "🎁",
+          icon: "",
           label: "平台活动",
           className: "bg-emerald-50 text-emerald-700 border-emerald-200",
         };
       case "task":
         return {
-          icon: "📋",
+          icon: "",
           label: "任务处理",
           className: "bg-indigo-50 text-indigo-700 border-indigo-200",
         };
       case "security":
         return {
-          icon: "🛡️",
+          icon: "",
           label: "安全隔离",
           className: "bg-rose-50 text-rose-700 border-rose-200",
         };
       default:
         return {
-          icon: "📢",
+          icon: "",
           label: "常规消息",
           className: "bg-slate-100 text-slate-700 border-slate-200",
         };
@@ -577,6 +577,7 @@ export default function AdminNotificationsPage() {
         }
       } catch (err) {
         console.error("服务端防抖搜索用户失败", err);
+        toast.error("用户搜索失败，请重试");
       } finally {
         setUserSearching(false);
       }
@@ -612,7 +613,7 @@ export default function AdminNotificationsPage() {
           }
         }
       } catch {
-        // 群组加载失败不阻断弹窗使用
+        toast.error("受众群组列表加载失败，请重试");
       } finally {
         setLoadingGroups(false);
       }
@@ -644,7 +645,7 @@ export default function AdminNotificationsPage() {
           setMemberSearchResults(result.users || result.data?.users || []);
         }
       } catch {
-        // 静默失败：不打断输入
+        toast.error("用户搜索失败，请重试");
       } finally {
         setMemberSearching(false);
       }
@@ -828,8 +829,8 @@ export default function AdminNotificationsPage() {
     addUserIds?: string[];
     removeUserIds?: string[];
     memberAction?: string;
-  }) => {
-    if (!managingGroup) return;
+  }): Promise<boolean> => {
+    if (!managingGroup) return false;
     try {
       const res = await fetch("/api/admin/notification-groups", {
         method: "PATCH",
@@ -842,12 +843,15 @@ export default function AdminNotificationsPage() {
       if (res.ok) {
         await loadGroupMembers(managingGroup.id);
         await refreshGroupCounts();
+        return true;
       } else {
         const data = await res.json();
         toast.error(data.error || "更新群组成员失败");
+        return false;
       }
     } catch {
       toast.error("更新群组成员失败");
+      return false;
     }
   };
 
@@ -917,25 +921,27 @@ export default function AdminNotificationsPage() {
 
   // 从群组中剔除指定成员
   const handleExcludeMember = async (userId: string) => {
-    await updateGroupMembers({ addUserIds: [userId], memberAction: "exclude" });
-    toast.success("已将该成员从群组中剔除");
+    const ok = await updateGroupMembers({ addUserIds: [userId], memberAction: "exclude" });
+    if (ok) toast.success("已将该成员从群组中剔除");
   };
 
   // 追加成员进群组（自定义群组加人 / 系统群组跨角色加人）
   const handleIncludeMember = async (user: { id: string; name: string | null; email: string | null }) => {
-    await updateGroupMembers({ addUserIds: [user.id], memberAction: "include" });
-    toast.success(`已将 ${user.name || user.email} 加入群组`);
-    setMemberSearchTerm("");
-    setMemberSearchResults([]);
+    const ok = await updateGroupMembers({ addUserIds: [user.id], memberAction: "include" });
+    if (ok) {
+      toast.success(`已将 ${user.name || user.email} 加入群组`);
+      setMemberSearchTerm("");
+      setMemberSearchResults([]);
+    }
   };
 
   // 撤销剔除，恢复该成员回到群组
   const handleRestoreMember = async (userId: string) => {
-    await updateGroupMembers({ removeUserIds: [userId] });
-    toast.success("已恢复该成员至群组");
+    const ok = await updateGroupMembers({ removeUserIds: [userId] });
+    if (ok) toast.success("已恢复该成员至群组");
   };
 
-  // 一键添加服务端匹配的全部用户（解决"匹配 2 万个只能加 12 个"的痛点）
+  // 批量添加服务端匹配的全部用户（解决"匹配 2 万个只能加 12 个"的痛点）
   const handleAddAllMatched = async (keyword: string) => {
     try {
       const res = await fetch("/api/admin/users/search-ids", {
@@ -945,7 +951,7 @@ export default function AdminNotificationsPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "一键添加失败");
+        toast.error(data.error || "批量添加失败");
         return;
       }
       const data = await res.json();
@@ -1229,7 +1235,7 @@ export default function AdminNotificationsPage() {
       title: "通知通道连通性测试",
       message: hasEmail
         ? `即将向用户【${item.user.name || item.user.email}】发送一条通道健康连通性测试通知。\n\n检测到该用户已绑定邮箱：${item.user.email}，本次将联动验证其站内信与邮件接收能力。\n\n请确认是否发送测试消息？`
-        : `即将向用户【${item.user.name || "目标账户"}】发送一条通道健康连通性测试通知。\n\n⚠️ 检测到该用户尚未绑定有效外部邮箱，本次将仅对其已开启的站内信通道进行健康探测，无法验证邮件送达。\n\n请确认是否发送测试消息？`,
+        : `即将向用户【${item.user.name || "目标账户"}】发送一条通道健康连通性测试通知。\n\n检测到该用户尚未绑定有效外部邮箱，本次将仅对其已开启的站内信通道进行健康探测，无法验证邮件送达。\n\n请确认是否发送测试消息？`,
       type: "info",
       onConfirm: async () => {
         try {
@@ -1265,32 +1271,32 @@ export default function AdminNotificationsPage() {
     const badges: Record<string, { bg: string; text: string; label: string }> = {
       REALTIME: {
         bg: "bg-emerald-50 text-emerald-700 border-emerald-200",
-        text: "⚡ 实时推送",
+        text: "实时推送",
         label: "实时",
       },
       HOURLY: {
         bg: "bg-cyan-50 text-cyan-700 border-cyan-200",
-        text: "⏱️ 每小时汇总",
+        text: "每小时汇总",
         label: "小时",
       },
       DAILY: {
         bg: "bg-blue-50 text-[#3182ce] border-blue-200",
-        text: "📅 每日汇总",
+        text: "每日汇总",
         label: "每日",
       },
       WEEKLY: {
         bg: "bg-purple-50 text-purple-700 border-purple-200",
-        text: "📊 每周精选",
+        text: "每周精选",
         label: "每周",
       },
       CRITICAL_ONLY: {
         bg: "bg-rose-50 text-rose-700 border-rose-200",
-        text: "🛡️ 仅严重告警",
+        text: "仅严重告警",
         label: "严重告警",
       },
       QUIET_HOURS: {
         bg: "bg-indigo-50 text-indigo-700 border-indigo-200",
-        text: "🌙 工作免打扰",
+        text: "工作免打扰",
         label: "免打扰",
       },
     };
@@ -1553,12 +1559,12 @@ export default function AdminNotificationsPage() {
                       className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
                       <option value="">全部推送频率</option>
-                      <option value="REALTIME">⚡ 实时推送</option>
-                      <option value="HOURLY">⏱️ 每小时汇总</option>
-                      <option value="DAILY">📅 每日汇总</option>
-                      <option value="WEEKLY">📊 每周精选</option>
-                      <option value="CRITICAL_ONLY">🛡️ 仅严重告警</option>
-                      <option value="QUIET_HOURS">🌙 工作免打扰</option>
+                      <option value="REALTIME">实时推送</option>
+                      <option value="HOURLY">每小时汇总</option>
+                      <option value="DAILY">每日汇总</option>
+                      <option value="WEEKLY">每周精选</option>
+                      <option value="CRITICAL_ONLY">仅严重告警</option>
+                      <option value="QUIET_HOURS">工作免打扰</option>
                     </select>
                   </div>
 
@@ -1573,8 +1579,8 @@ export default function AdminNotificationsPage() {
                       className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
                       <option value="">邮件渠道: 全部</option>
-                      <option value="true">🟢 邮件开启</option>
-                      <option value="false">⚪ 邮件关闭</option>
+                      <option value="true">邮件开启</option>
+                      <option value="false">邮件关闭</option>
                     </select>
                   </div>
 
@@ -1589,8 +1595,8 @@ export default function AdminNotificationsPage() {
                       className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
                       <option value="">站内信渠道: 全部</option>
-                      <option value="true">🟢 站内信开启</option>
-                      <option value="false">⚪ 站内信关闭</option>
+                      <option value="true">站内信开启</option>
+                      <option value="false">站内信关闭</option>
                     </select>
                   </div>
 
@@ -1638,12 +1644,12 @@ export default function AdminNotificationsPage() {
                 </button>
 
                 {[
-                  { key: "REALTIME", label: "⚡ 实时推送" },
-                  { key: "HOURLY", label: "⏱️ 每小时汇总" },
-                  { key: "DAILY", label: "📅 每日汇总" },
-                  { key: "WEEKLY", label: "📊 每周精选" },
-                  { key: "CRITICAL_ONLY", label: "🛡️ 仅严重告警" },
-                  { key: "QUIET_HOURS", label: "🌙 工作免打扰" },
+                  { key: "REALTIME", label: "实时推送" },
+                  { key: "HOURLY", label: "每小时汇总" },
+                  { key: "DAILY", label: "每日汇总" },
+                  { key: "WEEKLY", label: "每周精选" },
+                  { key: "CRITICAL_ONLY", label: "仅严重告警" },
+                  { key: "QUIET_HOURS", label: "工作免打扰" },
                 ].map((freq) => {
                   const count = (summary.frequencyCounts as any)?.[freq.key] || 0;
                   const isSelected = filterFrequency === freq.key;
@@ -2028,12 +2034,12 @@ export default function AdminNotificationsPage() {
                     className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                   >
                     <option value="">全部通知类型</option>
-                    <option value="system">🔔 系统通知</option>
-                    <option value="update">🚀 功能更新</option>
-                    <option value="alert">⚠️ 安全告警</option>
-                    <option value="activity">🎁 平台活动</option>
-                    <option value="task">📋 任务处理</option>
-                    <option value="security">🛡️ 安全隔离</option>
+                    <option value="system">系统通知</option>
+                    <option value="update">功能更新</option>
+                    <option value="alert">安全告警</option>
+                    <option value="activity">平台活动</option>
+                    <option value="task">任务处理</option>
+                    <option value="security">安全隔离</option>
                   </select>
                 </div>
 
@@ -2048,8 +2054,8 @@ export default function AdminNotificationsPage() {
                     className="w-full px-2.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                   >
                     <option value="">阅读状态: 全部</option>
-                    <option value="true">🟢 用户已读</option>
-                    <option value="false">⚪ 尚未阅读</option>
+                    <option value="true">用户已读</option>
+                    <option value="false">尚未阅读</option>
                   </select>
                 </div>
 
@@ -2351,7 +2357,7 @@ export default function AdminNotificationsPage() {
                             }
                             className="text-[#3182ce] focus:ring-[#3182ce]"
                           />
-                          <span className="text-xs font-bold">📢 全员广播</span>
+                          <span className="text-xs font-bold">全员广播</span>
                         </div>
                         <span className="text-[10px] text-slate-400">
                           全平台所有激活用户
@@ -2379,7 +2385,7 @@ export default function AdminNotificationsPage() {
                             }
                             className="text-[#3182ce] focus:ring-[#3182ce]"
                           />
-                          <span className="text-xs font-bold">👥 受众角色群组</span>
+                          <span className="text-xs font-bold">受众角色群组</span>
                         </div>
                         <span className="text-[10px] text-slate-400">
                           海量用户按身份批量推送
@@ -2407,7 +2413,7 @@ export default function AdminNotificationsPage() {
                             }
                             className="text-[#3182ce] focus:ring-[#3182ce]"
                           />
-                          <span className="text-xs font-bold">🎯 精准批量定向</span>
+                          <span className="text-xs font-bold">精准批量定向</span>
                         </div>
                         <span className="text-[10px] text-slate-400">
                           {dispatchForm.targetUsers.length > 0
@@ -2687,7 +2693,7 @@ export default function AdminNotificationsPage() {
                                     <span>
                                       匹配 <strong className="text-slate-700">{userSearchTotal ?? userSearchResults.length}</strong> 位
                                       {(userSearchTotal ?? 0) > userSearchResults.length && (
-                                        <span>，仅显示前 {userSearchResults.length} 位（请细化关键词或一键添加全部）</span>
+                                        <span>，仅显示前 {userSearchResults.length} 位（请细化关键词或批量添加全部）</span>
                                       )}
                                     </span>
                                     <div className="flex items-center gap-2 shrink-0">
@@ -2698,7 +2704,7 @@ export default function AdminNotificationsPage() {
                                           className="text-[#3182ce] hover:underline font-bold cursor-pointer"
                                           title="服务端一次性拉取全部匹配用户并加入发送池"
                                         >
-                                          ⚡ 一键添加全部 {userSearchTotal} 位
+                                          批量添加全部 {userSearchTotal} 位
                                         </button>
                                       )}
                                       <button
@@ -2770,11 +2776,11 @@ export default function AdminNotificationsPage() {
                             />
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[10px] text-slate-400">
-                                支持 Excel (.xlsx/.xls)、CSV 或纯文本整列导入，自动智能识别邮箱与用户ID
+                                支持 Excel (.xlsx/.xls)、CSV 或纯文本整列导入，自动识别邮箱与用户ID
                               </span>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <label className={`px-3 h-7 flex items-center text-xs font-bold rounded-lg transition-colors cursor-pointer ${bulkImporting ? "bg-slate-200 text-slate-500" : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`}>
-                                  {bulkImporting ? "正在解析导入..." : "📂 导入 Excel / 表格文件"}
+                                  {bulkImporting ? "正在解析导入..." : "导入 Excel / 表格文件"}
                                   <input
                                     type="file"
                                     accept=".xlsx,.xls,.csv,.txt,.tsv"
@@ -2788,7 +2794,7 @@ export default function AdminNotificationsPage() {
                                   onClick={handleBatchParsePaste}
                                   className="px-3 h-7 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
                                 >
-                                  智能解析并加入发送池
+                                  解析并加入发送池
                                 </button>
                               </div>
                             </div>
@@ -2816,12 +2822,12 @@ export default function AdminNotificationsPage() {
                       }
                       className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] text-xs font-bold text-slate-800 bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
-                      <option value="system">🔔 平台系统通知</option>
-                      <option value="update">🚀 功能与版本更新</option>
-                      <option value="alert">⚠️ 安全与业务告警</option>
-                      <option value="activity">🎁 平台活动与福利</option>
-                      <option value="task">📋 任务处理与工单</option>
-                      <option value="security">🛡️ 账号与安全隔离</option>
+                      <option value="system">平台系统通知</option>
+                      <option value="update">功能与版本更新</option>
+                      <option value="alert">安全与业务告警</option>
+                      <option value="activity">平台活动与福利</option>
+                      <option value="task">任务处理与工单</option>
+                      <option value="security">账号与安全隔离</option>
                     </select>
                   </div>
 
@@ -3219,7 +3225,7 @@ export default function AdminNotificationsPage() {
                 <div className="text-xs font-bold text-slate-500 mb-2 flex items-center justify-between">
                   <span>通知通道开启状态：</span>
                   <span className="text-[10px] text-slate-400 font-normal">
-                    {editingPref.user.email ? `外部邮箱已绑定: ${editingPref.user.email}` : "⚠️ 未配置有效外部邮箱"}
+                    {editingPref.user.email ? `外部邮箱已绑定: ${editingPref.user.email}` : "未配置有效外部邮箱"}
                   </span>
                 </div>
 
@@ -3315,12 +3321,12 @@ export default function AdminNotificationsPage() {
                     }
                     className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] text-xs font-bold text-slate-800 bg-slate-50/50 focus:bg-white cursor-pointer"
                   >
-                    <option value="REALTIME">⚡ 实时推送 (REALTIME) - 即刻推送无延迟</option>
-                    <option value="HOURLY">⏱️ 每小时汇总 (HOURLY) - 团队紧凑跟进</option>
-                    <option value="DAILY">📅 每日汇总 (DAILY) - 下班前统一复盘</option>
-                    <option value="WEEKLY">📊 每周精选 (WEEKLY) - 周度工作提炼</option>
-                    <option value="CRITICAL_ONLY">🛡️ 仅严重告警 (CRITICAL_ONLY) - 过滤低级扰动</option>
-                    <option value="QUIET_HOURS">🌙 工作免打扰 (QUIET_HOURS) - 仅工作时段派发</option>
+                    <option value="REALTIME">实时推送 (REALTIME) - 即刻推送无延迟</option>
+                    <option value="HOURLY">每小时汇总 (HOURLY) - 团队紧凑跟进</option>
+                    <option value="DAILY">每日汇总 (DAILY) - 下班前统一复盘</option>
+                    <option value="WEEKLY">每周精选 (WEEKLY) - 周度工作提炼</option>
+                    <option value="CRITICAL_ONLY">仅严重告警 (CRITICAL_ONLY) - 过滤低级扰动</option>
+                    <option value="QUIET_HOURS">工作免打扰 (QUIET_HOURS) - 仅工作时段派发</option>
                   </select>
                 </div>
               </div>
@@ -3406,8 +3412,7 @@ export default function AdminNotificationsPage() {
                   onClick={() => setViewingHistory(null)}
                   className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer text-xs font-bold"
                 >
-                  ✕
-                </button>
+                                  </button>
               </div>
 
               {/* 内容区 Body */}
@@ -3456,7 +3461,7 @@ export default function AdminNotificationsPage() {
                             : "bg-amber-50 text-amber-700 border-amber-200"
                           }`}
                       >
-                        {viewingHistory.isRead ? "✓ 用户已查阅" : "○ 用户未查阅"}
+                        {viewingHistory.isRead ? "用户已查阅" : "用户未查阅"}
                       </span>
                       <span className="text-[11px] font-mono text-slate-500">
                         {new Date(viewingHistory.createdAt).toLocaleString("zh-CN", {
@@ -3482,7 +3487,7 @@ export default function AdminNotificationsPage() {
               <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-400 font-medium">
                 <span className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                  <span>系统出清规则：已阅读历史通知在超期 3 个月（90天）后将由系统自动安全出清</span>
+                  <span>系统出清规则：历史通知在超期 1 年（365天）后将由系统自动安全出清</span>
                 </span>
 
                 <button

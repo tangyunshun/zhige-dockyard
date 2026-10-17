@@ -3,16 +3,16 @@
 /**
  * 空间模型策略（后端早已支持，此前只能靠 curl 调用，现补上管理界面）
  *
- * 裁决优先级（与 src/lib/model-registry.ts 的 resolveDefaultDeployment 完全一致）：
- *   1. 当前空间的「默认模型」优先；
- *   2. 空间未配置时，才回落到「平台默认模型」（/admin/models 页面设置）；
- *   3. 两者都没有 → 该空间的组件一律拒绝执行（MODEL_NOT_ALLOWED）。
- * 白名单语义：留空 = 不限制；一旦勾选任意模型，则该空间**只能**使用被勾选的模型。
+ * 页面职责（授权制，方案 A）：**本页只做一件事 —— 配置该空间可用的模型清单（白名单）**。
+ *   - 白名单 = 该空间被授予的可用模型；为空即「未授权任何模型」，空间内组件一律无法调度模型执行。
+ *   - 空间默认模型由用户工作台（个人 / 企业空间）页面设置，本页不提供设置入口（保存时原样保留已存值）。
+ * 裁决规则详见 src/lib/model-registry.ts（resolveModelExecutionPlan / assertModelAllowed）。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
+import { formatPeriodSchedule } from "@/lib/period-schedule-text";
 import {
   Layers,
   Building2,
@@ -28,12 +28,8 @@ import {
   Search,
   Sliders,
   ShieldCheck,
-  Copy,
-  CheckCheck,
   Filter,
   Info,
-  ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -57,10 +53,49 @@ interface DeploymentItem {
   contextLimit?: number;
   enabled: boolean;
   capabilities?: string[] | null;
+  /** 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（接口真实下发） */
+  health?: string;
+  lastTestedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   pricing?: {
+    currency?: string;
+    costInputMicrosPerMillion?: number | null;
+    costOutputMicrosPerMillion?: number | null;
+    costCacheReadMicrosPerMillion?: number | null;
+    costCacheWriteMicrosPerMillion?: number | null;
     priceInputMicrosPerMillion?: number | null;
     priceOutputMicrosPerMillion?: number | null;
+    priceCacheReadMicrosPerMillion?: number | null;
+    priceCacheWriteMicrosPerMillion?: number | null;
+    /** 平台加价率（基点）；非空且无直配售价时，生效价 = 成本 × (1 + 加价率/10000) */
+    markupRateBps?: number | null;
+    /** 价格状态：UNCONFIGURED 未配置 | FREE 明确免费 | OBSERVED_ONLY 仅观测 | VERIFIED 已确认 */
+    priceStatus?: string;
+    priceSource?: string;
   } | null;
+  /** 时段覆盖价（在主流价之上叠加；接口按优先级降序下发） */
+  periods?: {
+    id: string;
+    name: string;
+    kind: string;
+    enabled: boolean;
+    priority: number;
+    weekdays?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    costInputMicrosPerMillion?: number | null;
+    costOutputMicrosPerMillion?: number | null;
+    costCacheReadMicrosPerMillion?: number | null;
+    costCacheWriteMicrosPerMillion?: number | null;
+    priceInputMicrosPerMillion?: number | null;
+    priceOutputMicrosPerMillion?: number | null;
+    priceCacheReadMicrosPerMillion?: number | null;
+    priceCacheWriteMicrosPerMillion?: number | null;
+    markupRateBps?: number | null;
+  }[];
 }
 
 // 模型能力抽象字典与标准化中文标签
@@ -89,6 +124,47 @@ function formatContextTokens(tokens: number | null | undefined): string {
   return `${tokens.toLocaleString()} Tokens`;
 }
 
+/** 时间显示：YYYY-MM-DD HH:mm；无值返回占位 */
+function formatDateTime(value?: string | null): string {
+  if (!value) return "暂无记录";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "暂无记录";
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** 价格状态中文化 */
+const PRICE_STATUS_LABEL: Record<string, string> = {
+  UNCONFIGURED: "未配置",
+  FREE: "明确免费",
+  OBSERVED_ONLY: "仅观测数据",
+  VERIFIED: "供应商价目表已确认",
+};
+
+/** 时段类型中文化 */
+const PERIOD_KIND_LABEL: Record<string, string> = {
+  IDLE: "闲时",
+  PEAK: "高峰",
+  HOLIDAY: "节假日",
+  CUSTOM: "自定义",
+};
+
+/**
+ * 计算真实生效售价（与结算口径一致）：
+ * 直配售价优先；未直配时按 成本 × (1 + 加价率/10000) 派生（模型级加价率优先，否则继承全局默认）。
+ */
+function resolveEffectivePrice(
+  price: number | null | undefined,
+  cost: number | null | undefined,
+  markupBps: number | null | undefined,
+): { micros: number | null; derived: boolean } {
+  if (price != null) return { micros: price, derived: false };
+  if (cost != null && markupBps != null) {
+    return { micros: Math.round(cost * (1 + markupBps / 10_000)), derived: true };
+  }
+  return { micros: null, derived: false };
+}
+
 // 紧凑分页器：生成页码序列（首尾页 + 当前页附近窗口 + 省略号）
 function buildPageList(current: number, total: number): (number | "...")[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -106,15 +182,21 @@ export default function WorkspaceModelPolicyPage() {
   const toast = useToast();
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
   const [deployments, setDeployments] = useState<DeploymentItem[]>([]);
+  // 全局默认加价率（基点）：模型未独立设置加价率时，生效售价 = 成本 × (1 + 全局加价率/10000)
+  const [globalMarkupBps, setGlobalMarkupBps] = useState<number | null>(null);
   const [selectedWs, setSelectedWs] = useState<string>("");
   const [searchWs, setSearchWs] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<"ALL" | "ENTERPRISE" | "PERSONAL">("ALL");
+  // 授权制（方案 A）：本页唯一职责 = 配置「该空间可用的模型」（白名单）。
+  // 空间默认模型由工作台（个人/企业空间）页面设置，本页不再提供设置入口，但保存时原样保留已存值。
   const [defaultId, setDefaultId] = useState<string>("");
   const [allowed, setAllowed] = useState<string[]>([]);
+  // 已保存的策略快照，用于「放弃修改」回滚（不涉及默认模型的变更）
+  const [loadedDefaultId, setLoadedDefaultId] = useState<string>("");
+  const [loadedAllowed, setLoadedAllowed] = useState<string[]>([]);
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
   // 空间列表分页检索状态（后端分页，不再前端全量拉取，空间数量大时也不卡）
   const [wsPage, setWsPage] = useState(1);
   const [wsTotal, setWsTotal] = useState(0);
@@ -125,22 +207,6 @@ export default function WorkspaceModelPolicyPage() {
 
   // 详情模态弹窗选中的模型部署
   const [detailDeployment, setDetailDeployment] = useState<DeploymentItem | null>(null);
-
-  // 自定义默认模型选择器状态与 Ref
-  const [selectOpen, setSelectOpen] = useState(false);
-  const [selectSearch, setSelectSearch] = useState("");
-  const selectRef = useRef<HTMLDivElement>(null);
-
-  // 监听点击外部收起自定义下拉菜单
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (selectRef.current && !selectRef.current.contains(e.target as Node)) {
-        setSelectOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const authFetch = useCallback(async (url: string, init?: RequestInit) => {
     const res = await fetch(url, {
@@ -161,6 +227,7 @@ export default function WorkspaceModelPolicyPage() {
     try {
       const depRes = await authFetch("/api/admin/model-deployments");
       setDeployments(depRes?.data || []);
+      setGlobalMarkupBps(depRes?.globalMarkupBps ?? null);
     } catch (e) {
       toast.error((e as Error)?.message || "加载模型列表失败");
     }
@@ -207,6 +274,8 @@ export default function WorkspaceModelPolicyPage() {
       setConfigured(!!row);
       setDefaultId(row?.defaultDeploymentId || "");
       setAllowed(Array.isArray(row?.allowedDeploymentIds) ? row.allowedDeploymentIds : []);
+      setLoadedDefaultId(row?.defaultDeploymentId || "");
+      setLoadedAllowed(Array.isArray(row?.allowedDeploymentIds) ? row.allowedDeploymentIds : []);
     } catch (e) {
       toast.error((e as Error)?.message || "加载空间模型策略失败");
     }
@@ -261,18 +330,6 @@ export default function WorkspaceModelPolicyPage() {
     return base;
   }, [deployments, allowed]);
 
-  // 自定义下拉框搜索过滤出的部署列表
-  const selectableDeployments = useMemo(() => {
-    if (!selectSearch.trim()) return deployments;
-    const q = selectSearch.trim().toLowerCase();
-    return deployments.filter(
-      (d) =>
-        d.modelId.toLowerCase().includes(q) ||
-        d.providerId.toLowerCase().includes(q) ||
-        (d.displayName && d.displayName.toLowerCase().includes(q))
-    );
-  }, [deployments, selectSearch]);
-
   // 过滤已在后端按 search/type 完成，前端直接展示当前页结果
   const filteredWorkspaces = workspaces;
 
@@ -282,14 +339,9 @@ export default function WorkspaceModelPolicyPage() {
     [workspaces, selectedWs, selectedWorkspace]
   );
 
-  const currentDefaultDeployment = useMemo(
-    () => deployments.find((d) => d.id === defaultId),
-    [deployments, defaultId]
-  );
-
-  // 真正的「是否有实质配置」：清空默认且清空白名单 == 沿用平台默认，不应再显示「已单独配置专属策略」
-  // （后端 configured 仅表示记录存在，全空记录也会返回 true，需前端二次判断）
-  const hasRealPolicy = Boolean(defaultId) || allowed.length > 0;
+  // 授权制（方案 A）：策略的实质内容 = 该空间可用的模型清单（白名单）。
+  // 白名单为空 = 未授权任何模型 → 该空间内所有组件都无法调度模型执行。
+  const hasRealPolicy = allowed.length > 0;
 
   const save = async () => {
     if (!selectedWs) return;
@@ -340,16 +392,6 @@ export default function WorkspaceModelPolicyPage() {
     setAllowed([]);
   };
 
-  const handleCopyId = (id: string) => {
-    navigator.clipboard
-      .writeText(id)
-      .then(() => {
-        setCopiedId(true);
-        toast.success("空间 ID 已复制到剪贴板");
-        setTimeout(() => setCopiedId(false), 2000);
-      })
-      .catch(() => {});
-  };
 
   return (
     <div className="space-y-5 pb-8">
@@ -363,7 +405,7 @@ export default function WorkspaceModelPolicyPage() {
             <span>空间模型策略</span>
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            配置工作空间的专属默认模型与可用模型白名单（默认模型优先于平台兜底模型）
+            配置该工作空间可用的模型清单（白名单）；默认模型请在用户工作台的个人 / 企业空间页面设置
           </p>
         </div>
 
@@ -627,18 +669,6 @@ export default function WorkspaceModelPolicyPage() {
 
                     <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
                       <span>ID: {currentWorkspace.id}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyId(currentWorkspace.id)}
-                        className="p-1 hover:text-slate-600 transition-colors cursor-pointer"
-                        title="复制空间 ID"
-                      >
-                        {copiedId ? (
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
                     </div>
                   </div>
 
@@ -648,13 +678,13 @@ export default function WorkspaceModelPolicyPage() {
                       type="button"
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200/80 cursor-pointer active:scale-95 disabled:opacity-50"
                       onClick={() => {
-                        setDefaultId("");
-                        setAllowed([]);
+                        setDefaultId(loadedDefaultId);
+                        setAllowed(loadedAllowed);
                       }}
                     >
                       <span className="flex items-center gap-1">
                         <Undo2 className="w-3 h-3" />
-                        <span>恢复默认</span>
+                        <span>放弃修改</span>
                       </span>
                     </button>
 
@@ -670,273 +700,26 @@ export default function WorkspaceModelPolicyPage() {
                   </div>
                 </div>
 
-                {/* 2. 空间默认模型配置 */}
-                <div className="p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <Cpu className="w-3.5 h-3.5 text-[#3182ce]" />
-                        <span>空间默认模型</span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        空间内任务未指定模型时优先调用，留空则自动沿用平台全局默认模型；若下方白名单已启用，默认模型也需包含在白名单内，否则空间任务将因无可用模型而无法执行。
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 自定义现代高级模型选择下拉框 */}
-                  <div className="relative" ref={selectRef}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectOpen((prev) => !prev)}
-                      className={`w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/80 border rounded-lg text-xs font-bold text-slate-800 transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs ${
-                        selectOpen ? "border-[#3182ce] ring-2 ring-[#3182ce]/15 bg-white" : "border-slate-200"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <Cpu className="w-4 h-4 text-[#3182ce] shrink-0" />
-                        {currentDefaultDeployment ? (
-                          <div className="flex items-center gap-2 min-w-0 truncate">
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100/80 text-[#2b6cb0] shrink-0">
-                              {currentDefaultDeployment.providerId}
-                            </span>
-                            <span className="font-mono text-slate-800 font-bold truncate">
-                              {currentDefaultDeployment.modelId}
-                            </span>
-                            {currentDefaultDeployment.displayName && (
-                              <span className="text-[11px] text-slate-500 font-medium truncate">
-                                （{currentDefaultDeployment.displayName}）
-                              </span>
-                            )}
-                            {!currentDefaultDeployment.enabled && (
-                              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-50 text-[#e53e3e] border border-rose-200 shrink-0">
-                                平台已禁用
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 font-medium">
-                            （不单独设置，自动沿用平台全局默认模型）
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {defaultId && (
-                          <span
-                            role="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDefaultId("");
-                            }}
-                            className="p-1 text-slate-400 hover:text-slate-600 rounded transition-colors"
-                            title="清空并沿用平台默认"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </span>
-                        )}
-                        <ChevronDown
-                          className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
-                            selectOpen ? "rotate-180 text-[#3182ce]" : ""
-                          }`}
-                        />
-                      </div>
-                    </button>
-
-                    {/* 下拉面板 */}
-                    {selectOpen && (
-                      <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-lg shadow-xl z-40 max-h-80 overflow-hidden flex flex-col">
-                        {/* 搜索过滤框 */}
-                        <div className="p-2 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2">
-                          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
-                          <input
-                            type="text"
-                            value={selectSearch}
-                            onChange={(e) => setSelectSearch(e.target.value)}
-                            placeholder="按模型名、供应商或描述即时检索..."
-                            className="w-full bg-transparent text-xs font-medium text-slate-800 placeholder-slate-400 outline-none"
-                            autoFocus
-                          />
-                          {selectSearch && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectSearch("")}
-                              className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* 选项滚动区 */}
-                        <div className="overflow-y-auto divide-y divide-slate-100 p-1">
-                          {/* 沿用平台全局默认模型选项 */}
-                          <div
-                            role="button"
-                            onClick={() => {
-                              setDefaultId("");
-                              setSelectOpen(false);
-                            }}
-                            className={`p-2.5 rounded text-xs transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                              !defaultId
-                                ? "bg-blue-50/80 text-[#2b6cb0] font-bold"
-                                : "hover:bg-slate-50 text-slate-700"
-                            }`}
-                          >
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5">
-                                <RotateCcw className="w-3.5 h-3.5 text-[#3182ce]" />
-                                <span>自动沿用平台全局默认模型</span>
-                              </div>
-                              <div className="text-[11px] text-slate-400 font-normal">
-                                本空间不单独锁定默认模型，优先采用平台总控配置的兜底模型
-                              </div>
-                            </div>
-                            {!defaultId && <Check className="w-4 h-4 text-[#3182ce] shrink-0" />}
-                          </div>
-
-                          {/* 模型选项列表 */}
-                          {selectableDeployments.map((d) => {
-                            const isSelected = defaultId === d.id;
-                            const isAllowed = allowed.includes(d.id);
-                            return (
-                              <div
-                                key={d.id}
-                                role="button"
-                                onClick={() => {
-                                  if (!d.enabled) return;
-                                  setDefaultId(d.id);
-                                  setSelectOpen(false);
-                                }}
-                                className={`p-2.5 rounded text-xs transition-all flex items-center justify-between gap-2 ${
-                                  !d.enabled
-                                    ? "opacity-50 cursor-not-allowed bg-slate-50/50"
-                                    : isSelected
-                                    ? "bg-blue-50/80 text-[#2b6cb0] font-bold cursor-pointer"
-                                    : "hover:bg-slate-50 text-slate-700 cursor-pointer"
-                                }`}
-                              >
-                                <div className="min-w-0 flex-1 space-y-1">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-                                      {d.providerId}
-                                    </span>
-                                    <span className="font-mono text-slate-800 font-bold truncate">
-                                      {d.modelId}
-                                    </span>
-                                    {d.displayName && (
-                                      <span className="text-[11px] text-slate-500 font-medium truncate">
-                                        · {d.displayName}
-                                      </span>
-                                    )}
-                                    {isAllowed && (
-                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                                        已在白名单
-                                      </span>
-                                    )}
-                                    {!d.enabled && (
-                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-50 text-[#e53e3e] border border-rose-200 shrink-0">
-                                        平台已禁用
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
-                                    {d.contextLimit && (
-                                      <span>上下文: {formatContextTokens(d.contextLimit)}</span>
-                                    )}
-                                    {Array.isArray(d.capabilities) && d.capabilities.length > 0 && (
-                                      <span className="truncate">
-                                        · 能力:{" "}
-                                        {d.capabilities
-                                          .map((c) => CAPABILITY_DICT[c]?.label || c)
-                                          .join("、")}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {isSelected && (
-                                  <Check className="w-4 h-4 text-[#3182ce] shrink-0" />
-                                )}
-                              </div>
-                            );
-                          })}
-
-                          {selectableDeployments.length === 0 && (
-                            <div className="py-6 text-center text-slate-400 text-xs">
-                              未搜索到匹配的模型部署
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 选中的默认模型简要卡片 */}
-                  {currentDefaultDeployment && (
-                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg flex items-center justify-between flex-wrap gap-2 text-xs">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-[#2b6cb0] font-mono">
-                          {currentDefaultDeployment.modelId}
-                        </span>
-                        <span className="px-1.5 py-0.2 bg-blue-100 text-[#2b6cb0] rounded text-[10px] font-bold">
-                          {currentDefaultDeployment.providerId}
-                        </span>
-                        {currentDefaultDeployment.contextLimit && (
-                          <span className="text-[11px] text-slate-500 font-mono">
-                            {formatContextTokens(currentDefaultDeployment.contextLimit)}
-                          </span>
-                        )}
-                        {currentDefaultDeployment.pricing && (
-                          <span className="text-[11px] text-slate-600 font-mono">
-                            资费 ¥{(Number(currentDefaultDeployment.pricing.priceInputMicrosPerMillion || 0) / 1000000).toFixed(2)} / ¥{(Number(currentDefaultDeployment.pricing.priceOutputMicrosPerMillion || 0) / 1000000).toFixed(2)} 元/百万
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {currentDefaultDeployment.capabilities?.slice(0, 3).map((c) => (
-                            <span
-                              key={c}
-                              className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-white text-slate-600 border border-slate-200"
-                            >
-                              {CAPABILITY_DICT[c]?.label || c}
-                            </span>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setDetailDeployment(currentDefaultDeployment)}
-                          className="px-2 py-0.5 text-[10px] font-bold text-[#3182ce] bg-white hover:bg-blue-50 rounded border border-blue-200 transition-all flex items-center gap-1 cursor-pointer shrink-0"
-                          title="查看完整技术与资费参数"
-                        >
-                          <Info className="w-3 h-3" />
-                          <span>参数详情</span>
-                        </button>
-                      </div>
-                      {!currentDefaultDeployment.enabled && (
-                        <span className="w-full text-[11px] font-bold text-amber-600">
-                          ⚠ 该默认模型已被平台禁用，将导致空间任务无法正常调度执行，请重新选择空间默认模型。
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. 可用模型白名单配置（自适应充满剩余高度） */}
+                {/* 2. 可用模型白名单配置（授权制：本页唯一职责） */}
                 <div className="p-5 space-y-3 flex-1 flex flex-col min-h-[380px]">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
                       <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                         <ShieldCheck className="w-3.5 h-3.5 text-[#3182ce]" />
                         <span>可用模型白名单</span>
-                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          {allowed.length === 0 ? "全部可用（未限制）" : `已限制 ${allowed.length} 款模型`}
+                        <span
+                          className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${
+                            allowed.length === 0
+                              ? "bg-rose-50 text-[#e53e3e] border-rose-200"
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          }`}
+                        >
+                          {allowed.length === 0 ? "未授权任何模型" : `已授权 ${allowed.length} 款模型`}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        留空表示不限制；勾选后，该空间仅允许调度已选中的模型
+                        白名单即该空间被授予的可用模型清单；为空时，该空间内所有组件都无法调度模型执行。
+                        空间默认模型由工作台（个人 / 企业空间）页面设置，且须包含在本清单内。
                       </p>
                     </div>
 
@@ -952,9 +735,9 @@ export default function WorkspaceModelPolicyPage() {
                       <button
                         type="button"
                         onClick={clearAllowedDeployments}
-                        className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                        className="px-2.5 py-1 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-[#e53e3e] text-slate-600 border border-slate-200 rounded text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-95"
                       >
-                        清空（不限制）
+                        清空（全部不可用）
                       </button>
                     </div>
                   </div>
@@ -1066,17 +849,17 @@ export default function WorkspaceModelPolicyPage() {
                   </div>
                 </div>
 
-                {/* 4. 底部保存操作条（置底固定，保证与左侧平齐延伸） */}
+                {/* 3. 底部保存操作条（置底固定，保证与左侧平齐延伸） */}
                 <div className="p-4 bg-slate-50/60 flex items-center justify-between flex-wrap gap-3 mt-auto border-t border-slate-100">
                   <div className="text-xs text-slate-500 font-medium">
                     {hasRealPolicy ? (
                       <span className="text-emerald-700 font-bold flex items-center gap-1">
                         <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        当前空间已有专属策略，修改后请点击右侧保存
+                        已为该空间授权 {allowed.length} 款可用模型，修改后请点击右侧保存
                       </span>
                     ) : (
-                      <span className="text-slate-400">
-                        当前空间未配置专属策略，自动沿用平台默认
+                      <span className="text-rose-600 font-bold">
+                        未授权任何模型：该空间内所有组件都无法调度模型执行，请至少勾选一款模型后保存
                       </span>
                     )}
                   </div>
@@ -1086,11 +869,11 @@ export default function WorkspaceModelPolicyPage() {
                       type="button"
                       className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded text-xs font-bold transition-all border border-slate-200/80 cursor-pointer active:scale-95"
                       onClick={() => {
-                        setDefaultId("");
-                        setAllowed([]);
+                        setDefaultId(loadedDefaultId);
+                        setAllowed(loadedAllowed);
                       }}
                     >
-                      恢复默认
+                      放弃修改
                     </button>
                     <button
                       type="button"
@@ -1109,7 +892,7 @@ export default function WorkspaceModelPolicyPage() {
                 <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm font-bold text-slate-700">请在左侧选择一个工作空间</p>
                 <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                  选择工作空间后，即可查看并配置其专属默认模型与可用模型白名单
+                  选择工作空间后，即可查看并配置其可用的模型白名单
                 </p>
               </div>
             )}
@@ -1120,16 +903,16 @@ export default function WorkspaceModelPolicyPage() {
       {/* 模型部署详情模态弹窗 (Modal) */}
       {detailDeployment && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-lg border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto flex flex-col custom-scrollbar">
             {/* 弹窗头部 */}
-            <div className="p-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-              <div className="flex items-center gap-2.5">
-                <span className="w-8 h-8 rounded bg-blue-50 text-[#3182ce] border border-blue-100 flex items-center justify-center font-bold">
-                  <Server className="w-4 h-4" />
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 rounded-t-2xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] border border-blue-100 flex items-center justify-center shrink-0">
+                  <Server className="w-5 h-5" />
                 </span>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-black text-slate-800 tracking-tight">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-black text-slate-800 tracking-tight break-all">
                       {detailDeployment.displayName || detailDeployment.modelId}
                     </h3>
                     <span
@@ -1141,8 +924,24 @@ export default function WorkspaceModelPolicyPage() {
                     >
                       {detailDeployment.enabled ? "平台启用" : "平台禁用"}
                     </span>
+                    {/* 连通性健康状态（接口真实下发：healthy / error / unknown） */}
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${
+                        detailDeployment.health === "healthy"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : detailDeployment.health === "error"
+                          ? "bg-rose-50 text-rose-700 border-rose-200"
+                          : "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}
+                    >
+                      {detailDeployment.health === "healthy"
+                        ? "通道健康"
+                        : detailDeployment.health === "error"
+                        ? "通道异常"
+                        : "未探测"}
+                    </span>
                   </div>
-                  <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+                  <p className="text-[11px] font-mono text-slate-400 mt-0.5 break-all">
                     {detailDeployment.providerId} / {detailDeployment.modelId}
                   </p>
                 </div>
@@ -1159,55 +958,46 @@ export default function WorkspaceModelPolicyPage() {
             </div>
 
             {/* 弹窗主体内容 */}
-            <div className="p-5 space-y-4">
-              {/* 核心参数网格 */}
+            <div className="p-5 space-y-5">
+              {/* 核心参数网格：全部为接口真实下发的数据，完整展示不截断 */}
               <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <div className="p-2.5 bg-slate-50 rounded border border-slate-100 space-y-0.5">
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400">所属供应商</span>
-                  <div className="font-bold text-slate-800">{detailDeployment.providerId}</div>
+                  <div className="font-bold text-slate-800 break-all">{detailDeployment.providerId}</div>
                 </div>
 
-                <div className="p-2.5 bg-slate-50 rounded border border-slate-100 space-y-0.5">
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400">上下文容量上限</span>
                   <div className="font-bold text-slate-800">
                     {formatContextTokens(detailDeployment.contextLimit)}
                   </div>
                 </div>
 
-                <div className="p-2.5 bg-slate-50 rounded border border-slate-100 space-y-0.5">
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400">平台模型标识 (modelId)</span>
-                  <div className="font-mono font-bold text-slate-800 truncate" title={detailDeployment.modelId}>
+                  <div className="font-mono font-bold text-slate-800 break-all">
                     {detailDeployment.modelId}
                   </div>
                 </div>
 
-                <div className="p-2.5 bg-slate-50 rounded border border-slate-100 space-y-0.5">
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400">上游实际标识 (upstreamModel)</span>
-                  <div
-                    className="font-mono font-bold text-slate-800 truncate"
-                    title={detailDeployment.upstreamModel || detailDeployment.modelId}
-                  >
+                  <div className="font-mono font-bold text-slate-800 break-all">
                     {detailDeployment.upstreamModel || detailDeployment.modelId}
                   </div>
                 </div>
 
-                <div className="col-span-2 p-2.5 bg-slate-50 rounded border border-slate-100 space-y-0.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400">部署全局唯一 ID</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(detailDeployment.id);
-                        toast.success("部署 ID 已复制");
-                      }}
-                      className="text-[10px] text-[#3182ce] hover:underline cursor-pointer flex items-center gap-0.5"
-                    >
-                      <Copy className="w-3 h-3" />
-                      <span>复制</span>
-                    </button>
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400">最近连通性测试</span>
+                  <div className="font-bold text-slate-800">
+                    {formatDateTime(detailDeployment.lastTestedAt)}
                   </div>
-                  <div className="font-mono text-[11px] text-slate-600 truncate">
-                    {detailDeployment.id}
+                </div>
+
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400">接入时间</span>
+                  <div className="font-bold text-slate-800">
+                    {formatDateTime(detailDeployment.createdAt)}
                   </div>
                 </div>
               </div>
@@ -1244,24 +1034,102 @@ export default function WorkspaceModelPolicyPage() {
                 </div>
               </div>
 
-              {/* 资费标准 */}
-              <div className="p-3 bg-slate-50 rounded border border-slate-100 space-y-1.5 text-xs">
-                <span className="font-bold text-slate-700">参考计费标准</span>
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-slate-400">输入单价：</span>
-                    <span className="font-bold text-slate-700 font-mono">
-                      {formatPrice(detailDeployment.pricing?.priceInputMicrosPerMillion)}
-                    </span>
+              {/* 资费标准：真实生效价（直配售价优先，未直配按成本×加价率派生，与结算口径一致） */}
+              {(() => {
+                const pr = detailDeployment.pricing;
+                const isFree = pr?.priceStatus === "FREE";
+                const bps = pr?.markupRateBps ?? globalMarkupBps;
+                const priceRows: { label: string; price?: number | null; cost?: number | null }[] = [
+                  { label: "输入", price: pr?.priceInputMicrosPerMillion, cost: pr?.costInputMicrosPerMillion },
+                  { label: "输出", price: pr?.priceOutputMicrosPerMillion, cost: pr?.costOutputMicrosPerMillion },
+                  { label: "缓存读取", price: pr?.priceCacheReadMicrosPerMillion, cost: pr?.costCacheReadMicrosPerMillion },
+                  { label: "缓存写入", price: pr?.priceCacheWriteMicrosPerMillion, cost: pr?.costCacheWriteMicrosPerMillion },
+                ];
+                const resolved = priceRows.map((r) => ({ ...r, eff: resolveEffectivePrice(r.price, r.cost, bps) }));
+                const anyDerived = resolved.some((r) => r.eff.derived);
+                const enabledPeriods = (detailDeployment.periods || []).filter((p) => p.enabled);
+                return (
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700">参考计费标准（用户售价）</span>
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {PRICE_STATUS_LABEL[pr?.priceStatus || ""] || "未配置"}
+                      </span>
+                    </div>
+                    {isFree ? (
+                      <div className="text-emerald-600 font-bold">该模型当前为免费模型（¥0 / 百万 Tokens）</div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        {resolved.map((r) => (
+                          <div key={r.label}>
+                            <span className="text-slate-400">{r.label}单价：</span>
+                            <span className="font-bold text-slate-700 font-mono">
+                              {r.eff.micros != null ? formatPrice(r.eff.micros) : "--"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* 售价口径说明：让管理员看懂价格从哪来 */}
+                    <div className="text-[10px] text-slate-400 leading-snug">
+                      {anyDerived && bps != null
+                        ? `标注价格由供应商成本 × 平台加价率 ${bps / 100}% 派生（模型未单独配置售价时自动套用）。`
+                        : "价格为平台直配售价，单位：元 / 百万 Tokens。"}
+                    </div>
+
+                    {/* 分时价格：在主流价之上叠加的时段覆盖价，结算时按当前时间命中 */}
+                    {enabledPeriods.length > 0 && (
+                      <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                        <span className="font-bold text-slate-700">
+                          分时价格（命中时段时按时段价计费，未命中回落上方主流价）
+                        </span>
+                        {enabledPeriods.map((p) => {
+                          const pBps = p.markupRateBps ?? globalMarkupBps;
+                          return (
+                            <div key={p.id} className="p-2 bg-white rounded-lg border border-slate-100 space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={`px-1 py-0.5 rounded text-[10px] font-bold border ${
+                                    p.kind === "IDLE"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : p.kind === "PEAK"
+                                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                                      : "bg-blue-50 text-[#2b6cb0] border-blue-200"
+                                  }`}
+                                >
+                                  {PERIOD_KIND_LABEL[p.kind] || "自定义"}
+                                </span>
+                                <span className="font-bold text-slate-700">{p.name}</span>
+                                <span className="text-[10px] text-slate-400">
+                                  {formatPeriodSchedule(p)}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-500">
+                                <span>
+                                  输入：
+                                  <span className="font-mono font-bold text-slate-700">
+                                    {resolveEffectivePrice(p.priceInputMicrosPerMillion, p.costInputMicrosPerMillion, pBps).micros != null
+                                      ? formatPrice(resolveEffectivePrice(p.priceInputMicrosPerMillion, p.costInputMicrosPerMillion, pBps).micros)
+                                      : "沿用主流价"}
+                                  </span>
+                                </span>
+                                <span>
+                                  输出：
+                                  <span className="font-mono font-bold text-slate-700">
+                                    {resolveEffectivePrice(p.priceOutputMicrosPerMillion, p.costOutputMicrosPerMillion, pBps).micros != null
+                                      ? formatPrice(resolveEffectivePrice(p.priceOutputMicrosPerMillion, p.costOutputMicrosPerMillion, pBps).micros)
+                                      : "沿用主流价"}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <span className="text-slate-400">输出单价：</span>
-                    <span className="font-bold text-slate-700 font-mono">
-                      {formatPrice(detailDeployment.pricing?.priceOutputMicrosPerMillion)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* 本空间策略适配态 */}
               <div className="p-3 bg-blue-50/50 rounded border border-blue-100 text-xs space-y-1">
@@ -1271,16 +1139,16 @@ export default function WorkspaceModelPolicyPage() {
                 </div>
                 <div className="text-[11px] text-slate-600 space-y-0.5">
                   <div>
-                    • 空间默认模型：
+                    • 空间默认模型（由工作台设置，本页不可改）：
                     <span className="font-bold ml-1">
-                      {defaultId === detailDeployment.id ? "已设为当前默认" : "未设为默认"}
+                      {defaultId === detailDeployment.id ? "本模型" : "未指向本模型"}
                     </span>
                   </div>
                   <div>
                     • 白名单状态：
                     <span className="font-bold ml-1">
                       {allowed.length === 0
-                        ? "白名单未限制（全局可用）"
+                        ? "未授权任何模型（本模型也无法调度）"
                         : allowed.includes(detailDeployment.id)
                         ? "已在白名单内"
                         : "不在白名单（当前空间无法调度）"}
@@ -1290,44 +1158,21 @@ export default function WorkspaceModelPolicyPage() {
               </div>
             </div>
 
-            {/* 弹窗底部操作条 */}
-            <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+            {/* 弹窗底部操作条：操作成功后自动关闭弹窗，策略变更需在主页面保存生效 */}
+            <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2 rounded-b-2xl">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (defaultId === detailDeployment.id) {
-                      setDefaultId("");
-                      toast.success("已取消该模型为默认模型");
-                    } else {
-                      if (!detailDeployment.enabled) {
-                        toast.error("该模型已被平台禁用，无法设为默认");
-                        return;
-                      }
-                      setDefaultId(detailDeployment.id);
-                      toast.success("已设为当前空间默认模型");
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
-                    defaultId === detailDeployment.id
-                      ? "bg-purple-50 text-[#805ad5] border-purple-200 hover:bg-purple-100"
-                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  {defaultId === detailDeployment.id ? "取消空间默认" : "设为空间默认"}
-                </button>
-
                 <button
                   type="button"
                   onClick={() => {
                     toggleAllowed(detailDeployment.id);
                     toast.success(
                       allowed.includes(detailDeployment.id)
-                        ? "已从空间白名单移出"
-                        : "已加入空间白名单"
+                        ? "已从空间白名单移出，点击右上角「保存空间策略」后生效"
+                        : "已加入空间白名单，点击右上角「保存空间策略」后生效"
                     );
+                    setDetailDeployment(null);
                   }}
-                  className={`px-3 py-1.5 rounded text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
                     allowed.includes(detailDeployment.id)
                       ? "bg-rose-50 text-[#e53e3e] border-rose-200 hover:bg-rose-100"
                       : "bg-blue-50 text-[#2b6cb0] border-blue-200 hover:bg-blue-100"
@@ -1340,7 +1185,7 @@ export default function WorkspaceModelPolicyPage() {
               <button
                 type="button"
                 onClick={() => setDetailDeployment(null)}
-                className="px-4 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-xs font-bold transition-all cursor-pointer"
+                className="px-4 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-all cursor-pointer"
               >
                 关闭
               </button>

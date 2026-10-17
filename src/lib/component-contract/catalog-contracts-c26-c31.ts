@@ -179,8 +179,9 @@ export const C26_CONTRACT: ComponentContract = draft("C26", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 80,
     estimatedTokens: 80,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -243,8 +244,9 @@ export const C27_CONTRACT: ComponentContract = draft("C27", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 100,
     estimatedTokens: 100,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -302,8 +304,9 @@ export const C28_CONTRACT: ComponentContract = draft("C28", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 200,
     estimatedTokens: 200,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -372,8 +375,9 @@ export const C29_CONTRACT: ComponentContract = draft("C29", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 120,
     estimatedTokens: 120,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -431,8 +435,9 @@ export const C30_CONTRACT: ComponentContract = draft("C30", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 180,
     estimatedTokens: 180,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -490,8 +495,9 @@ export const C31_CONTRACT: ComponentContract = draft("C31", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 60,
     estimatedTokens: 60,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 

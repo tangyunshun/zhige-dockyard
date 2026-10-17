@@ -70,18 +70,20 @@ export default function AdminRechargeOrdersPage() {
       setLoading(true);
       setError("");
       const token = getAuthToken();
-      const res = await fetch(`/api/admin/recharge-orders?status=${statusFilter}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        credentials: "include",
-        cache: "no-store",
-      });
-      const json = await res.json();
-      if (!res.ok) {
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      // 列表按当前筛选；统计卡始终取全量(ALL)，避免筛选到“待审批”时统计假显示 0
+      const [listRes, statsRes] = await Promise.all([
+        fetch(`/api/admin/recharge-orders?status=${statusFilter}`, { headers, credentials: "include", cache: "no-store" }),
+        fetch(`/api/admin/recharge-orders?status=ALL`, { headers, credentials: "include", cache: "no-store" }),
+      ]);
+      const json = await listRes.json();
+      if (!listRes.ok) {
         setError(json.error || "加载失败");
         return;
       }
       setOrders(json.orders || []);
-      setStats(json.stats);
+      const statsJson = await statsRes.json().catch(() => null);
+      if (statsRes.ok && statsJson?.stats) setStats(statsJson.stats);
     } catch (e: any) {
       setError(e?.message || "加载失败");
     } finally {
@@ -121,6 +123,8 @@ export default function AdminRechargeOrdersPage() {
       } else {
         toast.error(json.error || "操作失败");
       }
+    } catch (e: any) {
+      toast.error(e?.message || "操作失败，请重试");
     } finally {
       setActioning(false);
     }
@@ -167,7 +171,7 @@ export default function AdminRechargeOrdersPage() {
             <div key={c.label} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
               <div>
                 <div className="text-xs text-slate-500 font-bold mb-1">{c.label}</div>
-                <div className={`text-xl font-black font-mono ${c.tone}`}>{c.raw ? c.value : c.value}</div>
+                <div className={`text-xl font-black font-mono ${c.tone}`}>{c.value}</div>
               </div>
               <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center">
                 <c.icon className="w-4 h-4 text-slate-500" />
@@ -251,7 +255,7 @@ export default function AdminRechargeOrdersPage() {
               <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-[#3182ce]" /> 工单详情
               </h4>
-              <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 font-bold">关闭</button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto space-y-3 text-sm">

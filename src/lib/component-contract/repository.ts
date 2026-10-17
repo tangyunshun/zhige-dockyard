@@ -661,6 +661,93 @@ export async function activateContract(params: {
  * 2. 幂等语义：若当前记录已经是 ARCHIVED，直接幂等返回当前已归档实体，不报错；
  * 3. 严格审计同事务：更新为 ARCHIVED 与 operationlog 记录严格在同一事务提交，审计写入失败时生命周期更新整体回滚。
  */
+/**
+ * 删除草稿合同（仅 DRAFT 可删；已发布/已归档不可删，双保险 + 行锁 + 严格审计）
+ */
+export async function deleteDraftContract(params: {
+  componentId: string;
+  contractVersion: string;
+  operatorId: string;
+  request?: NextRequest;
+}): Promise<{ id: string; componentId: string; contractVersion: string }> {
+  const { componentId, contractVersion, operatorId, request } = params;
+
+  const current = await prisma.componentcontract.findUnique({
+    where: {
+      componentId_contractVersion: {
+        componentId,
+        contractVersion,
+      },
+    },
+  });
+  if (!current) {
+    throw new ComponentContractError(
+      "CONTRACT_NOT_FOUND",
+      `组件 [${componentId}] 的合同版本 [${contractVersion}] 不存在！`
+    );
+  }
+  if (current.lifecycle !== "DRAFT") {
+    throw new ComponentContractError(
+      "CONTRACT_NOT_DRAFT_CANNOT_DELETE",
+      `仅「草稿」版本的合同可删除；版本 [${contractVersion}] 当前为 [${current.lifecycle}]，不可删除。`
+    );
+  }
+
+  let clientIp: string | null = null;
+  if (request) {
+    clientIp = getClientIP(request);
+  }
+
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // 固定锁序 1：锁目录行，确认该草稿未被激活（理论上草稿不可能被激活，双保险）
+    const catalogs = await tx.$queryRaw<Array<{ id: string; active_contract_id: string | null }>>`
+      SELECT \`id\`, \`active_contract_id\` FROM \`component_catalog\` WHERE \`id\` = ${componentId} FOR UPDATE
+    `;
+    if (catalogs.length === 0) {
+      throw new ComponentContractError("COMPONENT_NOT_FOUND", `目标组件 [${componentId}] 不存在！`);
+    }
+    if (catalogs[0].active_contract_id === current.id) {
+      throw new ComponentContractError(
+        "ACTIVE_CONTRACT_CANNOT_DELETE",
+        `合同版本 [${contractVersion}] 处于生效激活状态，禁止删除！`
+      );
+    }
+
+    // 固定锁序 2：锁合同行，事务内重读 lifecycle，确保仍为 DRAFT 才删（防并发状态变更）
+    const rows = await tx.$queryRaw<Array<{ id: string; lifecycle: string }>>`
+      SELECT \`id\`, \`lifecycle\` FROM \`component_contract\` WHERE \`id\` = ${current.id} FOR UPDATE
+    `;
+    if (rows.length === 0) {
+      throw new ComponentContractError(
+        "CONTRACT_NOT_FOUND",
+        `组件 [${componentId}] 的合同版本 [${contractVersion}] 不存在！`
+      );
+    }
+    if (rows[0].lifecycle !== "DRAFT") {
+      throw new ComponentContractError(
+        "CONTRACT_NOT_DRAFT_CANNOT_DELETE",
+        `合同版本 [${contractVersion}] 状态已变更为 [${rows[0].lifecycle}]，不可删除。`
+      );
+    }
+
+    await tx.componentcontract.delete({ where: { id: current.id } });
+
+    await writeStrictAuditLogInTx(
+      tx,
+      operatorId,
+      "component_contract:delete",
+      {
+        componentId,
+        contractVersion,
+        contractId: current.id,
+      },
+      clientIp
+    );
+  });
+
+  return { id: current.id, componentId, contractVersion };
+}
+
 export async function archiveContract(params: {
   componentId: string;
   contractVersion: string;

@@ -122,6 +122,29 @@ export async function GET(request: NextRequest) {
       ? await prisma.workspacequota.findUnique({ where: { id: workspace.workspacequotaId } })
       : await prisma.workspacequota.findUnique({ where: { workspaceId: targetWorkspaceId } });
 
+    // 席位 / 组件的真实准入上限由账号会员等级决定（成员加入、组件装配的强制点均读会员等级），
+    // 套餐的 maxMembers / maxComponents 仅作标注值，不作为强制依据；此处取会员等级为展示口径，
+    // 取不到时再回退套餐值，保证前端进度条展示的就是实际会生效的天花板。
+    let levelTeamSize: number | null = null;
+    let levelMaxComponents: number | null = null;
+    if (quotaRecord?.membershipLevelId) {
+      const levelRow = await prisma.membershiplevel
+        .findFirst({
+          where: {
+            OR: [
+              { id: quotaRecord.membershipLevelId },
+              { name: quotaRecord.membershipLevelId },
+            ],
+          },
+          select: { maxTeamSize: true, maxComponents: true },
+        })
+        .catch(() => null);
+      if (levelRow) {
+        levelTeamSize = Number(levelRow.maxTeamSize);
+        levelMaxComponents = Number(levelRow.maxComponents);
+      }
+    }
+
     const storageUsedBytes = Number(quotaRecord?.storageUsed ?? 0);
     const storageUsedMB = Math.round((storageUsedBytes / (1024 * 1024)) * 100) / 100;
     const storageLimitMB =
@@ -163,11 +186,11 @@ export async function GET(request: NextRequest) {
         realtimeUsage: {
           members: {
             used: memberCount,
-            limit: currentConfig.maxMembers,
+            limit: levelTeamSize ?? currentConfig.maxMembers,
           },
           components: {
             used: componentCount,
-            limit: currentConfig.maxComponents,
+            limit: levelMaxComponents ?? currentConfig.maxComponents,
           },
           storage: {
             usedBytes: storageUsedBytes,

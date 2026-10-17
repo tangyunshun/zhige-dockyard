@@ -95,11 +95,21 @@ describe("平台默认部署 fail-closed（已禁用部署不得被采用）", (
   });
 
   it("② 运行侧：配置指向已禁用部署时 resolveDefaultDeployment 必须 fail-closed 拒绝", async () => {
-    // 模拟「先设为默认、后被停用」或绕过写入校验直写配置的真实场景
-    await prisma.systemconfig.upsert({
-      where: { key: PLATFORM_DEFAULT_DEPLOYMENT_KEY },
-      create: { key: PLATFORM_DEFAULT_DEPLOYMENT_KEY, value: disabledDepId },
-      update: { value: disabledDepId },
+    // 模拟「先设为空间默认、后被停用」的真实场景：
+    // 绕过写入校验，直接把空间默认指向该已禁用部署（并授权它），
+    // 期望 resolveDefaultDeployment 因部署已禁用而 fail-closed 拒绝（MODEL_NOT_ALLOWED）。
+    await prisma.workspace_model_policy.upsert({
+      where: { workspaceId: WS },
+      create: {
+        id: `wmp-${randomUUID()}`,
+        workspaceId: WS,
+        defaultDeploymentId: disabledDepId,
+        allowedDeploymentIds: [disabledDepId],
+      },
+      update: {
+        defaultDeploymentId: disabledDepId,
+        allowedDeploymentIds: [disabledDepId],
+      },
     });
     try {
       let caught: unknown = null;
@@ -115,11 +125,13 @@ describe("平台默认部署 fail-closed（已禁用部署不得被采用）", (
       expect(caught).not.toBeNull();
       expect(codeOf(caught)).toBe("MODEL_NOT_ALLOWED");
     } finally {
+      // 清理本用例注入的空间策略夹具，避免污染后续用例
+      await prisma.workspace_model_policy.deleteMany({ where: { workspaceId: WS } }).catch(() => {});
       // 立即还原，缩小配置处于不可用状态的窗口
       await prisma.systemconfig.upsert({
         where: { key: PLATFORM_DEFAULT_DEPLOYMENT_KEY },
-        create: { key: PLATFORM_DEFAULT_DEPLOYMENT_KEY, value: originalDefault ?? "" },
-        update: { value: originalDefault ?? "" },
+      create: { key: PLATFORM_DEFAULT_DEPLOYMENT_KEY, value: originalDefault ?? "" },
+      update: { value: originalDefault ?? "" },
       });
     }
   });

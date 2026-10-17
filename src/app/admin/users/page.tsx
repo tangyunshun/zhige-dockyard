@@ -42,6 +42,7 @@ import {
   Loader2,
   Coins,
   CheckSquare,
+  HelpCircle,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
@@ -68,6 +69,42 @@ function formatRelativeTime(input: string | Date): string {
   if (diff < DAY) return `${Math.floor(diff / HOUR)} 小时前`;
   if (diff < 30 * DAY) return `${Math.floor(diff / DAY)} 天前`;
   return `${Math.floor(diff / (30 * DAY))} 个月前`;
+}
+
+/**
+ * 统计字段说明提示：问号图标，悬停显示详细说明。
+ * 通过 portal 渲染到 body 并用 fixed 定位，避免被弹窗滚动容器裁剪或撑出横向滚动条；
+ * 水平方向做视口钳制，靠边时自动内收。文字固定常规字重（不继承标签的黑体）。
+ */
+function HelpHint({ text }: { text: string }) {
+  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
+
+  return (
+    <>
+      <span
+        className="relative inline-flex ml-1 align-middle cursor-help"
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          // 左右各预留 130px（约半个气泡宽度），避免气泡超出视口
+          const x = Math.min(Math.max(r.left + r.width / 2, 140), window.innerWidth - 140);
+          setTipPos({ x, y: r.bottom });
+        }}
+        onMouseLeave={() => setTipPos(null)}
+      >
+        <HelpCircle className="w-3 h-3 text-slate-300 hover:text-slate-500 transition-colors" />
+      </span>
+      {tipPos &&
+        createPortal(
+          <span
+            className="fixed z-[9999] w-64 px-3 py-2 rounded-lg bg-slate-800 text-[11px] leading-snug text-white font-normal whitespace-normal text-left shadow-xl pointer-events-none"
+            style={{ left: tipPos.x, top: tipPos.y + 6, transform: "translateX(-50%)" }}
+          >
+            {text}
+          </span>,
+          document.body,
+        )}
+    </>
+  );
 }
 
 /** 将“系统 · 浏览器”格式的设备串拆分为系统与浏览器两段，用于分组展示 */
@@ -1571,6 +1608,45 @@ export default function AdminUsersPage() {
     return ip;
   };
 
+  // 将原始 User-Agent 解析为人类可读的设备描述，如 "Windows 10/11 · Chrome 131 浏览器（64 位）"
+  const parseUserAgentReadable = (ua?: string | null): string | null => {
+    if (!ua) return null;
+    let os = "";
+    if (/Windows NT 10\.0/.test(ua)) os = "Windows 10/11";
+    else if (/Windows NT 6\.3/.test(ua)) os = "Windows 8.1";
+    else if (/Windows NT 6\.1/.test(ua)) os = "Windows 7";
+    else if (/Mac OS X/.test(ua)) {
+      const mv = ua.match(/Mac OS X (\d+)[._](\d+)/);
+      os = mv ? `macOS ${mv[1]}.${mv[2]}` : "macOS";
+    } else if (/Android/.test(ua)) {
+      const av = ua.match(/Android (\d+)/);
+      os = av ? `Android ${av[1]}` : "Android";
+    } else if (/iPhone|iPad|iPod/.test(ua)) os = "iOS";
+    else if (/Linux/.test(ua)) os = "Linux";
+
+    const is64 = /x64|Win64|WOW64|arm64/.test(ua);
+    let browser = "";
+    if (/Edg\//.test(ua)) {
+      const v = ua.match(/Edg\/(\d+)/);
+      browser = v ? `Edge ${v[1]} 浏览器` : "Edge 浏览器";
+    } else if (/OPR\//.test(ua)) {
+      const v = ua.match(/OPR\/(\d+)/);
+      browser = v ? `Opera ${v[1]} 浏览器` : "Opera 浏览器";
+    } else if (/Firefox\//.test(ua)) {
+      const v = ua.match(/Firefox\/(\d+)/);
+      browser = v ? `Firefox ${v[1]} 浏览器` : "Firefox 浏览器";
+    } else if (/Chrome\//.test(ua)) {
+      const v = ua.match(/Chrome\/(\d+)/);
+      browser = v ? `Chrome ${v[1]} 浏览器` : "Chrome 浏览器";
+    } else if (/Safari\//.test(ua)) browser = "Safari 浏览器";
+    else if (/MSIE |Trident\//.test(ua)) browser = "IE 浏览器";
+
+    const parts = [os, browser].filter(Boolean);
+    if (!parts.length) return null; // 无法识别时交给调用方展示原始 UA
+    const bits = parts.join(" · ");
+    return os.startsWith("Windows") && is64 ? `${bits}（64 位）` : bits;
+  };
+
   // 空间内角色中文化
   const getWorkspaceRoleLabel = (role?: string | null): string => {
     if (!role) return "普通成员";
@@ -1935,7 +2011,7 @@ export default function AdminUsersPage() {
               title="立即扫描僵尸用户（每日定时任务亦可触发）"
             >
               <RotateCcw className={`w-3.5 h-3.5 ${scanning ? "animate-spin" : ""}`} />
-              <span>扫描僵尸</span>
+              <span>{scanning ? "扫描中…" : "扫描僵尸用户"}</span>
             </button>
           )}
 
@@ -2129,6 +2205,8 @@ export default function AdminUsersPage() {
                   <thead className="bg-gradient-to-r from-slate-50/80 to-slate-50/50 border-b border-slate-200">
                     <tr>
                       <th className="px-6 py-4 text-center whitespace-nowrap">
+                        {/* 当前页无任何可批量操作用户时，表头全选框一并隐藏 */}
+                        {!userData?.users || userData.users.filter(isSelectableUser).length === 0 ? null : (
                         <input
                           type="checkbox"
                           checked={(() => {
@@ -2151,16 +2229,14 @@ export default function AdminUsersPage() {
                               !selectableUsers.every((u) => selectedUsers.has(u.id));
                           }}
                           onChange={toggleSelectAll}
-                          disabled={!userData?.users || userData.users.filter(isSelectableUser).length === 0}
                           title={
-                            !userData?.users || userData.users.filter(isSelectableUser).length === 0
-                              ? "当前页无符合批量操作条件的用户"
-                              : selectAllMatching
-                                ? "点击取消跨页全选并退出批量操作"
-                                : "点击表头复选框可清空全部选择并退出批量操作"
+                            selectAllMatching
+                              ? "点击取消跨页全选并退出批量操作"
+                              : "点击表头复选框可清空全部选择并退出批量操作"
                           }
                           className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         />
+                        )}
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
                         用户信息
@@ -2220,6 +2296,7 @@ export default function AdminUsersPage() {
                           }`}
                         >
                           <td className="px-6 py-4 text-center">
+                            {/* 仅可选用户渲染复选框；管理员/超管/本人等不可批量操作的用户直接不显示 */}
                             {isSelectableUser(user) ? (
                               <input
                                 type="checkbox"
@@ -2228,22 +2305,7 @@ export default function AdminUsersPage() {
                                 className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
                                 title={`选择用户: ${user.name || user.email || user.id}`}
                               />
-                            ) : (
-                              <input
-                                type="checkbox"
-                                disabled
-                                className="w-4 h-4 rounded border-slate-200 bg-slate-100 text-slate-300 cursor-not-allowed opacity-60"
-                                title={
-                                  user.id === currentUserId
-                                    ? "无法选择当前登录账号进行批量操作"
-                                    : isSuperAdminRole(user.role)
-                                    ? "超级管理员受最高安全保护，不可被批量操作"
-                                    : isAdminRole(user.role)
-                                    ? "管理员账号受系统安全保护，不可被批量操作"
-                                    : "当前用户不可被批量操作"
-                                }
-                              />
-                            )}
+                            ) : null}
                           </td>
                           <td className="px-6 py-3.5 whitespace-nowrap">
                             <div className="flex items-center gap-3">
@@ -2673,7 +2735,7 @@ export default function AdminUsersPage() {
             </div>
 
             {/* Body (独立流动，全面丰富数据展示) */}
-            <div className="p-6 space-y-5 overflow-y-auto flex-1 custom-scrollbar min-h-0">
+            <div className="p-6 space-y-5 overflow-y-auto overflow-x-hidden flex-1 custom-scrollbar min-h-0">
               {/* 用户名片与状态卡片 */}
               <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50/60 via-slate-50 to-white rounded-2xl border border-blue-100/70 shadow-2xs">
                 {viewingUser.avatar ? (
@@ -2702,31 +2764,46 @@ export default function AdminUsersPage() {
               {/* 核心资产与统计指标 Banner (5-Grid) */}
               <div className="grid grid-cols-5 gap-3">
                 <div className="p-3 bg-blue-50/60 rounded-2xl border border-blue-100 text-center">
-                  <div className="text-[10px] text-[#3182ce] font-bold mb-0.5">个人空间算力点</div>
+                  <div className="text-[10px] text-[#3182ce] font-bold mb-0.5">
+                    个人空间算力点
+                    <HelpHint text="该账号当前剩余的算力点，使用平台功能（如调用模型、生成组件）时会扣除。" />
+                  </div>
                   <div className="text-base font-black text-[#2b6cb0]">
                     {viewingUser.tokenBalance ?? viewingUser.points ?? 100} <span className="text-[10px] font-normal text-slate-400">点</span>
                   </div>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">归属工作空间</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">
+                    归属工作空间
+                    <HelpHint text="该账号一共加入了多少个工作空间，包括个人空间和企业空间。" />
+                  </div>
                   <div className="text-base font-black text-[#3182ce]">
                     {(viewingUser as any).stats?.workspaceCount ?? (viewingUser.workspacemember?.length || 0)} <span className="text-[10px] font-normal text-slate-400">个</span>
                   </div>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">API 密钥数量</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">
+                    API 密钥数量
+                    <HelpHint text="该账号创建的 API 密钥个数，密钥用于让外部程序连接本平台。" />
+                  </div>
                   <div className="text-base font-black text-purple-600">
                     {(viewingUser as any).stats?.apikeyCount ?? "—"} <span className="text-[10px] font-normal text-slate-400">个</span>
                   </div>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">部署/使用组件</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">
+                    使用组件数
+                    <HelpHint text="该账号实际使用过多少种组件，同一个组件反复使用也只算一种。" />
+                  </div>
                   <div className="text-base font-black text-emerald-600">
                     {(viewingUser as any).stats?.componentCount ?? "—"} <span className="text-[10px] font-normal text-slate-400">个</span>
                   </div>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">累计登录次数</div>
+                  <div className="text-[10px] text-slate-400 font-bold mb-0.5">
+                    累计登录次数
+                    <HelpHint text="该账号从注册至今一共登录了多少次。" />
+                  </div>
                   <div className="text-base font-black text-amber-600">
                     {(viewingUser as any).stats?.loginHistoryCount ?? "—"} <span className="text-[10px] font-normal text-slate-400">次</span>
                   </div>
@@ -2807,11 +2884,7 @@ export default function AdminUsersPage() {
                       <>
                         <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {(viewingUser as any).workspaceMemberships.map((m: any) => (
-                          <li
-                            key={m.workspaceId}
-                            className="flex items-center gap-2 text-xs"
-                            title={`workspaceId: ${m.workspaceId} · status: ${m.status}`}
-                          >
+                          <li key={m.workspaceId} className="flex items-center gap-2 text-xs">
                             <span
                               className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black border ${
                                 m.type === "ENTERPRISE"
@@ -2821,8 +2894,12 @@ export default function AdminUsersPage() {
                             >
                               {m.type === "ENTERPRISE" ? "企业" : "个人"}
                             </span>
-                            <span className="font-black text-slate-800 truncate flex-1">
-                              {m.name}
+                            <span className="flex-1 min-w-0">
+                              <span className="block font-black text-slate-800 truncate">{m.name}</span>
+                              {/* 空间 ID 常驻小字展示（替代原悬停 title，避免遮挡且便于排查时复制） */}
+                              <span className="block text-[10px] font-normal text-slate-300 truncate font-mono">
+                                {m.workspaceId}
+                              </span>
                             </span>
                             {/* 该工作空间自身的算力点余额 */}
                             <span className="shrink-0 text-[11px] font-black text-slate-500 tabular-nums">
@@ -2911,11 +2988,26 @@ export default function AdminUsersPage() {
                       {formatDisplayIp((viewingUser as any).lastLoginIp)}
                     </div>
                   </div>
-                  <div className="space-y-0.5">
+                  <div className="space-y-0.5 min-w-0">
                     <div className="text-[11px] text-slate-400 font-bold">最近登录客户端设备</div>
-                    <div className="text-xs font-black text-slate-800 truncate">
-                      {(viewingUser as any).lastLoginDevice || "Chrome 浏览器 (Windows 11)"}
-                    </div>
+                    {(() => {
+                      const raw = (viewingUser as any).lastLoginDevice as string | null | undefined;
+                      const readable = parseUserAgentReadable(raw);
+                      return (
+                        <>
+                          {/* 可读描述：操作系统 + 浏览器，完整显示不截断 */}
+                          <div className="text-xs font-black text-slate-800">
+                            {readable || (raw ? "未知设备" : "暂无登录记录")}
+                          </div>
+                          {/* 原始设备信息完整展示（不截断），便于核对 */}
+                          {raw && (
+                            <div className="text-[10px] font-mono font-normal text-slate-400 break-all leading-snug">
+                              {raw}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="space-y-0.5">
                     <div className="text-[11px] text-slate-400 font-bold">设备授权上限与并发</div>

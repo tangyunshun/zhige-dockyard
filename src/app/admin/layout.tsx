@@ -20,6 +20,7 @@ import {
   Cpu,
   Package,
   Boxes,
+  FileCode,
   Building2,
   AlertCircle,
   TrendingUp,
@@ -56,13 +57,19 @@ interface AdminMenuItem {
   requiredPermissions?: string[];
 }
 
-/** 后台侧边栏分组顺序（按「日常运营 → 商业财务 → 内容 → 系统治理」递进） */
+/**
+ * 后台侧边栏分组顺序（按管理员的日常作业动线递进）：
+ * 概览 → 用户与风控 → 空间与组织 → 内容与组件 → 消息与通知
+ * → 财务与订单 → 模型与 AI → 系统运维 → 权限与安全 → 扩展模块
+ */
 const ADMIN_NAV_GROUP_ORDER = [
   "概览",
   "用户与风控",
   "空间与组织",
   "内容与组件",
+  "消息与通知",
   "财务与订单",
+  "模型与 AI",
   "系统运维",
   "权限与安全",
   "扩展模块",
@@ -134,6 +141,14 @@ const adminMenuItems: AdminMenuItem[] = [
     requiredPermission: "component:read",
   },
   {
+    icon: FileCode,
+    label: "组件合同",
+    href: "/admin/components/contracts",
+    description: "组件执行合同：输入约束、执行计划、模型能力与计费策略（不可变版本）",
+    group: "内容与组件",
+    requiredPermission: "component:read",
+  },
+  {
     icon: Package,
     label: "组件阶段管理",
     href: "/admin/content",
@@ -162,7 +177,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "通知公告",
     href: "/admin/notifications",
     description: "全局系统广播及运维通知",
-    group: "内容与组件",
+    group: "消息与通知",
     requiredPermission: "announcement:read",
   },
   {
@@ -174,7 +189,7 @@ const adminMenuItems: AdminMenuItem[] = [
   },
   {
     icon: Coins,
-    label: "算力加油包管理",
+    label: "算力包管理",
     href: "/admin/membership/token-packs",
     description: "后台维护与上下架充值算力包",
     group: "财务与订单",
@@ -241,9 +256,25 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "模型注册表",
     href: "/admin/models",
     description: "AI 模型供应商与模型部署：价格、能力、启用状态与平台默认模型",
-    group: "系统运维",
+    group: "模型与 AI",
     // 可读名单与接口鉴权完全对齐：持有任一模型相关权限即可进入（接口侧同样强制校验，前端隐藏不构成安全边界）
     requiredPermissions: ["system:manage", "model:read", "model:manage"],
+  },
+  {
+    icon: Boxes,
+    label: "平台默认配置",
+    href: "/admin/platform-defaults",
+    description: "新空间默认可用的模型池，以及新空间自动赠送的体验额度",
+    group: "模型与 AI",
+    requiredPermissions: ["system:manage", "model:read", "model:manage"],
+  },
+  {
+    icon: Coins,
+    label: "额度提升审批",
+    href: "/admin/quota-apply",
+    description: "审批用户提交的算力点提升申请",
+    group: "财务与订单",
+    requiredPermissions: ["system:manage", "billing:manage", "billing:read"],
   },
   {
     icon: Wrench,

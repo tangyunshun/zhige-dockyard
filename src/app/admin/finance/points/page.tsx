@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
 import { confirm } from "@/components/GlobalConfirmProvider";
+import { useToast } from "@/components/Toast";
 import {
   ReceiptText,
   RefreshCw,
@@ -64,8 +65,10 @@ export default function AdminPointsLedgerPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 1 });
+  const toast = useToast();
   const [expireLoading, setExpireLoading] = useState(false);
   const [expireMsg, setExpireMsg] = useState<string | null>(null);
+  const [expireOk, setExpireOk] = useState(true);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -76,8 +79,11 @@ export default function AdminPointsLedgerPage() {
         credentials: "include",
         cache: "no-store",
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.ok) setSummary(json.data);
+      else toast.error(json?.error || "算力总账数据加载失败");
+    } catch (e) {
+      toast.error("算力总账数据加载失败");
     } finally {
       setLoadingSummary(false);
     }
@@ -93,11 +99,15 @@ export default function AdminPointsLedgerPage() {
         credentials: "include",
         cache: "no-store",
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.ok) {
-        setRecords(json.data.records || []);
-        setPagination(json.data.pagination || pagination);
+        setRecords(json.data?.records || []);
+        setPagination(json.data?.pagination || pagination);
+      } else {
+        toast.error(json?.error || "账本流水加载失败");
       }
+    } catch (e) {
+      toast.error("账本流水加载失败");
     } finally {
       setLoadingLedger(false);
     }
@@ -126,13 +136,18 @@ export default function AdminPointsLedgerPage() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: "include",
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.ok) {
+        setExpireOk(true);
         setExpireMsg(json.message || "清算完成");
         loadSummary();
       } else {
+        setExpireOk(false);
         setExpireMsg(json.error || "清算失败");
       }
+    } catch (e) {
+      setExpireOk(false);
+      setExpireMsg("清算请求失败，请重试");
     } finally {
       setExpireLoading(false);
     }
@@ -177,7 +192,9 @@ export default function AdminPointsLedgerPage() {
       </div>
 
       {expireMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-[11px] font-bold text-emerald-700">
+        <div className={`border rounded-xl px-3 py-2 text-[11px] font-bold ${
+          expireOk ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700"
+        }`}>
           {expireMsg}
         </div>
       )}

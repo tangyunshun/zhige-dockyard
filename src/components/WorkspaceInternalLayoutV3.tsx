@@ -16,7 +16,7 @@ import {
 import AvatarDropdown from "@/components/AvatarDropdown";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
 import { useAppContext } from "@/contexts/AppContext";
-import { describeAcceptedMimes } from "@/lib/fileConstraintsFormat";
+import { describeAcceptedMimes, buildFileAcceptAttr, isFileAcceptedByContract } from "@/lib/fileConstraintsFormat";
 
 export const categoryIconsMap: Record<string, any> = {
   BID_PREP: ClipboardList,
@@ -507,6 +507,38 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   } | null>(null);
   // 任务分析模型详情弹窗
   const [showQuickModelDetail, setShowQuickModelDetail] = useState(false);
+  // 执行前真实算力点预估：来自算账中心估价接口（与实际扣点同一真源），展示口径统一为算力点，不再把 Token 估算当点数展示
+  const [quickEstPoints, setQuickEstPoints] = useState<number | null>(null);
+
+  // 选中组件后实时获取真实算力点预估（估价接口只读、零副作用：不写库、不调用模型）
+  useEffect(() => {
+    if (!quickSelectedCompId || !workspaceId) {
+      setQuickEstPoints(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getAuthToken();
+        const params = new URLSearchParams({
+          componentId: quickSelectedCompId,
+          workspaceId: String(workspaceId || ""),
+        });
+        const res = await fetch(`/api/billing/estimate?${params.toString()}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => null);
+        const pts = json?.data?.points;
+        if (!cancelled) setQuickEstPoints(typeof pts === "number" && pts > 0 ? pts : null);
+      } catch {
+        if (!cancelled) setQuickEstPoints(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [quickSelectedCompId, workspaceId]);
 
   const [quickInputMaterial, setQuickInputMaterial] = useState<string>("");
   /** 结构化表单输入（合同声明 STRUCTURED_FORM 时使用，如 C04 的「汇报对象」） */
@@ -515,6 +547,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [isExecutingTask, setIsExecutingTask] = useState(false);
   const [quickResultHistoryOpen, setQuickResultHistoryOpen] = useState(false);
   const [materialInputMode, setMaterialInputMode] = useState<"text" | "file" | "asset">("text");
+  // 材料校验行内错误：格式不符 / 超限 / 字数不足等，显示在输入框正下方并高亮输入区（替代顶部 toast）
+  const [materialValidationError, setMaterialValidationError] = useState<string>("");
+  // 行内提示 10 秒后自动消失：避免过时提示一直挂着与文件实际状态不一致；新提示出现会重置计时
+  useEffect(() => {
+    if (!materialValidationError) return;
+    const timer = setTimeout(() => setMaterialValidationError(""), 10000);
+    return () => clearTimeout(timer);
+  }, [materialValidationError]);
   const [uploadedFileMeta, setUploadedFileMeta] = useState<{ name: string; size: string; sizeBytes?: number; file?: File } | null>(null);
   // 文件上传队列（支持一次最多上传多个文件，每个文件独立解析并显示状态）
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
@@ -704,15 +744,48 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     if (!fileList || fileList.length === 0) return;
 
     let pending = Array.from(fileList);
+    setMaterialValidationError("");
+    const inlineErrors: string[] = [];
     const remainingSlots = Math.max(0, MAX_UPLOAD_FILES - uploadedFiles.length);
     if (pending.length > remainingSlots) {
-      toast.error(`最多可同时保留 ${MAX_UPLOAD_FILES} 个文件，当前还可添加 ${remainingSlots} 个，超出部分已忽略`);
+      // 数量超限提示同样显示在上传框下方（行内），与其他校验提示口径一致
+      inlineErrors.push(`最多可同时保留 ${MAX_UPLOAD_FILES} 个文件，超出部分已忽略`);
       pending = pending.slice(0, remainingSlots);
     }
-    const oversized = pending.filter((f) => f.size > 20 * 1024 * 1024);
+
+    // 组件合同级校验：上传材料必须匹配当前组件合同声明的格式白名单与单文件大小上限，
+    // 不匹配在入口即刻拦截并给出可读提示（后端 simulate 仍会强校验，此处避免用户白忙一场）
+    const contractComp = componentCatalog.find((c) => c.id === quickSelectedCompId);
+    const contractFc = contractComp?.fileConstraints ?? null;
+    if (contractFc?.acceptedMimes && contractFc.acceptedMimes.length > 0) {
+      const rejected = pending.filter((f) => !isFileAcceptedByContract(f, contractFc.acceptedMimes));
+      if (rejected.length > 0) {
+        const preview = rejected
+          .slice(0, 3)
+          .map((f) => `「${safeTruncateFileName(f.name)}」`)
+          .join("、");
+        inlineErrors.push(
+          `${preview}${rejected.length > 3 ? ` 等 ${rejected.length} 个文件` : ""}不符合该组件支持的格式：${describeAcceptedMimes(contractFc.acceptedMimes)}`,
+        );
+        pending = pending.filter((f) => isFileAcceptedByContract(f, contractFc.acceptedMimes));
+      }
+    }
+
+    // 单文件大小上限：优先用组件合同声明的 maxSingleFileBytes，未声明时按平台 20MB 兜底
+    const maxSingleBytes =
+      typeof contractFc?.maxSingleFileBytes === "number" && contractFc.maxSingleFileBytes > 0
+        ? contractFc.maxSingleFileBytes
+        : 20 * 1024 * 1024;
+    const maxSingleMB = Math.max(1, Math.round(maxSingleBytes / 1024 / 1024));
+    const oversized = pending.filter((f) => f.size > maxSingleBytes);
     if (oversized.length > 0) {
-      toast.error(`「${safeTruncateFileName(oversized[0].name)}」等 ${oversized.length} 个文件超过 20MB 上限，请压缩后重试`);
-      pending = pending.filter((f) => f.size <= 20 * 1024 * 1024);
+      inlineErrors.push(
+        `「${safeTruncateFileName(oversized[0].name)}」等 ${oversized.length} 个文件超过该组件 ${maxSingleMB}MB 的单文件上限，请压缩后重试`,
+      );
+      pending = pending.filter((f) => f.size <= maxSingleBytes);
+    }
+    if (inlineErrors.length > 0) {
+      setMaterialValidationError(inlineErrors.join("；"));
     }
     if (pending.length === 0) {
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -737,6 +810,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         setUploadedFileMeta(null);
       }
       if (successCount > 0 && failCount === 0) {
+        setMaterialValidationError("");
         toast.success(`已成功解析 ${successCount} 个文件并加载到系统！`);
       } else if (successCount > 0 && failCount > 0) {
         toast.warning(`成功解析 ${successCount} 个文件，${failCount} 个文件解析失败（详见下方列表）`, 6000);
@@ -1206,7 +1280,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [selectedRechargePack, setSelectedRechargePack] = useState<{ id?: string; points: number; name: string; price?: number }>({ points: 1000, name: "标准算力包 (1,000 点)", price: pointsToYuan(1000), id: "pack_standard_1000" });
   const [recharging, setRecharging] = useState(false);
   const [rechargePaymentMethod, setRechargePaymentMethod] = useState<"WECHAT_PAY" | "ALIPAY">("WECHAT_PAY");
-  // 当前账号会员等级对加油包的折扣（由 /token-packs 接口按登录态返回数据库配置）
+  // 当前账号会员等级对算力包的折扣（由 /token-packs 接口按登录态返回数据库配置）
   const [rechargeMemberDiscount, setRechargeMemberDiscount] = useState(0);
   const [rechargeMemberName, setRechargeMemberName] = useState("");
 
@@ -1233,7 +1307,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         }
       }
     } catch (e) {
-      console.warn("拉取线上算力加油包失败:", e);
+      console.warn("拉取线上算力包失败:", e);
     }
   };
 
@@ -2866,8 +2940,24 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       if (!hasText && !hasFile && !hasAsset) inputErr = "请输入文本、上传文件或选择空间资料作为主材料";
     }
     if (inputErr) {
+      // 材料类错误行内提示 + 输入区高亮（合同未就绪 / 点数不足等非材料类错误仍走 toast）
+      setMaterialValidationError(inputErr);
       toast.error(inputErr);
       return;
+    }
+    // 文本最小长度合同校验（前端前置拦截，与后端 INPUT_TOO_SHORT 同口径）
+    if (!execIsStructuredForm && !inputErr) {
+      const minTextChars = execComp?.textConstraints?.minLength;
+      if (
+        typeof minTextChars === "number" &&
+        minTextChars > 0 &&
+        hasText &&
+        execInputMaterial.trim().length < minTextChars
+      ) {
+        const shortErr = `内容不足：该组件要求材料至少 ${minTextChars} 字，当前仅 ${execInputMaterial.trim().length} 字，请补充后再执行`;
+        setMaterialValidationError(shortErr);
+        return;
+      }
     }
     const estimatedCost = Number(componentCatalog.find(c => c.id === execCompId)?.estimatedModelTokens) || 0;
     const selectedComp = componentCatalog.find(c => c.id === execCompId);
@@ -2906,8 +2996,9 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       return;
     }
     // 执行前扣点预估：一律取算账中心估价接口，严禁把 estimatedModelTokens（Token 估算）当点数。
-    // 估价失败时回退到兼容口径（后端当前亦按此扣），保证不误拦截、不静默放行。
-    let gateCost = estimatedCost;
+    // 估价不可用时 gateCost 为 null → 不做前端"点数不足"拦截（后端 execute 仍会按同一真源裁决并兜底退款），
+    // 避免拿 Token 数（动辄数万）与算力点余额比较造成企业空间误拦截。
+    let gateCost: number | null = null;
     try {
       const token = getAuthToken();
       const params = new URLSearchParams({
@@ -2922,9 +3013,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       const estPoints = estJson?.data?.points;
       if (typeof estPoints === "number" && estPoints > 0) gateCost = estPoints;
     } catch {
-      // 估价不可用 → 保持兼容口径，不阻断执行
+      // 估价不可用 → 不阻断执行，交由后端按真实扣点裁决
     }
-    if (workspaceType === "ENTERPRISE" && availableTokenForUser !== -1 && availableTokenForUser < gateCost) {
+    if (
+      workspaceType === "ENTERPRISE" &&
+      gateCost != null &&
+      availableTokenForUser !== -1 &&
+      availableTokenForUser < gateCost
+    ) {
       toast.error(
         isMemberView
           ? `算力点不足：需要 ${gateCost} 点，当前 ${availableTokenForUser} 点，请向空间管理员申请`
@@ -2967,7 +3063,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               taskName,
               inputMaterial: finalExecInputMaterial,
               inputSource,
-              tokens: estimatedCost,
               // 结构化表单组件：以 formData 提交（服务端按合同字段强校验）
               ...(execIsStructuredForm ? { formData: quickFormData } : {}),
             }),
@@ -3719,6 +3814,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         const costRight = selCatalogCompRight?.estimatedModelTokens && Number(selCatalogCompRight.estimatedModelTokens) > 0
           ? Number(selCatalogCompRight.estimatedModelTokens)
           : 0;
+        // 展示口径统一为算力点：优先估价接口真实点数，估价不可用时回退目录估算值并标注（与执行扣点回退口径一致）
+        const displayCostRight = quickEstPoints ?? costRight;
         const isCompBlockedOrDraft = selCatalogCompRight && selCatalogCompRight.contractReady !== true;
         return (
           <div className="bg-white border border-slate-200/80 p-5 rounded-xl shadow-xs text-left space-y-4 animate-in fade-in duration-200">
@@ -3757,10 +3854,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </span>
               </div>
               <div className="flex justify-between items-center border-t border-slate-100 pt-2.5">
-                {/* estimatedModelTokens 是 Token 用量估算，不是扣点数；不得硬编码兜底点数 */}
+                {/* 展示口径统一为算力点：优先估价接口真实点数，回退时标注估算 */}
                 <span>预估用量</span>
                 <span className="text-[#3182ce] font-mono text-xs font-black">
-                  {quickSelectedCompId ? `${costRight} Token（估算）` : "—"}
+                  {quickSelectedCompId ? `${displayCostRight} 算力点${quickEstPoints == null ? "（估算）" : ""}` : "—"}
                 </span>
               </div>
             </div>
@@ -3840,8 +3937,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             </h4>
             <div className="space-y-3 text-xs font-bold text-slate-600">
               <div className="flex justify-between items-center">
-                <span>已用沙箱存储</span>
-                <span className="text-slate-900 font-mono font-black">1.6 MB</span>
+                <span>已用文件存储</span>
+                <span className="text-slate-900 font-mono font-black">
+                  {formatFileSize(assets.reduce((sum, a) => sum + (a.fileSize || 0), 0))}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span>支持文件格式</span>
@@ -4082,6 +4181,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               const estimatedCost = selCatalogCompLeft?.estimatedModelTokens && Number(selCatalogCompLeft.estimatedModelTokens) > 0
                 ? Number(selCatalogCompLeft.estimatedModelTokens)
                 : 0;
+              // 展示口径统一为算力点：优先估价接口真实点数，估价不可用时回退目录估算值并标注
+              const displayCost = quickEstPoints ?? estimatedCost;
 
               return (
                 <div className="flex flex-col lg:flex-row gap-6 items-start w-full animate-in fade-in duration-200 font-sans">
@@ -4158,8 +4259,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               <div className="flex items-center gap-1.5 shrink-0 ml-1">
                                 {selCatalogCompLeft && (
                                   <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#2b6cb0] border border-blue-100 font-mono text-[10px] font-black">
-                                    {/* estimatedModelTokens 是 Token 用量估算，非算力点 */}
-                                    {estimatedCost} Token（估算）
+                                    {/* 展示口径统一为算力点：优先估价接口真实点数，回退时标注估算 */}
+                                    {displayCost} 算力点{quickEstPoints == null ? "（估算）" : ""}
                                   </span>
                                 )}
                                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isCompDropdownOpen ? "rotate-180 text-[#3182ce]" : ""}`} />
@@ -4297,8 +4398,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     {componentCategories[selCatalogCompLeft.category as ComponentCategory]?.name || selCatalogCompLeft.category || "组件"}
                                   </span>
                                   <span>·</span>
-                                  {/* estimatedModelTokens 是 Token 用量估算，非算力点；不得再据此推导金额 */}
-                                  <span className="font-mono text-[#3182ce] font-black">{estimatedCost} Token（估算）</span>
+                                  {/* 展示口径统一为算力点：优先估价接口真实点数，回退时标注估算 */}
+                                  <span className="font-mono text-[#3182ce] font-black">{displayCost} 算力点{quickEstPoints == null ? "（估算）" : ""}</span>
                                   <span>·</span>
                                   <span className="truncate max-w-[160px]">{selCatalogCompLeft.description || "暂无描述"}</span>
                                 </div>
@@ -4311,32 +4412,53 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                           <div className="flex items-center justify-between">
                             <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block">提供研发源材料内容</label>
                             <div className={`flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 ${selCatalogCompLeft?.inputContractKind === "STRUCTURED_FORM" ? "hidden" : ""}`}>
-                              {[
-                                { key: "text", label: "📝 文本" },
-                                { key: "file", label: "📄 文件" },
-                                { key: "asset", label: "📦 资料" },
-                              ].map(mode => (
-                                <button
-                                  key={mode.key}
-                                  type="button"
-                                  onClick={() => {
-                                    setMaterialInputMode(mode.key as any);
-                                    // 切换输入方式时清理其它方式的残留状态，保证单一主材料
-                                    setUploadedFileMeta(null);
-                                    setUploadedFiles([]);
-                                    setSelectedAsset(null);
-                                    setQuickInputMaterial("");
-                                    if (fileInputRef.current) fileInputRef.current.value = "";
-                                  }}
-                                  className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
-                                    materialInputMode === mode.key
-                                      ? "bg-white text-[#3182ce] shadow-2xs font-black"
-                                      : "text-slate-500 hover:text-slate-800"
-                                  }`}
-                                >
-                                  {mode.label}
-                                </button>
-                              ))}
+                              {(() => {
+                                // 输入方式门控：按组件 inputMode 禁用不支持的输入方式（与后端合同校验同口径）
+                                const quickInputMode = selCatalogCompLeft?.inputMode || "text";
+                                const allModes: Array<{ key: string; label: string; disabled: boolean; reason: string }> = [
+                                  {
+                                    key: "text",
+                                    label: "📝 文本",
+                                    disabled: quickInputMode === "file",
+                                    reason: "该组件仅支持上传文件 / 选择资料作为主材料，不支持纯文本输入",
+                                  },
+                                  {
+                                    key: "file",
+                                    label: "📄 文件",
+                                    disabled: quickInputMode === "text",
+                                    reason: "该组件仅支持文本 / 选择资料作为主材料，不支持上传文件",
+                                  },
+                                  { key: "asset", label: "📦 资料", disabled: false, reason: "" },
+                                ];
+                                return allModes.map(mode => (
+                                  <button
+                                    key={mode.key}
+                                    type="button"
+                                    disabled={mode.disabled}
+                                    title={mode.disabled ? mode.reason : undefined}
+                                    onClick={() => {
+                                      if (mode.disabled) return;
+                                      setMaterialInputMode(mode.key as any);
+                                      // 切换输入方式时清理其它方式的残留状态与校验提示，保证单一主材料
+                                      setUploadedFileMeta(null);
+                                      setUploadedFiles([]);
+                                      setSelectedAsset(null);
+                                      setQuickInputMaterial("");
+                                      setMaterialValidationError("");
+                                      if (fileInputRef.current) fileInputRef.current.value = "";
+                                    }}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                      mode.disabled
+                                        ? "opacity-40 cursor-not-allowed text-slate-400"
+                                        : materialInputMode === mode.key
+                                          ? "bg-white text-[#3182ce] shadow-2xs font-black cursor-pointer"
+                                          : "text-slate-500 hover:text-slate-800 cursor-pointer"
+                                    }`}
+                                  >
+                                    {mode.label}
+                                  </button>
+                                ));
+                              })()}
                             </div>
                           </div>
 
@@ -4372,7 +4494,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             </div>
                           )}
 
-                          {selCatalogCompLeft?.inputContractKind !== "STRUCTURED_FORM" && materialInputMode === "text" && (
+                          {selCatalogCompLeft?.inputContractKind !== "STRUCTURED_FORM" && materialInputMode === "text" && selCatalogCompLeft?.inputMode !== "file" && (
                             <div className="space-y-1.5">
                               {(() => {
                                 const maxTextChars = selCatalogCompLeft?.textConstraints?.maxLength;
@@ -4383,6 +4505,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                         value={quickInputMaterial}
                                         onChange={(e) => {
                                           setQuickInputMaterial(e.target.value);
+                                          // 用户开始修改内容即清除过时的校验提示
+                                          if (materialValidationError) setMaterialValidationError("");
                                         }}
                                         placeholder={
                                           selCatalogCompLeft
@@ -4390,7 +4514,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                             : "在此直接输入或粘贴分析文本材料（长度限制由服务端合同校验）..."
                                         }
                                         maxLength={typeof maxTextChars === "number" ? maxTextChars : undefined}
-                                        className="w-full h-32 p-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce] outline-none resize-none transition-all font-sans leading-relaxed"
+                                        className={`w-full h-32 p-3 rounded-lg text-xs font-medium text-slate-700 outline-none resize-none transition-all font-sans leading-relaxed ${
+                                          materialValidationError && materialInputMode === "text"
+                                            ? "border border-rose-400 bg-rose-50/50 focus:border-rose-500 focus:ring-1 focus:ring-rose-300"
+                                            : "bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]"
+                                        }`}
                                       />
                                       {quickInputMaterial.length > 50 && (
                                         <button
@@ -4443,20 +4571,38 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                   </div>
                                 );
                               })()}
+                              {/* 文本校验行内错误：紧贴输入框下方展示（内容不足 / 必填等） */}
+                              {materialValidationError && materialInputMode === "text" && (
+                                <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 animate-in fade-in">
+                                  <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                                  <p className="text-[10.5px] text-rose-700 font-bold leading-relaxed">
+                                    {materialValidationError}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           )}
 
-                          {materialInputMode === "file" && (
+                          {materialInputMode === "file" && selCatalogCompLeft?.inputMode !== "text" && (
                             <div className="space-y-2">
                               <input
                                 type="file"
                                 ref={fileInputRef}
                                 onChange={handleFileUploadChange}
+                                accept={
+                                  selCatalogCompLeft?.fileConstraints?.acceptedMimes?.length
+                                    ? buildFileAcceptAttr(selCatalogCompLeft.fileConstraints.acceptedMimes)
+                                    : undefined
+                                }
                                 className="hidden"
                               />
                               <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="w-full h-32 border-2 border-dashed border-slate-200 hover:border-[#3182ce] bg-slate-50/60 hover:bg-blue-50/20 rounded-xl p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
+                                className={`w-full h-32 border-2 border-dashed rounded-xl p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all group ${
+                                  materialValidationError
+                                    ? "border-rose-400 bg-rose-50/60 hover:border-rose-500"
+                                    : "border-slate-200 hover:border-[#3182ce] bg-slate-50/60 hover:bg-blue-50/20"
+                                }`}
                               >
                                 <Upload className="w-6 h-6 text-slate-400 group-hover:text-[#3182ce] mb-1.5 group-hover:scale-110 transition-all" />
                                 <p className="text-xs font-black text-slate-700 group-hover:text-[#3182ce]">
@@ -4466,10 +4612,19 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                 </p>
                                 <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
                                   {selCatalogCompLeft?.fileConstraints?.acceptedMimes
-                                    ? `合同支持格式：${describeAcceptedMimes(selCatalogCompLeft.fileConstraints.acceptedMimes)}`
+                                    ? `合同支持格式：${describeAcceptedMimes(selCatalogCompLeft.fileConstraints.acceptedMimes)}${typeof selCatalogCompLeft.fileConstraints.maxSingleFileBytes === "number" && selCatalogCompLeft.fileConstraints.maxSingleFileBytes > 0 ? ` · 单文件 ≤ ${Math.max(1, Math.round(selCatalogCompLeft.fileConstraints.maxSingleFileBytes / 1024 / 1024))} MB` : ""}`
                                     : "支持 Word / Excel / PPT / PDF / 图片 / 压缩包 / 代码 / 文本 等绝大多数格式"}
                                 </p>
                               </div>
+                              {/* 上传校验行内错误：紧贴上传框下方展示（格式不符 / 超限等） */}
+                              {materialValidationError && materialInputMode === "file" && (
+                                <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 animate-in fade-in">
+                                  <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                                  <p className="text-[10.5px] text-rose-700 font-bold leading-relaxed">
+                                    {materialValidationError}
+                                  </p>
+                                </div>
+                              )}
                               {uploadedFiles.length > 0 && (
                                 <div className="space-y-1.5">
                                   <div className="flex items-center justify-between px-0.5">
@@ -4483,6 +4638,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                         setUploadedFiles([]);
                                         setUploadedFileMeta(null);
                                         setQuickInputMaterial("");
+                                        // 文件队列清空：同步刷新行内校验提示，保证提示与当前文件状态一致
+                                        setMaterialValidationError("");
                                         if (fileInputRef.current) fileInputRef.current.value = "";
                                         toast.info("已清空全部待上传文件");
                                       }}
@@ -4538,6 +4695,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                             .map((r) => `【${r.name}】\n${r.text}`)
                                             .join("\n\n");
                                           setQuickInputMaterial(merged);
+                                          // 文件队列变化：同步刷新行内校验提示，保证提示与当前文件状态一致
+                                          setMaterialValidationError("");
                                           setUploadedFileMeta(
                                             remaining.length
                                               ? {
@@ -4612,7 +4771,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         {(() => {
                           let disableReason = "";
                           const hasSelectedComp = !!quickSelectedCompId;
-                          const isShortOnTokens = hasSelectedComp && availableTokenForUser !== -1 && (availableTokenForUser < estimatedCost);
+                          // 是否算力点不足：只允许用估价接口返回的真实算力点（与实际扣点同一真源）比较，
+                          // 严禁拿目录 Token 估算值（estimatedModelTokens，动辄数万）与算力点余额比较——口径不同必然误判"不足"；
+                          // 估价暂不可用（quickEstPoints == null）时不做缺口拦截，与 handleExecuteSimulation 的兜底口径一致
+                          const isShortOnTokens =
+                            hasSelectedComp &&
+                            availableTokenForUser !== -1 &&
+                            quickEstPoints != null &&
+                            availableTokenForUser < quickEstPoints;
 
                           if (!hasSelectedComp) {
                             disableReason = "请先选择要执行的组件";
@@ -4711,19 +4877,50 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                       <span>本次组件所需算力:</span>
                                       {hasSelectedComp ? (
                                         <span className="font-mono font-black text-[#3182ce]">
-                                          {/* estimatedModelTokens 是 Token 用量估算，非算力点；不得再据此推导金额 */}
-                                          {estimatedCost} Token（估算）
+                                          {/* 展示口径统一为算力点：优先估价接口真实点数，回退时标注估算 */}
+                                          {displayCost} 算力点{quickEstPoints == null ? "（估算）" : ""}
                                         </span>
                                       ) : (
                                         <span className="text-slate-400 font-medium">请先在上方选择组件</span>
                                       )}
                                     </div>
-                                    <div className="flex items-center justify-between border-t border-red-200/60 pt-1.5 text-red-600 font-bold text-[11px]">
-                                      <span>算力额度缺口:</span>
-                                      <span className="font-mono font-black text-red-600">
-                                        {hasSelectedComp && isShortOnTokens ? `-${estimatedCost - availableTokenForUser} 算力点` : "0 算力点"}
-                                      </span>
-                                    </div>
+                                    {(() => {
+                                      // 额度校验行：估价可用时给出「执行后预计剩余」或「缺口」，估价不可用如实说明
+                                      if (!hasSelectedComp) {
+                                        return (
+                                          <div className="flex items-center justify-between border-t border-slate-200/60 pt-1.5 text-[11px] font-bold text-slate-400">
+                                            <span>算力额度校验:</span>
+                                            <span className="font-medium">请先在上方选择组件</span>
+                                          </div>
+                                        );
+                                      }
+                                      if (quickEstPoints == null || isUnlimitedToken(availableTokenForUser)) {
+                                        return (
+                                          <div className="flex items-center justify-between border-t border-slate-200/60 pt-1.5 text-[11px] font-bold text-slate-400">
+                                            <span>算力额度校验:</span>
+                                            <span className="font-medium">{isUnlimitedToken(availableTokenForUser) ? "额度无限 · 可直接执行" : "估价暂不可用，执行时按实际扣点为准"}</span>
+                                          </div>
+                                        );
+                                      }
+                                      if (isShortOnTokens) {
+                                        return (
+                                          <div className="flex items-center justify-between border-t border-red-200/60 pt-1.5 text-red-600 font-bold text-[11px]">
+                                            <span>算力点缺口:</span>
+                                            <span className="font-mono font-black text-red-600">
+                                              {(quickEstPoints - availableTokenForUser).toLocaleString("zh-CN")} 算力点
+                                            </span>
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <div className="flex items-center justify-between border-t border-emerald-200/60 pt-1.5 text-[11px] font-bold text-emerald-600">
+                                          <span>算力额度校验:</span>
+                                          <span className="font-mono font-black">
+                                            ✓ 充足 · 执行后预计剩余 {(availableTokenForUser - quickEstPoints).toLocaleString("zh-CN")} 算力点
+                                          </span>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
 
                                   {disableReason && (
@@ -5201,13 +5398,35 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-12 w-full h-full min-h-[520px] flex flex-col items-center justify-center text-center shadow-sm space-y-5">
                           <div className="w-10 h-10 border-[3px] border-slate-200 border-t-[#3182ce] rounded-full animate-spin" />
                           <div className="space-y-1.5 max-w-md">
-                            <h3 className="text-base font-black text-slate-900">组件分析执行中</h3>
+                            <h3 className="text-base font-black text-slate-900">
+                              正在执行：{componentCatalog.find(c => c.id === quickSelectedCompId)?.name || "组件"}
+                            </h3>
                             <p className="text-xs text-slate-500 leading-relaxed">
                               正在对输入材料进行结构化分析与成果生成，报告生成后将自动在此处呈现，请稍候。
+                              {(() => {
+                                const est = componentCatalog.find(c => c.id === quickSelectedCompId)?.detail?.estimatedDuration;
+                                return est ? ` 预计耗时约 ${est}。` : "";
+                              })()}
                             </p>
                           </div>
-                          <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full w-1/2 bg-[#3182ce] rounded-full animate-pulse" />
+                          {/* 执行阶段步骤：已提交 → 模型分析中 → 成果整理 */}
+                          <div className="flex items-center gap-2 w-full max-w-md justify-center">
+                            <div className="flex-1 flex flex-col items-center gap-1.5">
+                              <span className="w-6 h-6 rounded-full bg-emerald-500 text-white text-[10px] font-black flex items-center justify-center">✓</span>
+                              <span className="text-[10px] font-bold text-emerald-600">已提交</span>
+                            </div>
+                            <div className="flex-1 h-0.5 bg-gradient-to-r from-emerald-300 to-[#3182ce]/50 rounded-full" />
+                            <div className="flex-1 flex flex-col items-center gap-1.5">
+                              <span className="w-6 h-6 rounded-full bg-[#3182ce] text-white text-[10px] font-black flex items-center justify-center">
+                                <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              </span>
+                              <span className="text-[10px] font-black text-[#3182ce]">模型分析中</span>
+                            </div>
+                            <div className="flex-1 h-0.5 bg-slate-200 rounded-full" />
+                            <div className="flex-1 flex flex-col items-center gap-1.5">
+                              <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-400 text-[10px] font-black flex items-center justify-center">3</span>
+                              <span className="text-[10px] font-bold text-slate-400">成果整理</span>
+                            </div>
                           </div>
                         </div>
                       ) : activeDisplayTask ? (
@@ -5266,17 +5485,65 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-12 w-full h-full min-h-[520px] flex flex-col items-center justify-center text-center shadow-sm space-y-4">
+                        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-10 w-full h-full min-h-[520px] flex flex-col items-center justify-center text-center shadow-sm space-y-5 overflow-y-auto">
                           <div className="w-14 h-14 rounded-2xl bg-blue-50 text-[#3182ce] flex items-center justify-center shadow-2xs border border-blue-100">
                             <Layout className="w-7 h-7 text-[#3182ce]" />
                           </div>
                           <div className="space-y-1.5">
                             <h3 className="text-base font-black text-slate-900">结果画布区已就绪</h3>
-                            <p className="text-xs text-slate-500 leading-relaxed whitespace-nowrap">
-                              上传研发材料并选择组件后，组件执行分析的结构化成果报告将在此处直接呈现与导出。
+                            <p className="text-xs text-slate-500 leading-relaxed max-w-md">
+                              上传研发材料并执行组件后，结构化成果报告将在此处直接呈现与导出。
                             </p>
                           </div>
-                          <div className="pt-2 flex items-center gap-2">
+
+                          {/* 已选组件：预告本次执行将输出的成果形态（与组件大厅承诺一致） */}
+                          {selCatalogCompLeft && (
+                            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-slate-50/60 p-4 text-left space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                  本次执行将输出
+                                </span>
+                                <span className="text-[10px] font-black text-[#3182ce] truncate">
+                                  {selCatalogCompLeft.name}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                                {selCatalogCompLeft.previewData?.outputMock || selCatalogCompLeft.contract || "结构化分析成果报告，支持复制与导出。"}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-bold">
+                                {selCatalogCompLeft.previewData?.roiText || "企业级研发提效辅助"}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* 最近执行：空态下提供历史结果直达入口，避免大片空白无内容 */}
+                          {recentTasks.length > 0 && (
+                            <div className="w-full max-w-md space-y-2">
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider text-left">
+                                最近执行 · 点击回看完整结果
+                              </div>
+                              <div className="space-y-1.5">
+                                {recentTasks.slice(0, 3).map((t) => (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => openHistoryTaskDetail(t)}
+                                    className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border border-slate-200 bg-white hover:border-[#3182ce] hover:bg-blue-50/40 transition-all text-left cursor-pointer group"
+                                  >
+                                    <span className="min-w-0">
+                                      <span className="block text-[11px] font-bold text-slate-700 truncate group-hover:text-[#2b6cb0]">
+                                        {t.componentName || t.name}
+                                      </span>
+                                      <span className="block text-[9.5px] text-slate-400 font-mono mt-0.5">{t.time}</span>
+                                    </span>
+                                    <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-[#3182ce] shrink-0" />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="pt-1 flex items-center gap-2 flex-wrap justify-center">
                             <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
                               支持格式：摘要 / 结论 / 偏离分析对照 / 风险及建议
                             </span>
@@ -8299,7 +8566,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
               <div className="text-[11px] font-bold text-amber-800 bg-amber-100/80 border border-amber-200/60 rounded-xl px-2.5 py-1.5 flex items-center gap-1 shrink-0 overflow-x-auto no-scrollbar whitespace-nowrap">
                 <span className="shrink-0">💡 换算规则:</span>
-                <span className="font-mono text-amber-900 font-bold whitespace-nowrap">10 算力点 = 0.1 元为参考价；加油包按档位享体积折扣，高级会员另享专属折扣</span>
+                <span className="font-mono text-amber-900 font-bold whitespace-nowrap">10 算力点 = 0.1 元为参考价；算力包按档位享体积折扣，高级会员另享专属折扣</span>
               </div>
             </div>
 
@@ -8307,10 +8574,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             {rechargeTab === "online" && (
             <>
             <label className="block text-xs font-black text-slate-700 shrink-0 pt-1">
-              请选择所需申购的算力加油包：
+              请选择所需申购的算力包：
             </label>
 
-            {/* 算力加油包选择列表 纯卡片垂直滚动 */}
+            {/* 算力包选择列表 纯卡片垂直滚动 */}
             <div className="flex-1 min-h-[160px] max-h-[34vh] overflow-y-auto pr-1.5 space-y-3">
               <div className="grid grid-cols-1 gap-3">
                 {dynamicTokenPacks.length > 0 ? dynamicTokenPacks.map((pack) => {
@@ -8373,10 +8640,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       </div>
                     </div>
                   );
-                }) : (
+                }                ) : (
                   <div className="col-span-1 p-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
-                    <p className="text-xs font-bold text-slate-600">暂无可购加油包，请联系管理员在后台配置</p>
-                    <a href="/user/pay" className="inline-block px-3 py-1.5 rounded-[4px] bg-[#3182ce] text-white text-xs font-bold hover:bg-[#2b6cb0] transition-colors">前往充值中心 →</a>
+                    <p className="text-xs font-bold text-slate-600">暂无可购算力包，请联系管理员在后台配置</p>
+                    <p className="text-[11px] text-slate-400 font-medium">算力包由平台管理员统一配置，个人无法自行添加</p>
                   </div>
                 )}
               </div>
@@ -8411,26 +8678,25 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               </div>
             </div>
 
-            {/* 底部按钮区 保持吸底 */}
+            {/* 底部按钮区 保持吸底：仅保留取消与确认，充值记录在空间算力点页查看 */}
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 shrink-0">
-              <a href="/user/pay" className="mr-auto text-[11px] font-bold text-[#3182ce] hover:text-[#2b6cb0] underline underline-offset-2 cursor-pointer">查看充值记录与更多充值方式 → 前往充值中心</a>
-              <button
-                type="button"
-                onClick={() => setShowRechargeModal(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all cursor-pointer"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleExecuteRecharge}
-                disabled={recharging}
-                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-              >
-                {recharging
-                  ? "正在划拨算力..."
-                  : `立即确认充值 (${selectedRechargePack.points.toLocaleString()} 算力点 / ¥${applyMemberDiscount(selectedRechargePack.price ?? pointsToYuan(selectedRechargePack.points), rechargeMemberDiscount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRechargeModal(false)}
+                  className="shrink-0 whitespace-nowrap px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteRecharge}
+                  disabled={recharging}
+                  className="shrink-0 whitespace-nowrap px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {recharging
+                    ? "正在划拨算力..."
+                    : `立即充值（${selectedRechargePack.points.toLocaleString()} 算力点 / ¥${applyMemberDiscount(selectedRechargePack.price ?? pointsToYuan(selectedRechargePack.points), rechargeMemberDiscount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}）`}
+                </button>
             </div>
           </>
           )}

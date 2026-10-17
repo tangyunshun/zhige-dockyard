@@ -38,12 +38,16 @@ interface UserInfo {
   membershipLevel?: string | null;
 }
 
-/** 个人工作台侧边栏分组顺序（按「看数据 → 管资产 → 做协作 → 调设置」递进） */
+/**
+ * 个人工作台侧边栏分组顺序（按用户使用动线递进）：
+ * 概览 → 我的资产 → 我的创作 → 开发者 → 团队协作 → 活动与反馈 → 账号设置
+ */
 const USER_NAV_GROUP_ORDER = [
   "概览",
   "我的资产",
-  "团队协作",
+  "我的创作",
   "开发者",
+  "团队协作",
   "活动与反馈",
   "账号设置",
 ];
@@ -99,14 +103,14 @@ export default function UserDashboardLayout({
           label: "我的模型",
           href: "/user/byo-model",
           description: "工作台个人模型管理：系统分配与自建模型",
-          group: "我的资产",
+          group: "我的创作",
         },
         {
           icon: Box,
           label: "我的组件",
           href: "/user/components",
           description: "组件列表、使用统计",
-          group: "我的资产",
+          group: "我的创作",
         },
         {
           icon: Coins,
@@ -120,6 +124,13 @@ export default function UserDashboardLayout({
           label: "套餐与计费",
           href: "/user/billing-center",
           description: "会员套餐、空间扩容、账单管理",
+          group: "我的资产",
+        },
+        {
+          icon: Coins,
+          label: "算力充值",
+          href: "/user/pay",
+          description: "购买算力包、查看充值记录",
           group: "我的资产",
         },
         {

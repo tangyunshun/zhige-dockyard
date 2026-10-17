@@ -7,7 +7,7 @@ import { useToast } from "@/components/Toast";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, isPriceMatchingRule } from "@/lib/point-rate";
-import { Zap, Plus, Edit2, Trash2, ShieldAlert, Flame, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList, Eye, EyeOff, Ban, Power } from "lucide-react";
+import { Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList, Eye, EyeOff, Ban, Power, Star, Package } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 import { StatusBadge, ActionButton } from "@/components/common";
 
@@ -71,7 +71,7 @@ export default function AdminTokenPacksPage() {
         toast.error(err.error || "获取算力包失败");
       }
     } catch (error) {
-      console.error("加载算力加油包失败:", error);
+      console.error("加载算力包失败:", error);
       toast.error("网络异常，无法拉取算力包");
     } finally {
       setLoading(false);
@@ -149,7 +149,7 @@ export default function AdminTokenPacksPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!(await confirm({ title: "确认删除", message: `确定要删除算力加油包 [${name}] 吗？`, type: "danger" }))) return;
+    if (!(await confirm({ title: "确认删除", message: `确定要删除算力包 [${name}] 吗？`, type: "danger" }))) return;
 
     try {
       const token = getAuthToken();
@@ -159,7 +159,7 @@ export default function AdminTokenPacksPage() {
       });
 
       if (res.ok) {
-        toast.success(`已删除加油包 [${name}]`);
+        toast.success(`已删除算力包 [${name}]`);
         loadPacks();
       } else {
         const err = await res.json();
@@ -175,7 +175,7 @@ export default function AdminTokenPacksPage() {
     if (pack.isActive) {
       const ok = await confirm({
         title: "确认下架该算力包",
-        message: `确定要下架「${pack.name}」吗？下架后用户将无法在充值弹窗中购买该加油包，已购权益不受影响。如需恢复，可点击「上架」立即生效。`,
+        message: `确定要下架「${pack.name}」吗？下架后用户将无法在充值弹窗中购买该算力包，已购权益不受影响。如需恢复，可点击「上架」立即生效。`,
         type: "warning",
       });
       if (!ok) return;
@@ -195,6 +195,9 @@ export default function AdminTokenPacksPage() {
       if (res.ok) {
         toast.success(pack.isActive ? "已下架该算力包" : "已上架该算力包");
         loadPacks();
+      } else {
+        const err = await res.json().catch(() => null);
+        toast.error(err?.error || "上下架切换失败");
       }
     } catch (error) {
       toast.error("上下架切换失败");
@@ -206,13 +209,13 @@ export default function AdminTokenPacksPage() {
       
       {/* 顶部标题与横向模块导航 */}
       <MembershipNavHeader
-        title="算力加油包管理"
-        subtitle="动态配置与上架充值弹窗可选的算力点数包，修改价格、点数与推荐标记"
+        title="算力包管理"
+        subtitle="配置充值弹窗可选的算力点数包，修改价格、点数与推荐标记"
       >
         <Link
           href="/admin/orders"
-          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-          title="直达订单中枢查看用户实际算力充值流水"
+          className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-black rounded-xl shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+          title="前往订单页查看用户充值流水"
         >
           <ClipboardList className="w-3.5 h-3.5 text-[#3182ce]" />
           <span>充值交易账单</span>
@@ -221,7 +224,7 @@ export default function AdminTokenPacksPage() {
         <button
           onClick={loadPacks}
           disabled={loading}
-          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+          className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-black rounded-xl shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
           <span>刷新</span>
@@ -229,10 +232,10 @@ export default function AdminTokenPacksPage() {
 
         <button
           onClick={handleOpenCreate}
-          className="px-3.5 py-1.5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-bold text-xs rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+          className="h-10 px-5 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white text-xs font-black rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
         >
           <Plus className="w-4 h-4" />
-          <span>新增算力加油包</span>
+          <span>新增算力包</span>
         </button>
       </MembershipNavHeader>
 
@@ -240,11 +243,11 @@ export default function AdminTokenPacksPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">加油包方案总数</div>
+            <div className="text-xs text-slate-500 font-bold mb-1">算力包方案总数</div>
             <div className="text-2xl font-black font-mono text-slate-900">{packs.length} <span className="text-xs font-normal text-slate-400">个档位</span></div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
-            <Zap className="w-5 h-5" />
+            <Package className="w-5 h-5" />
           </div>
         </div>
 
@@ -264,7 +267,7 @@ export default function AdminTokenPacksPage() {
             <div className="text-2xl font-black font-mono text-amber-600">{packs.filter((p) => p.isPopular).length} <span className="text-xs font-normal text-slate-400">个推荐</span></div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-            <Flame className="w-5 h-5" />
+            <Star className="w-5 h-5" />
           </div>
         </div>
 
@@ -285,23 +288,23 @@ export default function AdminTokenPacksPage() {
           <Coins className="w-4.5 h-4.5" />
         </div>
         <div className="text-xs text-amber-900 leading-relaxed">
-          <div className="font-black text-sm mb-0.5">算力点统一定价与赠送规则</div>
+          <div className="font-black text-sm mb-0.5">算力点定价与赠送规则</div>
           <div>{POINT_RATE_HINT}</div>
-          <div className="mt-1 text-blue-700 font-bold flex items-center gap-1">
-            <span>🎁 新开通空间福利：</span>
-            <span>每个新开通/创建的工作空间，系统将自动免费赠送 100 算力点启动额度。</span>
+          <div className="mt-1 text-blue-700 font-bold">
+            <span>新开通空间福利：</span>
+            <span>每个新开通/创建的工作空间，系统将自动免费赠送 100 点启动额度。</span>
           </div>
           <div className="mt-0.5 text-amber-700 font-bold">
-            售价不符合规则的加油包会在卡片上标红显示。
+            售价不符合规则的算力包会在卡片上标红显示。
           </div>
         </div>
       </div>
 
-      {/* 算力加油包数据卡片阵列 */}
+      {/* 算力包数据卡片阵列 */}
       {loading ? (
         <div className="bg-white p-12 rounded-2xl text-center border text-xs text-slate-400 font-bold">
           <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mx-auto mb-2" />
-          正在拉取算力加油包配置数据库...
+          正在加载算力包配置...
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -315,7 +318,7 @@ export default function AdminTokenPacksPage() {
             >
               {pack.isPopular && (
                 <div className="absolute top-0 right-0 bg-gradient-to-l from-amber-500 to-amber-400 text-slate-950 font-black text-[10px] px-3 py-1 rounded-bl-xl shadow-xs flex items-center gap-1">
-                  <Flame className="w-3 h-3 fill-slate-950" />
+                  <Star className="w-3 h-3 fill-slate-950" />
                   <span>热销推荐</span>
                 </div>
               )}
@@ -345,7 +348,7 @@ export default function AdminTokenPacksPage() {
                   </div>
 
                   <div className="flex items-center justify-between text-xs border-t border-slate-200/60 pt-2 gap-2">
-                    <span className="text-slate-500 font-bold shrink-0">划拨售价 <span className="text-[11px] text-slate-400 font-normal">(应售 {formatYuanFromPoints(pack.points)})</span>:</span>
+                    <span className="text-slate-500 font-bold shrink-0">售价 <span className="text-[11px] text-slate-400 font-normal">(应售 {formatYuanFromPoints(pack.points)})</span>:</span>
                     <strong className={`font-mono text-base font-black shrink-0 whitespace-nowrap ${
                       isPriceMatchingRule(pack.points, pack.price) ? "text-[#3182ce]" : "text-red-500"
                     }`}>
@@ -360,7 +363,7 @@ export default function AdminTokenPacksPage() {
                         ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
                         : "bg-red-100 text-red-700 border border-red-200"
                     }`}>
-                      {isPriceMatchingRule(pack.points, pack.price) ? "✓ 符合规则" : "⚠ 价格不符"}
+                      {isPriceMatchingRule(pack.points, pack.price) ? "符合规则" : "价格不符"}
                     </span>
                   </div>
                 </div>
@@ -443,8 +446,8 @@ export default function AdminTokenPacksPage() {
                   <Coins className="w-5 h-5 text-amber-300" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm">{editingPack ? "编辑算力加油包" : "创建全新算力加油包"}</h3>
-                  <p className="text-[11px] text-blue-100">数据库持久化配置，更新后将直接在前端充值弹窗生效</p>
+                  <h3 className="font-black text-sm">{editingPack ? "编辑算力包" : "创建算力包"}</h3>
+                  <p className="text-[11px] text-blue-100">保存后即时在充值弹窗生效</p>
                 </div>
               </div>
               <button
@@ -460,14 +463,14 @@ export default function AdminTokenPacksPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="block text-xs font-black text-slate-700 mb-1">
-                    加油包名称 <span className="text-red-500">*</span>
+                    算力包名称 <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="如：标准算力包、企业加油包"
+                    placeholder="如：标准算力包、企业算力包"
                     className="w-full h-10 px-3 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                   />
                 </div>
@@ -489,7 +492,7 @@ export default function AdminTokenPacksPage() {
 
                 <div>
                   <label className="block text-xs font-black text-slate-700 mb-1">
-                    划拨售价 (元 CNY) <span className="text-red-500">*</span>
+                    售价（元 CNY） <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -519,12 +522,12 @@ export default function AdminTokenPacksPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1">展示图标 (Emoji)</label>
+                  <label className="block text-xs font-black text-slate-700 mb-1">展示图标</label>
                   <input
                     type="text"
                     value={formData.icon}
                     onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                    placeholder="⚡, 👑, 🚀"
+                    placeholder="输入一个图标字符"
                     className="w-full h-10 px-3 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                   />
                 </div>
@@ -544,7 +547,7 @@ export default function AdminTokenPacksPage() {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-xs font-black text-slate-700 mb-1">加油包描述说明</label>
+                  <label className="block text-xs font-black text-slate-700 mb-1">算力包描述说明</label>
                   <textarea
                     rows={2}
                     value={formData.description}
@@ -562,7 +565,7 @@ export default function AdminTokenPacksPage() {
                       onChange={(e) => setFormData({ ...formData, isPopular: e.target.checked })}
                       className="w-4 h-4 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
                     />
-                    <span>🔥 设为热门推荐包</span>
+                    <span>设为热门推荐包</span>
                   </label>
 
                   <label className="flex items-center gap-2 cursor-pointer text-xs font-black text-slate-700">
@@ -572,7 +575,7 @@ export default function AdminTokenPacksPage() {
                       onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
                       className="w-4 h-4 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
                     />
-                    <span>✅ 上架可用</span>
+                    <span>上架可用</span>
                   </label>
                 </div>
               </div>
@@ -590,7 +593,7 @@ export default function AdminTokenPacksPage() {
                   disabled={submitting}
                   className="px-5 py-2 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                 >
-                  {submitting ? "正在保存..." : "保存落库"}
+                  {submitting ? "正在保存..." : "保存"}
                 </button>
               </div>
             </form>

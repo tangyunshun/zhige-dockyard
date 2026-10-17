@@ -10,6 +10,7 @@ import {
   Users,
   ShieldCheck,
   Building2,
+  Gift,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
@@ -342,6 +343,18 @@ export default function WorkspacePlanSection({
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mb-3">{plan.description}</p>
+
+              {plan.trialGift?.enabled && plan.trialGift.points > 0 && (
+                <div className="mb-3 inline-flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg shrink-0">
+                  <Gift className="w-3 h-3 text-amber-500" />
+                  <span className="text-[11px] font-black text-amber-700">
+                    新空间赠 {plan.trialGift.points} 算力点
+                    {plan.trialGift.expireDays > 0
+                      ? ` · ${plan.trialGift.expireDays}天`
+                      : " · 永久"}
+                  </span>
+                </div>
+              )}
 
               <ul className="space-y-1.5 mb-4 flex-1">
                 {(plan.features || []).map((f: string) => (

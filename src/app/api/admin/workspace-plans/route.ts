@@ -68,6 +68,13 @@ export async function GET(request: NextRequest) {
       where.isActive = false;
     }
 
+    const purchasable = searchParams.get("purchasable") || "";
+    if (purchasable === "true") {
+      where.purchasable = true;
+    } else if (purchasable === "false") {
+      where.purchasable = false;
+    }
+
     const plans = await prisma.workspaceplan.findMany({
       where,
       orderBy: { sortOrder: "asc" },
@@ -125,6 +132,7 @@ export async function POST(request: NextRequest) {
       sortOrder,
       purchasable,
       isActive,
+      trialGift,
     } = body;
 
     if (!key || !name) {
@@ -164,6 +172,7 @@ export async function POST(request: NextRequest) {
         maxStorage: Number(maxStorage ?? 0),
         maxApiCalls: Number(maxApiCalls ?? 0),
         tokenLimit: Number(tokenLimit ?? 0),
+        trialGift: trialGift !== undefined ? (trialGift as any) : null,
         features: Array.isArray(features) ? features : [],
         sortOrder: Number(sortOrder || 0),
         purchasable: purchasable !== false,

@@ -103,7 +103,8 @@ describe("平台默认部署引用完整性（删除 409 / 能力校验 / 并发
       data: { id: wsId, name: wsId, type: "PERSONAL", ownerId: adminId, updatedAt: new Date() },
     });
     await prisma.workspace_model_policy.create({
-      data: { id: randomUUID(), workspaceId: wsId, defaultDeploymentId: depId, allowedDeploymentIds: [] },
+      // 授权制（方案 A）：白名单必须包含该部署，否则解析会被拒
+      data: { id: randomUUID(), workspaceId: wsId, defaultDeploymentId: depId, allowedDeploymentIds: [depId] },
     });
     originalDefault = await getPlatformDefaultDeploymentId();
     await setPlatformDefaultDeploymentId(null);

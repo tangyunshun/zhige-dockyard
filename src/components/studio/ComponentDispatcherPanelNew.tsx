@@ -4,13 +4,11 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
-import { X, Shield, ArrowRight, Layers, Database, FileText, CheckCircle2, ChevronRight, Activity, Star, TrendingUp, Code, FolderOpen, Layout, Server, Monitor, Users, ShieldCheck, FlaskConical, Coins, Cpu, Loader2 } from "lucide-react";
+import { X, Shield, ArrowRight, Layers, Database, FileText, CheckCircle2, ChevronRight, Activity, Star, TrendingUp, Code, FolderOpen, Layout, Server, Monitor, Users, ShieldCheck, FlaskConical, Coins, Sparkles, ListOrdered, HelpCircle, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ComponentDefinition, ComponentCategory } from "@/constants/components";
 import { getAuthToken } from "@/utils/auth";
 import { describeAcceptedMimes } from "@/lib/fileConstraintsFormat";
-import ModelPricingRules from "@/components/ModelPricingRules";
-
 const getDispatcherStageIcon = (category: string, categoryToStageId: Record<string, number>, className?: string) => {
   const stageId = categoryToStageId[category] || 1;
   const iconProps = { className: className || "w-5 h-5 text-white" };
@@ -29,38 +27,333 @@ const getDispatcherStageIcon = (category: string, categoryToStageId: Record<stri
   }
 };
 
+/**
+ * 组件能力可视化图表（图表本体）：按数据库 detail.visual 规格渲染，因组件而异。
+ * kind=flow 多节点流程图 / compare 前后对比条形图 / metrics 核心指标卡 / timeline 阶段时间线 / checklist 安全检查清单。
+ * 所有数字均来自组件既有文案中的真实业务预估，前端不做任何数值编造。
+ */
+function VisualChartBody({ comp }: { comp: ComponentDefinition }) {
+  const visual = comp.detail?.visual;
+  if (!visual) return null;
+  const accent = visual.accent || "#3182ce";
+
+  const header = (
+    <div className="flex items-baseline justify-between gap-2 flex-wrap">
+      <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-0.5">
+        <TrendingUp className="w-3.5 h-3.5" style={{ color: accent }} />
+        {visual.title || "能力可视化"}
+      </h3>
+      <span className="text-[8px] font-bold text-slate-400">业务预估口径 · 非压测承诺</span>
+    </div>
+  );
+
+  // flow：多节点卡片流程图（节点数量与内容随组件而变，主题色来自数据库配置）
+  if (visual.kind === "flow" && visual.nodes && visual.nodes.length >= 2) {
+    return (
+      <section className="space-y-2.5">
+        {header}
+        <div className="bg-gradient-to-br from-slate-50 via-blue-50/20 to-emerald-50/20 rounded-xl border border-slate-200 p-4">
+          <div className="flex items-stretch gap-1.5 flex-wrap">
+            {visual.nodes.map((n, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && (
+                  <div className="flex flex-col items-center justify-center gap-1 w-5 shrink-0">
+                    <span className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: accent }} />
+                    <span
+                      className="w-1 h-1 rounded-full animate-pulse [animation-delay:150ms] opacity-50"
+                      style={{ backgroundColor: accent }}
+                    />
+                    <ArrowRight className="w-3 h-3 text-slate-300" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-[110px] bg-white rounded-lg border border-slate-200 p-2.5 space-y-1">
+                  <div className="text-[8px] font-black uppercase tracking-wider" style={{ color: accent }}>
+                    {n.tag || `步骤 ${i + 1}`}
+                  </div>
+                  <div className="text-[10px] font-black text-slate-800 leading-snug">{n.title}</div>
+                  {n.desc && <div className="text-[9px] text-slate-500 font-medium leading-snug">{n.desc}</div>}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+          {visual.caption && <p className="mt-2.5 text-[9px] text-slate-500 font-bold">{visual.caption}</p>}
+        </div>
+      </section>
+    );
+  }
+
+  // pipeline：管线流程图（胶囊节点 + 渐变管线 + ping 流动光效，酷炫链路表达）
+  if (visual.kind === "pipeline" && visual.nodes && visual.nodes.length >= 2) {
+    return (
+      <section className="space-y-2.5">
+        {header}
+        <div className="rounded-xl border border-slate-200 p-4 relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${accent}08, #ffffff 45%, ${accent}05)` }}
+        >
+          <div className="flex items-stretch gap-1 flex-wrap">
+            {visual.nodes.map((n, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && (
+                  <div className="flex flex-col items-center justify-center w-6 shrink-0 self-stretch py-3">
+                    <div className="relative w-full h-1 rounded-full"
+                      style={{ background: `linear-gradient(90deg, ${accent}30, ${accent}, ${accent}30)` }}
+                    >
+                      <span
+                        className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full animate-ping opacity-60"
+                        style={{ backgroundColor: accent }}
+                      />
+                      <span
+                        className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full"
+                        style={{ backgroundColor: accent }}
+                      />
+                    </div>
+                    <span className="text-[7px] font-black text-slate-400 mt-1">STREAM</span>
+                  </div>
+                )}
+                <div
+                  className="flex-1 min-w-[104px] rounded-xl border-2 p-2.5 space-y-1 bg-white shadow-sm"
+                  style={{ borderColor: `${accent}45` }}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="w-4 h-4 rounded-full text-white text-[8px] font-black flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: accent }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="text-[7.5px] font-black uppercase tracking-wider" style={{ color: accent }}>
+                      {n.tag || `STAGE ${i + 1}`}
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-black text-slate-800 leading-snug">{n.title}</div>
+                  {n.desc && <div className="text-[9px] text-slate-500 font-medium leading-snug">{n.desc}</div>}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+          {visual.caption && <p className="mt-2.5 text-[9px] text-slate-500 font-bold">{visual.caption}</p>}
+        </div>
+      </section>
+    );
+  }
+
+  // console：终端执行模拟窗（输入 / 过程 / 输出全部取自组件真实文案，呈现真实执行示例）
+  if (visual.kind === "console" && visual.consoleSpec) {
+    const cs = visual.consoleSpec;
+    return (
+      <section className="space-y-2.5">
+        {header}
+        <div className="rounded-xl border border-slate-800/60 overflow-hidden shadow-lg">
+          {/* 终端标题栏 */}
+          <div className="bg-slate-900 px-3.5 py-2 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+            <span className="ml-1.5 text-[8.5px] font-bold text-slate-400 font-mono truncate">
+              {cs.title || `zhige-runtime · ${comp.id}`}
+            </span>
+          </div>
+          {/* 终端内容 */}
+          <div className="bg-[#0b1120] px-3.5 py-3 space-y-1.5 font-mono">
+            <div className="flex items-start gap-1.5 text-[10px] leading-relaxed">
+              <span className="text-emerald-400 font-black shrink-0">$</span>
+              <span className="text-slate-200">{cs.input}</span>
+            </div>
+            {(cs.steps || []).map((s, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[9.5px] leading-relaxed pl-4">
+                <span className="font-black shrink-0" style={{ color: accent }}>▸</span>
+                <span className="text-slate-400">{s}</span>
+              </div>
+            ))}
+            <div className="flex items-start gap-1.5 text-[10px] leading-relaxed pl-4 pt-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-px" />
+              <span className="text-emerald-300 font-bold">{cs.output}</span>
+            </div>
+            <div className="flex items-center gap-1 pl-4 pt-0.5">
+              <span className="text-emerald-400 font-black text-[10px]">$</span>
+              <span className="w-1.5 h-3.5 bg-emerald-400/80 animate-pulse rounded-[1px]" />
+            </div>
+          </div>
+        </div>
+        {visual.caption && <p className="text-[9px] text-slate-500 font-bold">{visual.caption}</p>}
+      </section>
+    );
+  }
+
+  // compare：传统人工 vs 使用组件 的对比条形图（条长按真实工时比例绘制）
+  if (visual.kind === "compare" && visual.bars && visual.bars.length > 0) {
+    return (
+      <section className="space-y-2.5">
+        {header}
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="flex items-center gap-3 text-[8.5px] font-black text-slate-400 uppercase tracking-wider">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-300" /> 传统人工</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400" /> 使用组件</span>
+          </div>
+          {visual.bars.map((b, i) => {
+            // 条长按工时数量级示意（秒 < 分钟 < 十分钟 < 小时 < 天 < 周/月），
+            // 避免悬殊比例（如 360:1）下短条完全不可见造成视觉失真
+            const magnitudeWidth = (minutes: number) => {
+              if (minutes < 1) return 10;
+              if (minutes < 10) return 28;
+              if (minutes < 60) return 46;
+              if (minutes < 60 * 8) return 66;
+              if (minutes < 60 * 24 * 3) return 84;
+              return 100;
+            };
+            const beforeW = magnitudeWidth(b.before);
+            const afterW = magnitudeWidth(b.after);
+            return (
+              <div key={i} className="space-y-1">
+                <div className="flex items-center justify-between gap-2 text-[9.5px] font-black text-slate-600">
+                  <span>{b.label}</span>
+                  <span className="font-mono text-emerald-600 whitespace-nowrap">{b.beforeText} → {b.afterText}</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="h-3 rounded-full bg-rose-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-rose-300" style={{ width: `${beforeW}%` }} />
+                  </div>
+                  <div className="h-3 rounded-full bg-emerald-50 overflow-hidden">
+                    <div className="h-full rounded-full bg-emerald-400" style={{ width: `${afterW}%` }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {visual.caption && <p className="text-[9px] text-slate-400 font-bold pt-1">{visual.caption}</p>}
+        </div>
+      </section>
+    );
+  }
+
+  // metrics：核心指标卡（数字来自组件既有说明）
+  if (visual.kind === "metrics" && visual.metrics && visual.metrics.length > 0) {
+    return (
+      <section className="space-y-2.5">
+        {header}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {visual.metrics.map((m, i) => (
+            <div key={i} className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-blue-50/40 p-3 space-y-1 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-8 h-8 rounded-full blur-md pointer-events-none" style={{ backgroundColor: `${accent}12` }} />
+              <div className="text-[14px] font-black font-mono leading-none" style={{ color: accent }}>{m.value}</div>
+              <div className="text-[9px] font-black text-slate-700">{m.label}</div>
+              {m.hint && <div className="text-[8.5px] text-slate-400 font-bold leading-snug">{m.hint}</div>}
+            </div>
+          ))}
+        </div>
+        {visual.caption && <p className="text-[9px] text-slate-400 font-bold">{visual.caption}</p>}
+      </section>
+    );
+  }
+
+  // timeline：阶段时间线（多阶段交付/计划类组件）
+  if (visual.kind === "timeline" && visual.stages && visual.stages.length >= 2) {
+    return (
+      <section className="space-y-2.5">
+        {header}
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="relative">
+            <div
+              className="absolute left-[5px] top-2 bottom-2 w-0.5 rounded-full"
+              style={{ background: `linear-gradient(to bottom, ${accent}, ${accent}66, #10b981)` }}
+            />
+            <div className="space-y-3">
+              {visual.stages.map((s, i) => (
+                <div key={i} className="relative pl-6">
+                  <span className="absolute left-0 top-1 w-3 h-3 rounded-full bg-white border-2" style={{ borderColor: accent }} />
+                  <div className="text-[8.5px] font-black uppercase tracking-wider" style={{ color: accent }}>{s.phase}</div>
+                  <div className="text-[10px] font-black text-slate-800 leading-snug">{s.title}</div>
+                  {s.desc && <div className="text-[9px] text-slate-500 font-medium leading-snug">{s.desc}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+          {visual.caption && <p className="mt-2.5 text-[9px] text-slate-400 font-bold">{visual.caption}</p>}
+        </div>
+      </section>
+    );
+  }
+
+  // checklist：安全 / 合规 / 审计类组件的风险检查清单（等级色标 + 处置说明）
+  if (visual.kind === "checklist" && visual.checks && visual.checks.length > 0) {
+    const levelStyle: Record<string, { bg: string; text: string; label: string }> = {
+      high: { bg: "bg-rose-50 border-rose-200", text: "text-rose-600", label: "高危" },
+      medium: { bg: "bg-amber-50 border-amber-200", text: "text-amber-600", label: "中危" },
+      low: { bg: "bg-sky-50 border-sky-200", text: "text-sky-600", label: "关注" },
+    };
+    return (
+      <section className="space-y-2.5">
+        {header}
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+          {visual.checks.map((c, i) => {
+            const st = levelStyle[c.level || "low"] || levelStyle.low;
+            return (
+              <div key={i} className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 ${st.bg}`}>
+                <ShieldCheck className={`w-4 h-4 shrink-0 mt-0.5 ${st.text}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-black text-slate-800">{c.item}</span>
+                    <span className={`px-1.5 py-px rounded text-[8px] font-black border ${st.text} border-current/30`}>
+                      {st.label}
+                    </span>
+                  </div>
+                  {c.note && <div className="text-[9px] text-slate-500 font-medium leading-snug mt-0.5">{c.note}</div>}
+                </div>
+              </div>
+            );
+          })}
+          {visual.caption && <p className="text-[9px] text-slate-400 font-bold pt-1">{visual.caption}</p>}
+        </div>
+      </section>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * 组件价值叙事包装：痛点（为什么需要它）→ 图表（它怎么帮你）→ 收获（你能得到什么）。
+ * 让用户打开弹窗第一眼就知道「这组件能解决我的问题」。
+ */
+function VisualChart({ comp }: { comp: ComponentDefinition }) {
+  const visual = comp.detail?.visual;
+  const body = <VisualChartBody comp={comp} />;
+  const hasPain = Boolean(visual?.painPoint);
+  const hasGain = Boolean(visual?.gain);
+  if (!hasPain && !hasGain) return body;
+
+  return (
+    <div className="space-y-2.5">
+      {hasPain && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-rose-100 bg-gradient-to-r from-rose-50/80 to-white px-3.5 py-2.5">
+          <span className="shrink-0 mt-px w-4.5 h-4.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center leading-none">
+            ?
+          </span>
+          <p className="text-[10.5px] text-slate-700 font-semibold leading-relaxed">
+            <span className="text-rose-600 font-black">你的痛点：</span>
+            {visual!.painPoint}
+          </p>
+        </div>
+      )}
+      {body}
+      {hasGain && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50/80 to-white px-3.5 py-2.5">
+          <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500 shrink-0 mt-px" />
+          <p className="text-[10.5px] text-slate-700 font-semibold leading-relaxed">
+            <span className="text-emerald-600 font-black">用完你会得到：</span>
+            {visual!.gain}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ComponentDispatcherPanelProps {
   isOpen: boolean;
   onClose: () => void;
   componentId: string | null;
   onNavigateToWorkspace?: (workspaceId: string, componentId: string) => void;
-}
-
-/**
- * 执行前费用预估：由 /api/billing/estimate（算账中心）下发的只读结果。
- * 前端一律消费该接口的 points / yuan / explanation，严禁自行做任何价格或点数计算。
- */
-interface ExecutionEstimate {
-  points: number | null;
-  yuan: number | null;
-  basis: "CONVERTED_PRICE" | "BLOCKED_PRICE_UNREGISTERED";
-  blockedReason: string | null;
-  /** 服务端生成的计价说明文案（含自带密钥 BYOK 服务费说明） */
-  explanation: string;
-  deployment: {
-    id: string;
-    providerId: string;
-    modelId: string;
-    upstreamModelId: string;
-    defaultSource: string;
-  };
-  pendingRegistration: { deploymentId: string; reason: string | null } | null;
-  /** 押金-结算灰度信息（白名单组件才返回 deposit，前端展示「预扣押金」） */
-  settlement?: {
-    enabled: boolean;
-    whitelist: string[];
-    deposit: { points: number | null; worstInputTokens: number; worstOutputTokens: number } | null;
-  } | null;
 }
 
 export default function ComponentDispatcherPanel({
@@ -131,306 +424,38 @@ export default function ComponentDispatcherPanel({
           ? "待配置/不可执行"
           : "暂不可执行";
 
-  // ===== 结构化表单（合同 input.kind=STRUCTURED_FORM 为唯一配置来源，前端强类型消费服务端合同，不得硬编码任何字段）=====
-  const structuredFormFields = useMemo(() => {
-    if (comp?.inputContractKind !== "STRUCTURED_FORM") return null;
-    const fields = Array.isArray(comp?.formConstraints?.fields)
-      ? comp!.formConstraints!.fields!.filter((f) => typeof f?.name === "string" && f!.name)
-      : [];
-    return fields.length > 0 ? fields : null;
-  }, [comp]);
-
-  /** 文件约束（多主材料数量/MIME/大小提示的唯一真源，来自激活合同） */
-  const dispatcherFileConstraints = comp?.fileConstraints ?? null;
   /** 成本基准状态：ASSUMPTION = 平台真实历史基准未配置（必须标注为假设估算） */
   const costBaselineStatus = comp?.costBaselineStatus ?? null;
 
-  // 合同声明的模型能力（唯一来源为后端 catalog 下发的 requiredCapabilities，前端不得按组件 ID 猜测）
-  const requiredCapsKey = useMemo(
-    () =>
-      Array.isArray(comp?.requiredCapabilities)
-        ? Array.from(new Set(comp!.requiredCapabilities!.filter((c) => typeof c === "string" && c.trim()))).sort().join(",")
-        : "",
-    [comp],
-  );
+  const dispatcherFileConstraints = comp?.fileConstraints ?? null;
 
-  // ===== 执行前费用预估：一律来自算账中心只读接口，前端不做任何价格/点数计算 =====
-  const [pricingHint, setPricingHint] = useState<ExecutionEstimate | null>(null);
-  const [pricingHintLoading, setPricingHintLoading] = useState(false);
-  /** 本次查询是否已返回结果（用于区分「加载中」与「确实无法估价」，避免首帧误报） */
-  const [pricingHintResolved, setPricingHintResolved] = useState(false);
-
-  // ===== MODEL-SELECT-E1: 空间可用模型池与用户指定模型状态 =====
-  const [availableModels, setAvailableModels] = useState<{
-    systemModels: Array<{
-      id: string;
-      providerId: string;
-      providerName: string;
-      modelId: string;
-      displayName: string;
-      upstreamModel: string;
-      capabilities: string[];
-      contextLimit: number;
-      isSpaceDefault: boolean;
-      pricing: {
-        currency: string;
-        priceInputMicrosPerMillion: number | null;
-        priceOutputMicrosPerMillion: number | null;
-        markupRateBps: number | null;
-      } | null;
-    }>;
-    byoModel: {
-      configured: boolean;
-      id: string;
-      label: string;
-      protocol: string;
-      endpointHost: string;
-      capabilities: string[];
-      contextLimit: number;
-      enabled: boolean;
-      shareWithMembers: boolean;
-      canUse: boolean;
-      reason: string | null;
-      pricing: {
-        priceInputMicrosPerMillion: number | null;
-        priceOutputMicrosPerMillion: number | null;
-        byokServiceRateBps: number;
-      };
-    } | null;
-    defaultTarget: {
-      source: string;
-      targetDeploymentId: string;
-      label: string;
-    };
-    /** 当前用户在本空间获批的默认模型 id（按 用户×空间 持久化），运行时默认选用依据 */
-    myApprovedDefaultDeploymentId?: string | null;
-    /** BYO 平台服务费率（后台可配，单一真源 billing.byokServiceRateBps），单位基点 */
-    byoServiceRateBps?: number;
-  } | null>(null);
-
-  // BYO 平台服务费率百分比（后台可配；未加载到位时回退 15% 展示）
-  const byoServiceRatePct = Math.round(
-    (availableModels?.byoServiceRateBps ??
-      availableModels?.byoModel?.pricing?.byokServiceRateBps ??
-      1500) / 100,
-  );
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string>("auto");
-
-  // 空间未配置默认模型时，无论选择「智能调度」还是手动指定具体模型，都无法执行，需先去配置
-  const noSpaceDefault = availableModels?.defaultTarget?.source === "NONE";
-
-  // 本地记忆加载：读取上次选定的模型（默认 auto）
+  /** 单次执行预计扣点：与空间执行面板、实际扣点同一真源（估价接口按模型单价动态换算）。
+   *  严禁把目录 Token 估算值（estimatedModelTokens）直接当「算力点」展示——那是口径混用的根源。 */
+  const [dispatchEstPoints, setDispatchEstPoints] = useState<number | null>(null);
   useEffect(() => {
-    if (typeof window !== "undefined" && selectedWorkspaceId) {
-      try {
-        const saved = localStorage.getItem(`zhige_last_selected_model_${selectedWorkspaceId}`);
-        if (saved) {
-          setSelectedDeploymentId(saved);
-        } else {
-          setSelectedDeploymentId("auto");
-        }
-      } catch {
-        setSelectedDeploymentId("auto");
-      }
-    }
-  }, [selectedWorkspaceId]);
-
-  const handleSelectModel = (val: string) => {
-    setSelectedDeploymentId(val);
-    if (typeof window !== "undefined" && selectedWorkspaceId) {
-      try {
-        localStorage.setItem(`zhige_last_selected_model_${selectedWorkspaceId}`, val);
-      } catch {}
-    }
-  };
-
-  // 加载当前空间可用模型池
-  useEffect(() => {
-    if (!isOpen || !isLoggedIn || !selectedWorkspaceId) {
-      setAvailableModels(null);
-      return;
-    }
-    let cancelled = false;
-    setLoadingModels(true);
+    setDispatchEstPoints(null);
+    if (!isOpen || !comp || !isLoggedIn || !selectedWorkspaceId) return;
     const authToken = getAuthToken();
-    fetch(`/api/workspace/available-models?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`, {
-      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      cache: "no-store",
-    })
-      .then((r) => r.json())
-      .then((json) => {
-        if (!cancelled && json?.success) {
-          setAvailableModels(json.data);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoadingModels(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, isLoggedIn, selectedWorkspaceId]);
-
-  // 运行时默认：本机未显式选择（auto/未设置）且存在服务端获批默认模型时，默认选用该模型。
-  // 用户手动选择（handleSelectModel 会写入 localStorage）后，不再被该默认覆盖。
-  useEffect(() => {
-    if (typeof window === "undefined" || !selectedWorkspaceId) return;
-    const approved = availableModels?.myApprovedDefaultDeploymentId;
-    if (!approved) return;
-    let local: string | null = null;
-    try {
-      local = localStorage.getItem(`zhige_last_selected_model_${selectedWorkspaceId}`);
-    } catch {
-      /* localStorage 不可用时忽略 */
-    }
-    if (!local || local === "auto") {
-      setSelectedDeploymentId(approved);
-    }
-  }, [availableModels, selectedWorkspaceId]);
-
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [formRunning, setFormRunning] = useState(false);
-  const [formRunError, setFormRunError] = useState<{ code: string; message: string } | null>(null);
-  const [formRunResult, setFormRunResult] = useState<
-    { executionMode: string; contractVersion: string | null; content: string } | null
-  >(null);
-
-  // 切换组件时清空表单态，避免把上一组件的输入/结果带到下一组件的合同表单
-  useEffect(() => {
-    setFormValues({});
-    setFormErrors({});
-    setFormRunError(null);
-    setFormRunResult(null);
-  }, [componentId]);
-
-  /**
-   * 执行前价格提示：随「运行目标 workspace + 所选模型 + 合同能力」变化拉取当前生效单价。
-   * 裁决口径与真实执行路径完全一致（服务端 resolveDefaultDeployment / resolveDeploymentForWorkspace），
-   * 前端只做只读展示，不得自行推导或硬编码任何价格。
-   */
-  useEffect(() => {
-    if (!isOpen || !isLoggedIn || !selectedWorkspaceId || !requiredCapsKey) {
-      setPricingHint(null);
-      setPricingHintLoading(false);
-      setPricingHintResolved(false);
-      return;
-    }
+    if (!authToken) return;
     let cancelled = false;
-    setPricingHintLoading(true);
-    setPricingHintResolved(false);
-    const authToken = getAuthToken();
-    const params = new URLSearchParams({
-      componentId: componentId || "",
-      workspaceId: selectedWorkspaceId,
-      deploymentId: selectedDeploymentId || "auto",
-    });
-    fetch(`/api/billing/estimate?${params.toString()}`, {
-      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      cache: "no-store",
-    })
-      .then((r) => r.json())
-      .then((json) => {
-        if (cancelled) return;
-        setPricingHint(json?.success ? (json.data as ExecutionEstimate) : null);
-      })
-      .catch(() => {
-        if (!cancelled) setPricingHint(null);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setPricingHintLoading(false);
-          setPricingHintResolved(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, isLoggedIn, selectedWorkspaceId, requiredCapsKey, selectedDeploymentId]);
-
-  /**
-   * 结构化表单提交：以合同字段做前端必填/选项校验（**不替代后端合同校验**），
-   * 提交 formData 到既有 Studio API（绝不提交 providerId/modelId，用户不得越权选模型）。
-   */
-  const handleStructuredSubmit = async () => {
-    if (!comp || !structuredFormFields) return;
-    if (comp.contractReady !== true) {
-      toast.error(comp.activeContractLifecycle === "DRAFT" ? "该组件合同即将上线，暂不可执行" : "该组件尚未配置有效合同，暂不可执行");
-      return;
-    }
-    if (!isLoggedIn) {
-      toast.info("智阁舟坊：请先登录账户以执行该组件");
-      setTimeout(() => {
-        onClose();
-        router.push(`/auth/login?redirect=${encodeURIComponent(`/studio?componentId=${comp.id}`)}`);
-      }, 800);
-      return;
-    }
-    const targetWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId) || workspaces[0] || null;
-    if (!targetWorkspace) {
-      toast.warning("未检测到可用的工作空间，请先创建空间");
-      return;
-    }
-
-    const errs: Record<string, string> = {};
-    for (const f of structuredFormFields) {
-      const name = String(f.name);
-      const label = f.label || name;
-      const value = (formValues[name] ?? "").trim();
-      const isSelect = f.type === "select";
-      if (f.required && !value) {
-        errs[name] = isSelect ? `请选择「${label}」` : `请填写「${label}」`;
-      } else if (isSelect && value && Array.isArray(f.options) && f.options.length > 0 && !f.options.includes(value)) {
-        errs[name] = `「${label}」取值不合法（仅允许：${f.options.join(" / ")}）`;
-      }
-    }
-    setFormErrors(errs);
-    if (Object.keys(errs).length > 0) {
-      toast.error("请先补全合同要求的结构化字段");
-      return;
-    }
-
-    setFormRunning(true);
-    setFormRunError(null);
-    setFormRunResult(null);
-    try {
-      const authToken = getAuthToken();
-      const res = await fetch("/api/studio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({
-          action: "simulate",
-          workspaceId: targetWorkspace.id,
-          componentId: comp.id,
-          formData: formValues,
-          deploymentId: selectedDeploymentId !== "auto" ? selectedDeploymentId : undefined,
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) {
-        setFormRunError({
-          code: String(data?.code ?? `HTTP_${res.status}`),
-          message: String(data?.error ?? data?.message ?? "执行失败，请稍后重试"),
+    (async () => {
+      try {
+        const params = new URLSearchParams({ componentId: comp.id, workspaceId: selectedWorkspaceId });
+        const res = await fetch(`/api/billing/estimate?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+          cache: "no-store",
         });
-        return;
+        const json = await res.json().catch(() => null);
+        const pts = json?.data?.points;
+        if (!cancelled && typeof pts === "number" && pts > 0) setDispatchEstPoints(pts);
+      } catch {
+        if (!cancelled) setDispatchEstPoints(null);
       }
-      setFormRunResult({
-        executionMode: String(data?.executionMode ?? ""),
-        contractVersion: data?.contractVersion ? String(data.contractVersion) : null,
-        content: String(data?.artifacts?.[0]?.content ?? ""),
-      });
-    } catch (e) {
-      setFormRunError({ code: "NETWORK_ERROR", message: (e as Error)?.message || "网络异常，请稍后重试" });
-    } finally {
-      setFormRunning(false);
-    }
-  };
-
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, comp?.id, isLoggedIn, selectedWorkspaceId]);
   // Esc 关闭 + 弹窗打开期间锁定背景滚动
   useEffect(() => {
     if (!isOpen) return;
@@ -634,7 +659,7 @@ export default function ComponentDispatcherPanel({
       />
 
       {/* 居中大规格便当盒模态框 (ZhiGe Bento Spec Modal) */}
-      <div className="relative w-full max-w-4xl h-[85vh] max-h-[700px] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-98 duration-200 border border-slate-200/80 z-10">
+      <div className="relative w-full max-w-6xl h-[90vh] max-h-[860px] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-98 duration-200 border border-slate-200/80 z-10">
         
         {/* 顶部 Header - 紧凑精美 */}
         <header className="bg-white border-b border-slate-100 px-5 py-3.5 flex items-center justify-between flex-shrink-0 z-10">
@@ -699,8 +724,14 @@ export default function ComponentDispatcherPanel({
                 </span>
                 <div className="flex items-center gap-1 text-[9px] text-slate-400 font-bold">
                   <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
-                  {/* estimatedModelTokens 是「Token 用量估算」，不是算力点；实际扣点以右侧「执行前费用预估」为准 */}
-                  <span>估算用量 {comp.estimatedModelTokens} Token/次（非算力点）</span>
+                  {/* 单次消耗口径与空间执行面板、实际扣点一致（估价接口真源），Token 估算值不再直出 */}
+                  <span>
+                    单次消耗{" "}
+                    {dispatchEstPoints != null
+                      ? `${dispatchEstPoints} 算力点`
+                      : "点数按模型单价动态折算"}
+                    {isLoggedIn && selectedWorkspaceId ? "（以执行时实际扣点为准）" : ""}
+                  </span>
                 </div>
               </div>
               
@@ -722,105 +753,163 @@ export default function ComponentDispatcherPanel({
               )}
             </section>
 
-            {/* 2. 技术数据契约流转拓扑 (Topology Data Contract) - 精致轻量深色面板 */}
+            {/* 1.45 它是什么 · 深度解读（总体介绍放第一位：先知道它是干啥的，再看能力与流程） */}
             <section className="space-y-2.5">
               <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-0.5">
-                <Database className="w-3.5 h-3.5 text-[#3182ce]" />
-                数据加工流转契约协议 (物理材料 - 物理产出)
+                <Sparkles className="w-3.5 h-3.5 text-[#3182ce]" />
+                它是什么 · 深度解读
               </h3>
-              
-              <div className="relative bg-[#0f172a] text-slate-200 rounded-xl p-4 border border-slate-800 shadow-md overflow-hidden">
-                <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-15"></div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                  {comp.detail?.fullDescription || comp.description || "该组件的详细介绍正在完善中。"}
+                </p>
+              </div>
+            </section>
 
-                <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-3">
-                  {/* 输入材料极 */}
-                  <div className="flex-1 w-full bg-slate-900/90 rounded-lg p-3 border border-slate-900 shadow-inner flex flex-col justify-between min-h-[105px]">
-                    <div>
-                      <div className="text-[8px] font-black text-[#63b3ed] uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                        输入材料规范 (Input)
-                      </div>
-                      <div className="font-mono text-[9.5px] text-slate-400 leading-relaxed bg-slate-900/50 p-2 rounded border border-slate-800/80 min-h-[40px] flex items-center">
-                        {comp.previewData?.inputMock || comp.contract || "输入材料"}
-                      </div>
-                      <div className="mt-1 flex items-center gap-1 text-[8px] font-bold text-slate-500">
-                        <span>输入方式:</span>
-                        <span className={(() => {
-                          const m = comp.inputMode;
-                          if (m === "file") return "text-amber-300 bg-amber-950/40 border border-amber-900/30 px-1 py-0.2 rounded";
-                          if (m === "both") return "text-emerald-300 bg-emerald-950/40 border border-emerald-900/30 px-1 py-0.2 rounded";
-                          return "text-blue-200 bg-slate-900/40 border border-slate-800/30 px-1 py-0.2 rounded";
-                        })()}>
-                          {(() => {
-                            const m = comp.inputMode;
-                            return m === "file" ? "📎 文件上传" : m === "both" ? "🔀 上传 / 输入" : "⌨️ 文本输入";
-                          })()}
-                        </span>
-                      {dispatcherFileConstraints?.acceptedMimes?.length ? (
-                        <div className="mt-1 flex items-center gap-1 text-[8px] font-bold text-slate-500">
-                          <span>格式:</span>
-                          <span className="text-amber-200/90 font-mono bg-amber-950/30 px-1 py-0.2 rounded truncate max-w-[140px]" title={dispatcherFileConstraints.acceptedMimes.join(", ")}>
-                            {describeAcceptedMimes(dispatcherFileConstraints.acceptedMimes)}
-                          </span>
-                        </div>
-                      ) : null}
-                      </div>
+            {/* 1.5 能力可视化图表：按数据库 visual 规格渲染（因组件而异），未配置时回退通用三节点流程图 */}
+            {comp.detail?.visual ? (
+              <VisualChart comp={comp} />
+            ) : (
+            <section className="space-y-2.5">
+              <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-0.5">
+                <ArrowRight className="w-3.5 h-3.5 text-[#3182ce]" />
+                工作流程 · 它怎么干活
+              </h3>
+              <div className="bg-gradient-to-br from-slate-50 via-blue-50/20 to-emerald-50/20 rounded-xl border border-slate-200 p-4">
+                <div className="flex items-stretch gap-1.5">
+                  {/* 节点①：你的输入 */}
+                  <div className="flex-1 min-w-0 bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center">
+                      <FileText className="w-3.5 h-3.5 text-[#3182ce]" />
                     </div>
-                    <div className="mt-2 pt-1.5 border-t border-slate-900 flex items-center gap-1 text-[8.5px] font-bold text-slate-500">
-                      <span>载体:</span>
-                      <span className="text-[#63b3ed] bg-blue-950/40 border border-blue-900/20 px-1 py-0.2 rounded truncate max-w-[140px]">
-                        {comp.previewData?.inputMock || comp.contract || comp.hint || "输入材料"}
-                      </span>
+                    <div className="text-[8px] font-black text-slate-400 uppercase tracking-wider">① 你的输入</div>
+                    <div className="text-[10px] text-slate-800 font-bold leading-snug line-clamp-3">
+                      {comp.previewData?.inputMock || comp.contract || "输入材料"}
+                    </div>
+                    <div className="text-[8.5px] text-slate-500 font-bold">
+                      {comp.inputMode === "file" ? "文件上传" : comp.inputMode === "both" ? "上传 / 输入" : "文本输入"}
                     </div>
                   </div>
 
-                  {/* 中枢枢纽 */}
-                  <div className="flex flex-col items-center justify-center shrink-0 sm:w-10">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center text-white text-[8px] font-black shadow-md border border-[#63b3ed]/20">
-                      中枢
-                    </div>
-                    <span className="text-[6.5px] font-black text-indigo-400 uppercase tracking-widest scale-90 mt-1 whitespace-nowrap hidden sm:block">数据流转</span>
+                  {/* 流动连接线（脉冲点 + 箭头） */}
+                  <div className="flex flex-col items-center justify-center w-7 shrink-0 gap-1">
+                    <span className="w-1 h-1 rounded-full bg-[#3182ce] animate-pulse" />
+                    <span className="w-1 h-1 rounded-full bg-[#3182ce]/60 animate-pulse [animation-delay:150ms]" />
+                    <span className="w-1 h-1 rounded-full bg-[#3182ce]/30 animate-pulse [animation-delay:300ms]" />
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
                   </div>
 
-                  {/* 输出成果极 */}
-                  <div className="flex-1 w-full bg-slate-900/90 rounded-lg p-3 border border-slate-900 shadow-inner flex flex-col justify-between min-h-[105px]">
-                    <div>
-                      <div className="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        输出成果契约 (Output)
-                      </div>
-                      <div className="font-mono text-[9.5px] text-slate-400 leading-relaxed bg-slate-900/50 p-2 rounded border border-slate-800/80 min-h-[40px] flex flex-col justify-center">
-                        <div>{comp.previewData?.outputMock || comp.contract || "输出成果"}</div>
-                        {comp.blockingReasons && comp.blockingReasons.length > 0 && (
-                          <div className="text-[8.5px] text-amber-400/95 mt-1 font-sans font-semibold border-t border-slate-800/80 pt-1">
-                            ⚠️ 阻断说明：{comp.blockingReasons.join("；")}
-                          </div>
-                        )}
-                        {comp.qualityHints && comp.qualityHints.length > 0 && (
-                          <div className="text-[8.5px] text-blue-300/90 mt-1 font-sans font-semibold border-t border-slate-800/80 pt-1 space-y-0.5">
-                            {comp.qualityHints.map((hint: string, hIdx: number) => (
-                              <div key={hIdx}>💡 质量说明：{hint}</div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                  {/* 节点②：组件处理（视觉焦点，分类色渐变高亮） */}
+                  <div className="flex-1 min-w-0 rounded-lg p-2.5 space-y-1.5 bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] shadow-md relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-10 h-10 bg-white/10 rounded-full blur-md pointer-events-none" />
+                    <div className="w-7 h-7 rounded-lg bg-white/15 border border-white/20 flex items-center justify-center">
+                      <Layers className="w-3.5 h-3.5 text-white" />
                     </div>
-                    <div className="mt-2 pt-1.5 border-t border-slate-900 flex items-center gap-1 text-[8.5px] font-bold text-slate-500">
-                      <span>产出:</span>
-                      <span className="text-emerald-300 bg-emerald-950/40 border border-emerald-900/20 px-1 py-0.2 rounded truncate max-w-[140px]">
-                        {comp.previewData?.outputMock || comp.contract || comp.hint || "输出成果"}
-                      </span>
+                    <div className="text-[8px] font-black text-white/70 uppercase tracking-wider">② 组件处理</div>
+                    <div className="text-[10px] text-white font-black leading-snug line-clamp-2">{comp.name}</div>
+                    <div className="text-[8.5px] text-white/80 font-bold">
+                      {dispatcherContractReady ? "已就绪 · 可执行" : dispatcherContractLabel}
                     </div>
+                  </div>
+
+                  {/* 流动连接线（输出侧绿色） */}
+                  <div className="flex flex-col items-center justify-center w-7 shrink-0 gap-1">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="w-1 h-1 rounded-full bg-emerald-500/60 animate-pulse [animation-delay:150ms]" />
+                    <span className="w-1 h-1 rounded-full bg-emerald-500/30 animate-pulse [animation-delay:300ms]" />
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
+                  </div>
+
+                  {/* 节点③：交付成果 */}
+                  <div className="flex-1 min-w-0 bg-white rounded-lg border border-emerald-200 p-2.5 space-y-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    </div>
+                    <div className="text-[8px] font-black text-emerald-600 uppercase tracking-wider">③ 交付成果</div>
+                    <div className="text-[10px] text-slate-800 font-bold leading-snug line-clamp-3">
+                      {comp.previewData?.outputMock || comp.contract || "结构化成果"}
+                    </div>
+                    {comp.detail?.estimatedDuration ? (
+                      <div className="text-[8.5px] text-slate-500 font-bold flex items-center gap-0.5">
+                        <Clock className="w-2.5 h-2.5" /> {comp.detail.estimatedDuration}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
-                {/* 契约基本属性 */}
-                <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between flex-wrap gap-2 text-[8px] font-bold text-slate-500">
-                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 服务端安全校验</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 隔离安全加密</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#3182ce]" /> 吞吐率对齐 100%</span>
+                {/* 底部约束信息条：数据契约 / 支持格式 / 大小限制（全部来自真实字段） */}
+                <div className="mt-3 pt-2.5 border-t border-slate-200/70 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] font-bold text-slate-500">
+                  {comp.contract ? (
+                    <span className="flex items-center gap-1"><Layers className="w-3 h-3 text-[#3182ce]" /> 数据契约：{comp.contract}</span>
+                  ) : null}
+                  {dispatcherFileConstraints?.acceptedMimes?.length ? (
+                    <span className="flex items-center gap-1"><FileText className="w-3 h-3 text-[#3182ce]" /> {describeAcceptedMimes(dispatcherFileConstraints.acceptedMimes)}</span>
+                  ) : null}
+                  {dispatcherFileConstraints?.maxSingleFileBytes ? (
+                    <span className="flex items-center gap-1"><Server className="w-3 h-3 text-[#3182ce]" /> 单文件 ≤ {Math.round(dispatcherFileConstraints.maxSingleFileBytes / 1024 / 1024)} MB</span>
+                  ) : null}
                 </div>
               </div>
+            </section>
+            )}
+
+            {/* 1.6 核心能力：能帮我解决什么问题（用户决策的核心） */}
+            <section className="space-y-2.5">
+              <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-0.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#3182ce]" />
+                核心能力 · 能帮你解决什么
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(comp.detail?.capabilities && comp.detail.capabilities.length > 0
+                  ? comp.detail.capabilities
+                  : ["（能力清单完善中）"]
+                ).map((cap: string, i: number) => (
+                  <div key={i} className="flex items-start gap-2 bg-white rounded-lg border border-slate-200 p-2.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#3182ce] shrink-0 mt-0.5" />
+                    <span className="text-[10.5px] text-slate-700 font-medium leading-relaxed">{cap}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* 1.7 使用价值：能给你带来什么（用户决策的核心） */}
+            <section className="space-y-2.5">
+              <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-0.5">
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                使用价值 · 能为你带来什么
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(comp.detail?.valueProps && comp.detail.valueProps.length > 0
+                  ? comp.detail.valueProps
+                  : ["（价值说明完善中）"]
+                ).map((val: string, i: number) => (
+                  <div key={i} className="flex items-start gap-2 bg-emerald-50/50 rounded-lg border border-emerald-100 p-2.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <span className="text-[10.5px] text-emerald-900 font-medium leading-relaxed">{val}</span>
+                  </div>
+                ))}
+              </div>
+              {/* 前后对比：以前 vs 现在 */}
+              {comp.detail?.beforeAfter && comp.detail.beforeAfter.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  <div className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <ArrowRight className="w-3 h-3" /> 以前 vs 现在
+                  </div>
+                  <div className="space-y-1.5">
+                    {comp.detail.beforeAfter.map((item, i) => (
+                      <div key={i} className="flex items-stretch gap-2 text-[10px]">
+                        <div className="flex-1 rounded bg-rose-50 border border-rose-100 px-2 py-1.5 text-rose-700 font-medium">
+                          以前：{item.before}
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-300 self-center shrink-0" />
+                        <div className="flex-1 rounded bg-emerald-50 border border-emerald-100 px-2 py-1.5 text-emerald-800 font-medium">
+                          现在：{item.after}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* 3. 可视化 ROI 商业提效滑轨 - 轻量化 */}
@@ -846,6 +935,111 @@ export default function ComponentDispatcherPanel({
                 </span>
               </div>
             </section>
+
+            {/* 4. 使用流程：怎么用 */}
+            <section className="space-y-2.5">
+              <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-0.5">
+                <ListOrdered className="w-3.5 h-3.5 text-[#3182ce]" />
+                使用流程 · 怎么用
+              </h3>
+              {(() => {
+                // detail.usage 的数据契约是「换行分隔的步骤字符串」（与 WorkspaceInternalLayoutV3 / ComponentDetail 一致），
+                // 这里按换行拆成有序步骤渲染，避免对非数组做 .map 导致运行时崩溃。
+                const raw = comp.detail?.usage;
+                const steps: string[] =
+                  typeof raw === "string" && raw.trim().length > 0
+                    ? raw.split("\n").map((s) => s.trim()).filter(Boolean)
+                    : ["在空间内装配该组件并配置运行模型。", "按合同要求准备输入材料。", "执行并查看结构化结果。"];
+                return (
+                  <ol className="space-y-2">
+                    {steps.map((step, i) => (
+                      <li key={i} className="flex items-start gap-2.5 bg-white rounded-lg border border-slate-200 p-2.5">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-[#3182ce] text-white text-[9px] font-black flex items-center justify-center">
+                          {i + 1}
+                        </span>
+                        <span className="text-[10.5px] text-slate-600 font-medium leading-relaxed">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                );
+              })()}
+            </section>
+
+            {/* 5. 真实战绩 / 口碑 */}
+            <section className="bg-slate-50/60 rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-[#3182ce]" />
+                  真实战绩
+                </h3>
+                <p className="text-[9.5px] text-slate-500 font-semibold">由服务端从真实执行记录聚合，无任何模拟数值</p>
+              </div>
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="text-center">
+                  <div className="text-[16px] font-black text-slate-800 font-mono leading-none">
+                    {(comp.realUsageCount ?? 0).toLocaleString("zh-CN")}
+                  </div>
+                  <div className="text-[8px] text-slate-400 font-bold mt-1">全网真实调用</div>
+                </div>
+                <div className="w-px h-8 bg-slate-200" />
+                {/* 历史成功率环形图（真实执行记录聚合，无模拟数值） */}
+                {(() => {
+                  const total = comp.realTaskStats?.total ?? 0;
+                  const pct =
+                    total > 0
+                      ? Math.round(((comp.realTaskStats?.success ?? 0) / total) * 100)
+                      : null;
+                  return (
+                    <div className="flex items-center gap-2">
+                      <div className="relative w-11 h-11 shrink-0">
+                        <svg viewBox="0 0 36 36" className="w-11 h-11 -rotate-90">
+                          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#e2e8f0" strokeWidth="4" />
+                          {pct !== null && (
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="15.5"
+                              fill="none"
+                              stroke="#10b981"
+                              strokeWidth="4"
+                              strokeLinecap="round"
+                              strokeDasharray={`${pct} ${100 - pct}`}
+                            />
+                          )}
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center text-[9px] font-black text-slate-700">
+                          {pct !== null ? `${pct}%` : "—"}
+                        </div>
+                      </div>
+                      <div className="text-[8px] text-slate-400 font-bold leading-tight">
+                        历史<br />成功率
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </section>
+
+            {/* 6. 常见问题 FAQ */}
+            {comp.detail?.faq && comp.detail.faq.length > 0 && (
+              <section className="space-y-2.5">
+                <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 pl-0.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-[#3182ce]" />
+                  常见问题
+                </h3>
+                <div className="space-y-2">
+                  {comp.detail.faq.map((item: { q: string; a: string }, i: number) => (
+                    <div key={i} className="bg-white rounded-lg border border-slate-200 p-3 space-y-1">
+                      <div className="text-[10.5px] font-black text-slate-800 flex items-start gap-1.5">
+                        <span className="text-[#3182ce] shrink-0">Q</span>
+                        <span>{item.q}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium leading-relaxed pl-4">{item.a}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
           </div>
 
@@ -874,20 +1068,7 @@ export default function ComponentDispatcherPanel({
                   {/* 配额与状态对齐展示 */}
                   <div className="flex items-center gap-3 pt-1 text-[9.5px] font-semibold text-slate-500 border-t border-slate-50 mt-2">
                     <span className="flex items-center gap-1">
-                      <Coins className="w-3 h-3 text-[#3182ce]/70" /> 资源配额: <strong className="text-slate-700 font-bold font-mono">{(workspaceQuotas[selectedWorkspace?.id || ""] || 0).toLocaleString()}</strong>
-                      {selectedWorkspace && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (onNavigateToWorkspace) {
-                              onNavigateToWorkspace(selectedWorkspace.id, comp.id);
-                            }
-                          }}
-                          className="ml-1 text-[9px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 font-black hover:bg-amber-100 transition-colors border border-amber-200 cursor-pointer"
-                        >
-                          充值
-                        </button>
-                      )}
+                      <Coins className="w-3 h-3 text-[#3182ce]/70" /> 算力点: <strong className="text-slate-700 font-bold font-mono">{(workspaceQuotas[selectedWorkspace?.id || ""] || 0).toLocaleString()}</strong>
                     </span>
                     <span className="flex items-center gap-1"><Server className="w-3 h-3 text-[#3182ce]/70" /> 状态: 
                       {isBound ? (
@@ -898,116 +1079,6 @@ export default function ComponentDispatcherPanel({
                     </span>
                   </div>
                 </div>
-
-                {/* MODEL-SELECT-E1: 空间可用模型选择器 (三分组级联) */}
-                {isLoggedIn && selectedWorkspaceId && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-100 z-10">
-                    <div className="flex items-center justify-between text-[8.5px] font-black uppercase tracking-wider text-slate-500">
-                      <span className="flex items-center gap-1 text-[#3182ce]">
-                        <Cpu className="w-3 h-3" />
-                        <span>运行模型选择</span>
-                      </span>
-                      {loadingModels && (
-                        <span className="text-slate-400 font-normal flex items-center gap-1">
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> 加载中
-                        </span>
-                      )}
-                    </div>
-
-                    <select
-                      value={selectedDeploymentId}
-                      onChange={(e) => handleSelectModel(e.target.value)}
-                      className="w-full h-8 px-2.5 rounded border border-slate-200 bg-white text-xs text-slate-800 outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20 transition-all font-medium cursor-pointer shadow-2xs"
-                    >
-                      {/* 分组 1：智能调度 */}
-                      <optgroup label="⚡ 智能调度">
-                        <option value="auto">
-                          智能调度（按空间默认模型执行）
-                          {availableModels?.defaultTarget?.label ? ` [当前: ${availableModels.defaultTarget.label}]` : ""}
-                        </option>
-                      </optgroup>
-
-                      {/* 分组 2：空间私有模型 */}
-                      {availableModels?.byoModel?.configured && (
-                        <optgroup label={`🏷️ 空间私有模型 (自备端点 · 仅付 ${byoServiceRatePct}% 服务费)`}>
-                          {availableModels.byoModel.enabled && availableModels.byoModel.canUse ? (
-                            <option value="byo">
-                              [自带] {availableModels.byoModel.label} ({availableModels.byoModel.endpointHost}) · 仅付 {byoServiceRatePct}% 服务费
-                            </option>
-                          ) : (
-                            <option value="byo" disabled>
-                              [自带] {availableModels.byoModel.label} · {availableModels.byoModel.enabled ? "未共享不可选" : "维护中不可选"}
-                            </option>
-                          )}
-                        </optgroup>
-                      )}
-
-                      {/* 分组 3：平台授权模型 */}
-                      {availableModels?.systemModels && availableModels.systemModels.length > 0 && (
-                        <optgroup label="🏢 平台授权模型 (官方通道 · 白名单授权)">
-                          {availableModels.systemModels.map((m) => {
-                            const priceIn = m.pricing?.priceInputMicrosPerMillion != null ? (m.pricing.priceInputMicrosPerMillion / 1000000).toFixed(2) : "--";
-                            const priceOut = m.pricing?.priceOutputMicrosPerMillion != null ? (m.pricing.priceOutputMicrosPerMillion / 1000000).toFixed(2) : "--";
-                            const provLabel = m.providerName || "平台";
-                            return (
-                              <option key={m.id} value={m.id}>
-                                [{provLabel}] {m.displayName}（入 ¥{priceIn} / 出 ¥{priceOut} 元/百万）{m.isSpaceDefault ? " [空间默认]" : ""}
-                              </option>
-                            );
-                          })}
-                        </optgroup>
-                      )}
-                    </select>
-
-                    {/* 当前选中模型的时段生效售价实时状态行 */}
-                    {(() => {
-                      if (selectedDeploymentId === "byo" && availableModels?.byoModel) {
-                        const byo = availableModels.byoModel;
-                        const pIn = byo.pricing?.priceInputMicrosPerMillion != null ? (byo.pricing.priceInputMicrosPerMillion / 1000000).toFixed(2) : "0.00";
-                        const pOut = byo.pricing?.priceOutputMicrosPerMillion != null ? (byo.pricing.priceOutputMicrosPerMillion / 1000000).toFixed(2) : "0.00";
-                        return (
-                          <div className="flex items-center justify-between text-[9.5px] bg-amber-50/80 border border-amber-200/60 px-2 py-1 rounded text-amber-800 font-mono">
-                            <span>当前生效: 自带私有模型</span>
-                            <span>端点定价 ¥{pIn}/¥{pOut}/M · 仅计 {byoServiceRatePct}% 平台服务费</span>
-                          </div>
-                        );
-                      }
-                      const curSysModel = availableModels?.systemModels?.find(m => m.id === selectedDeploymentId);
-                      if (curSysModel) {
-                        const priceIn = curSysModel.pricing?.priceInputMicrosPerMillion != null ? (curSysModel.pricing.priceInputMicrosPerMillion / 1000000).toFixed(2) : "--";
-                        const priceOut = curSysModel.pricing?.priceOutputMicrosPerMillion != null ? (curSysModel.pricing.priceOutputMicrosPerMillion / 1000000).toFixed(2) : "--";
-                        return (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between text-[9.5px] bg-blue-50/70 border border-blue-200/60 px-2 py-1 rounded text-[#2b6cb0]">
-                              <span className="font-semibold truncate max-w-[140px]">当前模型: {curSysModel.displayName}</span>
-                              <span className="font-mono font-bold">
-                                当前时段生效价: 入 ¥{priceIn} / 出 ¥{priceOut} 元/百万Token
-                              </span>
-                            </div>
-                            {/* 完整计价规则：闲时/高峰/节假日分层 + 可展开全时段表，便于用户判断成本 */}
-                            <ModelPricingRules periods={(curSysModel as any).pricingPeriods} />
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                )}
-                
-                {/* 未配置默认模型：无论选「智能调度」还是手动指定具体模型都无法执行，引导先去空间「模型」页设置 */}
-                {noSpaceDefault && (
-                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[9.5px] leading-relaxed text-rose-700 font-semibold shrink-0 z-10 space-y-1">
-                    <div>当前空间尚未配置默认模型，无法执行任务。</div>
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/workspace/${encodeURIComponent(selectedWorkspaceId)}?tab=models`)}
-                      className="inline-flex items-center gap-0.5 text-[#3182ce] underline underline-offset-2 hover:text-[#2b6cb0] cursor-pointer"
-                    >
-                      前往空间「模型」页设置默认模型
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
 
                 {/* 成本基准诚实提示：平台真实历史基准未配置时必须标注为「假设估算」，不得显示为真实报价 */}
                 {costBaselineStatus === "ASSUMPTION" && (
@@ -1020,56 +1091,6 @@ export default function ComponentDispatcherPanel({
                     已接入平台真实历史基准，报告中将注明基准来源。
                   </div>
                 )}
-
-                {/* 执行前价格提示：当前生效单价来自模型定价唯一真源（空间裁决 + 时段价），执行前如实告知，只读不可配置。
-                    空间未配置默认模型时执行被拦截，不再展示预估扣点以免误导。 */}
-                {isLoggedIn && selectedWorkspaceId && !noSpaceDefault ? (
-                  pricingHintLoading || !pricingHintResolved ? (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[9.5px] text-slate-500 font-semibold shrink-0 z-10">
-                      正在估算本次扣点…
-                    </div>
-                  ) : pricingHint ? (
-                    <div className="rounded-lg border border-[#3182ce]/25 bg-[#3182ce]/5 px-3 py-2 space-y-1.5 shrink-0 z-10">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Coins className="w-3 h-3 text-[#3182ce]" />
-                        <span className="text-[9.5px] font-black text-[#3182ce]">执行前费用预估</span>
-                        <span className="text-[8.5px] text-slate-500 font-semibold truncate max-w-[150px]">
-                          {pricingHint.deployment.upstreamModelId}
-                          {pricingHint.deployment.defaultSource === "WORKSPACE_BYO" ? "（空间自带）" : ""}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3 flex-wrap text-[9.5px] font-semibold text-slate-600">
-                        <span>
-                          预计扣点 <strong className="font-mono text-slate-800">{pricingHint.points ?? "—"}</strong>
-                        </span>
-                        <span>
-                          ≈ <strong className="font-mono text-slate-800">¥{pricingHint.yuan === null ? "—" : pricingHint.yuan}</strong>
-                        </span>
-                        {pricingHint.settlement?.enabled && pricingHint.settlement.deposit?.points != null ? (
-                          <span className="text-[#3182ce]">
-                            预扣押金 <strong className="font-mono">{pricingHint.settlement.deposit.points}</strong> 点（按实际用量多退少补）
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="text-[8.5px] leading-relaxed text-slate-500 font-semibold">
-                        {pricingHint.explanation}
-                        <button
-                          type="button"
-                          onClick={() => router.push("/models")}
-                          className="ml-1 text-[#3182ce] underline underline-offset-2 hover:text-[#2b6cb0] cursor-pointer"
-                        >
-                          查看全部时段价目
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[9.5px] leading-relaxed text-amber-800 font-semibold shrink-0 z-10">
-                      暂未获取到本次执行的费用预估（模型未登记单价或不满足执行条件），执行前请先确认空间模型与定价配置。
-                    </div>
-                  )
-                ) : null}
 
                 {/* 文件材料规范提示：数量/MIME/大小全部来自激活合同的 fileConstraints（数据驱动，前端不硬编码） */}
                 {dispatcherFileConstraints && (
@@ -1088,109 +1109,8 @@ export default function ComponentDispatcherPanel({
                   </div>
                 )}
 
-                {/* 结构化表单（合同字段驱动）：存在合同表单时以表单提交替代一键转场，避免第二套执行入口 */}
-                {structuredFormFields ? (
-                  <div className="space-y-2 shrink-0 z-10">
-                    {structuredFormFields.map((f) => {
-                      const name = String(f.name);
-                      const label = f.label || name;
-                      const err = formErrors[name];
-                      return (
-                        <label key={name} className="block space-y-1">
-                          <span className="text-[9.5px] font-black text-slate-700">
-                            {label}
-                            {f.required && <span className="text-rose-500"> *</span>}
-                          </span>
-                          {f.type === "select" ? (
-                            <select
-                              value={formValues[name] ?? ""}
-                              onChange={(e) => setFormValues((prev) => ({ ...prev, [name]: e.target.value }))}
-                              className={`w-full h-8 rounded border text-[10px] px-2 bg-white ${
-                                err ? "border-rose-300" : "border-slate-200"
-                              }`}
-                            >
-                              <option value="">请选择…</option>
-                              {(f.options ?? []).map((opt) => (
-                                <option key={opt} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <textarea
-                              value={formValues[name] ?? ""}
-                              onChange={(e) => setFormValues((prev) => ({ ...prev, [name]: e.target.value }))}
-                              rows={4}
-                              placeholder={`请输入${label}`}
-                              className={`w-full rounded border text-[10px] px-2 py-1.5 bg-white resize-y ${
-                                err ? "border-rose-300" : "border-slate-200"
-                              }`}
-                            />
-                          )}
-                          {err && <span className="block text-[9px] font-bold text-rose-500">{err}</span>}
-                        </label>
-                      );
-                    })}
-
-                    <button
-                      onClick={handleStructuredSubmit}
-                      disabled={!dispatcherContractReady || formRunning || noSpaceDefault}
-                      className={`w-full h-8.5 text-white text-[10px] font-black rounded shadow-md transition-all flex items-center justify-center gap-1 ${
-                        !dispatcherContractReady
-                          ? "bg-slate-300 cursor-not-allowed"
-                          : formRunning
-                            ? "bg-slate-400 cursor-wait"
-                            : "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#2b6cb0] hover:shadow-lg cursor-pointer"
-                      }`}
-                    >
-                      <Layers className="w-3.5 h-3.5 fill-current text-white/20" />
-                      <span>
-                        {!dispatcherContractReady ? dispatcherContractLabel : formRunning ? "执行中…" : "按合同表单执行"}
-                      </span>
-                    </button>
-
-                    {formRunError && (
-                      <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[9.5px] text-rose-700 font-semibold space-y-1.5">
-                        <div>
-                          执行失败 [{formRunError.code}]：{formRunError.message}
-                        </div>
-                        {formRunError.code === "MODEL_DEFAULT_NOT_CONFIGURED" && (
-                          <button
-                            type="button"
-                            onClick={() => router.push(`/workspace/${encodeURIComponent(selectedWorkspaceId)}?tab=models`)}
-                            className="inline-flex items-center gap-0.5 text-[#3182ce] hover:underline font-black cursor-pointer"
-                          >
-                            前往空间「模型」页设置默认模型
-                            <ArrowRight className="w-3 h-3" />
-                          </button>
-                        )}
-                        {formRunError.code === "POINTS_INSUFFICIENT" && (
-                          <Link
-                            href="/user/pay"
-                            className="inline-flex items-center gap-0.5 text-[#3182ce] hover:underline font-black"
-                          >
-                            前往充值算力点
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
-                          </Link>
-                        )}
-                      </div>
-                    )}
-                    {formRunResult && (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[9.5px] text-emerald-800 font-semibold space-y-1">
-                        <div>
-                          执行成功：executionMode=<strong>{formRunResult.executionMode}</strong>
-                          {formRunResult.contractVersion ? ` ｜ 合同版本 ${formRunResult.contractVersion}` : ""}
-                        </div>
-                        <div className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[9px] text-slate-700 bg-white/70 rounded p-1.5">
-                          {formRunResult.content.slice(0, 600) || "（成果物为空）"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2 shrink-0 z-10">
+                {/* 组件大厅只负责介绍与装配引进；材料填写、模型配置与任务执行均在空间内完成 */}
+                <div className="space-y-2 shrink-0 z-10">
                     {!dispatcherContractReady && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[9.5px] leading-relaxed text-amber-900 font-semibold space-y-1">
                         <div className="font-bold flex items-center gap-1 text-amber-800">
@@ -1228,18 +1148,17 @@ export default function ComponentDispatcherPanel({
                     )}
                     <button
                       onClick={handleQuickUse}
-                      disabled={!dispatcherContractReady || noSpaceDefault}
+                      disabled={!dispatcherContractReady}
                       className={`w-full h-8.5 text-white text-[10px] font-black rounded shadow-md transition-all flex items-center justify-center gap-1 ${
-                        dispatcherContractReady && !noSpaceDefault
+                        dispatcherContractReady
                           ? "bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#2b6cb0] hover:shadow-lg cursor-pointer"
                           : "bg-slate-300 cursor-not-allowed"
                       }`}
                     >
                       <Layers className="w-3.5 h-3.5 fill-current text-white/20" />
-                      <span>{noSpaceDefault ? "请先设置默认模型" : dispatcherContractReady ? "立即使用 (一键转场)" : dispatcherContractLabel}</span>
+                      <span>{dispatcherContractReady ? (isBound ? "立即执行" : "前往空间执行此组件") : dispatcherContractLabel}</span>
                     </button>
                   </div>
-                )}
               </section>
 
               {/* 3. 工作空间分发列表 - 极致扁平化 */}

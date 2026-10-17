@@ -97,6 +97,18 @@ export async function PUT(
         defaultId = dep.id;
       }
 
+      // 授权制（方案 A）：白名单 = 该空间被授予的可用模型清单。
+      // 若启用了白名单，默认模型必须同在清单内，否则会存下「默认模型被自身白名单排除、永远无法调度」的矛盾配置。
+      if (defaultId && allowed.length > 0 && !allowed.includes(defaultId)) {
+        return {
+          status: 400 as const,
+          body: {
+            success: false,
+            error: "默认模型必须也包含在可用模型白名单内。请先将默认模型加入白名单，或更换空间默认模型后再保存。",
+          },
+        };
+      }
+
       const existing = await tx.workspace_model_policy.findUnique({ where: { workspaceId } });
       const row = existing
         ? await tx.workspace_model_policy.update({

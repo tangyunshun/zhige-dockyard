@@ -3,9 +3,10 @@
  *
  * 原则：
  *  - 非法 / 缺失一律回退 0，绝不使用固定兜底值（如 5）；
- *  - componentcatalog.estimatedModelTokens 是「Token 用量估算」，不是算力点、更不是扣费金额；
- *    实际扣点一律由算账中心（src/lib/billing/pricing-center.ts）换算，
- *    历史已发生消耗以 pointledger 的 CONSUME 流水为准，禁止再用本字段当点数累加展示；
+ *  - componentcatalog.estimatedModelTokens 是管理员配置的「每次执行固定扣点数」：
+ *    平台模型执行按此值扣点（全链路展示同一真源）；
+ *    用户自带模型（BYOK）执行按官方单价 × Token 用量 × (1 + 服务费率 15%) 换算扣点；
+ *    历史已发生消耗以 pointledger 的 CONSUME 流水为准；
  *  - 当前阶段（组件迁移未完成前）仅允许单一主材料，文件输入只保留第一个。
  */
 

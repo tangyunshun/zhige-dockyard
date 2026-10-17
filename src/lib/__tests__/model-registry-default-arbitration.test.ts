@@ -62,10 +62,28 @@ describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未�
     depNew = `dep-arb-new-${uid()}`;
     depOldest = `dep-arb-oldest-${uid()}`;
     await prisma.modeldeployment.create({
-      data: { id: depOld, providerId: PROV, modelId: `m-old-${uid()}`, upstreamModel: "u", contextLimit: 8192, enabled: true, createdAt: new Date(Date.now() - 10_000) },
+      data: {
+        id: depOld,
+        providerId: PROV,
+        modelId: `m-old-${uid()}`,
+        upstreamModel: "u",
+        contextLimit: 8192,
+        capabilities: ["TEXT_GENERATION"],
+        enabled: true,
+        createdAt: new Date(Date.now() - 10_000),
+      },
     });
     await prisma.modeldeployment.create({
-      data: { id: depNew, providerId: PROV, modelId: `m-new-${uid()}`, upstreamModel: "u", contextLimit: 8192, enabled: true, createdAt: new Date() },
+      data: {
+        id: depNew,
+        providerId: PROV,
+        modelId: `m-new-${uid()}`,
+        upstreamModel: "u",
+        contextLimit: 8192,
+        capabilities: ["TEXT_GENERATION"],
+        enabled: true,
+        createdAt: new Date(),
+      },
     });
     // 构建执行计划时按合同读取 apiKeyEnv，fixture 需提供最小环境变量（仅注入、结束还原）
     if (!process.env.MODEL_API_KEY) {
@@ -100,7 +118,11 @@ describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未�
 
   test("① 无空间默认 → 明确 MODEL_DEFAULT_NOT_CONFIGURED（不猜测、不按创建时间挑、不回落平台默认）", async () => {
     await assert.rejects(
-      () => resolveDefaultDeployment({ workspaceId: WS }),
+      () =>
+        resolveDefaultDeployment({
+          workspaceId: WS,
+          requiredCapabilities: ["TEXT_GENERATION"],
+        }),
       (e: unknown) => {
         assert.ok(e instanceof ContractValidationError, "必须抛出 ContractValidationError");
         assert.equal((e as ContractValidationError).code, "MODEL_DEFAULT_NOT_CONFIGURED", "无显式默认时必须拦截并提示配置");
@@ -113,7 +135,11 @@ describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未�
   test("② 仅配置平台默认不再被当作执行默认：必须显式配置空间默认", async () => {
     await setPlatformDefaultDeploymentId(depOld);
     await assert.rejects(
-      () => resolveDefaultDeployment({ workspaceId: WS }),
+      () =>
+        resolveDefaultDeployment({
+          workspaceId: WS,
+          requiredCapabilities: ["TEXT_GENERATION"],
+        }),
       (e: unknown) => {
         assert.ok(e instanceof ContractValidationError, "必须抛出 ContractValidationError");
         assert.equal((e as ContractValidationError).code, "MODEL_DEFAULT_NOT_CONFIGURED", "平台默认不再作为执行兜底");
@@ -126,10 +152,13 @@ describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未�
   test("③ 空间默认优先：空间已配置时不得回落到平台默认", async () => {
     await prisma.workspace_model_policy.upsert({
       where: { workspaceId: WS },
-      create: { id: `wmp-${uid()}`, workspaceId: WS, defaultDeploymentId: depNew, allowedDeploymentIds: [] },
-      update: { defaultDeploymentId: depNew, allowedDeploymentIds: [] },
+      create: { id: `wmp-${uid()}`, workspaceId: WS, defaultDeploymentId: depNew, allowedDeploymentIds: [depNew] },
+      update: { defaultDeploymentId: depNew, allowedDeploymentIds: [depNew] },
     });
-    const plan = await resolveDefaultDeployment({ workspaceId: WS });
+    const plan = await resolveDefaultDeployment({
+      workspaceId: WS,
+      requiredCapabilities: ["TEXT_GENERATION"],
+    });
     assert.equal(plan.deploymentId, depNew, "空间默认必须优先于平台默认");
     assert.equal(plan.defaultSource, "SPACE_DEFAULT");
   });
@@ -138,21 +167,41 @@ describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未�
     await prisma.modeldeployment.create({
       data: { id: depOldest, providerId: PROV, modelId: `m-oldest-${uid()}`, upstreamModel: "u", contextLimit: 8192, enabled: true, createdAt: new Date(Date.now() - 600_000) },
     });
-    const before = await resolveDefaultDeployment({ workspaceId: WS });
-    const after = await resolveDefaultDeployment({ workspaceId: WS });
+    const before = await resolveDefaultDeployment({
+      workspaceId: WS,
+      requiredCapabilities: ["TEXT_GENERATION"],
+    });
+    const after = await resolveDefaultDeployment({
+      workspaceId: WS,
+      requiredCapabilities: ["TEXT_GENERATION"],
+    });
     assert.equal(before.deploymentId, depNew, "新增更早部署前必须为空间默认");
     assert.equal(after.deploymentId, depNew, "新增更早 createdAt 部署后裁决结果不得改变");
   });
 
   test("⑤ 部署被禁用 → 拒绝", async () => {
     await prisma.modeldeployment.update({ where: { id: depNew }, data: { enabled: false } });
-    await expectRejected(() => resolveDefaultDeployment({ workspaceId: WS }), "默认部署被禁用时必须拒绝");
+    await expectRejected(
+      () =>
+        resolveDefaultDeployment({
+          workspaceId: WS,
+          requiredCapabilities: ["TEXT_GENERATION"],
+      }),
+      "默认部署被禁用时必须拒绝",
+    );
     await prisma.modeldeployment.update({ where: { id: depNew }, data: { enabled: true } });
   });
 
   test("⑥ 供应商被禁用 → 拒绝", async () => {
     await prisma.modelprovider.update({ where: { name: PROV }, data: { enabled: false } });
-    await expectRejected(() => resolveDefaultDeployment({ workspaceId: WS }), "默认供应商被禁用时必须拒绝");
+    await expectRejected(
+      () =>
+        resolveDefaultDeployment({
+          workspaceId: WS,
+          requiredCapabilities: ["TEXT_GENERATION"],
+      }),
+      "默认供应商被禁用时必须拒绝",
+    );
     await prisma.modelprovider.update({ where: { name: PROV }, data: { enabled: true } });
   });
 
@@ -161,7 +210,14 @@ describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未�
       where: { workspaceId: WS },
       data: { allowedDeploymentIds: [depOld] },
     });
-    await expectRejected(() => resolveDefaultDeployment({ workspaceId: WS }), "默认部署不在白名单时必须拒绝");
+    await expectRejected(
+      () =>
+        resolveDefaultDeployment({
+          workspaceId: WS,
+          requiredCapabilities: ["TEXT_GENERATION"],
+      }),
+      "默认部署不在白名单时必须拒绝",
+    );
   });
 
   test("⑧ 清空空间与平台默认 → 再次明确 MODEL_DEFAULT_NOT_CONFIGURED（不回落平台默认）", async () => {
@@ -169,7 +225,11 @@ describe("默认执行模型数据库唯一裁决（BYO -> 空间默认 -> 未�
     await setPlatformDefaultDeploymentId(null);
     assert.equal(await getPlatformDefaultDeploymentId(), null);
     await assert.rejects(
-      () => resolveDefaultDeployment({ workspaceId: WS }),
+      () =>
+        resolveDefaultDeployment({
+          workspaceId: WS,
+          requiredCapabilities: ["TEXT_GENERATION"],
+        }),
       (e: unknown) => {
         assert.ok(e instanceof ContractValidationError, "必须抛出 ContractValidationError");
         assert.equal((e as ContractValidationError).code, "MODEL_DEFAULT_NOT_CONFIGURED", "全部默认清空时必须拦截");

@@ -195,6 +195,7 @@ function AdminPostsContent() {
   const [usageSearchTerm, setUsageSearchTerm] = useState<string>("");
   const [usageCurrentPage, setUsageCurrentPage] = useState<number>(1);
   const USAGE_PAGE_SIZE = 10;
+  const [subCurrentPage, setSubCurrentPage] = useState<number>(1);
 
   // 企业空间岗位应用多选与删除确认模态框状态
   const [selectedUsageIds, setSelectedUsageIds] = useState<string[]>([]);
@@ -463,7 +464,7 @@ function AdminPostsContent() {
       const payload = {
         items: confirmDeleteUsage.items.map((item) => ({
           workspaceId: item.workspaceId,
-          postId: item.postId || (item.id.includes("_") ? item.id.split("_")[0] : undefined),
+          postId: item.postId,
           postName: item.postName,
           postCode: item.postCode,
         })),
@@ -613,6 +614,19 @@ function AdminPostsContent() {
     const start = (usageCurrentPage - 1) * USAGE_PAGE_SIZE;
     return filteredUsages.slice(start, start + USAGE_PAGE_SIZE);
   }, [filteredUsages, usageCurrentPage]);
+
+  // Tab 3 提报岗位筛选与分页（每页 10 条）
+  const SUBMISSION_PAGE_SIZE = 10;
+  const filteredSubmissions = useMemo(
+    () => submissions.filter((s) => submissionFilter === "ALL" || s.status === submissionFilter),
+    [submissions, submissionFilter]
+  );
+  const totalSubItems = filteredSubmissions.length;
+  const totalSubPages = Math.max(1, Math.ceil(totalSubItems / SUBMISSION_PAGE_SIZE));
+  const paginatedSubmissions = useMemo(() => {
+    const start = (subCurrentPage - 1) * SUBMISSION_PAGE_SIZE;
+    return filteredSubmissions.slice(start, start + SUBMISSION_PAGE_SIZE);
+  }, [filteredSubmissions, subCurrentPage]);
 
   return (
     <div className="min-h-screen bg-[#f0f8ff] space-y-6">
@@ -775,8 +789,8 @@ function AdminPostsContent() {
                 </span>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-2xl font-black text-purple-600">
-                  {stats.totalWorkspacePosts > 0 ? stats.totalWorkspacePosts : totalUsages}
+                <span className="text-2xl font-black text-purple-600" title="以后端统计为准">
+                  {stats.totalWorkspacePosts ?? totalUsages}
                 </span>
                 <span className="text-xs font-medium text-slate-400">次岗位落地</span>
               </div>
@@ -799,7 +813,7 @@ function AdminPostsContent() {
                 <span className="text-xs font-medium text-slate-400">位岗位成员</span>
               </div>
               <p className="text-[11px] text-slate-400 mt-2 font-medium">
-                跨 {stats.totalWorkspaces || workspaces.length} 个企业空间协同支持
+                跨 {stats.totalWorkspaces ?? workspaces.length} 个企业空间协同支持
               </p>
             </div>
           </div>
@@ -1482,7 +1496,10 @@ function AdminPostsContent() {
                 <button
                   key={tab.value}
                   type="button"
-                  onClick={() => setSubmissionFilter(tab.value as any)}
+                  onClick={() => {
+                    setSubmissionFilter(tab.value as any);
+                    setSubCurrentPage(1);
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                     submissionFilter === tab.value
                       ? "bg-white text-slate-800 shadow-2xs font-black"
@@ -1505,9 +1522,7 @@ function AdminPostsContent() {
           </div>
 
           {/* 提报卡片列表 */}
-          {submissions.filter(
-            (s) => submissionFilter === "ALL" || s.status === submissionFilter
-          ).length === 0 ? (
+          {filteredSubmissions.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200/80 p-16 text-center shadow-2xs">
               <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#3182ce] flex items-center justify-center mx-auto mb-3">
                 <Building2 className="w-6 h-6" />
@@ -1521,9 +1536,7 @@ function AdminPostsContent() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {submissions
-                .filter((s) => submissionFilter === "ALL" || s.status === submissionFilter)
-                .map((sub) => {
+              {paginatedSubmissions.map((sub) => {
                   const isPending = sub.status === "PENDING";
                   const isAccepted = sub.status === "ACCEPTED";
                   const isRejected = sub.status === "REJECTED";
@@ -1585,8 +1598,9 @@ function AdminPostsContent() {
                         <div className="mt-3.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs flex items-center justify-between text-slate-600">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="text-[11px] text-slate-400 font-bold shrink-0">提报空间:</span>
+                            <Building2 className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
                             <span className="font-bold text-slate-800 truncate" title={sub.workspaceName}>
-                              🏢 {sub.workspaceName}
+                              {sub.workspaceName}
                             </span>
                           </div>
                           <span className="text-[10px] text-slate-400 shrink-0 font-mono">
@@ -1715,6 +1729,74 @@ function AdminPostsContent() {
                     </div>
                   );
                 })}
+            </div>
+          )}
+
+          {/* ======================= Tab 3 提报列表分页（每页 10 条） ======================= */}
+          {filteredSubmissions.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
+              <div className="text-xs text-slate-500 font-medium">
+                显示第 <strong className="text-slate-800 font-bold">{(subCurrentPage - 1) * SUBMISSION_PAGE_SIZE + 1}</strong> 到{" "}
+                <strong className="text-slate-800 font-bold">
+                  {Math.min(subCurrentPage * SUBMISSION_PAGE_SIZE, totalSubItems)}
+                </strong>{" "}
+                条，共 <strong className="text-slate-800 font-bold">{totalSubItems}</strong> 条提报岗位（每页 10 条）
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={subCurrentPage === 1}
+                  onClick={() => setSubCurrentPage(1)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="首页"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  disabled={subCurrentPage === 1}
+                  onClick={() => setSubCurrentPage((p) => Math.max(1, p - 1))}
+                  className="px-2.5 h-8 rounded-lg flex items-center gap-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-slate-200/60"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>上一页</span>
+                </button>
+                <div className="flex items-center gap-1 mx-1">
+                  {Array.from({ length: totalSubPages }, (_, i) => i + 1).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setSubCurrentPage(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${
+                        subCurrentPage === pageNum
+                          ? "bg-[#3182ce] text-white shadow-2xs scale-105"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  disabled={subCurrentPage === totalSubPages}
+                  onClick={() => setSubCurrentPage((p) => Math.min(totalSubPages, p + 1))}
+                  className="px-2.5 h-8 rounded-lg flex items-center gap-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-slate-200/60"
+                >
+                  <span>下一页</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={subCurrentPage === totalSubPages}
+                  onClick={() => setSubCurrentPage(totalSubPages)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  title="末页"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -2033,7 +2115,10 @@ function AdminPostsContent() {
                 <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-white rounded-lg border border-amber-200/60 shadow-2xs">
                   {postBlockedModal.usedWorkspaces.map((ws) => (
                     <div key={ws.id} className="flex items-center justify-between text-[11px] text-slate-700 py-0.5">
-                      <span className="font-bold truncate max-w-[200px]">🏢 {ws.name}</span>
+                      <span className="font-bold truncate max-w-[200px] inline-flex items-center gap-1">
+                        <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        {ws.name}
+                      </span>
                       <span className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded font-mono font-bold text-[10px] border border-amber-100">
                         {ws.memberCount} 人在编
                       </span>
@@ -2220,7 +2305,10 @@ function AdminPostsContent() {
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 font-bold">提报企业空间:</span>
-                  <span className="font-black text-slate-800">🏢 {viewingSubmission.workspaceName}</span>
+                  <span className="font-black text-slate-800 inline-flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
+                    {viewingSubmission.workspaceName}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 font-bold">空间唯一ID:</span>

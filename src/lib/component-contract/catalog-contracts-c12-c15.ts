@@ -167,8 +167,9 @@ export const C12_CONTRACT: ComponentContract = draft("C12", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 120,
     estimatedTokens: 120,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
   // 业务阻断事实（结构化三要素，随 DRAFT 合同持久化）：
   // 目录/口语诉求包含「DDL/ER 图 图形化输出」（清晰展示外键关系的关联拓扑图），属图形化输出，当前不支持 → 登记阻断，
@@ -235,8 +236,9 @@ export const C13_CONTRACT: ComponentContract = draft("C13", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 150,
     estimatedTokens: 150,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -293,8 +295,9 @@ export const C14_CONTRACT: ComponentContract = draft("C14", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 200,
     estimatedTokens: 200,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 
@@ -389,8 +392,9 @@ export const C15_CONTRACT: ComponentContract = draft("C15", {
   },
   billingPolicy: {
     mode: "ESTIMATED_COMPATIBILITY",
+    minServiceFeePoints: 100,
     estimatedTokens: 100,
-    ruleDescription: "按组件声明的估算 Token（与目录 estimatedModelTokens 一致）预估扣点，未开启真实结算。",
+    ruleDescription: "按组件目录配置的固定扣点（算力点）执行结算，未开启真实结算。",
   },
 });
 

@@ -44,8 +44,9 @@ describe("空间默认模型 defaultDeploymentId 语义", { skip: !process.env.D
     let policyId = "";
     try {
       const dep = await seed(p, m, true, true);
+      // 授权制（方案 A）：默认模型必须同时被白名单授权，否则一律拒绝
       const pol = await prisma.workspace_model_policy.create({
-        data: { id: randomUUID(), workspaceId: ws, defaultDeploymentId: dep.id, allowedDeploymentIds: [] },
+        data: { id: randomUUID(), workspaceId: ws, defaultDeploymentId: dep.id, allowedDeploymentIds: [dep.id] },
       });
       policyId = pol.id;
 

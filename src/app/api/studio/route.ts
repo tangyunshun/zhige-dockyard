@@ -30,6 +30,12 @@ import { getFileTypeLabel, resolveAssetSize } from "@/lib/file-type";
 import { addNotification } from "@/lib/notifications-store";
 import { generateSmartSummary } from "@/lib/smart-summary";
 import { saveAssetFile, deleteAssetFile, readAssetFile } from "@/lib/file-store";
+import {
+  assertStorageQuota,
+  addStorageUsed,
+  subtractStorageUsed,
+  StorageQuotaError,
+} from "@/lib/storage-quota";
 import { getFileExtension } from "@/lib/file-type";
 
 // 文件/资料文本提取统一走可取消超时入口（内部 AbortController，超时真正终止底层 OCR worker）
@@ -105,7 +111,6 @@ import {
   estimatePoints,
   splitTokenEstimate,
   resolvePricingSource,
-  computeDepositTokenBounds,
 } from "@/lib/billing/pricing-center";
 import {
   isComponentSettlementEnabled,
@@ -2442,6 +2447,8 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         }
 
         // 组件成本必须来自 componentcatalog 真实字段；空 / 0 / 非法一律拒绝，绝不猜测或回退到固定值
+        // 固定点数计费：管理员后台配置的 estimatedModelTokens 即该组件每次执行的固定扣点数，
+        // 各页面展示与实际扣点均以此为准（同一真源）；Token 用量仅作内部成本统计，不参与扣点换算。
         const rawCost = Number(comp.estimatedModelTokens);
         if (!Number.isFinite(rawCost) || rawCost <= 0) {
           return NextResponse.json(
@@ -2453,15 +2460,13 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             { status: 400 },
           );
         }
-        // 扣点口径：一律经算账中心换算（componentcatalog.estimatedModelTokens 是 Token 估算，
-        // 严禁直接当算力点扣）。兼容期规则：换算所需价格未登记的模型，维持既有扣点行为，
-        // 并在返回中标注估算口径、记录待登记清单，绝不静默改变既有组件的扣费数额。
-        const fallbackPoints = rawCost;
-        let deductTokens = fallbackPoints;
+        let deductTokens = rawCost;
         let billingBasis: "CONVERTED_PRICE" | "ESTIMATED_COMPATIBILITY" = "ESTIMATED_COMPATIBILITY";
         let pricingEstimateSnapshot: unknown = null;
         let pendingRegistration: { deploymentId: string; reason: string | null } | null = null;
         try {
+          // 模型策略门禁（默认模型未配置 / 模型不在白名单 / 能力不满足等 ContractValidationError）：
+          // 必须在任何算力点、额度检查之前裁决 —— 向上抛出，由外层统一返回明确错误码（先验证模型，再验证算力点）。
           const caps = extractRequiredCapabilities(activeContract);
           if (caps.length > 0) {
             const requestedDeploymentId = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
@@ -2473,40 +2478,53 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                   requiredCapabilities: caps,
                   userId: userId,
                 });
-            const steps = Array.isArray((activeContract as any)?.executionPlan?.steps)
-              ? ((activeContract as any).executionPlan.steps as Array<{ maxOutputTokens?: number }>)
-              : [];
-            const maxOut = steps.reduce(
-              (acc, s) => acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
-              0,
-            );
-            const split = splitTokenEstimate({
-              estimatedTotalTokens: rawCost,
-              maxOutputTokens: maxOut > 0 ? maxOut : null,
-            });
-            const est = await estimatePoints({
-              modelDeploymentId: plan.deploymentId,
-              inputTokens: split.inputTokens,
-              outputTokens: split.outputTokens,
-              pricingSource: resolvePricingSource(plan.deploymentId),
-            });
-            pricingEstimateSnapshot = est.snapshot;
-            if (est.basis === "CONVERTED_PRICE" && est.points !== null && est.points > 0) {
-              deductTokens = est.points;
-              billingBasis = "CONVERTED_PRICE";
-            } else {
-              pendingRegistration = { deploymentId: plan.deploymentId, reason: est.blockedReason };
-              console.warn(
-                `[算账中心] 部署 ${plan.deploymentId} 单价未登记，兼容期维持既有估算扣点口径 ${fallbackPoints} 点`,
+            // 计费双轨制：
+            // - 平台模型：扣点 = 管理员配置的固定点数（rawCost，全链路展示同一真源）；
+            // - 用户自带模型（BYOK，deploymentId = byo:<workspaceId>）：平台只收服务费，
+            //   扣点 = 用户登记的官方单价 × Token 用量 × (1 + byokServiceRateBps 服务费率 15%)，
+            //   经算账核心 estimatePoints 换算（内部含服务费与单次保底，不套平台加价系数 k）。
+            //   Token 用量优先级：合同 billingPolicy.estimatedTokens → 目录估算值（rawCost）。
+            if (resolvePricingSource(plan.deploymentId) === "USER_BYOK") {
+              const steps = Array.isArray((activeContract as any)?.executionPlan?.steps)
+                ? ((activeContract as any).executionPlan.steps as Array<{ maxOutputTokens?: number }>)
+                : [];
+              const maxOut = steps.reduce(
+                (acc, s) => acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
+                0,
               );
+              const contractTokens = (activeContract as any)?.billingPolicy?.estimatedTokens;
+              const estimatedTotalTokens =
+                typeof contractTokens === "number" && contractTokens > 0 ? contractTokens : rawCost;
+              const split = splitTokenEstimate({
+                estimatedTotalTokens,
+                maxOutputTokens: maxOut > 0 ? maxOut : null,
+              });
+              const est = await estimatePoints({
+                modelDeploymentId: plan.deploymentId,
+                inputTokens: split.inputTokens,
+                outputTokens: split.outputTokens,
+                pricingSource: resolvePricingSource(plan.deploymentId),
+                estimateSource:
+                  typeof contractTokens === "number" && contractTokens > 0
+                    ? "CONTRACT_ESTIMATED_TOKENS"
+                    : "CATALOG_ESTIMATED_TOKENS",
+              });
+              pricingEstimateSnapshot = est.snapshot;
+              if (est.basis === "CONVERTED_PRICE" && est.points !== null && est.points > 0) {
+                deductTokens = est.points;
+                billingBasis = "CONVERTED_PRICE";
+              } else {
+                pendingRegistration = { deploymentId: plan.deploymentId, reason: est.blockedReason };
+                console.warn(
+                  "[算账中心] BYOK 官方单价不可用，兼容期维持固定点数扣点口径:",
+                  rawCost,
+                );
+              }
             }
           }
         } catch (estimateErr) {
-          // 模型策略门禁（默认模型未配置 / 模型不在白名单 / 能力不满足等 ContractValidationError）：
-          // 必须在任何算力点、额度检查之前裁决 —— 向上抛出，由外层统一返回明确错误码（先验证模型，再验证算力点）。
-          // 仅「单价未登记」等纯算账估价失败才在此兼容吞掉，维持既有估算扣点口径。
           if (estimateErr instanceof ContractValidationError) throw estimateErr;
-          console.warn("[算账中心] 估价失败，兼容期维持既有估算扣点口径:", (estimateErr as Error)?.message);
+          console.warn("[算账中心] 模型裁决异常:", (estimateErr as Error)?.message);
         }
 
         // 自然月跨月算力配额自动重置
@@ -3044,41 +3062,9 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
               });
               // 批次 2 押金（hold）：按最坏情况预扣——输入取 max(材料字符÷2, 校准输入均值)（封顶，
               // 校准值为历史真实 prompt 均值，防中文材料低估导致押金形同虚设）+ 合同 maxOutputTokens；
-              // 押金 ≥ 实扣，实际用量结算后多退少补（completeSettlement），余额永不为负。
-              const maxOutFromContract = Array.isArray((activeContract as any)?.executionPlan?.steps)
-                ? ((activeContract as any).executionPlan.steps as Array<{ maxOutputTokens?: number }>).reduce(
-                    (acc, s) => acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
-                    0,
-                  )
-                : 0;
-              let calibratedInput: number | null = null;
-              try {
-                const calibRow = await prisma.systemconfig.findUnique({
-                  where: { key: "billing_usage_calibration" },
-                  select: { value: true },
-                });
-                const calibJson = calibRow?.value ? JSON.parse(calibRow.value) : null;
-                const cal = calibJson?.[comp.id];
-                if (cal && Number.isFinite(Number(cal.in)) && Number(cal.in) > 0) calibratedInput = Number(cal.in);
-              } catch {
-                calibratedInput = null; // 校准缺失退回字符估算，绝不猜测
-              }
-              const bounds = computeDepositTokenBounds(
-                typeof effectiveInputMaterial === "string" ? effectiveInputMaterial.length : 0,
-                maxOutFromContract > 0 ? maxOutFromContract : null,
-                calibratedInput,
-              );
-              const depositEst = await estimatePoints({
-                modelDeploymentId: modelPlan.deploymentId,
-                inputTokens: bounds.inputTokens,
-                outputTokens: bounds.outputTokens,
-                pricingSource: resolvePricingSource(modelPlan.deploymentId),
-                estimateSource: "DEPOSIT_WORST_CASE",
-              });
-              depositPoints =
-                depositEst.basis === "CONVERTED_PRICE" && depositEst.points !== null && depositEst.points > 0
-                  ? depositEst.points
-                  : Math.max(deductTokens, 1); // 押金兜底 = 预计扣点（绝不 0 押金开跑）
+              // 押金 ≥ 实扣：固定点数计费下最坏扣点即管理员配置的固定点数，押金直接取扣点数；
+              // 实际用量结算后多退少补（completeSettlement），余额永不为负；Token 边界估算不再参与押金计算。
+              depositPoints = Math.max(deductTokens, 1); // 押金兜底 = 预计扣点（绝不 0 押金开跑）
               const holdRes = await consumeAndCreateSettlementHold({
                 taskId,
                 userId,
@@ -3914,6 +3900,15 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
 
         originalName = (file as any).name || title;
         fileExt = getFileExtension(originalName);
+        // 存储配额校验：超出空间文件存储上限时拒绝上传（落盘前拦截，避免产生孤儿文件）
+        try {
+          await assertStorageQuota(targetWorkspaceId || "", buffer.length);
+        } catch (quotaErr) {
+          if (quotaErr instanceof StorageQuotaError) {
+            return NextResponse.json({ success: false, error: quotaErr.message }, { status: 403 });
+          }
+          throw quotaErr;
+        }
         const saved = await saveAssetFile(targetWorkspaceId || "", originalName || title, buffer, fileExt);
         filePath = saved.filePath;
         fileSize = saved.size;
@@ -3995,6 +3990,11 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           updatedAt: new Date(),
         },
       });
+
+      // 存储用量真实入账：按文件真实字节数累加空间存储占用（与 workspacequota.storageUsed 展示口径一致）
+      if (normalizedFileSize && normalizedFileSize > 0) {
+        await addStorageUsed(targetWorkspaceId, normalizedFileSize);
+      }
 
       // 资料上传同样需要留痕审计
       await writeAuditLog(userId, "asset:upload", { title, type: doc.type, documentId: doc.id, status: initialStatus }, targetWorkspaceId)
@@ -4201,6 +4201,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         try {
           await prisma.document.delete({ where: { id: assetId } });
           await deleteAssetFile(target.filePath);
+          await subtractStorageUsed(target.workspaceId, target.fileSize || 0);
         } catch {
           await prisma.document.update({
             where: { id: assetId },
@@ -4981,6 +4982,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           where: { documentId: targetDoc.id, workspaceId },
         });
         await deleteAssetFile(targetDoc.filePath);
+        await subtractStorageUsed(targetDoc.workspaceId || workspaceId, targetDoc.fileSize || 0);
       } else {
         await prisma.documentremoval.deleteMany({
           where: { documentId: record.documentId, workspaceId },
@@ -5152,6 +5154,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           try {
             await prisma.document.delete({ where: { id: assetId } });
             await deleteAssetFile(target.filePath);
+            await subtractStorageUsed(target.workspaceId, target.fileSize || 0);
           } catch {
             await prisma.document.update({
               where: { id: assetId },

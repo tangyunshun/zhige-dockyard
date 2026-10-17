@@ -40,7 +40,9 @@ export type ComponentContractErrorCode =
   | "ACTIVE_CONTRACT_CANNOT_ARCHIVE"
   | "NO_ACTIVE_CONTRACT"
   | "COMPONENT_CONTRACT_NOT_READY"
-  | "CONTRACT_NOT_PUBLISHED_CANNOT_ACTIVATE";
+  | "CONTRACT_NOT_PUBLISHED_CANNOT_ACTIVATE"
+  | "CONTRACT_NOT_DRAFT_CANNOT_DELETE"
+  | "ACTIVE_CONTRACT_CANNOT_DELETE";
 
 export class ComponentContractError extends Error {
   public readonly code: ComponentContractErrorCode;

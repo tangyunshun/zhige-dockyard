@@ -7,7 +7,7 @@ import {
   ArrowLeft,
   Search,
   RefreshCw,
-  Zap,
+  Coins,
   CreditCard,
   CheckCircle2,
   Users,
@@ -84,16 +84,15 @@ export default function OrdersPage() {
     availableChannels: string[];
   } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [channelFilter, setChannelFilter] = useState("ALL");
   const [currentPage, setCurrentPage] = useState(1);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
   const [detailRecord, setDetailRecord] = useState<BillingRecord | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadOrders();
-  }, []);
 
   const copyToClipboard = (text: string, key: string, label = "内容") => {
     if (!text) return;
@@ -109,7 +108,15 @@ export default function OrdersPage() {
     try {
       setLoading(true);
       const token = getAuthToken();
-      const res = await fetch("/api/admin/billing-records", {
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: String(PAGE_SIZE),
+        status: statusFilter,
+        type: typeFilter,
+        channel: channelFilter,
+        keyword: debouncedSearch,
+      });
+      const res = await fetch(`/api/admin/billing-records?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -118,6 +125,10 @@ export default function OrdersPage() {
         setRecords(data.records || []);
         if (data.stats) {
           setServerStats(data.stats);
+        }
+        if (data.pagination) {
+          setServerTotal(data.pagination.total || 0);
+          setServerTotalPages(data.pagination.totalPages || 1);
         }
       } else {
         const err = await res.json().catch(() => null);
@@ -131,45 +142,26 @@ export default function OrdersPage() {
     }
   };
 
+  // 搜索词防抖（300ms），避免每敲一个字都请求
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // 筛选 / 分页 / 搜索变化时重新拉取（服务端筛选 + 分页）
+  useEffect(() => {
+    loadOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, statusFilter, typeFilter, channelFilter, debouncedSearch]);
+
   // 全库真实统计指标（数据库驱动聚合，不受分页 100 条限制）
   const totalRevenue = serverStats ? serverStats.totalRevenue : records.reduce((sum, r) => sum + (r.amount || 0), 0);
   const totalOrdersCount = serverStats ? serverStats.totalOrders : records.length;
   const tokenRechargeCount = serverStats ? serverStats.tokenRechargeCount : records.filter((r) => r.type === "TOKEN_RECHARGE").length;
   const planUpgradeCount = serverStats ? serverStats.planUpgradeCount : records.filter((r) => r.type === "PLAN_UPGRADE").length;
 
-  const filteredRecords = records.filter((r) => {
-    const query = searchTerm.toLowerCase().trim();
-    const userName = (r.user?.name || "").toLowerCase();
-    const userEmail = (r.user?.email || "").toLowerCase();
-    const wsName = (r.workspace?.name || "").toLowerCase();
-    const orderId = (r.id || "").toLowerCase();
-    const title = (r.title || "").toLowerCase();
-    const userId = (r.userId || "").toLowerCase();
-
-    const matchesSearch =
-      !query ||
-      orderId.includes(query) ||
-      title.includes(query) ||
-      userName.includes(query) ||
-      userEmail.includes(query) ||
-      wsName.includes(query) ||
-      userId.includes(query);
-
-    const matchesType = typeFilter === "ALL" || r.type === typeFilter;
-    const matchesStatus = statusFilter === "ALL" || r.status === statusFilter;
-
-    let matchesChannel = true;
-    if (channelFilter !== "ALL") {
-      const ch = (r.channel || "").toUpperCase();
-      if (channelFilter === "ONLINE_PAY") matchesChannel = !ch || ch.includes("ONLINE");
-      else if (channelFilter === "WECHAT") matchesChannel = ch.includes("WECHAT") || ch.includes("WX");
-      else if (channelFilter === "ALIPAY") matchesChannel = ch.includes("ALIPAY") || ch.includes("ALI");
-      else if (channelFilter === "STRIPE") matchesChannel = ch.includes("STRIPE");
-      else if (channelFilter === "OTHER") matchesChannel = !ch.includes("WECHAT") && !ch.includes("ALIPAY") && !ch.includes("STRIPE") && !ch.includes("ONLINE");
-    }
-
-    return matchesSearch && matchesType && matchesStatus && matchesChannel;
-  });
+  // 服务端已按筛选条件返回，前端直接使用（保留变量名以最小化改动）
+  const filteredRecords = records;
 
   // 会员等级徽章渲染（采用企业级 Lucide 商务矢量图标，彻底摒弃 emoji 符号）
   const renderMembershipBadge = (level?: string) => {
@@ -212,6 +204,13 @@ export default function OrdersPage() {
       default:
         return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">普通用户</span>;
     }
+  };
+
+  // 交易类型 → 中文（下拉动态项未知时回退原值）
+  const ORDER_TYPE_LABELS: Record<string, string> = {
+    TOKEN_RECHARGE: "算力包充值",
+    PLAN_UPGRADE: "空间套餐升级",
+    MEMBERSHIP: "会员订阅",
   };
 
   // 支付渠道渲染（100% 简体中文，彻底杜绝裸露英文）
@@ -276,7 +275,7 @@ export default function OrdersPage() {
     return (
       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
         <Receipt className="w-3 h-3 text-slate-400" />
-        在线快捷支付
+        未知渠道
       </span>
     );
   };
@@ -314,18 +313,22 @@ export default function OrdersPage() {
           </span>
         );
       default:
-        return <span className="text-slate-500 font-bold">{status}</span>;
+        return (
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200"
+            title={`原始状态：${status}`}
+          >
+            未知状态
+          </span>
+        );
     }
   };
 
-  // 过滤后结果分页（每页 10 条）
-  const totalItems = filteredRecords.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  // 服务端已筛选 + 分页：当前页即结果，总数 / 总页数以后端为准
+  const totalItems = serverTotal;
+  const totalPages = serverTotalPages || 1;
   const safePage = Math.min(currentPage, totalPages);
-  const pagedRecords = filteredRecords.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE,
-  );
+  const pagedRecords = records;
 
   return (
     <div className="space-y-6 pb-8 text-left font-sans">
@@ -337,7 +340,7 @@ export default function OrdersPage() {
             订单与算力充值交易管理 (Orders & Billing)
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            实时追溯审计全平台算力加油包充值、空间套餐升级与交易明细
+            实时追溯审计全平台算力包充值、空间套餐升级与交易明细
           </p>
         </div>
         <button
@@ -353,7 +356,7 @@ export default function OrdersPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">累计交易总额</div>
+            <div className="text-xs text-slate-500 font-bold mb-1">成功交易总额</div>
             <div className="text-2xl font-black font-mono text-[#3182ce]">
               ¥ {(totalRevenue / 100).toFixed(2)}
             </div>
@@ -377,13 +380,13 @@ export default function OrdersPage() {
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">算力加油充值</div>
+            <div className="text-xs text-slate-500 font-bold mb-1">算力充值</div>
             <div className="text-2xl font-black font-mono text-amber-600">
               {tokenRechargeCount} <span className="text-xs font-normal text-slate-400">单</span>
             </div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-            <Zap className="w-5 h-5" />
+            <Coins className="w-5 h-5" />
           </div>
         </div>
 
@@ -427,14 +430,14 @@ export default function OrdersPage() {
             className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer hover:bg-slate-100 transition-colors"
           >
             <option value="ALL">全部交易类型</option>
-            <option value="TOKEN_RECHARGE">算力加油包充值</option>
+            <option value="TOKEN_RECHARGE">算力包充值</option>
             <option value="PLAN_UPGRADE">空间套餐升级</option>
             <option value="MEMBERSHIP">会员级别订阅</option>
             {serverStats?.availableTypes
               ?.filter((t) => !["TOKEN_RECHARGE", "PLAN_UPGRADE", "MEMBERSHIP"].includes(t))
               .map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {ORDER_TYPE_LABELS[t] || t}
                 </option>
               ))}
           </select>
@@ -566,7 +569,7 @@ export default function OrdersPage() {
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {r.type === "TOKEN_RECHARGE" ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-50 text-amber-600 border border-amber-200">
-                            <Zap className="w-3 h-3 fill-amber-500" />
+                            <Coins className="w-3 h-3 fill-amber-500" />
                             算力充值
                           </span>
                         ) : r.type === "PLAN_UPGRADE" ? (
@@ -869,8 +872,8 @@ export default function OrdersPage() {
                     <span className="font-bold text-slate-800 text-xs mt-1 block">
                       {detailRecord.type === "TOKEN_RECHARGE" ? (
                         <span className="inline-flex items-center gap-1 text-amber-700">
-                          <Zap className="w-3.5 h-3.5 text-amber-600" />
-                          算力加油包充值
+                          <Coins className="w-3.5 h-3.5 text-amber-600" />
+                          算力包充值
                         </span>
                       ) : detailRecord.type === "PLAN_UPGRADE" ? (
                         <span className="inline-flex items-center gap-1 text-[#3182ce]">
@@ -915,8 +918,32 @@ export default function OrdersPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-700 font-bold">已实时入账同步至算力中枢</span>
+                  {detailRecord.status?.toUpperCase() === "SUCCESS" ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-700 font-bold">已入账</span>
+                    </>
+                  ) : detailRecord.status?.toUpperCase() === "PENDING" ? (
+                    <>
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="text-amber-600 font-bold">处理中，未入账</span>
+                    </>
+                  ) : detailRecord.status?.toUpperCase() === "REFUNDED" ? (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5 text-purple-500" />
+                      <span className="text-purple-600 font-bold">已退款</span>
+                    </>
+                  ) : detailRecord.status?.toUpperCase() === "FAILED" || detailRecord.status?.toUpperCase() === "CANCELLED" ? (
+                    <>
+                      <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                      <span className="text-rose-600 font-bold">未成交</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-slate-500 font-bold">状态更新中</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

@@ -32,8 +32,7 @@ import {
   Info,
   CheckSquare,
   Square,
-  Sparkles,
-  Cpu,
+  Activity,
 } from "lucide-react";
 import type { SettlementDictPayload } from "@/lib/settlement-dict";
 
@@ -153,11 +152,15 @@ export default function AdminTokenSettlementsPage() {
     onConfirm: () => {},
   });
 
-  const copyText = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 1500);
-    toast.success("已复制到剪贴板");
+  const copyText = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1500);
+      toast.success("已复制到剪贴板");
+    } catch {
+      toast.error("复制失败，请手动选中复制");
+    }
   };
 
   // 获取统计大盘数据
@@ -181,9 +184,11 @@ export default function AdminTokenSettlementsPage() {
           releasedCount: json.data.releasedCount ?? s.released ?? 0,
           heldCount: json.data.heldCount ?? s.hold ?? 0,
         });
+      } else {
+        toast.error(json?.error || "运营统计加载失败");
       }
     } catch {
-      // 容错静默
+      toast.error("运营统计加载失败");
     } finally {
       setStatsLoading(false);
     }
@@ -472,7 +477,7 @@ export default function AdminTokenSettlementsPage() {
           <div className="min-w-0">
             <h2 className="text-xl font-black text-slate-800">Token 真实结算人工复核</h2>
             <p className="text-xs text-slate-500 mt-1">
-              针对高风险挂起、模型失败释放异常或差额补扣待裁决单据，由管理员在银行级事务隔离下执行权威裁决与资金对账。
+              针对高风险挂起、模型失败释放异常或差额补扣待裁决单据，由管理员在事务隔离下执行复核与资金对账。
             </p>
           </div>
         </div>
@@ -730,7 +735,7 @@ export default function AdminTokenSettlementsPage() {
           {loading && records.length === 0 ? (
             <div className="py-20 text-center text-xs font-bold text-slate-400">
               <RefreshCw className="w-7 h-7 animate-spin text-[#3182ce] mx-auto mb-3 opacity-80" />
-              正在读取银行级结算流水...
+              正在读取结算流水...
             </div>
           ) : records.length === 0 ? (
             <div className="py-20 text-center text-xs font-bold text-slate-400">
@@ -1164,7 +1169,7 @@ export default function AdminTokenSettlementsPage() {
               {/* Token 消耗明细 */}
               <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-100 space-y-1.5">
                 <div className="font-black text-slate-700 text-xs mb-1 flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5 text-[#3182ce]" /> 真实 Token 吞吐指标
+                  <Activity className="w-3.5 h-3.5 text-[#3182ce]" /> Token 消耗指标
                 </div>
                 <Row label="输入 Tokens (提示词)" value={detailRecord.inputTokens.toLocaleString()} mono />
                 <Row label="输出 Tokens (模型补全)" value={detailRecord.outputTokens.toLocaleString()} mono />

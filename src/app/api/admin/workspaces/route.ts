@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { toJsonSafe } from "@/lib/json-safe";
 
 export async function GET(request: NextRequest) {
@@ -12,6 +12,21 @@ export async function GET(request: NextRequest) {
       return authCheck.errorResponse || NextResponse.json({ error: "无权访问工作空间管理" }, { status: 403 });
     }
     const currentAdminId = authCheck.user?.id || "";
+
+    // 审计：记录管理员查阅空间列表（高危只读操作留痕）
+    const listParams = new URL(request.url).searchParams;
+    void writeAuditLog(
+      currentAdminId,
+      "workspace:list",
+      {
+        search: listParams.get("search") || "",
+        type: listParams.get("type") || "",
+        page: parseInt(listParams.get("page") || "1"),
+      },
+      null,
+      null,
+      request,
+    );
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
@@ -419,6 +434,20 @@ export async function DELETE(request: NextRequest) {
     await prisma.workspace.delete({
       where: { id: workspaceId },
     });
+
+    // 统一审计：记录彻底解散/删除空间（极高危可审计）
+    void writeAuditLog(
+      authCheck.user?.id || "",
+      "workspace:delete",
+      {
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+        type: workspace.type,
+      },
+      workspace.id,
+      null,
+      request,
+    );
 
     return NextResponse.json({
       success: true,

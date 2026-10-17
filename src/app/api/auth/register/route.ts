@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 // Refresh Turbopack compilation cache
 import { prisma } from "@/lib/prisma";
 import { grantNewUserGift } from "@/lib/credit-service";
+import { inheritFreeDefaultModelsForNewWorkspace } from "@/lib/platform-default-models";
+import { grantNewSpaceTrialQuota } from "@/lib/new-space-trial-quota";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
 import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
@@ -423,6 +425,18 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
         updatedAt: now
       }
     });
+
+    // 平台默认模型池：新空间自动继承「默认免费模型」，保证用户注册后立即可用
+    await inheritFreeDefaultModelsForNewWorkspace(workspace.id).catch((e) =>
+      console.warn("[注册] 继承平台默认免费模型非致命提示:", e),
+    );
+
+    // 新空间体验额度：按后台配置发放一次性体验额度（可配开关 / 数值 / 有效期，独立于注册福利）
+    await grantNewSpaceTrialQuota({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      operatorId: userId,
+    }).catch((e) => console.warn("[注册] 发放新空间体验额度非致命提示:", e));
 
     // 注册福利：注册当月自动发放首月 100 点（连续 3 个自然月、当月有效月底清零，幂等）
     await grantNewUserGift({

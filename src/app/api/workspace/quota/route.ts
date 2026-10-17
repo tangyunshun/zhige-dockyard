@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { checkWorkspaceLowBalance } from "@/lib/quota-alert";
 
 export async function GET(request: NextRequest) {
   try {
@@ -156,6 +157,15 @@ export async function GET(request: NextRequest) {
     // 会员等级展示名（用于前端「当前订阅方案」等文案，缺省回退为等级 ID）
     const membershipLevelName = membershipLevel?.nameZh || user.membershipLevel;
 
+    // 余额预警阈值（空间级，workspacequota.poolLowThreshold）：<=0 表示不预警
+    const poolLowThreshold = workspaceQuotaRecord ? Number(workspaceQuotaRecord.poolLowThreshold ?? 0) : 0;
+    const lowBalance = poolLowThreshold > 0 && currentTokenBalance < poolLowThreshold;
+
+    // 余额预警：低于阈值时向空间所有者发站内通知（24h 去重，失败不阻断查询）
+    if (workspaceIdParam && lowBalance) {
+      void checkWorkspaceLowBalance(workspaceIdParam).catch(() => {});
+    }
+
     return NextResponse.json({
       success: true,
       tokenBalance: currentTokenBalance,
@@ -165,6 +175,8 @@ export async function GET(request: NextRequest) {
       membershipLevelName,
       totalUsedTokens,
       resetAt,
+      poolLowThreshold,
+      lowBalance,
       quota: workspaceQuotaRecord ? {
         workspaceId: workspaceQuotaRecord.workspaceId,
         tokenBalance: Number(workspaceQuotaRecord.tokenBalance),
@@ -178,6 +190,8 @@ export async function GET(request: NextRequest) {
         totalPublishedComponents,
         totalUsedTokens,
         resetAt,
+        poolLowThreshold,
+        lowBalance,
         quotas: {
           enterpriseSlots: {
             total: Number(membershipLevel.maxEnterpriseWorkspaces),

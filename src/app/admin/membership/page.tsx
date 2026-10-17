@@ -13,7 +13,6 @@ import {
   History,
   TrendingUp,
   Award,
-  Zap,
   RefreshCw,
   PlusCircle,
   Clock,
@@ -97,7 +96,7 @@ const formatPaymentMethod = (method?: string) => {
 
 // 订单状态中文映射字典
 const formatOrderStatus = (status?: string) => {
-  if (!status) return { label: "已完成", bg: "bg-emerald-50 text-emerald-600 border-emerald-200" };
+  if (!status) return { label: "未知状态", bg: "bg-slate-50 text-slate-500 border-slate-200" };
   const upper = status.toUpperCase();
   const map: Record<string, { label: string; bg: string }> = {
     PAID: { label: "已支付", bg: "bg-emerald-50 text-emerald-600 border-emerald-200" },
@@ -151,7 +150,7 @@ export default function AdminMembershipIndex() {
 
       const authToken = getAuthToken();
       if (!authToken) {
-        console.error("未找到登录凭证");
+        toast.error("登录已失效，请重新登录");
         return;
       }
 
@@ -171,7 +170,11 @@ export default function AdminMembershipIndex() {
           setStats(statsData.data.overview);
           setRecentOrders(statsData.data.recentOrders || []);
           setRecentLogs(statsData.data.recentLogs || []);
+        } else {
+          toast.error(statsData.error || "会员统计数据加载失败");
         }
+      } else {
+        toast.error("会员统计数据加载失败");
       }
 
       if (levelsRes.ok) {
@@ -207,8 +210,8 @@ export default function AdminMembershipIndex() {
       glowColor: "rgba(49, 130, 206, 0.15)",
     },
     {
-      icon: Zap,
-      title: "算力加油包管理",
+      icon: Coins,
+      title: "算力包管理",
       badge: `${stats?.activeTokenPacks ?? 0} 款在架`,
       description: "管理跨空间通用的算力点数包、定价阶梯与折扣优惠",
       href: "/admin/membership/token-packs",
@@ -256,8 +259,8 @@ export default function AdminMembershipIndex() {
     <div className="space-y-6 pb-12">
       {/* 顶部统一面包屑与横向导航 */}
       <MembershipNavHeader
-        title="会员管理中枢"
-        subtitle="全局掌控商业化营收表现、会员等级配额与算力点数包运营"
+        title="会员管理"
+        subtitle="营收表现、会员等级配额与算力点数包运营数据总览"
       >
         <button
           type="button"
@@ -339,7 +342,7 @@ export default function AdminMembershipIndex() {
                 <FileText className="w-5 h-5" />
               </div>
               <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full">
-                成功率 {stats?.totalOrders ? Math.round(((stats.paidOrdersCount || 0) / stats.totalOrders) * 100) : 100}%
+                成功率 {stats?.totalOrders ? `${Math.round(((stats.paidOrdersCount || 0) / stats.totalOrders) * 100)}%` : "—"}
               </span>
             </div>
             <div className="text-xs font-bold text-slate-500 mb-1">订单累计总量</div>
@@ -353,12 +356,12 @@ export default function AdminMembershipIndex() {
             </div>
           </div>
 
-          {/* 指标 4：商品与加油包上架矩阵 */}
+          {/* 指标 4：商品与算力包上架矩阵 */}
           <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl border border-white/90 p-5 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden group">
             <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-amber-500/10 opacity-30 blur-2xl group-hover:scale-125 transition-transform" />
             <div className="flex items-center justify-between mb-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 text-white flex items-center justify-center shadow-xs">
-                <Zap className="w-5 h-5" />
+                <Coins className="w-5 h-5" />
               </div>
               <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full">
                 {stats?.activeLevels || 0} 级 / {stats?.activeTokenPacks || 0} 包
@@ -370,22 +373,22 @@ export default function AdminMembershipIndex() {
                 {(stats?.activeLevels || 0) + (stats?.activeTokenPacks || 0)}
               </span>
               <span className="text-[11px] text-slate-400 font-medium">
-                个在售规格已就绪
+                个在售规格
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* 五大核心功能中枢导航网格（包含补全的 Token 加油包管理） */}
+      {/* 核心功能导航 */}
       <div>
         <div className="flex items-center justify-between mb-3.5">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-4 rounded-full bg-[#3182ce]" />
-            <h2 className="text-sm font-black text-slate-800">业务管理中枢导航</h2>
+            <h2 className="text-sm font-black text-slate-800">业务管理导航</h2>
           </div>
           <span className="text-xs text-slate-400 font-medium">
-            全链路闭环商业运维与审计矩阵
+            运营与审计数据总览
           </span>
         </div>
 

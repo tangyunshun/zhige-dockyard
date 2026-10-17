@@ -639,7 +639,7 @@ export default function AdminMembershipLevelsPage() {
           <span className="text-amber-700 text-[11px] font-normal">(等值点仅作参考价；订阅月付独立设置，年付 = 月付 × 10)</span>
         </div>
         <div className="text-[11px] text-amber-700 font-medium shrink-0 hidden md:block">
-          💡 价格、算力点参考额度、加油包折扣均为独立配置，修改参考额度不会自动改写价格。启用中的等级不可编辑/删除，请先禁用。
+          💡 价格、算力点参考额度、算力包折扣均为独立配置，修改参考额度不会自动改写价格。启用中的等级不可编辑/删除，请先禁用。
         </div>
       </div>
 
@@ -837,7 +837,7 @@ export default function AdminMembershipLevelsPage() {
                           年付: ¥&nbsp;{(Number(level.priceYearly) / 100).toFixed(2)}
                         </div>
                         <div className="text-[10px] font-bold whitespace-nowrap text-violet-600">
-                          加油包折扣: {formatDiscountLabel(level.tokenPackDiscount) ?? "无"}
+                          算力包折扣: {formatDiscountLabel(level.tokenPackDiscount) ?? "无"}
                         </div>
                       </div>
                     </td>
@@ -1089,7 +1089,7 @@ export default function AdminMembershipLevelsPage() {
                     value={formData.tokenLimit || 0}
                     onChange={(e) => {
                       const pts = parseInt(e.target.value) || 0;
-                      // 注：订阅月费与算力点参考额度相互独立设置（算力点已改为充值/加油包制、不再按月自动发放），
+                      // 注：订阅月费与算力点参考额度相互独立设置（算力点已改为充值/算力包制、不再按月自动发放），
                       // 修改参考额度不再自动改写月付/年付，避免破坏数据库中的新阶梯订阅价。
                       setFormData({
                         ...formData,
@@ -1100,7 +1100,7 @@ export default function AdminMembershipLevelsPage() {
                     className="w-full px-3.5 py-2 bg-white border border-blue-300/80 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                   />
 
-                  {/* 等值参考（仅供评估订阅优惠力度；算力价值以充值/加油包价格体系为准） */}
+                  {/* 等值参考（仅供评估订阅优惠力度；算力价值以充值/算力包价格体系为准） */}
                   <div className="bg-white/80 border border-blue-200/70 rounded-lg px-2.5 py-2 text-[11px] font-bold text-blue-900 leading-relaxed">
                     {(() => {
                       const pts = Number(formData.tokenLimit) || 0;
@@ -1117,7 +1117,7 @@ export default function AdminMembershipLevelsPage() {
                           <strong className="text-[#3182ce]">
                             ¥{(monthlyCentsFromPoints(pts) / 100).toFixed(2)}
                           </strong>
-                          。算力点已改为充值/加油包制、不再按月自动发放，等值仅用于体现订阅折扣
+                          。算力点已改为充值/算力包制、不再按月自动发放，等值仅用于体现订阅折扣
                           力度；月付建议在等值价以内设置（体现订阅优惠），年付 = 月付 × 10。
                         </span>
                       );
@@ -1363,7 +1363,7 @@ export default function AdminMembershipLevelsPage() {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      算力加油包折扣 (%) <span className="text-violet-500">新</span>
+                      算力包折扣 (%) <span className="text-violet-500">新</span>
                     </label>
                     <input
                       type="number"
@@ -1383,7 +1383,7 @@ export default function AdminMembershipLevelsPage() {
                       className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                     />
                     <p className="mt-1 text-[10px] font-bold text-slate-400">
-                      该等级会员购买算力加油包立减百分比：10=9 折、15=8.5 折、20=8 折
+                      该等级会员购买算力包立减百分比：10=9 折、15=8.5 折、20=8 折
                     </p>
                   </div>
 

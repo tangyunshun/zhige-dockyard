@@ -180,6 +180,27 @@ export default function BillingCenterPage() {
 
   const spaces: any[] = userState?.workspaces || [];
 
+  // 深链定位：?section=points → 滚动到「算力点流水」区块
+  // 关键：上方会员卡 / 账单表是异步加载的，加载完成前页面高度会变化，目标位置随之漂移。
+  // 因此等数据就绪（loading 稳定）后定位，并多轮延迟重试，确保最终精准滚动到位，不抢跑。
+  const [navTick, setNavTick] = useState(0);
+  useEffect(() => {
+    const onPop = () => setNavTick((t) => t + 1);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  useEffect(() => {
+    if (!mounted) return;
+    const section = new URLSearchParams(window.location.search).get("section");
+    if (section !== "points") return;
+    const scrollToLedger = () => {
+      document.getElementById("points-ledger")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    // 立即 + 多轮延迟重试：覆盖异步数据加载引起的布局位移，保证一定滚到位
+    const timers = [0, 300, 700, 1200].map((d) => setTimeout(scrollToLedger, d));
+    return () => timers.forEach(clearTimeout);
+  }, [mounted, loading, navTick]);
+
   /** 拉取账单流水（数据库 billing_record 表）：账号级全量 */
   const loadBillingRecords = useCallback(async () => {
     try {
@@ -192,7 +213,9 @@ export default function BillingCenterPage() {
         const bData = await billRes.json();
         if (bData.success && Array.isArray(bData.data)) {
           setBillingHistory(
-            bData.data.map((r: any) => ({
+            bData.data
+              .filter((r: any) => r.type !== "INVOICE_APPLY")
+              .map((r: any) => ({
               id: r.id,
               type: r.type,
               title: r.title,
@@ -274,7 +297,14 @@ export default function BillingCenterPage() {
         });
         if (pointsRes.ok) {
           const pData = await pointsRes.json();
-          const list = Array.isArray(pData?.list) ? pData.list : Array.isArray(pData?.data?.list) ? pData.data.list : [];
+          // /api/user/points 返回 { data: { records } }；兼容旧 list 字段
+          const list = Array.isArray(pData?.data?.records)
+            ? pData.data.records
+            : Array.isArray(pData?.list)
+              ? pData.list
+              : Array.isArray(pData?.data?.list)
+                ? pData.data.list
+                : [];
           setPointsLedger(
             list.slice(0, 20).map((r: any) => ({
               id: String(r.id ?? ""),
@@ -730,7 +760,7 @@ export default function BillingCenterPage() {
                       <div className="flex items-start gap-1.5">
                         <BadgePercent className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
                         <span>
-                          加油包会员折扣：
+                          算力包会员折扣：
                           <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100 font-black ml-1">
                             {formatDiscountLabel(memberConfig.tokenPackDiscount)}
                           </span>
@@ -914,7 +944,7 @@ export default function BillingCenterPage() {
           </section>
 
           {/* 算力点流水（组件执行押金/实扣/退款等真实流水，来自 pointledger） */}
-          <section className="mt-6">
+          <section id="points-ledger" className="mt-6 scroll-mt-24">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-[#3182ce]" />

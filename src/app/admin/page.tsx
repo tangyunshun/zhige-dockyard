@@ -112,6 +112,22 @@ interface DashboardData {
     todayOperations: number;
     todayLogins: number;
   };
+  /** 模型与 AI 统计（全部为数据库真实聚合） */
+  modelStats?: {
+    deploymentTotal: number;
+    deploymentEnabled: number;
+    deploymentDisabled: number;
+    providerTotal: number;
+    providerEnabled: number;
+    providerDisabled: number;
+    healthy: number;
+    error: number;
+    unknown: number;
+    pricingTotal: number;
+    periodTotal: number;
+    periodEnabled: number;
+    policyTotal: number;
+  };
 }
 
 export default function AdminDashboard() {
@@ -339,7 +355,7 @@ export default function AdminDashboard() {
       label: "总用户数",
       value: data.totalUsers,
       subLabel: "全平台注册用户",
-      badgeText: "用户中枢",
+      badgeText: "用户管理",
       path: "/admin/users",
       color: "text-[#3182ce]",
       bgColor: "bg-[#3182ce]/10",
@@ -361,7 +377,7 @@ export default function AdminDashboard() {
       label: "组件总数",
       value: data.totalComponents,
       subLabel: `已上架 ${data.publishedComponents} 个组件`,
-      badgeText: "组件生态",
+      badgeText: "组件管理",
       path: "/admin/components",
       color: "text-[#f59e0b]",
       bgColor: "bg-[#f59e0b]/10",
@@ -397,7 +413,7 @@ export default function AdminDashboard() {
       label: "风控与审核",
       value: data.pendingReviews,
       status: data.pendingReviews > 0 ? "待处理" : "正常受控",
-      subLabel: data.pendingReviews > 0 ? "账号申诉工单待处理" : "全域安全审核已受控",
+      subLabel: data.pendingReviews > 0 ? "有账号申诉待处理" : "当前没有待处理申诉",
       path: "/admin/account-appeals",
       color: data.pendingReviews > 0 ? "text-[#f59e0b]" : "text-[#10b981]",
       bgColor: data.pendingReviews > 0 ? "bg-[#f59e0b]/10" : "bg-[#10b981]/10",
@@ -461,9 +477,58 @@ export default function AdminDashboard() {
     }
   };
 
+  // 模型与 AI 统计卡片：数值全部来自接口真实聚合，缺省回退为 0（不使用占位写死值）
+  const ms = data.modelStats;
+  const modelCards = [
+    {
+      icon: Boxes,
+      label: "模型部署总数",
+      value: ms?.deploymentTotal ?? 0,
+      subLabel: `已启用 ${ms?.deploymentEnabled ?? 0} · 已禁用 ${ms?.deploymentDisabled ?? 0}`,
+      badgeText: "模型统计",
+      path: "/admin/models",
+      color: "text-[#8b5cf6]",
+      bgColor: "bg-[#8b5cf6]/10",
+      borderHover: "hover:border-[#8b5cf6]/40",
+    },
+    {
+      icon: Server,
+      label: "供应商通道",
+      value: ms?.providerTotal ?? 0,
+      subLabel: `已启用 ${ms?.providerEnabled ?? 0} · 已禁用 ${ms?.providerDisabled ?? 0}`,
+      badgeText: "通道统计",
+      path: "/admin/models",
+      color: "text-[#3182ce]",
+      bgColor: "bg-[#3182ce]/10",
+      borderHover: "hover:border-[#3182ce]/40",
+    },
+    {
+      icon: CheckCircle,
+      label: "通道健康",
+      value: `${ms?.healthy ?? 0}/${ms?.deploymentTotal ?? 0}`,
+      subLabel: `异常 ${ms?.error ?? 0} · 未探测 ${ms?.unknown ?? 0}`,
+      badgeText: "连通探测",
+      path: "/admin/models",
+      color: (ms?.error ?? 0) > 0 ? "text-[#f59e0b]" : "text-[#10b981]",
+      bgColor: (ms?.error ?? 0) > 0 ? "bg-[#f59e0b]/10" : "bg-[#10b981]/10",
+      borderHover: "hover:border-[#10b981]/40",
+    },
+    {
+      icon: BarChart3,
+      label: "空间授权覆盖",
+      value: ms?.policyTotal ?? 0,
+      subLabel: `已配置模型白名单的空间数`,
+      badgeText: "授权情况",
+      path: "/admin/workspaces/model-policy",
+      color: "text-[#3182ce]",
+      bgColor: "bg-[#3182ce]/10",
+      borderHover: "hover:border-[#3182ce]/40",
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* 顶部控制中枢与状态栏 */}
+      {/* 顶部标题与状态栏 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0 pb-2 border-b border-slate-200/60">
         <div>
           <div className="flex items-center gap-2.5">
@@ -485,11 +550,11 @@ export default function AdminDashboard() {
               ></span>
               {systemHealthy
                 ? "系统正常运行"
-                : `系统需关注（服务 ${normalServiceCount}/${serviceTotal} · 健康度 ${data.systemHealth}%）`}
+                : `系统存在异常（服务 ${normalServiceCount}/${serviceTotal} · 健康度 ${data.systemHealth}%）`}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            知阁·舟坊平台核心中枢 · 全局数据监控、空间审查与系统治理
+            查看平台的用户、工作空间与系统运行情况
           </p>
         </div>
 
@@ -513,7 +578,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 紧急待办提醒横幅（工作流闭环） */}
+      {/* 待处理事项提醒 */}
       {data.pendingReviews > 0 && (
         <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3">
@@ -528,7 +593,7 @@ export default function AdminDashboard() {
                 </span>
               </div>
               <p className="text-xs text-slate-600 font-medium mt-0.5">
-                当前有用户封禁申诉工单处于待处理状态，请及时前往风控中枢核验仲裁。
+                有用户提交了封禁申诉且尚未处理，请前往「风控与审核」页面处理。
               </p>
             </div>
           </div>
@@ -595,14 +660,61 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 系统运行与监控卡片 - 支持交互闭环 */}
+      {/* 模型统计 - 数据库真实聚合 */}
+      <div>
+        <div className="flex items-center justify-between mb-2.5">
+          <h2 className="text-sm font-black text-slate-700 flex items-center gap-2">
+            <div className="w-1 h-4 bg-[#8b5cf6] rounded-full"></div>
+            模型运行情况
+          </h2>
+          <span className="text-[11px] text-slate-400 font-medium">
+          覆盖供应商通道、部署模型与计费配置
+        </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+          {modelCards.map((card, index) => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={index}
+                onClick={() => card.path && router.push(card.path)}
+                className={`group relative bg-white/85 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
+              >
+                <div
+                  className={`absolute -right-3 -top-3 w-16 h-16 rounded-full ${card.bgColor} opacity-20 blur-xl group-hover:scale-125 transition-transform duration-500`}
+                ></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-2">
+                    <div
+                      className={`w-9.5 h-9.5 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform duration-300`}
+                    >
+                      <Icon className={`w-4.5 h-4.5 ${card.color}`} />
+                    </div>
+                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100/80 text-slate-600 group-hover:bg-[#3182ce]/10 group-hover:text-[#3182ce] transition-colors">
+                      {card.badgeText}
+                      <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                    </span>
+                  </div>
+                  <div className="text-xl lg:text-2xl font-black font-mono text-slate-800 mb-0.5 tracking-tight truncate">
+                    {/* value 可能是数字（如模型总数）或预格式化字符串（如 "5/6"），直接原样渲染，禁止 Number() 强转 */}
+                    {card.value}
+                  </div>
+                  <div className="text-xs font-bold text-slate-600 truncate">{card.label}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 系统运行情况 */}
       <div>
         <div className="flex items-center justify-between mb-2.5">
           <h2 className="text-sm font-black text-slate-700 flex items-center gap-2">
             <div className="w-1 h-4 bg-[#10b981] rounded-full"></div>
-            平台运行态势
+            系统运行情况
           </h2>
-          <span className="text-[11px] text-slate-400 font-medium">实时健康监测与异常拦截</span>
+          <span className="text-[11px] text-slate-400 font-medium">服务状态与异常提示</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
           {systemCards.map((card, index) => {
@@ -657,7 +769,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 快捷操作中枢 - 全局业务闭环网格 */}
+      {/* 快捷操作 */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
         {/* 装饰背景 */}
         <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
@@ -666,9 +778,9 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
               <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
-              管理协同中枢
+              常用管理入口
             </h2>
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline">覆盖组织、资产、权限与安全治理全域闭环</span>
+            <span className="text-xs text-slate-400 font-medium hidden sm:inline">进入空间、组件、权限等管理页面</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -685,7 +797,7 @@ export default function AdminDashboard() {
                   用户管理
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  全域用户档案与封禁权限
+                  查看用户资料与封禁状态
                 </div>
               </div>
             </button>
@@ -703,7 +815,7 @@ export default function AdminDashboard() {
                   空间管理
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  工作空间审核与成员配额
+                  审核工作空间与成员配额
                 </div>
               </div>
             </button>
@@ -721,12 +833,12 @@ export default function AdminDashboard() {
                   空间套餐
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  企业空间套餐价格与资源配额
+                  配置企业空间套餐价格与配额
                 </div>
               </div>
             </button>
 
-            {/* 舟坊组件生态 */}
+            {/* 舟坊组件列表 */}
             <button
               onClick={() => router.push("/admin/components")}
               className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
@@ -736,10 +848,10 @@ export default function AdminDashboard() {
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
-                  组件生态
+                  组件列表
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  功能组件上架与分类目录
+                  管理组件上架与分类目录
                 </div>
               </div>
             </button>
@@ -757,7 +869,7 @@ export default function AdminDashboard() {
                   岗位管理
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  空间岗位定义与成员职责
+                  配置空间岗位与成员职责
                 </div>
               </div>
             </button>
@@ -775,7 +887,7 @@ export default function AdminDashboard() {
                   权限配置
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  管理员功能权限分配与管控
+                  分配管理员可使用的功能
                 </div>
               </div>
             </button>
@@ -811,7 +923,7 @@ export default function AdminDashboard() {
                   安全审计日志
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  登录记录与敏感变更溯源
+                  登录记录与敏感变更追溯
                 </div>
               </div>
             </button>
@@ -969,7 +1081,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 平台安全合规与全域关键操作审计中枢 - 替代原低价值的组件分类分布 */}
+      {/* 安全与操作审计 */}
       <div className="relative bg-white/85 backdrop-blur-xl rounded-2xl p-6 border border-slate-200/80 shadow-sm overflow-hidden">
         {/* 装饰渐变光晕 */}
         <div className="absolute -right-6 -top-6 w-44 h-44 rounded-full bg-gradient-to-br from-[#3182ce]/10 via-[#805ad5]/10 to-amber-500/10 opacity-60 blur-3xl pointer-events-none"></div>
@@ -984,15 +1096,15 @@ export default function AdminDashboard() {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-lg font-black text-slate-800 tracking-tight">
-                    安全合规与全域审计动态
+                    安全与操作审计
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200/80 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    实时审计留痕中
+                    实时审计记录中
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  全域管理员敏感操作溯源 · 账号风控隔离 · 异常鉴权毫秒级闭环追踪
+                  记录管理员的敏感操作，便于事后追溯
                 </p>
               </div>
             </div>
@@ -1002,7 +1114,7 @@ export default function AdminDashboard() {
                 type="button"
                 onClick={() => router.push("/admin/account-appeals")}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                title="前往风控与审核中枢处置账号申诉"
+                title="前往风控与审核页处理账号申诉"
               >
                 <span>风控审核</span>
                 {data.securitySummary && data.securitySummary.pendingAppeals > 0 && (
@@ -1017,13 +1129,13 @@ export default function AdminDashboard() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-blue-500/20"
                 title="前往安全审计中心查看全部操作与登录日志"
               >
-                <span>查看全域审计日志</span>
+                <span>查看全部审计日志</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
-          {/* 主内容双列联动布局：左侧敏感操作实时流水（8列），右侧风控态势看板（4列） */}
+          {/* 主内容双列联动布局：左侧敏感操作实时流水（8列），右侧风控情况看板（4列） */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
             {/* 左侧：最新敏感操作审计流水 */}
             <div className="lg:col-span-8 space-y-3">
@@ -1045,7 +1157,7 @@ export default function AdminDashboard() {
                       暂无敏感审计事件触发
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      所有管理员管理操作均会自动在此留痕归档
+                      所有管理员管理操作均会自动在此记录归档
                     </p>
                   </div>
                 ) : (
@@ -1120,13 +1232,13 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* 右侧：风控安全态势看板 */}
+            {/* 右侧：风控概览 */}
             <div className="lg:col-span-4 flex flex-col justify-between gap-3 bg-gradient-to-br from-slate-50/90 to-blue-50/40 p-4 rounded-xl border border-slate-200/70">
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                     <Shield className="w-4 h-4 text-[#3182ce]" />
-                    平台风控态势总览
+                    风控概览
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono">24H 实时监控</span>
                 </div>
@@ -1162,11 +1274,11 @@ export default function AdminDashboard() {
                     <div className="text-[10px] text-slate-400 mt-0.5">高危阻断受控</div>
                   </div>
 
-                  {/* 今日操作留痕 */}
+                  {/* 今日操作记录 */}
                   <div
                     onClick={() => router.push("/admin/logs")}
                     className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-blue-300 transition-all cursor-pointer group"
-                    title="查看今日全域安全操作留痕明细"
+                    title="查看今日的安全操作记录明细"
                   >
                     <div className="text-[11px] font-bold text-slate-500 group-hover:text-[#3182ce] transition-colors">
                       今日操作审计

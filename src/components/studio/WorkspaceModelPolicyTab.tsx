@@ -203,7 +203,7 @@ const PRICE_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
 };
 
 const BILLING_MODE_LABELS: Record<string, string> = {
-  ESTIMATED_COMPATIBILITY: "预估扣点",
+  ESTIMATED_COMPATIBILITY: "固定点数扣费",
   REAL_SETTLEMENT: "真实结算",
 };
 
@@ -959,12 +959,17 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
               </div>
             )}
           </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">自带私有模型：调用直连你的私有端点，平台另收 {byoServiceRatePct}% 服务费</span>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-[11px]">
+            <span
+              className="text-slate-400 truncate whitespace-nowrap min-w-0"
+              title={`自带私有模型：调用直连你的私有端点，平台另收 ${byoServiceRatePct}% 服务费`}
+            >
+              自带私有模型：直连你的私有端点，另收 {byoServiceRatePct}% 服务费
+            </span>
             <button
               type="button"
               onClick={() => setSection("byo")}
-              className="text-amber-600 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+              className="text-amber-600 hover:underline font-bold flex items-center gap-1 cursor-pointer shrink-0"
             >
               <span>查看全部</span>
               <ArrowRight className="w-3 h-3" />

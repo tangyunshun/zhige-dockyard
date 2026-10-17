@@ -53,9 +53,15 @@ describe("模型注册表 Phase 1", { skip: !process.env.DATABASE_URL }, () => {
     const p = "mp_ok_" + randomUUID();
     const m = "md_ok_" + randomUUID();
     const ws = "ws_ok_" + randomUUID();
+    let policyId = "";
     try {
       await seedProvider(p, true);
       const dep = await seedDeployment(p, m, true);
+      // 授权制（方案 A）：空间必须先被授权该模型，否则即使已注册启用也会被拒绝
+      const pol = await prisma.workspace_model_policy.create({
+        data: { id: randomUUID(), workspaceId: ws, defaultDeploymentId: dep.id, allowedDeploymentIds: [dep.id] },
+      });
+      policyId = pol.id;
 
       const plan: ResolvedModelPlan = await resolveModelExecutionPlan({
         contractProviderId: p,
@@ -70,6 +76,7 @@ describe("模型注册表 Phase 1", { skip: !process.env.DATABASE_URL }, () => {
       assert.equal(plan.apiKey, "sk-unit-test", "密钥从环境变量读取，不入库");
       assert.equal(plan.pricing, null, "价格唯一真源为 modelpricing；未配置时为 null");
     } finally {
+      if (policyId) await prisma.workspace_model_policy.deleteMany({ where: { id: policyId } }).catch(() => {});
       await prisma.modeldeployment.deleteMany({ where: { providerId: p } }).catch(() => {});
       await prisma.modelprovider.deleteMany({ where: { name: p } }).catch(() => {});
     }
@@ -203,9 +210,15 @@ describe("模型注册表 Phase 1", { skip: !process.env.DATABASE_URL }, () => {
     const p = "mp_conc_" + randomUUID();
     const m = "md_conc_" + randomUUID();
     const ws = "ws_conc_" + randomUUID();
+    let policyId = "";
     try {
       await seedProvider(p, true);
       const dep = await seedDeployment(p, m, true);
+      // 授权制（方案 A）：先授权该模型，否则解析会在白名单门禁处被拒
+      const pol = await prisma.workspace_model_policy.create({
+        data: { id: randomUUID(), workspaceId: ws, defaultDeploymentId: dep.id, allowedDeploymentIds: [dep.id] },
+      });
+      policyId = pol.id;
 
       const plans = await Promise.all(
         Array.from({ length: 5 }, () =>
@@ -219,6 +232,7 @@ describe("模型注册表 Phase 1", { skip: !process.env.DATABASE_URL }, () => {
         assert.equal(plan.upstreamModelId, `${m}-upstream`);
       }
     } finally {
+      if (policyId) await prisma.workspace_model_policy.deleteMany({ where: { id: policyId } }).catch(() => {});
       await prisma.modeldeployment.deleteMany({ where: { providerId: p } }).catch(() => {});
       await prisma.modelprovider.deleteMany({ where: { name: p } }).catch(() => {});
     }

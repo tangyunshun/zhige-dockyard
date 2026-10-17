@@ -13,6 +13,7 @@ import type {
   OfficialOAuthChannelItem,
   SmsProviderItem,
 } from "@/lib/setting-catalogs";
+import { describeApiError } from "@/lib/admin-error-presenter";
 import {
   Settings,
   Mail,
@@ -1068,11 +1069,13 @@ export default function AdminSettingsPage() {
         });
         toast.success(`测试邮件发送成功（耗时 ${data.latencyMs}ms）！`);
       } else {
+        // 失败信息统一翻译成人话（原因 + 解决办法），不再把英文错误码直接甩给用户
+        const friendly = describeApiError(data, "邮件网关连通测试失败，请检查 SMTP 配置参数");
         setTestEmailResult({
           success: false,
-          message: data.error || "SMTP 连接失败，请检查配置参数",
+          message: friendly.message,
           latency: data.latencyMs,
-          troubleshooting: Array.isArray(data.troubleshooting) ? data.troubleshooting : undefined,
+          troubleshooting: friendly.troubleshooting,
           errorType: data.errorType,
         });
         // 弹窗内部已有详细错误与排查指南，彻底移除顶部冗余 Toast 提示，避免遮挡
@@ -1129,11 +1132,13 @@ export default function AdminSettingsPage() {
         });
         toast.success(`短信网关测试通过（耗时 ${data.latencyMs}ms）！`);
       } else {
+        // 失败信息统一翻译成人话（原因 + 解决办法），不再把英文错误码直接甩给用户
+        const friendly = describeApiError(data, "短信网关连通测试失败，请检查密钥与网络配置");
         setTestSmsResult({
           success: false,
-          message: data.error || "网关连通失败，请检查密钥与配置",
+          message: friendly.message,
           latency: data.latencyMs,
-          troubleshooting: Array.isArray(data.troubleshooting) ? data.troubleshooting : undefined,
+          troubleshooting: friendly.troubleshooting,
         });
         // 弹窗内部已有详细错误与排查指南，彻底移除顶部冗余 Toast 提示，避免遮挡
       }

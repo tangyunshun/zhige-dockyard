@@ -76,7 +76,7 @@ export default function AdminRefundRequestsPage() {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getAuthToken()}`,
+        ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
         ...(init?.headers || {}),
       },
     });
@@ -178,7 +178,8 @@ export default function AdminRefundRequestsPage() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    // 与后台其他页面保持统一：宽度交由后台布局承载，不再限宽居中（避免两侧大片空白）
+    <div className="space-y-6 pb-8 text-left font-sans">
       <div>
         <h1 className="text-2xl font-black text-slate-900">退款申请审批</h1>
         <p className="text-sm text-slate-500 mt-1">

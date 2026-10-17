@@ -31,13 +31,16 @@ export async function GET(request: NextRequest) {
     }
 
     // 关键统计查询：用 Promise.allSettled 替代 Promise.all
-    // —— 即使某个查询（如 componenttask / apikey / loginhistory）在 dev 服务器的 Prisma Client 上抛异常，
+    // —— 即使某个查询（如 componentusage / apikey / loginhistory）在 dev 服务器的 Prisma Client 上抛异常，
     // 也不会拖垮整个接口返回 500，其他成功的查询结果照样能用
     const settled = await Promise.allSettled([
       prisma.user.findUnique({ where: { id: targetUserId } }),
       prisma.workspacemember.count({ where: { userId: targetUserId } }),
       prisma.apikey.count({ where: { userId: targetUserId } }),
-      prisma.componenttask.count({ where: { userId: targetUserId } }),
+      prisma.componentusage.count({
+        where: { userId: targetUserId },
+        distinct: ["componentId"],
+      }),
       prisma.loginhistory.count({ where: { userId: targetUserId } }),
     ]);
 
@@ -48,7 +51,7 @@ export async function GET(request: NextRequest) {
     const loginHistoryCount = settled[4].status === "fulfilled" ? settled[4].value : 0;
 
     // 记录失败的查询（哪个模型/字段不被 dev 服务器的 Prisma Client 识别），便于排查
-    const queryLabels = ["user.findUnique", "workspacemember.count", "apikey.count", "componenttask.count", "loginhistory.count"];
+    const queryLabels = ["user.findUnique", "workspacemember.count", "apikey.count", "componentusage.count", "loginhistory.count"];
     settled.forEach((r, idx) => {
       if (r.status === "rejected") {
         console.error(

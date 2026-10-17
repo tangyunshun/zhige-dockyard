@@ -40,7 +40,7 @@ export default function MembershipNavHeader({
       exact: false,
     },
     {
-      label: "算力加油包",
+      label: "算力包",
       href: "/admin/membership/token-packs",
       icon: Zap,
       exact: false,

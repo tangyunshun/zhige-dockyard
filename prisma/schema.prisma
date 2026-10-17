@@ -1380,6 +1380,10 @@ model modeldeployment {
   enabled       Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  /// 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（由「测试通道」更新，与供应商同口径）
+  health        String   @default("unknown")
+  /// 最近一次「测试通道」时间
+  lastTestedAt  DateTime?
 
   /// 价格（唯一真源 modelpricing）；删除部署时级联删除，避免价格孤儿
   pricing       modelpricing?
@@ -1530,9 +1534,59 @@ model workspace_model_policy {
   /// 允许的部署 ID 列表（JSON 数组；非空时启用白名单限制）
   /// 注意：JSON 无法建立数据库外键，其引用完整性由 model-registry-lock 的命名锁 + 接口校验共同保证
   allowedDeploymentIds  Json     @default("[]")
+  /// 空间级禁用清单（JSON 数组）：即使平台默认免费或已额外开通，在此清单中的部署也不可用
+  /// 用于支持「有效模型 = 平台默认免费 + 额外开通 - 空间禁用」的三段式计算
+  disabledDeploymentIds Json     @default("[]")
   defaultDeployment     modeldeployment? @relation(fields: [defaultDeploymentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "WorkspaceModelPolicy_defaultDeploymentId_fkey")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/// 算力点提升申请：用户为所在空间申请提升额度，管理员审批通过后入账。
+/// 复用现有算力分桶(pointgrant)入账，不新建平行余额表，避免双账本。
+model quotaapply {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  /// 申请提升的算力点数量
+  applyPoints BigInt
+  /// 申请理由（用户填写）
+  reason      String?   @db.Text
+  /// PENDING 待审批 | APPROVED 已通过 | REJECTED 已拒绝
+  status      String    @default("PENDING")
+  /// 审批人
+  adminId     String?
+  /// 实际批准的算力点数量（审批时可修改）
+  approvedPoints BigInt?
+  /// 审批意见 / 拒绝理由
+  adminRemark String?   @db.Text
+  /// 审批后入账的流水号（pointledger.id）
+  ledgerId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, createdAt], map: "QuotaApply_status_createdAt_idx")
+  @@index([workspaceId, status], map: "QuotaApply_workspaceId_status_idx")
+}
+
+/// 平台级默认模型池：管理员配置的「所有新空间默认可用」的模型清单。
+/// FREE = 默认免费模型（新空间自动继承）；PAID = 默认付费模型（不自动开通，仅作为可申请/可额外开通的候选）。
+/// 与旧的单值 PLATFORM_DEFAULT_DEPLOYMENT_ID 并存：后者仅作为「未显式设默认」时的兜底。
+model platformdefaultmodel {
+  id           String   @id @default(uuid())
+  /// 平台内模型标识（modeldeployment.id）
+  deploymentId String
+  /// FREE 默认免费（自动继承） | PAID 默认付费（需额外开通）
+  kind         String   @default("FREE")
+  /// 排序权重（数值大者靠前，仅影响后台展示顺序）
+  sortOrder    Int      @default(0)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// 同一部署在同一 kind 下唯一，避免重复配置
+  @@unique([deploymentId, kind], map: "PlatformDefaultModel_deploymentId_kind_key")
+  @@index([kind, enabled], map: "PlatformDefaultModel_kind_enabled_idx")
 }
 
 /// 空间自带模型（BYO：Bring Your Own Model）
@@ -1805,6 +1859,9 @@ model workspaceplan {
   maxStorage    Int      @default(0)
   maxApiCalls   Int      @default(0)
   tokenLimit    Int      @default(0)
+  /// 新空间一次性体验额度赠送（企业套餐差异化）：{ enabled, points, expireDays }
+  /// 为空时由代码常量 WORKSPACE_PLANS 兜底；写入后优先于常量
+  trialGift     Json?
   features      Json?
   sortOrder     Int      @default(0)
   purchasable   Boolean  @default(true)

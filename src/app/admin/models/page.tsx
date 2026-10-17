@@ -149,6 +149,10 @@ interface ModelDeployment {
     rules?: Record<string, unknown> | null;
   } | null;
   enabled: boolean;
+  /** 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（由「测试通道」更新） */
+  health?: string;
+  /** 最近一次测试通道时间（ISO 字符串） */
+  lastTestedAt?: string | null;
 }
 
 /**
@@ -421,6 +425,25 @@ export default function AdminModelsPage() {
   // 部署行「⋯」更多操作菜单：fixed 定位锚定触发按钮视口坐标，避免被表格 overflow 裁剪
   const [actionMenu, setActionMenu] = useState<{ id: string; top: number; right: number } | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  // 供应商「全部测试」批量连通性探测状态（串行执行 + 真实进度）
+  const [testingAll, setTestingAll] = useState(false);
+  const [testAllProgress, setTestAllProgress] = useState({ done: 0, total: 0 });
+  // 批量测试汇总结果（展示在供应商列表上方，不用浮动 toast）
+  const [testAllSummary, setTestAllSummary] = useState<{
+    ok: number;
+    failed: number;
+    total: number;
+    firstFailure: string | null;
+  } | null>(null);
+  // 模型部署「全部测试」批量探测状态与汇总（与供应商同口径）
+  const [testingAllDeployments, setTestingAllDeployments] = useState(false);
+  const [testAllDepProgress, setTestAllDepProgress] = useState({ done: 0, total: 0 });
+  const [testAllDepSummary, setTestAllDepSummary] = useState<{
+    ok: number;
+    failed: number;
+    total: number;
+    firstFailure: string | null;
+  } | null>(null);
   const [testResult, setTestResult] = useState<{
     id: string;
     ok: boolean;
@@ -432,6 +455,35 @@ export default function AdminModelsPage() {
     sampleReply?: string;
   } | null>(null);
   const toast = useToast();
+
+  // 全部模型部署一键真实测试：串行执行，完成后统一刷新「健康」列
+  const testAllDeployments = async () => {
+    if (testingAllDeployments || deployments.length === 0) return;
+    setTestingAllDeployments(true);
+    setTestAllDepProgress({ done: 0, total: deployments.length });
+    let okCount = 0;
+    const failures: string[] = [];
+    for (const d of deployments) {
+      setTestingId(d.id);
+      try {
+        const data = await authFetch(`/api/admin/model-deployments/${d.id}/test`, { method: "POST" });
+        if (data?.success) okCount += 1;
+        else failures.push(`${d.displayName || d.modelId}：${data?.message || "连通失败"}`);
+      } catch (e) {
+        failures.push(`${d.displayName || d.modelId}：${(e as Error)?.message || "请求异常"}`);
+      }
+      setTestAllDepProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+    }
+    setTestingId(null);
+    setTestingAllDeployments(false);
+    void load(); // 刷新 health / lastTestedAt
+    setTestAllDepSummary({
+      ok: okCount,
+      failed: failures.length,
+      total: deployments.length,
+      firstFailure: failures[0] ?? null,
+    });
+  };
 
   const testDeployment = async (d: ModelDeployment) => {
     setTestingId(d.id);
@@ -447,15 +499,56 @@ export default function AdminModelsPage() {
         troubleshooting: data.troubleshooting,
         sampleReply: data.sampleReply,
       });
+      // 刷新部署列表以同步 health / lastTestedAt（与供应商「测试连接」同口径）
+      void load();
       requestAnimationFrame(() =>
         deploymentResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
       );
-    } catch {
-      // 静默：结果以横幅展示，不弹 toast
+    } catch (e) {
+      // 失败也必须给明确反馈（横幅 + toast），不能让用户点了却毫无反应
+      const msg = (e as Error)?.message || "连通失败";
+      setTestResult({
+        id: d.id,
+        ok: false,
+        latencyMs: 0,
+        message: msg,
+        troubleshooting: ["检查供应商通道与密钥配置是否正确", "稍后重试；若持续失败请联系平台运维"],
+      });
+      toast.error(`模型 ${d.displayName || d.modelId} 测试失败：${msg}`);
     } finally {
       setTestingId(null);
     }
   };
+  // 全部供应商一键真实测试：串行执行（避免并发压垮网关），完成后统一刷新「健康」列
+  const testAllProviders = async () => {
+    if (testingAll || providers.length === 0) return;
+    setTestingAll(true);
+    setTestAllProgress({ done: 0, total: providers.length });
+    let okCount = 0;
+    const failures: string[] = [];
+    for (const p of providers) {
+      setTestingId(p.id);
+      try {
+        const data = await authFetch(`/api/admin/model-providers/${p.id}/test`, { method: "POST" });
+        if (data?.success) okCount += 1;
+        else failures.push(`${p.name || p.id}：${data?.message || "连通失败"}`);
+      } catch (e) {
+        failures.push(`${p.name || p.id}：${(e as Error)?.message || "请求异常"}`);
+      }
+      setTestAllProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+    }
+    setTestingId(null);
+    setTestingAll(false);
+    void load(); // 刷新 health / lastTestedAt
+    // 汇总结果统一展示在供应商列表上方（与单个测试结果同一位置），不再用浮动 toast
+    setTestAllSummary({
+      ok: okCount,
+      failed: failures.length,
+      total: providers.length,
+      firstFailure: failures[0] ?? null,
+    });
+  };
+
   const testProvider = async (p: ModelProvider) => {
     setTestingId(p.id);
     setTestResult(null);
@@ -711,6 +804,15 @@ export default function AdminModelsPage() {
   const [capabilityPanelId, setCapabilityPanelId] = useState<string | null>(null);
   const [capabilityDraft, setCapabilityDraft] = useState<string[]>([]);
   const [capError, setCapError] = useState<string | null>(null);
+
+  /** 检测时间统一格式：YYYY-MM-DD HH:mm:ss（精确到秒，本地时区） */
+  const formatTestedAt = (iso: string | null | undefined): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
 
   const authFetch = useCallback(async (url: string, init?: RequestInit) => {
     const res = await fetch(url, {
@@ -2109,6 +2211,17 @@ export default function AdminModelsPage() {
                   <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 font-mono">
                     {providers.length} 个供应商
                   </span>
+                  {/* 全部测试：一键真实探测所有供应商连通性，并刷新「健康」列 */}
+                  <button
+                    type="button"
+                    onClick={testAllProviders}
+                    disabled={testingAll || providers.length === 0}
+                    className="px-3 py-1.5 bg-white border border-sky-200 text-sky-700 hover:bg-sky-600 hover:text-white rounded text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="依次真实测试所有供应商的连通性（Base URL / API Key / 鉴权），完成后刷新「健康」列状态"
+                  >
+                    {testingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TestTube className="w-3.5 h-3.5" />}
+                    <span>{testingAll ? `测试中 (${testAllProgress.done}/${testAllProgress.total})` : "全部测试"}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowAddProvider(!showAddProvider)}
@@ -2258,6 +2371,45 @@ export default function AdminModelsPage() {
 
             {/* 供应商「测试连接」结果反馈：定位到列表上方 */}
             <div ref={providerResultRef}>
+              {/* 批量测试汇总（全部测试结果，展示在列表上方） */}
+              {testAllSummary && (
+                <div
+                  className={
+                    "mt-4 rounded border p-4 space-y-1.5 " +
+                    (testAllSummary.failed === 0
+                      ? "border-emerald-200 bg-emerald-50/60"
+                      : "border-rose-200 bg-rose-50/60")
+                  }
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-black">
+                      {testAllSummary.failed === 0 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      )}
+                      <span className={testAllSummary.failed === 0 ? "text-emerald-800" : "text-rose-800"}>
+                        {testAllSummary.failed === 0
+                          ? `全部 ${testAllSummary.total} 个供应商测试通过，「健康」状态已刷新`
+                          : `测试完成：${testAllSummary.ok} 个通过、${testAllSummary.failed} 个异常，「健康」状态已刷新`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTestAllSummary(null)}
+                      className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
+                      title="关闭该汇总"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {testAllSummary.firstFailure && (
+                    <div className="text-xs text-rose-700 leading-relaxed font-medium">
+                      首个异常：{testAllSummary.firstFailure}
+                    </div>
+                  )}
+                </div>
+              )}
               {testResult && providers.some((p) => p.id === testResult.id) && testResultBanner}
             </div>
 
@@ -2355,7 +2507,7 @@ export default function AdminModelsPage() {
                         </span>
                         {p.lastTestedAt ? (
                           <div className="text-[10px] text-slate-400 mt-0.5">
-                            {new Date(p.lastTestedAt).toLocaleString("zh-CN", { hour12: false })}
+                            {formatTestedAt(p.lastTestedAt)}
                           </div>
                         ) : null}
                       </td>
@@ -2365,7 +2517,7 @@ export default function AdminModelsPage() {
                           <button
                             type="button"
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-600 hover:text-white text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
-                            disabled={testingId === p.id}
+                            disabled={testingId === p.id || testingAll}
                             onClick={() => testProvider(p)}
                             title="测试该供应商连通性（验证 Base URL、API Key 与鉴权）"
                           >
@@ -2484,6 +2636,17 @@ export default function AdminModelsPage() {
                   <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 font-mono">
                     {deployments.length} 款模型
                   </span>
+                  {/* 全部测试：一键真实探测所有模型部署连通性，并刷新「健康」列 */}
+                  <button
+                    type="button"
+                    onClick={testAllDeployments}
+                    disabled={testingAllDeployments || deployments.length === 0}
+                    className="px-3 py-1.5 bg-white border border-sky-200 text-sky-700 hover:bg-sky-600 hover:text-white rounded text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="依次真实测试所有模型部署的连通性（Base URL / API Key / 鉴权），完成后刷新「健康」列状态"
+                  >
+                    {testingAllDeployments ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TestTube className="w-3.5 h-3.5" />}
+                    <span>{testingAllDeployments ? `测试中 (${testAllDepProgress.done}/${testAllDepProgress.total})` : "全部测试"}</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowAddDeployment(!showAddDeployment)}
@@ -2852,6 +3015,45 @@ export default function AdminModelsPage() {
 
           {/* 模型部署「测试模型」结果反馈：定位到列表上方 */}
           <div ref={deploymentResultRef}>
+            {/* 部署批量测试汇总（展示在列表上方） */}
+            {testAllDepSummary && (
+              <div
+                className={
+                  "mt-4 rounded border p-4 space-y-1.5 " +
+                  (testAllDepSummary.failed === 0
+                    ? "border-emerald-200 bg-emerald-50/60"
+                    : "border-rose-200 bg-rose-50/60")
+                }
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-black">
+                    {testAllDepSummary.failed === 0 ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span className={testAllDepSummary.failed === 0 ? "text-emerald-800" : "text-rose-800"}>
+                      {testAllDepSummary.failed === 0
+                        ? `全部 ${testAllDepSummary.total} 款模型部署测试通过，「健康」状态已刷新`
+                        : `测试完成：${testAllDepSummary.ok} 款通过、${testAllDepSummary.failed} 款异常，「健康」状态已刷新`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTestAllDepSummary(null)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
+                    title="关闭该汇总"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                {testAllDepSummary.firstFailure && (
+                  <div className="text-xs text-rose-700 leading-relaxed font-medium">
+                    首个异常：{testAllDepSummary.firstFailure}
+                  </div>
+                )}
+              </div>
+            )}
             {testResult && deployments.some((d) => d.id === testResult.id) && testResultBanner}
           </div>
 
@@ -2945,6 +3147,7 @@ export default function AdminModelsPage() {
                     <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">声明能力</th>
                     <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">计费单价(百万TOKEN)</th>
                     <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">状态</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">健康</th>
                     <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-10 px-6 py-3.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap border-l border-slate-200 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)]">操作</th>
                   </tr>
                 </thead>
@@ -3058,13 +3261,30 @@ export default function AdminModelsPage() {
                           )}
                         </div>
                       </td>
+                      {/* 健康：由「测试通道」真实探测后落库（healthy 健康 | error 异常 | unknown 未探测） */}
+                      <td className="px-6 py-3.5 text-xs whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-bold border ${
+                            d.health === "healthy"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : d.health === "error"
+                                ? "bg-rose-50 text-rose-700 border-rose-200"
+                                : "bg-slate-100 text-slate-500 border-slate-200"
+                          }`}
+                        >
+                          {d.health === "healthy" ? "健康" : d.health === "error" ? "异常" : "未探测"}
+                        </span>
+                        {d.lastTestedAt ? (
+                          <div className="text-[10px] text-slate-400 mt-0.5">{formatTestedAt(d.lastTestedAt)}</div>
+                        ) : null}
+                      </td>
                       <td className="sticky right-0 bg-white group-hover:bg-blue-50/50 backdrop-blur-xs z-10 px-6 py-3 text-right whitespace-nowrap border-l border-slate-100 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)] transition-colors">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* 1. 测试通道：探针连通性测试（无论启禁用均可测试健康连通性） */}
                           <button
                             type="button"
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-cyan-50 text-cyan-700 hover:bg-cyan-600 hover:text-white border border-cyan-200/80 rounded font-bold text-xs transition-all duration-200 cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
-                            disabled={testingId === d.id || !canTestDeployment(d, providers)}
+                            disabled={testingId === d.id || testingAllDeployments || !canTestDeployment(d, providers)}
                             onClick={() => testDeployment(d)}
                             title={
                               !canTestDeployment(d, providers)

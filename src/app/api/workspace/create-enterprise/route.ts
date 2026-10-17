@@ -6,6 +6,8 @@ import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { storageMbToBytes } from "@/constants/workspace-plans";
 import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
 import { mergeLimits } from "@/lib/limit-utils";
+import { inheritFreeDefaultModelsForNewWorkspace } from "@/lib/platform-default-models";
+import { grantNewSpaceTrialQuota } from "@/lib/new-space-trial-quota";
 
 export async function POST(request: NextRequest) {
   try {
@@ -103,6 +105,26 @@ export async function POST(request: NextRequest) {
     // 获取计划配置（取自共享套餐模块，与空间套餐升级保持同一数据源）
     const planUpper = (plan || "STANDARD").toString().toUpperCase();
     const planConfig = await getWorkspacePlanByKey(planUpper);
+
+    // 套餐可用性校验：已停用 / 仅限线下定制（不可在线售卖）的套餐不得用于创建空间，
+    // 与升级链路 getWorkspacePlans({onlyActive, onlyPurchasable}) 保持同一口径，防止绕过
+    const planRow = await prisma.workspaceplan
+      .findUnique({
+        where: { key: planUpper },
+        select: { name: true, isActive: true, purchasable: true },
+      })
+      .catch(() => null);
+    if (planRow && (!planRow.isActive || !planRow.purchasable)) {
+      return NextResponse.json(
+        {
+          message: planRow.isActive
+            ? `套餐「${planRow.name}」为线下定制套餐，不可在线创建空间，请更换套餐`
+            : `套餐「${planRow.name}」已停用，不可用于创建空间，请更换套餐`,
+        },
+        { status: 400 },
+      );
+    }
+
     const quotaConfig = {
       maxMembers: planConfig.maxMembers,
       maxComponents: planConfig.maxComponents,
@@ -168,6 +190,23 @@ export async function POST(request: NextRequest) {
 
     // 物理载入并初始化默认组件
     await ensureDefaultComponents(workspace.id, userId);
+
+    // 平台默认模型池：企业空间同样自动继承「默认免费模型」，保证开箱即用
+    await inheritFreeDefaultModelsForNewWorkspace(workspace.id).catch((e) =>
+      console.warn("[创建企业空间] 继承平台默认免费模型非致命提示:", e),
+    );
+
+    // 新空间体验额度：按企业套餐差异化赠送（plan.trialGift），独立于充值额度、优先消耗
+    await grantNewSpaceTrialQuota({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      operatorId: userId,
+      overrides: {
+        enabled: planConfig.trialGift.enabled,
+        points: planConfig.trialGift.points,
+        expireDays: planConfig.trialGift.expireDays,
+      },
+    }).catch((e) => console.warn("[创建企业空间] 赠送体验额度非致命提示:", e));
 
     // 记录操作日志
     await prisma.operationlog.create({

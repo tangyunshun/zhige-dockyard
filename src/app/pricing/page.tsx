@@ -30,7 +30,7 @@ interface MembershipLevel {
   maxStorage: number; // 单位：字节
   maxApiCalls: number;
   tokenLimit: number;
-  tokenPackDiscount: number; // 算力加油包折扣百分比（10=9折）
+  tokenPackDiscount: number; // 算力包折扣百分比（10=9折）
   features: string[];
   priceMonthly: number;
   priceYearly: number;
@@ -230,11 +230,11 @@ export default function PricingPage() {
         l.maxApiCalls === UNLIMITED ? "无限" : `${formatQuota(l.maxApiCalls)}/月`,
     },
     {
-      feature: "加油包会员折扣",
+      feature: "算力包会员折扣",
       icon: <Percent className="w-3.5 h-3.5" />,
       render: (l: MembershipLevel) =>
         l.tokenPackDiscount > 0
-          ? `${formatDiscountLabel(l.tokenPackDiscount)}（高等级会员买算力加油包自动生效）`
+          ? `${formatDiscountLabel(l.tokenPackDiscount)}（高等级会员买算力包自动生效）`
           : "无折扣",
     },
     {
@@ -455,7 +455,7 @@ export default function PricingPage() {
                         </div>
                         {!isUnlimitedToken(accountQuota?.tokenBalance) && (
                           <p className="mt-2 text-[10px] text-slate-400 font-medium leading-relaxed max-w-[200px]">
-                            按量实时扣减 · 无月度自动重置，用尽后需充值或购买算力加油包
+                            按量实时扣减 · 无月度自动重置，用尽后需充值或购买算力包
                           </p>
                         )}
                         <button
@@ -519,7 +519,7 @@ export default function PricingPage() {
             <span className="text-xs font-black text-amber-800">{POINT_RATE_TEXT}</span>
             <span className="text-[11px] font-bold text-amber-600 hidden sm:inline">｜{POINT_RATE_HINT}</span>
           </div>
-          {/* 单位口径说明：全系统只使用「算力点」，1 token = 1 算力点 */}
+          {/* 单位口径说明：全系统只使用「算力点」结算，组件扣点按模型单价动态折算 */}
           <p className="text-[11px] font-bold text-slate-500 mx-auto mt-3 mb-10 leading-relaxed whitespace-nowrap overflow-x-auto text-center">
             {POINT_UNIT_HINT}
           </p>
@@ -573,7 +573,7 @@ export default function PricingPage() {
                 {
                   title: "按量即充即用",
                   description:
-                    "算力点充值或购买后实时到账、随用随扣，无月度自动发放与重置；会员购买算力加油包享专属折扣。",
+                    "算力点充值或购买后实时到账、随用随扣，无月度自动发放与重置；会员购买算力包享专属折扣。",
                 },
                 {
                   title: "企业级合规保障",

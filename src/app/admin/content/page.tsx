@@ -20,7 +20,6 @@ import {
   X,
   ExternalLink,
   TrendingUp,
-  BarChart3,
   ArrowRight,
   CalendarDays,
   AlertTriangle,
@@ -1150,7 +1149,12 @@ export default function AdminStagesPage() {
                       <div className="absolute inset-x-4 top-24 border-b border-dashed border-slate-100 pointer-events-none" />
                       <div className="absolute inset-x-4 top-40 border-b border-dashed border-slate-100 pointer-events-none" />
 
-                      {trendData.map((pt, idx) => {
+                      {trendData.length === 0 ? (
+                        <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 font-bold">
+                          暂无趋势数据
+                        </div>
+                      ) : (
+                      trendData.map((pt, idx) => {
                       const heightPercent = Math.max(8, Math.round(((pt.total || 0) / maxTrendTotal) * 85));
                       return (
                         <div
@@ -1175,7 +1179,7 @@ export default function AdminStagesPage() {
                           </span>
                         </div>
                       );
-                    })}
+                    }))}
                     </div>
                   </div>
                 </div>

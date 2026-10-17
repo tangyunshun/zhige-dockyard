@@ -895,49 +895,49 @@ export default function AdminWorkspacesPage() {
         </div>
       </div>
 
-      {/* 筛选工具栏 (圆润 16px 规范卡片 + 双行清晰分治架构) */}
-      <div className="bg-white/90 backdrop-blur-md p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
-        {/* 第一行：多维分类筛选标签下拉框 */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
-          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
-            <span className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">空间类型:</span>
-            <select
-              value={filterType}
-              onChange={(e) => {
-                setFilterType(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
-            >
-              <option value="all">全部类型</option>
-              <option value="PERSONAL">👤 个人空间</option>
-              <option value="ENTERPRISE">🏢 企业空间</option>
-            </select>
+      {/* 筛选工具栏 (圆润 16px 规范卡片 + 单行分治：筛选 → 搜索 → 操作，窄屏自动换行) */}
+      <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+        <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+          {/* 左侧：分类筛选下拉 */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 xl:shrink-0">
+            <div className="flex items-center gap-2 w-full sm:w-44">
+              <span className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">空间类型:</span>
+              <select
+                value={filterType}
+                onChange={(e) => {
+                  setFilterType(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+              >
+                <option value="all">全部类型</option>
+                <option value="PERSONAL">👤 个人空间</option>
+                <option value="ENTERPRISE">🏢 企业空间</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-48">
+              <span className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">组件装配:</span>
+              <select
+                value={filterComponentCount}
+                onChange={(e) => {
+                  setFilterComponentCount(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
+              >
+                <option value="all">全部数量</option>
+                <option value="0">0 个组件</option>
+                <option value="1-10">1-10 个组件</option>
+                <option value="11-50">11-50 个组件</option>
+                <option value="51-100">51-100 个组件</option>
+                <option value="100+">100+ 个组件</option>
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:flex-1 sm:min-w-[200px]">
-            <span className="text-xs text-slate-500 font-bold shrink-0 whitespace-nowrap">组件装配:</span>
-            <select
-              value={filterComponentCount}
-              onChange={(e) => {
-                setFilterComponentCount(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none cursor-pointer"
-            >
-              <option value="all">全部数量</option>
-              <option value="0">0 个组件</option>
-              <option value="1-10">1-10 个组件</option>
-              <option value="11-50">11-50 个组件</option>
-              <option value="51-100">51-100 个组件</option>
-              <option value="100+">100+ 个组件</option>
-            </select>
-          </div>
-        </div>
-
-        {/* 第二行：加长舒展搜索框与快捷操作 */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5 pt-1 border-t border-slate-100">
-          <div className="relative w-full sm:w-96 lg:w-[420px]">
+          {/* 中间：搜索框（占满剩余宽度） */}
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
@@ -970,52 +970,55 @@ export default function AdminWorkspacesPage() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => handleSearch()}
-            className="px-4 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
-          >
-            搜索
-          </button>
-
-          <button
-            type="button"
-            onClick={() => loadWorkspaces(currentPage)}
-            disabled={loading}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-slate-200/80 active:scale-95 disabled:opacity-50"
-            title="点击刷新空间列表最新数据"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
-            <span>刷新数据</span>
-          </button>
-
-          {/* 导出 Excel 表格 */}
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            disabled={exporting}
-            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-emerald-200/80 active:scale-95 disabled:opacity-50"
-            title="将当前筛选匹配的全量工作空间导出为 Excel 表格 (.xlsx)"
-          >
-            <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-spin" : ""}`} />
-            <span>导出 Excel</span>
-          </button>
-
-          {(searchQuery || filterType !== "all" || filterComponentCount !== "all") && (
+          {/* 右侧：操作按钮组 */}
+          <div className="flex items-center flex-wrap gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => {
-                setSearchQuery("");
-                setFilterType("all");
-                setFilterComponentCount("all");
-                setCurrentPage(1);
-                loadWorkspaces(1, "");
-              }}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
+              onClick={() => handleSearch()}
+              className="px-4 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
             >
-              重置
+              搜索
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={() => loadWorkspaces(currentPage)}
+              disabled={loading}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-slate-200/80 active:scale-95 disabled:opacity-50"
+              title="点击刷新空间列表最新数据"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 text-[#3182ce] ${loading ? "animate-spin" : ""}`} />
+              <span>刷新数据</span>
+            </button>
+
+            {/* 导出 Excel 表格 */}
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={exporting}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-emerald-200/80 active:scale-95 disabled:opacity-50"
+              title="将当前筛选匹配的全量工作空间导出为 Excel 表格 (.xlsx)"
+            >
+              <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-spin" : ""}`} />
+              <span>导出 Excel</span>
+            </button>
+
+            {(searchQuery || filterType !== "all" || filterComponentCount !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setFilterType("all");
+                  setFilterComponentCount("all");
+                  setCurrentPage(1);
+                  loadWorkspaces(1, "");
+                }}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
+              >
+                重置
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1100,7 +1103,7 @@ export default function AdminWorkspacesPage() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto min-h-[300px]">
+            <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-bold">
                   <tr>

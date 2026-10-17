@@ -119,7 +119,8 @@ export default function SystemStatusPage() {
 
   // 全量巡检状态与模态框
   const [isInspectingAll, setIsInspectingAll] = useState(false);
-  const [inspectionProgress, setInspectionProgress] = useState(0);
+  // 巡检真实已用耗时（前端只做真实计时，不再假装百分比进度）
+  const [inspectionElapsedMs, setInspectionElapsedMs] = useState(0);
   const [inspectionReportModal, setInspectionReportModal] = useState(false);
   const [lastReportData, setLastReportData] = useState<SystemStatusData | null>(null);
 
@@ -197,16 +198,18 @@ export default function SystemStatusPage() {
     }
   };
 
-  // 2. 一键全量系统健康深度巡检
+  // 2. 一键全量系统健康深度巡检（真实执行：服务端跑完全部探针后返回真实耗时）
   const handleRunFullInspection = async () => {
     if (isInspectingAll) return;
     toast.dismissAll();
     setIsInspectingAll(true);
-    setInspectionProgress(25);
+    const startedAt = Date.now();
+    setInspectionElapsedMs(0);
+    // 真实秒表：只反映已经真实过去的时间，不伪造进度百分比
+    const ticker = setInterval(() => setInspectionElapsedMs(Date.now() - startedAt), 200);
 
     try {
       const authToken = getAuthToken();
-      setInspectionProgress(55);
       const res = await fetch("/api/admin/system-status", {
         method: "POST",
         headers: {
@@ -216,29 +219,25 @@ export default function SystemStatusPage() {
         body: JSON.stringify({ action: "full_inspection" }),
       });
 
-      setInspectionProgress(90);
       const result = await res.json();
 
       if (res.ok && result.success && result.data) {
-        setInspectionProgress(100);
         setData(result.data);
         setLastReportData(result.data);
-        setIsInspectingAll(false);
-        setInspectionProgress(0);
         toast.dismissAll();
         setInspectionReportModal(true);
         toast.success(result.message || "全系统健康巡检已顺利完成！已生成体检报告");
       } else {
-        setIsInspectingAll(false);
-        setInspectionProgress(0);
         toast.dismissAll();
         toast.error(result.error || "巡检请求未正常响应");
       }
     } catch {
-      setIsInspectingAll(false);
-      setInspectionProgress(0);
       toast.dismissAll();
       toast.error("巡检过程发生网络中断");
+    } finally {
+      clearInterval(ticker);
+      setIsInspectingAll(false);
+      setInspectionElapsedMs(0);
     }
   };
 
@@ -255,9 +254,9 @@ export default function SystemStatusPage() {
         ["指标项", "当前实测数值", "指标说明"],
         ["系统运行状态", data.overallStatus, "当前核心服务综合状态"],
         ["系统综合健康评分", `${data.healthScore} 分 (满分100)`, "各探针与资源加权综合健康指数"],
-        ["数据库引擎版本", data.dbVersion || "MySQL", "数据库真实执行 SELECT VERSION() 结果"],
+        ["数据库引擎版本", data.dbVersion || "未采集", "数据库真实执行 SELECT VERSION() 结果"],
         ["数据库直连响应延迟", `${data.dbLatency} ms`, "MySQL 数据库真实往返耗时"],
-        ["数据库当前并发连接数", `${data.dbThreadsConnected || 1} 个线程`, "MySQL 实时 Threads_connected 活跃连接"],
+        ["数据库当前并发连接数", `${data.dbThreadsConnected ?? "未采集"} 个线程`, "MySQL 实时 Threads_connected 活跃连接"],
         ["数据库物理存储总空间", `${data.dbTotalMB || 0} MB`, `数据占用 ${data.dbDataMB || 0} MB，索引占用 ${data.dbIndexMB || 0} MB`],
         ["Node.js 堆内存占用率", `${data.heapUsageRate || 0}%`, `已用 ${data.heapUsedMB} MB / 总分配 ${data.heapTotalMB} MB`],
         ["物理常驻内存 RSS", `${data.rssMB} MB`, "进程在操作系统中所占的实际物理内存"],
@@ -364,7 +363,7 @@ export default function SystemStatusPage() {
               ) : (
                 <Play className="w-3.5 h-3.5" />
               )}
-              <span>{isInspectingAll ? `巡检中 (${inspectionProgress}%)` : "一键系统体检"}</span>
+              <span>{isInspectingAll ? `巡检中 (${(inspectionElapsedMs / 1000).toFixed(1)}s)` : "一键系统体检"}</span>
             </button>
 
             {/* 导出健康报表 */}
@@ -443,8 +442,8 @@ export default function SystemStatusPage() {
                 {data?.dbLatency !== undefined ? data.dbLatency : 0}{" "}
                 <span className="text-xs font-normal text-slate-400">毫秒</span>
               </div>
-              <div className="text-[11px] text-slate-400 font-medium mt-1 truncate max-w-[200px]" title={`引擎: ${data?.dbVersion || "MySQL"} · 活跃并发: ${data?.dbThreadsConnected || 1} · 物理空间: ${data?.dbTotalMB || 0} MB`}>
-                {data?.dbVersion ? `${data.dbVersion} · 容积 ${data?.dbTotalMB || 0}MB` : "MySQL 数据库正常连通"}
+              <div className="text-[11px] text-slate-400 font-medium mt-1 truncate max-w-[200px]" title={`引擎: ${data?.dbVersion || "未采集"} · 活跃并发: ${data?.dbThreadsConnected ?? "未采集"} · 物理空间: ${data?.dbTotalMB ?? "未采集"} MB`}>
+                {data?.dbVersion ? `${data.dbVersion} · 容积 ${data?.dbTotalMB ?? "—"}MB` : "MySQL 数据库正常连通"}
               </div>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
@@ -479,7 +478,7 @@ export default function SystemStatusPage() {
                 className="text-base font-black font-mono text-slate-800 truncate max-w-[170px]"
                 title={data?.formattedUptime}
               >
-                {data?.formattedUptime || "运行中"}
+                {data?.formattedUptime || "未采集"}
               </div>
               <div className="text-[11px] text-slate-400 font-medium mt-1">
                 平台服务进程持续在线
@@ -791,31 +790,34 @@ export default function SystemStatusPage() {
               <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
                 <span className="text-slate-500 font-bold">数据存储引擎版本</span>
                 <span className="font-mono font-bold text-emerald-600">
-                  {data?.dbVersion ? `${data.dbVersion} (InnoDB)` : "MySQL 数据库"}
+                  {data?.dbVersion ? `${data.dbVersion} (InnoDB)` : "未采集"}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
                 <span className="text-slate-500 font-bold">数据库物理空间占用</span>
-                <span className="font-mono font-bold text-slate-800" title={`数据: ${data?.dbDataMB || 0} MB, 索引: ${data?.dbIndexMB || 0} MB`}>
-                  {data?.dbTotalMB || 0} MB (数据 {data?.dbDataMB || 0}MB / 索引 {data?.dbIndexMB || 0}MB)
+                <span className="font-mono font-bold text-slate-800" title={`数据: ${data?.dbDataMB ?? "未采集"} MB, 索引: ${data?.dbIndexMB ?? "未采集"} MB`}>
+                  {data?.dbTotalMB != null
+                    ? `${data.dbTotalMB} MB (数据 ${data.dbDataMB ?? "—"}MB / 索引 ${data.dbIndexMB ?? "—"}MB)`
+                    : "未采集"}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
                 <span className="text-slate-500 font-bold">当前数据库并发连接</span>
                 <span className="font-mono font-bold text-slate-800">
-                  {data?.dbThreadsConnected || 1} 个活跃并发线程
+                  {data?.dbThreadsConnected != null ? `${data.dbThreadsConnected} 个活跃并发线程` : "未采集"}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
                 <span className="text-slate-500 font-bold">Node.js 运行版本</span>
                 <span className="font-mono font-bold text-slate-800">
-                  {data?.nodeVersion || process.version}
+                  {/* 版本号一律取服务端实测值；浏览器端不存在 process，缺失时明确标注未采集 */}
+                  {data?.nodeVersion || "未采集"}
                 </span>
               </div>
               <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
                 <span className="text-slate-500 font-bold">操作系统执行平台</span>
                 <span className="font-mono font-bold text-slate-800">
-                  {data?.platform || "容器环境"}
+                  {data?.platform || "未采集"}
                 </span>
               </div>
             </div>

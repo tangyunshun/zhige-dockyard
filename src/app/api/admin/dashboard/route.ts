@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       recentAuditLogs,
       bannedUsers,
       todayOperations,
+      modelStats,
     ] = await Promise.all([
       // 1. 用户总数
       prisma.user.count(),
@@ -239,6 +240,53 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
+
+      // 18. 模型与 AI 运行态势：数据库真实聚合（供应商通道 / 部署模型 / 通道健康 / 价格与分时价）
+      (async () => {
+        const [
+          depTotal,
+          depEnabled,
+          provTotal,
+          provEnabled,
+          priceTotal,
+          perTotal,
+          perEnabled,
+          policyTotal,
+        ] = await Promise.all([
+          prisma.modeldeployment.count(),
+          prisma.modeldeployment.count({ where: { enabled: true } }),
+          prisma.modelprovider.count(),
+          prisma.modelprovider.count({ where: { enabled: true } }),
+          prisma.modelpricing.count(),
+          prisma.modelpricingperiod.count(),
+          prisma.modelpricingperiod.count({ where: { enabled: true } }),
+          prisma.workspace_model_policy.count(),
+        ]);
+        const healthGroups = await prisma.modeldeployment.groupBy({
+          by: ["health"],
+          _count: true,
+        });
+        const hm = new Map(
+          healthGroups.map((g: any) => [String(g.health || "unknown").toLowerCase(), g._count]),
+        );
+        const healthy = hm.get("healthy") || 0;
+        const errorCount = hm.get("error") || 0;
+        return {
+          deploymentTotal: depTotal,
+          deploymentEnabled: depEnabled,
+          deploymentDisabled: Math.max(depTotal - depEnabled, 0),
+          providerTotal: provTotal,
+          providerEnabled: provEnabled,
+          providerDisabled: Math.max(provTotal - provEnabled, 0),
+          healthy,
+          error: errorCount,
+          unknown: Math.max(depTotal - healthy - errorCount, 0),
+          pricingTotal: priceTotal,
+          periodTotal: perTotal,
+          periodEnabled: perEnabled,
+          policyTotal,
+        };
+      })(),
     ]);
 
     // ===== 把 componenttask.type 聚合成 componentcategory（按分类维度展示） =====
@@ -427,6 +475,8 @@ export async function GET(request: NextRequest) {
           }),
         },
 
+        // 模型与 AI 运行态势（真实聚合）
+        modelStats,
         // 系统字典：提供给前端或需要处使用（来源于数据库 system_config 表）
         auditDicts: {
           actions: actionDict,

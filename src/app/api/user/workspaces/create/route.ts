@@ -84,6 +84,27 @@ export async function POST(request: NextRequest) {
       type === "ENTERPRISE" ? ((plan || "STANDARD").toString().toUpperCase() as WorkspacePlanKey) : "STANDARD";
     const planConfig = await getWorkspacePlanByKey(planKey);
 
+    // 企业空间套餐可用性校验：已停用 / 仅限线下定制的套餐不得用于创建空间
+    //（个人空间固定 STANDARD、非套餐购买行为，不在此拦截）
+    if (type === "ENTERPRISE") {
+      const planRow = await prisma.workspaceplan
+        .findUnique({
+          where: { key: planKey },
+          select: { name: true, isActive: true, purchasable: true },
+        })
+        .catch(() => null);
+      if (planRow && (!planRow.isActive || !planRow.purchasable)) {
+        return NextResponse.json(
+          {
+            message: planRow.isActive
+              ? `套餐「${planRow.name}」为线下定制套餐，不可在线创建空间，请更换套餐`
+              : `套餐「${planRow.name}」已停用，不可用于创建空间，请更换套餐`,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     // 创建工作空间（同步写入套餐快照与空间配额记录）
     const generateId = (prefix: string) =>
       `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;

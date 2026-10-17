@@ -37,17 +37,32 @@ describe("模型能力门禁强断言", { skip: !process.env.DATABASE_URL }, () 
         enabled: true,
       },
     });
+    const depEmptyId = randomUUID();
+    const depTextgenId = randomUUID();
+    const depSmallCtxId = randomUUID();
     await prisma.modeldeployment.createMany({
       data: [
-        { id: randomUUID(), providerId: PROV, modelId: MODEL_EMPTY, upstreamModel: "u", contextLimit: 32000, capabilities: [], enabled: true },
-        { id: randomUUID(), providerId: PROV, modelId: MODEL_TEXTGEN, upstreamModel: "u-textgen", contextLimit: 32000, capabilities: ["TEXT_GENERATION"], enabled: true },
-        { id: randomUUID(), providerId: PROV, modelId: MODEL_SMALLCTX, upstreamModel: "u-ctx", contextLimit: 100, capabilities: ["TEXT_GENERATION"], enabled: true },
+        { id: depEmptyId, providerId: PROV, modelId: MODEL_EMPTY, upstreamModel: "u", contextLimit: 32000, capabilities: [], enabled: true },
+        { id: depTextgenId, providerId: PROV, modelId: MODEL_TEXTGEN, upstreamModel: "u-textgen", contextLimit: 32000, capabilities: ["TEXT_GENERATION"], enabled: true },
+        { id: depSmallCtxId, providerId: PROV, modelId: MODEL_SMALLCTX, upstreamModel: "u-ctx", contextLimit: 100, capabilities: ["TEXT_GENERATION"], enabled: true },
       ],
+    });
+    // 授权制（方案 A）：本组用例聚焦「能力 / 上下文门禁」，故先授权全部三个部署，
+    // 否则会被白名单门禁优先拦截，永远拿不到能力类错误码。
+    await prisma.workspace_model_policy.create({
+      data: {
+        id: randomUUID(),
+        workspaceId: WS,
+        defaultDeploymentId: depTextgenId,
+        allowedDeploymentIds: [depEmptyId, depTextgenId, depSmallCtxId],
+      },
     });
   });
 
   after(async () => {
     delete process.env.MODEL_GATE_MOCK_KEY;
+    // 清理策略夹具（空间策略无 workspace 外键，需显式删除，保证零残留）
+    await prisma.workspace_model_policy.deleteMany({ where: { workspaceId: WS } }).catch(() => {});
     await prisma.modeldeployment.deleteMany({ where: { providerId: PROV } }).catch(() => {});
     await prisma.modelprovider.deleteMany({ where: { name: PROV } }).catch(() => {});
   });

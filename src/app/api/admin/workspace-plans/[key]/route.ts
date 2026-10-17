@@ -97,6 +97,7 @@ export async function PUT(request: NextRequest, context?: any) {
       sortOrder,
       purchasable,
       isActive,
+      trialGift,
     } = body;
 
     const plan = await prisma.workspaceplan.update({
@@ -133,6 +134,8 @@ export async function PUT(request: NextRequest, context?: any) {
           tokenLimit !== undefined
             ? Number(tokenLimit)
             : Number(existing.tokenLimit),
+        trialGift:
+          trialGift !== undefined ? (trialGift as any) : existing.trialGift,
         features:
           features !== undefined
             ? Array.isArray(features)
@@ -200,6 +203,18 @@ export async function DELETE(request: NextRequest, context?: any) {
     if (existing.isActive) {
       return NextResponse.json(
         { message: "启用中的套餐不可删除，请先停用" },
+        { status: 400 },
+      );
+    }
+
+    // 仍被空间绑定的套餐禁止删除：workspace.plan 为普通字符串、无外键级联，
+    // 删除后这些空间的套餐引用会变成孤儿并静默回落为默认套餐，导致展示与实际配额不一致
+    const boundCount = await prisma.workspace.count({ where: { plan: key } });
+    if (boundCount > 0) {
+      return NextResponse.json(
+        {
+          message: `该套餐仍被 ${boundCount} 个空间使用，无法删除。请先将这些空间迁移到其他套餐，再执行删除。`,
+        },
         { status: 400 },
       );
     }

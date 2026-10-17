@@ -11,6 +11,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { ContractValidationError } from "@/lib/component-runtime-utils";
+import { computeEffectiveDeploymentIds, loadFreeDefaultDeploymentIds } from "@/lib/platform-default-models";
 import { ModelAdapterError, createModelAdapter } from "@/lib/model-adapter";
 import { validateModelBaseUrlForRequest } from "@/lib/model-endpoint";
 import {
@@ -346,8 +347,15 @@ export interface ResolvedModelPlan {
 /** 空间模型策略 */
 export interface SpaceModelPolicy {
   defaultDeploymentId: string | null;
-  /** 允许的部署 ID；空数组表示不限制 */
+  /** 空间级额外开通清单（不含平台默认免费模型） */
   allowedDeploymentIds: string[];
+  /** 空间级禁用清单（即使默认免费或已开通也不可用） */
+  disabledDeploymentIds: string[];
+  /**
+   * 授权制下的有效模型清单 = 平台默认免费 + allowedDeploymentIds − disabledDeploymentIds。
+   * 这是模型门禁的唯一权威口径；为空表示该空间未被授权任何模型。
+   */
+  effectiveDeploymentIds: string[];
   configured: boolean;
 }
 
@@ -386,7 +394,10 @@ export function assertModelAllowed(params: {
   deploymentId: string | null;
   deploymentEnabled: boolean;
   providerEnabled: boolean;
-  /** null 表示未配置空间策略；非空数组启用白名单限制 */
+  /**
+   * 该空间被授权的可调用部署清单（授权制）。
+   * null 或空数组 = 未授权任何模型 → 一律拒绝（方案 A：未配置即不可用，不再有「留空 = 不限制」的旧语义）。
+   */
   allowedDeploymentIds: string[] | null;
 }): void {
   if (params.deploymentId === null) {
@@ -410,27 +421,58 @@ export function assertModelAllowed(params: {
       403,
     );
   }
-  if (params.allowedDeploymentIds && params.allowedDeploymentIds.length > 0) {
-    if (!params.allowedDeploymentIds.includes(params.deploymentId)) {
-      throw new ContractValidationError(
-        "MODEL_NOT_ALLOWED",
-        `当前空间未在允许模型白名单内：${params.contractProviderId}/${params.contractModelId}。`,
-        403,
-      );
-    }
+  // 授权制（方案 A）：白名单为空 = 该空间未被授权任何模型，一律拒绝，不再当作「不限制」
+  if (!params.allowedDeploymentIds || params.allowedDeploymentIds.length === 0) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      `当前空间未配置任何可用模型（可用模型白名单为空）：${params.contractProviderId}/${params.contractModelId}。请管理员在「后台 → 空间模型策略」中为该空间授权模型后再执行。`,
+      403,
+    );
+  }
+  if (!params.allowedDeploymentIds.includes(params.deploymentId)) {
+    throw new ContractValidationError(
+      "MODEL_NOT_ALLOWED",
+      `当前空间未在允许模型白名单内：${params.contractProviderId}/${params.contractModelId}。`,
+      403,
+    );
   }
 }
 
-/** 读取空间模型策略；未配置返回 { configured: false, allowedDeploymentIds: [] } */
+/** 读取空间模型策略；未配置时继承平台默认免费模型 */
 export async function loadSpaceModelPolicy(workspaceId: string): Promise<SpaceModelPolicy> {
-  if (!workspaceId) return { defaultDeploymentId: null, allowedDeploymentIds: [], configured: false };
+  const empty: SpaceModelPolicy = {
+    defaultDeploymentId: null,
+    allowedDeploymentIds: [],
+    disabledDeploymentIds: [],
+    effectiveDeploymentIds: [],
+    configured: false,
+  };
+  if (!workspaceId) return empty;
+
   const row = await prisma.workspace_model_policy.findUnique({ where: { workspaceId } });
-  if (!row) return { defaultDeploymentId: null, allowedDeploymentIds: [], configured: false };
-  const ids = Array.isArray(row.allowedDeploymentIds) ? (row.allowedDeploymentIds as unknown as string[]) : [];
+  const ids = Array.isArray(row?.allowedDeploymentIds)
+    ? (row!.allowedDeploymentIds as unknown as string[])
+    : [];
+  const disabledIds = Array.isArray(row?.disabledDeploymentIds)
+    ? (row!.disabledDeploymentIds as unknown as string[])
+    : [];
+  const allowed = ids.filter((v) => typeof v === "string");
+  const disabled = disabledIds.filter((v) => typeof v === "string");
+
+  // 平台默认免费模型是所有空间的公共供给，与空间级覆盖合并后得到有效清单
+  const freeDefaults = await loadFreeDefaultDeploymentIds();
+  const effectiveDeploymentIds = computeEffectiveDeploymentIds({
+    freeDefaults,
+    allowedDeploymentIds: allowed,
+    disabledDeploymentIds: disabled,
+  });
+
   return {
-    defaultDeploymentId: row.defaultDeploymentId ?? null,
-    allowedDeploymentIds: ids.filter((v) => typeof v === "string"),
-    configured: true,
+    defaultDeploymentId: row?.defaultDeploymentId ?? null,
+    allowedDeploymentIds: allowed,
+    disabledDeploymentIds: disabled,
+    effectiveDeploymentIds,
+    configured: !!row,
   };
 }
 
@@ -859,7 +901,9 @@ export async function resolveModelExecutionPlan(params: {
     ? await prisma.modelprovider.findUnique({ where: { name: deployment.providerId } })
     : null;
   const policy = await loadSpaceModelPolicy(params.workspaceId);
-  const allowedList = policy.configured ? policy.allowedDeploymentIds : null;
+  // 授权制（方案 A）：空间未配置策略、或白名单为空 → 均视为「未授权任何模型」，裁决一律拒绝。
+  // （旧语义「留空 = 不限制」与产品口径「未配置即不可用」冲突，已废弃）
+  const allowedList = policy.effectiveDeploymentIds;
 
   // 2.5 空间默认模型：必须存在、启用、供应商启用（默认模型不得绕过启用状态与白名单）
   let defaultPlan: { deployment: NonNullable<typeof deployment>; provider: NonNullable<typeof provider> } | null = null;
@@ -906,10 +950,12 @@ export async function resolveModelExecutionPlan(params: {
 
   // 4. 合同模型未注册 → 若空间配置了可用默认模型则使用它（仍受白名单约束）
   if (defaultPlan) {
-    if (allowedList && allowedList.length > 0 && !allowedList.includes(defaultPlan.deployment.id)) {
+    if (!allowedList.includes(defaultPlan.deployment.id)) {
       throw new ContractValidationError(
         "MODEL_NOT_ALLOWED",
-        "当前空间的默认模型不在允许模型白名单内，不允许执行。",
+        allowedList.length === 0
+          ? "当前空间未配置任何可用模型（可用模型白名单为空）。请管理员在「后台 → 空间模型策略」中为该空间授权模型后再执行。"
+          : "当前空间的默认模型不在允许模型白名单内，不允许执行。",
         403,
       );
     }
@@ -1066,7 +1112,8 @@ export async function resolveDefaultDeployment(params: {
   }
 
   const policy = await loadSpaceModelPolicy(params.workspaceId);
-  const allowedList = policy.configured ? policy.allowedDeploymentIds : null;
+  // 授权制（方案 A）：空间未配置策略、或白名单为空 → 视为「未授权任何模型」
+  const allowedList = policy.effectiveDeploymentIds;
   const spaceDefaultId = policy.defaultDeploymentId;
 
   // 解析顺序：① 个人「仅我使用」偏好 → ② 空间显式默认（含显式 BYO 默认）；两者皆空才拦截。
@@ -1129,10 +1176,12 @@ export async function resolveDefaultDeployment(params: {
       403,
     );
   }
-  if (allowedList && allowedList.length > 0 && !allowedList.includes(dep.id)) {
+  if (!allowedList.includes(dep.id)) {
     throw new ContractValidationError(
       "MODEL_NOT_ALLOWED",
-      `默认模型（${dep.providerId}/${dep.modelId}）不在当前空间允许的模型白名单内。`,
+      allowedList.length === 0
+        ? `当前空间未配置任何可用模型（可用模型白名单为空）：${dep.providerId}/${dep.modelId}。请管理员在「后台 → 空间模型策略」中为该空间授权模型后再执行。`
+        : `默认模型（${dep.providerId}/${dep.modelId}）不在当前空间允许的模型白名单内。`,
       403,
     );
   }
@@ -1181,7 +1230,7 @@ export async function resolveDefaultDeployment(params: {
  * 三道安全检查缺一不可，任一失败抛出与 resolveDefaultDeployment 同款 ContractValidationError：
  *   ① 池内校验：
  *      - 若 targetDeploymentId === "byo"：校验该空间已登记且启用自带模型；若 shareWithMembers=false 且当前用户非所有者，则报 403；
- *      - 若 targetDeploymentId 为系统模型：校验必须在空间 allowedDeploymentIds 白名单内（留空=不限制）；
+ *      - 若 targetDeploymentId 为系统模型：校验必须在空间 allowedDeploymentIds 白名单内（空白名单=未授权任何模型，一律拒绝，与 resolveModelExecutionPlan 同口径）；
  *   ② enabled 校验：部署启用且所属供应商启用；
  *   ③ 能力门禁：组件合同要求的能力 ⊆ 该部署声明能力（缺失报 MODEL_CAPABILITY_NOT_SUPPORTED 缺失错误）；
  *
@@ -1321,11 +1370,14 @@ export async function resolveDeploymentForWorkspace(params: {
 
   // 分支 2：指定系统模型（target 即 modeldeployment.id）
   const policy = await loadSpaceModelPolicy(params.workspaceId);
-  const allowedList = policy.configured ? policy.allowedDeploymentIds : null;
-  if (allowedList && allowedList.length > 0 && !allowedList.includes(target)) {
+  // 授权制（方案 A）：空间未配置策略、或白名单为空 → 视为「未授权任何模型」
+  const allowedList = policy.effectiveDeploymentIds;
+  if (!allowedList.includes(target)) {
     throw new ContractValidationError(
       "MODEL_NOT_ALLOWED",
-      "指定的模型部署不在当前空间允许的模型白名单内，不允许执行。",
+      allowedList.length === 0
+        ? `当前空间未配置任何可用模型（可用模型白名单为空）：${target}。请管理员在「后台 → 空间模型策略」中为该空间授权模型后再执行。`
+        : "指定的模型部署不在当前空间允许的模型白名单内，不允许执行。",
       403,
     );
   }

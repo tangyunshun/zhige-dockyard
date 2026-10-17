@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 import { addNotification } from "@/lib/notifications-store";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -186,6 +186,22 @@ export async function PATCH(request: NextRequest) {
         },
       });
     }
+
+    // 统一审计：记录本次单空间管控操作（高危可审计）
+    void writeAuditLog(
+      userId,
+      "workspace:toggle_status",
+      {
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+        targetStatus: status,
+        reason: reason?.trim() || null,
+        durationText,
+      },
+      workspace.id,
+      null,
+      request,
+    );
 
     // 触发站内消息通知闭环：通知空间所有者与全体在编成员
     try {

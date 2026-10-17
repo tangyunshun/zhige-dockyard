@@ -4,7 +4,7 @@ import { isAdminRole, validateUser } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    // 楠岃瘉绠＄悊鍛樻潈闄?
+    // 验证管理员权限
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user || !isAdminRole(user.role)) {
-      return NextResponse.json({ error: "鏉冮檺涓嶈冻" }, { status: 403 });
+      return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

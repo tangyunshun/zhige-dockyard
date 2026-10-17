@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -190,6 +191,16 @@ export async function GET(request: NextRequest) {
       }
       blockReason = `检测到${reasons.join("且")}。为保障数据资产与成员权益，系统已自动阻断停用操作。请先在工作空间内移出协同成员并卸载装配组件后再执行停用管控。`;
     }
+
+    // 统一审计：记录管理员对空间的停用合规检测（高危只读操作留痕）
+    void writeAuditLog(
+      currentUserId,
+      "workspace:disable_check",
+      { workspaceId, canDisable, memberCount, componentCount },
+      workspaceId,
+      null,
+      request,
+    );
 
     return NextResponse.json({
       success: true,
