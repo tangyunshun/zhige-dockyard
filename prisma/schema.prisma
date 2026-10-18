@@ -349,6 +349,14 @@ model membershiplevel {
   /// 会员每月算力点额度上限（与"算力点/points"体系同币种；旧称 tokenLimit，待合并为用户级 pointwallet 唯一账本）
   /// 默认值对齐 seed 免费版(100)，消除历史"10000"误导（历史口径残留）。算力点为余额制，创建空间不再按此字段白送额度。
   tokenLimit              BigInt                @default(100)
+  /// 并发任务数上限（同一账号/空间同时运行的任务数）；默认 1
+  maxConcurrency          Int                   @default(1)
+  /// 单次上传文件大小上限（字节）；0 表示沿用合同默认上限
+  maxSingleFileBytes      BigInt                @default(0)
+  /// 可分配系统模型数量上限；0 表示不限制
+  maxModelAllocations     Int                   @default(0)
+  /// 自建模型（BYO）数量上限；0 表示不限制
+  maxByoModels            Int                   @default(0)
   features                Json?
   priceMonthly            Int                   @default(0)
   priceYearly             Int                   @default(0)
@@ -633,6 +641,12 @@ model workspace {
   updatedAt           DateTime
   plan                String                @default("STANDARD")
   quota               Json?
+  /// 订阅制套餐生效起始时间（购买/续费时写入）
+  planStartedAt       DateTime?
+  /// 订阅制套餐到期时间（到期未续费则自动降级为免费版）
+  planExpiresAt       DateTime?
+  /// 订阅周期：MONTH（月付）| YEAR（年付）
+  planBillingCycle    String?
   status              String                @default("ACTIVE")
   visibility          String                @default("PRIVATE")
   lastActiveAt        DateTime?
@@ -1862,6 +1876,14 @@ model workspaceplan {
   maxStorage    Int      @default(0)
   maxApiCalls   Int      @default(0)
   tokenLimit    Int      @default(0)
+  /// 并发任务数上限（同一空间同时运行的任务数）；0 表示沿用系统默认
+  maxConcurrency Int     @default(0)
+  /// 单次上传文件大小上限（字节）；0 表示沿用合同默认上限
+  maxSingleFileBytes BigInt @default(0)
+  /// 可分配系统模型数量上限；0 表示不限制
+  maxModelAllocations Int @default(0)
+  /// 自建模型（BYO）数量上限；0 表示不限制
+  maxByoModels Int @default(0)
   /// 新空间一次性体验额度赠送（企业套餐差异化）：{ enabled, points, expireDays }
   /// 为空时由代码常量 WORKSPACE_PLANS 兜底；写入后优先于常量
   trialGift     Json?

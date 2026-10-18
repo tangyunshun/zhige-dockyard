@@ -66,6 +66,9 @@ export async function GET(request: NextRequest) {
         plan: true,
         quota: true,
         workspacequotaId: true,
+        planStartedAt: true,
+        planExpiresAt: true,
+        planBillingCycle: true,
       },
     });
 
@@ -176,7 +179,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        workspace: { id: workspace.id, name: workspace.name, ownerId: workspace.ownerId },
+        workspace: {
+          id: workspace.id,
+          name: workspace.name,
+          ownerId: workspace.ownerId,
+          planStartedAt: workspace.planStartedAt,
+          planExpiresAt: workspace.planExpiresAt,
+          planBillingCycle: workspace.planBillingCycle,
+        },
         currentPlan: currentConfig,
         allPlans,
         availablePlans,
@@ -228,9 +238,10 @@ export async function POST(request: NextRequest) {
 
     const userId = authResult.user!.id;
     const body = await request.json();
-    const { workspaceId, targetPlan } = body as {
+    const { workspaceId, targetPlan, billingCycle } = body as {
       workspaceId?: string;
       targetPlan?: string;
+      billingCycle?: "MONTH" | "YEAR";
     };
 
     if (!workspaceId) {
@@ -240,6 +251,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "缺少目标套餐" }, { status: 400 });
     }
 
+    const cycle: "MONTH" | "YEAR" = billingCycle === "YEAR" ? "YEAR" : "MONTH";
     const targetConfig = await getWorkspacePlanByKey(targetPlan);
     if (!targetConfig.purchasable) {
       return NextResponse.json(
@@ -278,16 +290,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 订阅周期金额与到期时间
+    const cycleAmount = cycle === "YEAR" ? targetConfig.priceYearly : targetConfig.priceMonthly;
+    const expiresAt = new Date(
+      Date.now() + (cycle === "YEAR" ? 365 : 30) * 24 * 60 * 60 * 1000
+    );
+
     // 1~4. 原子化写入：套餐/配额/日志/账单要么全部成功、要么全部回滚。
-    //    （历史缺陷：四步串行非事务写入，任一步失败会留下「plan 已升级但账单/日志缺失」
-    //     的半成功脏状态，导致前端再次点击时命中「当前已是该套餐」的矛盾提示）
     const logId = generateId("op");
     await prisma.$transaction(async (tx) => {
-      // 1. 更新空间套餐与配额快照（团队资源扩容包语义：一次购买、长期生效）
+      // 1. 更新空间套餐与配额快照，并写入订阅生命周期（生效起止时间 / 计费周期）
       await tx.workspace.update({
         where: { id: workspaceId },
         data: {
           plan: targetConfig.key,
+          planStartedAt: new Date(),
+          planBillingCycle: cycle,
+          planExpiresAt: expiresAt,
           quota: {
             maxComponents: targetConfig.maxComponents,
             maxMembers: targetConfig.maxMembers,
@@ -335,6 +354,8 @@ export async function POST(request: NextRequest) {
           data: {
             storageLimit: BigInt(finalStorageLimit),
             apiCallsLimit: BigInt(finalApiCallsLimit),
+            // 订阅套餐自带的席位上限（席位增购会在此基础上叠加）
+            enterpriseSlots: BigInt(targetConfig.maxMembers),
             updatedAt: new Date(),
           },
         });
@@ -384,8 +405,8 @@ export async function POST(request: NextRequest) {
           userId,
           workspaceId,
           type: "PLAN_UPGRADE",
-          title: `空间「${workspace.name}」扩容至${targetConfig.name}（团队资源扩容包·一次性）`,
-          amount: targetConfig.priceMonthly,
+          title: `空间「${workspace.name}」订阅${targetConfig.name}（${cycle === "YEAR" ? "年付" : "月付"}）`,
+          amount: cycleAmount,
           currency: "CNY",
           status: "SUCCESS",
           channel: "SYSTEM",
@@ -395,8 +416,9 @@ export async function POST(request: NextRequest) {
             fromPlan: currentPlan,
             toPlan: targetConfig.key,
             planName: targetConfig.name,
-            billingModel: "ONE_TIME", // 一次性扩容（原订阅制月付/年付已下线）
-            originalPriceYearly: targetConfig.priceYearly,
+            billingModel: cycle === "YEAR" ? "YEARLY" : "MONTHLY", // 订阅制：月付 / 年付
+            billingCycle: cycle,
+            expiresAt: expiresAt.toISOString(),
           },
           updatedAt: new Date(),
         },
@@ -405,7 +427,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `已为空间「${workspace.name}」开通${targetConfig.name}团队资源扩容包（一次性买断，长期生效）`,
+      message: `已为空间「${workspace.name}」开通${targetConfig.name}订阅（${cycle === "YEAR" ? "年付，有效期 1 年" : "月付，有效期 30 天"}，到期需续费）`,
       data: {
         plan: targetConfig,
         previousPlan: currentConfig,

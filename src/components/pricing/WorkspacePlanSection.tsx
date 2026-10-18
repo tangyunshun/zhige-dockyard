@@ -358,7 +358,7 @@ export default function WorkspacePlanSection({
                 <span className="text-xs font-black text-[#2b6cb0]">
                   {plan.priceMonthly > 0 ? `¥${plan.priceMonthly / 100}` : "免费"}
                   {plan.priceMonthly > 0 && (
-                    <span className="text-[10px] text-slate-400 font-bold"> 买断</span>
+                    <span className="text-[10px] text-slate-400 font-bold"> /月</span>
                   )}
                 </span>
               </div>

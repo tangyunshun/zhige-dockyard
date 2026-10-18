@@ -690,10 +690,10 @@ export default function WorkspacePlansAdminPage() {
                     <td className="px-6 py-4 font-mono whitespace-nowrap">
                       <div className="space-y-0.5">
                         <div className="font-black text-slate-900 text-xs">
-                          一次性: <span className="text-[#3182ce]">{fmtPrice(plan.priceMonthly)}</span>
+                          月付: <span className="text-[#3182ce]">{fmtPrice(plan.priceMonthly)}</span>
                         </div>
                         <div className="text-[10px] font-bold text-slate-400">
-                          {plan.priceYearly > 0 ? "订阅年付已下线" : "买断长期生效"}
+                          {plan.priceYearly > 0 ? "月付 / 年付订阅" : "月付订阅"}
                         </div>
                         <div className="text-[10px] font-bold text-slate-400">
                           {plan.purchasable ? "在线售卖" : "线下定制"}

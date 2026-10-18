@@ -1,14 +1,15 @@
 /**
  * 空间级套餐配置（对应 workspace.plan 字段）
  *
- * 产品定位：一次性「团队资源扩容包」（不再按月/年订阅）。
- * - priceMonthly：一次性扩容价格（单位：分），购买后长期生效
- * - priceYearly：订阅制年付字段，已随「一次性扩容」模式停用，恒为 0
- * - tokenLimit：扩容包不再附赠算力（恒为 0）；算力统一由「充值 + 算力加油包」提供（随用随扣，无月度自动重置）
+ * 产品定位：空间级订阅套餐（支持月付 / 年付；到期需续费，否则定时任务自动降级为免费版）。
+ * - priceMonthly：月付价格（单位：分）
+ * - priceYearly：年付价格（单位：分，通常为月付的 10 个月当量）
+ * - 订阅生效周期与到期时间记录在 workspace 表的 planStartedAt / planExpiresAt / planBillingCycle
+ * - tokenLimit：套餐不再附赠算力（恒为 0）；算力统一由「充值 + 算力加油包」提供（随用随扣，无月度自动重置）
  *
  * 与「账号级会员等级 membershiplevel」是两个独立维度：
- * - 账号级会员等级：决定企业空间数量、团队规模、组件/调用额度及加油包折扣等账号权益，按月/年订阅
- * - 空间级扩容包：决定单个空间内的成员席位、组件装配、存储、调用额度，一次购买长期生效
+ * - 账号级会员等级：决定个人账号权益（并发、上传大小、模型数、算力等），按月/年订阅
+ * - 空间级套餐：决定单个空间内的成员席位、组件装配、存储、调用额度与并发/上传等，按月/年订阅
  *
  * 套餐升级/空间创建统一从数据库 workspaceplan 读取；
  * 本文件作为数据库不可用时的兜底配置与数据库为空时的初始化基线，禁止在业务代码中另行写死资费。
@@ -19,18 +20,26 @@ export interface WorkspacePlanConfig {
   key: WorkspacePlanKey;
   name: string;
   description: string;
-  /** 一次性扩容价格，单位：分 */
+  /** 月付价格，单位：分 */
   priceMonthly: number;
-  /** 订阅制年付已停用（一次性扩容模式恒为 0） */
+  /** 年付价格，单位：分（通常为月付的 10 个月当量） */
   priceYearly: number;
   /** 可装配组件实例上限，-1 表示无限制 */
   maxComponents: number;
-  /** 可邀请成员数上限，-1 表示无限制 */
+  /** 可邀请成员数（席位）上限，-1 表示无限制 */
   maxMembers: number;
   /** 存储空间上限，单位：MB，-1 表示无限制 */
   maxStorage: number;
   /** 调用额度上限，-1 表示无限制 */
   maxApiCalls: number;
+  /** 并发任务数上限（同一空间同时运行），-1 表示不限制 */
+  maxConcurrency: number;
+  /** 单次上传文件大小上限，单位：字节，-1 表示不限制 */
+  maxSingleFileBytes: number;
+  /** 可分配系统模型数量上限，-1 表示不限制 */
+  maxModelAllocations: number;
+  /** 自建模型（BYO）数量上限，-1 表示不限制 */
+  maxByoModels: number;
   /** 扩容包附赠算力已取消，恒为 0（算力统一由会员等级 + 算力加油包承担） */
   tokenLimit: number;
   /**
@@ -54,18 +63,22 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
   STANDARD: {
     key: "STANDARD",
     name: "标准版",
-    description: "新空间免费基础档，空间级资源可随时按需一次性扩容",
+    description: "新空间免费基础档，空间级资源可随时按需订阅扩容",
     priceMonthly: 0,
     priceYearly: 0,
     maxComponents: 100,
-    maxMembers: 10,
+    maxMembers: 2,
     maxStorage: 1024, // 1 GB
     maxApiCalls: 1000,
+    maxConcurrency: 2,
+    maxSingleFileBytes: 10 * MB,
+    maxModelAllocations: 2,
+    maxByoModels: 2,
     tokenLimit: 0,
     trialGift: { enabled: true, points: 500, expireDays: 30 },
     poolLowThreshold: 1000,
     features: [
-      "10 个团队协同席位",
+      "2 个团队协同席位",
       "100 个组件装配额度",
       "1 GB 云端存储",
       "1,000 次组件调用额度",
@@ -77,18 +90,22 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
   PRO: {
     key: "PRO",
     name: "专业版",
-    description: "成长型团队一次性扩容包，解锁全量组件与更高并发",
+    description: "专业版空间套餐，按月/年订阅，解锁全量组件与更高并发",
     priceMonthly: 19900,
-    priceYearly: 0,
+    priceYearly: 199000,
     maxComponents: 500,
-    maxMembers: 50,
+    maxMembers: 10,
     maxStorage: 10240, // 10 GB
     maxApiCalls: 10000,
+    maxConcurrency: 5,
+    maxSingleFileBytes: 50 * MB,
+    maxModelAllocations: 10,
+    maxByoModels: 10,
     tokenLimit: 0,
     trialGift: { enabled: true, points: 2000, expireDays: 30 },
     poolLowThreshold: 3000,
     features: [
-      "50 个团队协同席位",
+      "10 个团队协同席位",
       "500 个组件装配额度",
       "10 GB 云端存储",
       "10,000 次组件调用额度",
@@ -100,18 +117,22 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
   ENTERPRISE: {
     key: "ENTERPRISE",
     name: "旗舰版",
-    description: "大型组织一次性扩容包，席位与组件无限制并含 SLA 保障",
+    description: "旗舰版空间套餐，按月/年订阅，席位与组件无限制并含 SLA 保障",
     priceMonthly: 69900,
-    priceYearly: 0,
+    priceYearly: 699000,
     maxComponents: -1,
-    maxMembers: -1,
+    maxMembers: 50,
     maxStorage: 102400, // 100 GB
     maxApiCalls: 100000,
+    maxConcurrency: -1,
+    maxSingleFileBytes: -1,
+    maxModelAllocations: -1,
+    maxByoModels: -1,
     tokenLimit: 0,
     trialGift: { enabled: true, points: 5000, expireDays: 30 },
     poolLowThreshold: 10000,
     features: [
-      "团队席位无限制",
+      "50 个团队协同席位（可增购）",
       "组件装配额度无限制",
       "100 GB 云端存储",
       "100,000 次组件调用额度",
@@ -130,6 +151,10 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
     maxMembers: -1,
     maxStorage: -1,
     maxApiCalls: -1,
+    maxConcurrency: -1,
+    maxSingleFileBytes: -1,
+    maxModelAllocations: -1,
+    maxByoModels: -1,
     tokenLimit: 0,
     trialGift: { enabled: false, points: 0, expireDays: 0 },
     poolLowThreshold: 10000,
@@ -142,8 +167,8 @@ export const WORKSPACE_PLANS: Record<WorkspacePlanKey, WorkspacePlanConfig> = {
 /** 默认套餐 */
 export const DEFAULT_WORKSPACE_PLAN: WorkspacePlanKey = "STANDARD";
 
-/** 计费模式：空间扩容包一次性买断（订阅制已下线） */
-export const WORKSPACE_PLAN_BILLING_LABEL = "一次性扩容";
+/** 计费模式：空间套餐为订阅制（月付 / 年付），到期需续费 */
+export const WORKSPACE_PLAN_BILLING_LABEL = "订阅制（月付 / 年付）";
 
 /** 可在线自助购买的套餐（按阶梯排序） */
 export const PURCHASABLE_PLANS: WorkspacePlanConfig[] = Object.values(WORKSPACE_PLANS)
