@@ -647,6 +647,8 @@ model workspace {
   planExpiresAt       DateTime?
   /// 订阅周期：MONTH（月付）| YEAR（年付）
   planBillingCycle    String?
+  /// 席位增购数量（在套餐自带席位之外叠加，到期随套餐一并清零）
+  extraSeats          Int                   @default(0)
   status              String                @default("ACTIVE")
   visibility          String                @default("PRIVATE")
   lastActiveAt        DateTime?

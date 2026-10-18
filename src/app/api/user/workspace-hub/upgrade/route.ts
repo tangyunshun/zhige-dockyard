@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { MEMBERSHIP_QUOTAS, MembershipLevel, UpgradePath } from "@/constants/roles";
+// 会员配额改由数据库 membershiplevel 读取，不再依赖硬编码常量（避免多源不一致）
 
 /**
  * 工作空间升级 - 个人空间升级为企业空间
@@ -49,8 +49,11 @@ export async function POST(request: NextRequest) {
       where: { id: userId },
       select: { membershipLevel: true },
     });
-    const membershipLevel = (dbUser?.membershipLevel || "FREE") as MembershipLevel;
-    const quotas = MEMBERSHIP_QUOTAS[membershipLevel] || MEMBERSHIP_QUOTAS[MembershipLevel.FREE];
+    const membershipLevel = dbUser?.membershipLevel || "FREE";
+
+    // 企业空间数量上限以数据库会员等级配置为准（统一读库，避免硬编码多源不一致）
+    const mlRow = await prisma.membershiplevel.findUnique({ where: { name: membershipLevel } });
+    const maxEnterprise = mlRow ? Number(mlRow.maxEnterpriseWorkspaces) : 1;
 
     // 统计当前企业空间数量
     const enterpriseCount = await prisma.workspace.count({
@@ -61,12 +64,12 @@ export async function POST(request: NextRequest) {
     });
 
     // 检查企业空间配额
-    if (enterpriseCount >= quotas.enterpriseSlots && quotas.enterpriseSlots !== -1) {
+    if (enterpriseCount >= maxEnterprise && maxEnterprise !== -1) {
       return NextResponse.json(
         { 
-          error: `企业空间数量已达上限（${quotas.enterpriseSlots}个），请升级会员等级`,
+          error: `企业空间数量已达上限（${maxEnterprise}个），请升级会员等级`,
           currentLevel: membershipLevel,
-          maxEnterprise: quotas.enterpriseSlots,
+          maxEnterprise,
         },
         { status: 403 }
       );

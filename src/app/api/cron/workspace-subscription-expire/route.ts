@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
             planStartedAt: null,
             planExpiresAt: null,
             planBillingCycle: null,
+            extraSeats: 0,
             updatedAt: new Date(),
           },
         });

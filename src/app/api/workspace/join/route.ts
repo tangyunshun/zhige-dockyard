@@ -76,20 +76,17 @@ export async function POST(request: NextRequest) {
       where: { workspaceId: invitation.workspaceId }
     });
 
-    const spaceOwner = await prisma.user.findUnique({
-      where: { id: invitation.workspace.ownerId }
+    // 席位上限 = 空间套餐自带席位 + 已增购席位（套餐维度，而非所有者会员等级）
+    const wsPlan = await prisma.workspaceplan.findUnique({
+      where: { key: invitation.workspace.plan || "STANDARD" },
     });
-
-    const levelName = spaceOwner?.membershipLevel || "FREE";
-    const levelInfo = await prisma.membershiplevel.findUnique({
-      where: { name: levelName }
-    });
-
-    const maxTeamSize = levelInfo ? Number(levelInfo.maxTeamSize) : 5;
+    const planSeats = wsPlan ? Number(wsPlan.maxMembers) : 0;
+    const extraSeats = Number(invitation.workspace.extraSeats || 0);
+    const maxTeamSize = planSeats + extraSeats > 0 ? planSeats + extraSeats : 5;
 
     if (currentMemberCount >= maxTeamSize) {
       return NextResponse.json(
-        { error: `该协作空间的团队协同配额已满（上限 ${maxTeamSize} 人），无法加入。请联系空间所有者升级套餐。` },
+        { error: `该协作空间的席位已满（上限 ${maxTeamSize} 人，含增购 ${extraSeats} 个），无法加入。请联系空间所有者增购席位或升级套餐。` },
         { status: 403 }
       );
     }
