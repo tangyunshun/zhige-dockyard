@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { normalizeUserRole } from "@/lib/role-utils";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
 import {
   User,
@@ -221,11 +222,11 @@ export default function UserProfilePage() {
 
   const formatRoleName = (role?: string | null) => {
     if (!role) return "普通用户";
-    const r = role.toLowerCase();
-    if (r === "admin" || r === "administrator") return "系统管理员";
-    if (r === "superadmin" || r === "super_admin") return "超级管理员";
-    if (r === "creator") return "创作者";
-    if (r === "developer") return "开发者";
+    const n = normalizeUserRole(role);
+    if (n === "admin") return "系统管理员";
+    if (n === "superadmin") return "超级管理员";
+    if (n === "creator") return "创作者";
+    if (n === "developer") return "开发者";
     return "普通用户";
   };
 

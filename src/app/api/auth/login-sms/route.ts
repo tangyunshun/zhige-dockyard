@@ -421,6 +421,10 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       success: true,
       message: "登录成功",
+      // 与账号密码登录保持对齐：必须把 access token 返回给前端写入 localStorage，
+      // 否则 AuthCheck 会一直拿本地残留的旧令牌去调 /api/auth/me，导致“刚登录就登录失效”的死循环。
+      token,
+      refreshToken,
       user: userData,
     });
 

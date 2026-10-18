@@ -8,6 +8,15 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // 全局 BigInt 序列化保护：避免任何路由因 "Do not know how to serialize a BigInt" 而 500。
+  // 与各处 Number(...) 转换语义一致（点数 / 额度 / 字节数均在 Number 安全整数范围内）。
+  // 一次性注册，覆盖全部 API 路由（会员等级、算力结算、订单、空间配额等）。
+  if (typeof (BigInt.prototype as { toJSON?: () => unknown }).toJSON !== "function") {
+    (BigInt.prototype as { toJSON?: () => unknown }).toJSON = function (this: bigint) {
+      return Number(this);
+    };
+  }
+
   // 防止 dev / HMR 下重复注册多个定时器
   const g = globalThis as unknown as { __pointsExpireScheduled?: boolean };
   if (g.__pointsExpireScheduled) return;

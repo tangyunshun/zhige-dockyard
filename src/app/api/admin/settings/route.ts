@@ -32,6 +32,7 @@ const CONFIG_KEYS = [
   "smtpPass",
   "senderEmail",
   "senderName",
+  "demoRequestNotifyEmail",
   // 短信设置
   "smsProvider",
   "smsAccessKeyId",
@@ -72,6 +73,8 @@ const CONFIG_KEYS = [
   "billing.minPointsPerTask",
   "billing.settlementMode",
   "billing_usage_calibration",
+  // 商务联系方式 / 客户经理（1~2 位，JSON 数组；前端定价页、定制版卡片统一引用，后台可随时修改）
+  "contact.managers",
 ];
 
 const DEFAULT_CONFIGS: Record<string, string> = {
@@ -90,12 +93,17 @@ const DEFAULT_CONFIGS: Record<string, string> = {
   "billing.minPointsPerTask": "5",
   "billing.settlementMode": "WHITELIST",
   "billing_usage_calibration": "{}",
+  // 商务联系方式 / 客户经理（1~2 位，JSON 数组；管理员可在「系统设置」中随时修改，无需改代码）
+  "contact.managers": JSON.stringify([
+    { name: "客户经理", hotline: "400-900-6688", email: "business@zhige.com", serviceHours: "工作日 9:00 - 18:00" },
+  ]),
   smtpHost: "smtp.zhige.com",
   smtpPort: "587",
   smtpUser: "service@zhige.com",
   smtpPass: "",
   senderEmail: "noreply@zhige.com",
   senderName: "知阁舟坊运维中枢",
+  demoRequestNotifyEmail: "sales@zhige.com",
   smsProvider: "aliyun",
   smsAccessKeyId: "LTAI5t****",
   smsAccessKeySecret: "9Xz8****",
@@ -205,10 +213,55 @@ const NUMERIC_RULES: Record<string, { min: number; max: number; label: string }>
 
 /** 值域校验：返回错误信息，合法时返回 null */
 function validateSettingValue(key: string, value: string): string | null {
+  // 客户经理联系方式：必须为 1~2 位的 JSON 数组，每位的热线/邮箱必填且邮箱格式合法
+  if (key === "contact.managers") {
+    let managers: any[] = [];
+    try {
+      const parsed = JSON.parse(value || "[]");
+      if (Array.isArray(parsed)) managers = parsed;
+    } catch {
+      return "客户经理联系方式数据格式不合法，请刷新页面后重试";
+    }
+    if (managers.length < 1) return "客户经理联系方式至少必须配置 1 位";
+    if (managers.length > 2) return "客户经理联系方式最多只能配置 2 位";
+    for (let i = 0; i < managers.length; i++) {
+      const m = managers[i] || {};
+      const hotline = String(m.hotline ?? "").trim();
+      const email = String(m.email ?? "").trim();
+      const qq = String(m.qq ?? "").trim();
+      const wechat = String(m.wechat ?? "").trim();
+      const idx = managers.length > 1 ? `第 ${i + 1} 位客户经理的` : "";
+      if (!hotline) return `${idx}咨询热线为必填项`;
+      if (!email) return `${idx}商务邮箱为必填项`;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return `${idx}商务邮箱格式不合法`;
+      // QQ / 微信为选填项，填写时按官方规范做基础格式校验
+      if (qq && !/^[1-9][0-9]{4,11}$/.test(qq)) {
+        return `${idx}QQ 号格式不合法（5~12 位数字，不以 0 开头）`;
+      }
+      const wechatIdOk = /^[a-zA-Z][-_a-zA-Z0-9]{5,19}$/.test(wechat);
+      const wechatPhoneOk = /^1[3-9]\d{9}$/.test(wechat);
+      if (wechat && !wechatIdOk && !wechatPhoneOk) {
+        return `${idx}微信号格式不合法（6~20 位字母开头，或 11 位手机号）`;
+      }
+      // 二维码图片（选填）：允许站内上传相对路径（/uploads/xxx.png）或完整 http(s) 链接
+      const qqQr = String(m.qqQr ?? "").trim();
+      const wechatQr = String(m.wechatQr ?? "").trim();
+      const qrOk = (v: string) => /^(https?:\/\/|\/)/.test(v);
+      if (qqQr && !qrOk(qqQr)) return `${idx}QQ 二维码须为站内上传路径或 http(s) 图片链接`;
+      if (wechatQr && !qrOk(wechatQr)) return `${idx}微信二维码须为站内上传路径或 http(s) 图片链接`;
+    }
+    return null;
+  }
   if (key === "siteUrl" && value.trim()) {
     const v = value.trim();
     const ok = /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(v);
     if (!ok) return "平台主域名 URL 格式不合法，需以 http:// 或 https:// 开头";
+  }
+  // 演示申请通知收件邮箱：填写时必须为合法邮箱
+  if (key === "demoRequestNotifyEmail" && value.trim()) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+      return "演示申请通知收件邮箱格式不合法，请输入合法邮箱地址";
+    }
   }
   if (key === "smtpPort" && value.trim()) {
     // 端口单独走整数强校验
@@ -613,7 +666,7 @@ export async function POST(request: NextRequest) {
       if (CONFIG_KEYS.includes(key)) {
         let valStr = String(value ?? "");
         // 若为复杂 JSON 配置，进行紧凑化去冗余空格换行处理
-        if (key === "oauthChannels" || key === "footerNavColumns") {
+        if (key === "oauthChannels" || key === "footerNavColumns" || key === "contact.managers") {
           try {
             valStr = JSON.stringify(JSON.parse(valStr));
           } catch (e) {

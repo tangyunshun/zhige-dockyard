@@ -8,6 +8,7 @@ import { toAccountStatus, isLoginBlocked, isFullyBlocked } from "@/lib/account-s
 import { isMaintenanceMode } from "@/lib/maintenance";
 
 import { getJwtSecretKey } from "@/lib/jwt-config";
+import { isAdminRole, normalizeUserRole, type UserRole } from "@/lib/role-utils";
 
 // 空闲超时从统一常量导出（A-01：10 分钟）
 export { IDLE_TIMEOUT_MS };
@@ -16,7 +17,7 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   name: string;
-  role: string;
+  role: UserRole;
   status: string;
 }
 
@@ -254,7 +255,7 @@ export async function validateUser(
         id: user.id,
         email: user.email || "",
         name: user.name || "",
-        role: user.role,
+        role: normalizeUserRole(user.role),
         status: user.status,
       },
     };
@@ -265,56 +266,20 @@ export async function validateUser(
 }
 
 export function isAdmin(user: AuthenticatedUser): boolean {
-  const adminRoles = [
-    "admin",
-    "super_admin",
-    "superadmin",
-    "ADMIN",
-    "SUPERADMIN",
-    "SUPER_ADMIN",
-  ];
-  return adminRoles.includes(user.role);
+  return isAdminRole(user.role);
 }
 
-// 用户明确规范的角色枚举集合
-// 超级管理员包括：SUPER_ADMIN、SUPERADMIN、superadmin、super_admin、Superadmin、Super_admin
-export const SUPER_ADMIN_ROLES = [
-  "SUPER_ADMIN",
-  "SUPERADMIN",
-  "superadmin",
-  "super_admin",
-  "Superadmin",
-  "Super_admin",
-] as const;
+// 角色判定统一收口到客户端/服务端通用的纯函数模块（避免各处重复硬编码变体清单导致漏判）
+export {
+  SUPER_ADMIN_ROLES,
+  ADMIN_ROLES,
+  ADMIN_ROLE_VALUES,
+  isSuperAdminRole,
+  isStandardAdminRole,
+} from "@/lib/role-utils";
 
-// 管理员包括：ADMIN、admin、Admin
-export const ADMIN_ROLES = [
-  "ADMIN",
-  "admin",
-  "Admin",
-] as const;
-
-export function isSuperAdminRole(role?: string | null): boolean {
-  if (!role) return false;
-  const raw = String(role).trim();
-  if ((SUPER_ADMIN_ROLES as readonly string[]).includes(raw)) return true;
-  const upper = raw.toUpperCase();
-  return upper === "SUPER_ADMIN" || upper === "SUPERADMIN" || upper === "SUPER_ADMIN_ROLE" || upper === "SUPER";
-}
-
-/** 检查是否为标准管理员（不含超级管理员） */
-export function isStandardAdminRole(role?: string | null): boolean {
-  if (!role) return false;
-  const raw = String(role).trim();
-  if ((ADMIN_ROLES as readonly string[]).includes(raw)) return true;
-  const upper = raw.toUpperCase();
-  return (upper === "ADMIN" || upper === "ADMINISTRATOR") && !isSuperAdminRole(role);
-}
-
-/** 具备管理特权（包含超级管理员与管理员） */
-export function isAdminRole(role?: string | null): boolean {
-  return isSuperAdminRole(role) || isStandardAdminRole(role);
-}
+// isAdminRole / normalizeUserRole 已在上方以值的形式 import，这里就地重新导出，供其他模块从 @/lib/auth 引用
+export { isAdminRole, normalizeUserRole };
 
 /**
  * 全局认证检查：检查用户是否在数据库中存在

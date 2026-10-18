@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
 import { setMaintenanceMode, isMaintenanceMode, getMaintenanceMessage } from "@/lib/maintenance";
 
 /**
@@ -411,7 +412,7 @@ export async function POST(request: NextRequest) {
       const result = await prisma.user.updateMany({
         where: {
           role: {
-            notIn: ["ADMIN", "SUPERADMIN", "SUPER_ADMIN", "admin", "superadmin", "super_admin"],
+            notIn: [...ADMIN_ROLE_VALUES],
           },
           sessionToken: { not: null },
         },

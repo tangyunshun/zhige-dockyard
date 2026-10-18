@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { validateUser } from "@/lib/auth";
+import { validateUser, isAdminRole } from "@/lib/auth";
+import { upgradePersonalToEnterprise } from "@/lib/workspace-upgrade-service";
+import { migratePersonalGiftToEnterprisePool } from "@/lib/personal-gift-migration";
 
 // 获取企业空间配额
 async function getEnterpriseQuota(userId: string) {
@@ -28,8 +30,12 @@ async function getEnterpriseQuota(userId: string) {
   const level = await prisma.membershiplevel.findUnique({
     where: { id: user.membershipLevel || "FREE" },
   });
-  const maxEnterprise = level ? Number(level.maxEnterpriseWorkspaces) : 1;
-  const isMember = user.membershipLevel !== "FREE" || user.role === "admin" || user.role === "super_admin";
+  // 管理员不受等级 0 配额限制，至少保留 1 个企业空间名额（与 dashboard 中枢口径一致）
+  // 统一用 isAdminRole：库中实际存在 superadmin（连写）等变体，内联等值比较会漏判
+  const isAdminLike = isAdminRole(user.role);
+  const levelMax = level ? Number(level.maxEnterpriseWorkspaces) : 1;
+  const maxEnterprise = isAdminLike ? Math.max(levelMax, 1) : levelMax;
+  const isMember = user.membershipLevel !== "FREE" || isAdminLike;
 
   return {
     hasEnterprise: enterpriseWorkspaces.length > 0,
@@ -99,7 +105,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: 执行升级操作
+// POST: 执行升级操作（个人空间升级为企业空间）
+// 空间中枢语义：新建一个企业空间并完成全部初始化，原个人空间按 option 选择「保留」或「删除」。
+// 统一收敛到 workspace-upgrade-service 完成 type/套餐/配额/模型策略/算力赠送/账单/日志，
+// 并在新建企业空间后把原个人空间的当月赠送额度迁移进企业共享池。
 export async function POST(request: NextRequest) {
   try {
     let userId = request.headers.get("x-user-id");
@@ -112,19 +121,19 @@ export async function POST(request: NextRequest) {
       userId = authResult.user!.id;
     }
     const body = await request.json();
-    const { workspaceId, option } = body;
+    const { workspaceId, targetPlan, billingCycle, option } = body;
 
-    if (!workspaceId || !option) {
-      return NextResponse.json({ error: "缺少必要参数" }, { status: 400 });
+    if (!workspaceId) {
+      return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
-
     if (!["retain", "delete", "upgrade"].includes(option)) {
       return NextResponse.json({ error: "无效的升级选项" }, { status: 400 });
     }
 
-    // 获取个人空间
+    // 获取原个人空间
     const personalWorkspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
+      select: { id: true, name: true, description: true, type: true, ownerId: true },
     });
 
     if (!personalWorkspace) {
@@ -142,186 +151,110 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "无权限操作此空间" }, { status: 403 });
     }
 
-    // 检查配额
+    // 检查企业空间数量上限（新建企业空间会占用一个名额）
     const quota = await getEnterpriseQuota(userId);
     if (quota.enterpriseCount >= quota.maxEnterprise) {
       return NextResponse.json(
         {
           error: quota.isMember
             ? `会员用户当前最多可拥有 ${quota.maxEnterprise} 个企业空间`
-            : "免费用户只能拥有 1 个企业空间",
+            : `当前会员等级最多可拥有 ${quota.maxEnterprise} 个企业空间，可升级会员套餐后再试`,
         },
         { status: 403 },
       );
     }
 
-    // 如果选择删除个人空间，先进行检测
-    if (option === "delete") {
-      // 1. 检查是否有其他成员（除了所有者）
-      const members = await prisma.workspacemember.findMany({
-        where: { workspaceId },
-        include: { user: true },
-      });
-
-      const otherMembers = members.filter((m: any) => m.userId !== userId);
-      if (otherMembers.length > 0) {
-        return NextResponse.json(
-          {
-            error: `空间还有 ${otherMembers.length} 名成员，需要先移除或转移所有权`,
-          },
-          { status: 400 },
-        );
-      }
-
-      // 2. 检查组件任务（通过 tenantId 查询）
-      const inProgressTasks = await prisma.componenttask.count({
-        where: {
-          tenantId: workspaceId,
-          status: "IN_PROGRESS",
-        },
-      });
-
-      const completedTasks = await prisma.componenttask.count({
-        where: {
-          tenantId: workspaceId,
-          status: "COMPLETED",
-        },
-      });
-
-      if (inProgressTasks > 0) {
-        return NextResponse.json(
-          {
-            error: `空间有 ${inProgressTasks} 个进行中的组件任务，需要先完成或取消`,
-          },
-          { status: 400 },
-        );
-      }
-
-      if (completedTasks > 0) {
-        return NextResponse.json(
-          { error: `空间有 ${completedTasks} 个已完成的组件，删除后将不可用` },
-          { status: 400 },
-        );
-      }
-
-      // 3. 检查项目
-      const projectCount = await prisma.project.count({
-        where: { workspaceId },
-      });
-
-      if (projectCount > 0) {
-        return NextResponse.json(
-          { error: `空间还有 ${projectCount} 个项目，需要先删除或转移` },
-          { status: 400 },
-        );
-      }
-    }
-
-    let resultWorkspaceId = workspaceId;
-    let message = "";
-
-    // 根据选项执行不同的升级逻辑
-    // 统一保留用户原有的【个人工作空间】：仅"迁移模式(delete)"会删除原个人空间，
-    // 其余方案（并行/替换）均在创建企业空间的同时保留个人空间，
-    // 以保证升级后用户仍能在空间中枢同时看到【个人空间】与【企业空间】。
-    if (option === "upgrade" || option === "retain" || option === "delete") {
-      // 创建新的企业空间（保留原个人空间）
-      const newWorkspaceId = `ws-enterprise-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      const now = new Date();
-
-      // 先创建工作空间
-      const newWorkspace = await prisma.workspace.create({
-        data: {
-          id: newWorkspaceId,
-          name: personalWorkspace.name,
-          description: personalWorkspace.description,
-          type: "ENTERPRISE",
-          ownerId: userId,
-          createdAt: now,
-          updatedAt: now,
-        },
-      });
-
-      // 然后创建成员关系
-      await prisma.workspacemember.create({
-        data: {
-          id: `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-          userId,
-          workspaceId: newWorkspaceId,
-          role: "OWNER",
-          joinedAt: new Date(),
-        },
-      });
-
-      // 同步创建企业空间配额记录（初始算力点为 0，需充值或购买配额包后使用）
-      try {
-        await prisma.workspacequota.create({
-          data: {
-            id: crypto.randomUUID(),
-            workspaceId: newWorkspaceId,
-            membershipLevelId: "STANDARD",
-            tokenBalance: BigInt(0),
-            storageLimit: BigInt(10 * 1024 * 1024 * 1024),
-            apiCallsLimit: BigInt(50000),
-            storageUsed: BigInt(0),
-            apiCallsUsed: BigInt(0),
-            updatedAt: new Date(),
-          },
-        });
-      } catch (quotaErr) {
-        console.warn("[upgrade] 创建企业空间配额记录非致命提示:", quotaErr);
-      }
-
-      resultWorkspaceId = newWorkspace.id;
-
-      // 仅"迁移模式"删除原个人空间；并行/替换模式均保留个人空间
-      if (option === "delete") {
-        // 删除个人空间的成员关系
-        await prisma.workspacemember.deleteMany({
-          where: { workspaceId },
-        });
-
-        // 删除个人空间
-        await prisma.workspace.delete({
-          where: { id: workspaceId },
-        });
-
-        message = "企业空间创建成功，原个人空间已删除";
-      } else {
-        message = "企业空间创建成功，个人空间已保留";
-      }
-    } else {
-      return NextResponse.json({ error: "无效的升级选项" }, { status: 400 });
-    }
-
-    // 记录操作日志
-    await prisma.operationlog.create({
+    // 1) 新建企业空间（先以 PERSONAL 落地，交给统一服务翻牌为 ENTERPRISE，避免重复幂等跳过）
+    const newWorkspaceId = `ws-ent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date();
+    await prisma.workspace.create({
       data: {
-        id: `oplog-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-        userId,
-        workspaceId: resultWorkspaceId,
-        action: "UPGRADE_WORKSPACE",
-        resource: "Workspace",
-        details: {
-          fromType: "PERSONAL",
-          toType: "ENTERPRISE",
-          option,
-        },
+        id: newWorkspaceId,
+        name: personalWorkspace.name,
+        description: personalWorkspace.description,
+        type: "PERSONAL",
+        ownerId: userId,
+        createdAt: now,
+        updatedAt: now,
       },
     });
+    await prisma.workspacemember.create({
+      data: {
+        id: `wsm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        userId,
+        workspaceId: newWorkspaceId,
+        role: "OWNER",
+        joinedAt: now,
+      },
+    });
+
+    // 2) 统一升级服务：套餐/配额/模型策略/算力赠送/账单/日志
+    const result = await upgradePersonalToEnterprise({
+      workspaceId: newWorkspaceId,
+      targetPlanKey: targetPlan,
+      billingCycle,
+      source: "SELF_SERVICE_PURCHASE",
+      actorId: userId,
+    });
+
+    // 3) 个人当月赠送额度迁移到新建企业共享池
+    const migration = await migratePersonalGiftToEnterprisePool({
+      userId,
+      fromWorkspaceId: workspaceId,
+      toWorkspaceId: newWorkspaceId,
+    });
+
+    // 4) 删除模式：升级完成后删除原个人空间（需先确认无阻碍）
+    let message = "已创建企业空间，个人空间已保留";
+    if (option === "delete") {
+      const otherMembers = await prisma.workspacemember.count({
+        where: { workspaceId, userId: { not: userId } },
+      });
+      const inProgress = await prisma.componenttask.count({
+        where: { tenantId: workspaceId, status: "IN_PROGRESS" },
+      });
+      const projects = await prisma.project.count({ where: { workspaceId } });
+      if (otherMembers > 0) {
+        return NextResponse.json({
+          error: `原个人空间还有 ${otherMembers} 名成员，需先移除或转移`,
+          workspaceId: newWorkspaceId,
+        }, { status: 400 });
+      }
+      if (inProgress > 0) {
+        return NextResponse.json({
+          error: `原个人空间有 ${inProgress} 个进行中的组件任务，需先完成或取消`,
+          workspaceId: newWorkspaceId,
+        }, { status: 400 });
+      }
+      if (projects > 0) {
+        return NextResponse.json({
+          error: `原个人空间还有 ${projects} 个项目，需先删除或转移`,
+          workspaceId: newWorkspaceId,
+        }, { status: 400 });
+      }
+      await prisma.workspacemember.deleteMany({ where: { workspaceId } });
+      await prisma.workspace.delete({ where: { id: workspaceId } });
+      message = "已创建企业空间，原个人空间已删除";
+    }
 
     return NextResponse.json({
       success: true,
       message,
-      workspaceId: resultWorkspaceId,
+      workspaceId: newWorkspaceId,
+      data: result,
+      giftMigrated: migration.migrated,
     });
   } catch (error) {
     console.error("Upgrade workspace error:", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "PLAN_NOT_PURCHASABLE_ONLINE") {
+      return NextResponse.json({ error: "该套餐为线下定制方案，请联系专属架构师" }, { status: 400 });
+    }
+    if (msg === "TARGET_PLAN_NOT_FOUND") {
+      return NextResponse.json({ error: "目标企业套餐不存在" }, { status: 400 });
+    }
     return NextResponse.json(
-      {
-        error: "升级失败",
-        details: error instanceof Error ? error.message : error,
-      },
+      { error: "升级失败", details: msg },
       { status: 500 },
     );
   }

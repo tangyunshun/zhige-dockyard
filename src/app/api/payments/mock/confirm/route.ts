@@ -40,8 +40,10 @@ export async function GET(request: NextRequest) {
       data: {
         orderNo: order.id,
         title: order.title,
+        type: order.type || "TOKEN_RECHARGE",
         amountCents: Number(order.amount ?? 0),
         points: Number(meta.points ?? 0),
+        seats: Number(meta.seats ?? 0),
         status: order.status,
         channel: order.channel,
         paymentMode: resolvePaymentMode(),
@@ -75,9 +77,18 @@ export async function POST(request: NextRequest) {
     if (order.userId !== auth.user.id) return NextResponse.json({ error: "无权操作该订单" }, { status: 403 });
 
     const meta = (order.metadata || {}) as Record<string, unknown>;
+    const orderType = (order.type || "TOKEN_RECHARGE") as string;
 
-    // 幂等：已完成入账的订单直接返回成功，不重复加点
+    // 幂等：已完成入账的订单直接返回成功，不重复执行
     if (order.status === "SUCCESS") {
+      if (orderType === "SEAT_ADDON") {
+        return NextResponse.json({
+          success: true,
+          alreadyProcessed: true,
+          seats: Number(meta.seats ?? 0),
+          message: "该订单此前已完成入账，未重复扣款。",
+        });
+      }
       const balance = await getBalanceSummary(auth.user.id, order.workspaceId);
       return NextResponse.json({
         success: true,
@@ -89,6 +100,40 @@ export async function POST(request: NextRequest) {
     }
     if (order.status !== "PENDING") {
       return NextResponse.json({ error: `订单当前状态为 ${order.status}，不可入账` }, { status: 409 });
+    }
+
+    // 席位增购：支付确认后增加空间 extraSeats（与企业套餐配额一致，有效期至套餐到期日）
+    if (orderType === "SEAT_ADDON") {
+      const seats = Number(meta.seats ?? 0);
+      if (!Number.isFinite(seats) || seats <= 0) {
+        return NextResponse.json({ error: "订单缺少有效席位数，无法入账" }, { status: 400 });
+      }
+      const workspaceId = order.workspaceId as string;
+      await prisma.$transaction(async (tx) => {
+        await tx.workspace.update({
+          where: { id: workspaceId },
+          data: { extraSeats: { increment: seats } },
+        });
+        await billingModel.update({
+          where: { id: orderNo },
+          data: {
+            status: "SUCCESS",
+            updatedAt: new Date(),
+            metadata: {
+              ...meta,
+              paidAt: new Date().toISOString(),
+              paymentMode: "MOCK",
+              seatsAdded: seats,
+            },
+          },
+        });
+      });
+      return NextResponse.json({
+        success: true,
+        alreadyProcessed: false,
+        seats,
+        message: `模拟收款成功，已为空间增购 ${seats} 个席位（非真实扣款）`,
+      });
     }
 
     const points = Number(meta.points ?? 0);

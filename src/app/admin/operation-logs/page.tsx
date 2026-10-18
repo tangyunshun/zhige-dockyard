@@ -5,6 +5,7 @@ import Link from "next/link";
 import Pagination from "@/components/Pagination";
 import { OperationLogDetails } from "@/app/admin/components/OperationLogDetails";
 import { getAuthToken } from "@/utils/auth";
+import { isAdminRole } from "@/lib/role-utils";
 import {
   Search,
   RefreshCw,
@@ -851,7 +852,7 @@ function describeLog(log: OperationLog): string {
     case "system:settings":
       return "系统配置变更";
     case "auth:login":
-      return log.user?.role === "superadmin" || log.user?.role === "admin"
+      return isAdminRole(log.user?.role)
         ? "管理员登录系统"
         : "账号成功登录系统";
     case "auth:logout":

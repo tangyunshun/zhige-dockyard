@@ -17,6 +17,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { addNotification } from "@/lib/notifications-store";
+import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
 
 /** 未登录判定阈值：365 天 */
 export const ZOMBIE_INACTIVE_DAYS = 365;
@@ -49,7 +50,7 @@ export async function detectZombieUsers(): Promise<number> {
     const users = await prisma.user.findMany({
       where: {
         status: { notIn: ["deleted", "deleting"] },
-        role: { notIn: ["super_admin", "admin"] },
+        role: { notIn: ADMIN_ROLE_VALUES as unknown as string[] },
         ...(cursor ? { id: { gt: cursor } } : {}),
       },
       select: { id: true, lastLoginAt: true, createdAt: true },
@@ -174,7 +175,7 @@ export async function scanAndNotifyZombies(): Promise<ZombieScanResult> {
   let notified = 0;
   if (zombieCount > 0) {
     const superAdmins = await prisma.user.findMany({
-      where: { role: "super_admin", status: { notIn: ["deleted", "deleting"] } },
+      where: { role: { in: ADMIN_ROLE_VALUES as unknown as string[] }, status: { notIn: ["deleted", "deleting"] } },
       select: { id: true },
     });
     const title = "系统检测到僵尸用户";

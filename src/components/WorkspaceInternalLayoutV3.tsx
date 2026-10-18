@@ -45,6 +45,7 @@ import { generateSmartSummary } from "@/lib/smart-summary";
 import UpgradeModal from "@/components/studio/UpgradeModal";
 import ImportAssetModal from "@/components/studio/ImportAssetModal";
 import ConfirmRunModal from "@/components/studio/ConfirmRunModal";
+import PersonalPointsPaymentModal from "@/components/studio/PersonalPointsPaymentModal";
 import ComponentsTab from "@/components/studio/ComponentsTab";
 import TasksTab from "@/components/studio/TasksTab";
 
@@ -910,6 +911,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   // 导入模态用途：asset=资料上传，knowledge=知识规约沉淀（决定提交到的后端 action）
   const [importAssetMode, setImportAssetMode] = useState<"asset" | "knowledge">("asset");
   const [showConfirmRunModal, setShowConfirmRunModal] = useState(false);
+  const [showPersonalPayModal, setShowPersonalPayModal] = useState(false);
+  const [personalPayInfo, setPersonalPayInfo] = useState<{
+    requiredPoints: number;
+    availablePoints: number;
+    componentName: string;
+    taskName: string;
+  } | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskRecord | null>(null);
   // 历史任务详情加载状态机：idle / loading / ready / forbidden / notfound / error（仅由 task_detail 真实响应驱动）
   const [historyTaskState, setHistoryTaskState] = useState<"idle" | "loading" | "ready" | "forbidden" | "notfound" | "error">("idle");
@@ -2901,6 +2909,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     materialInputMode?: "text" | "file" | "asset";
     uploadedFileMeta?: { name: string; size: string; sizeBytes?: number; file?: File } | null;
     selectedAsset?: { id: string; title: string } | null;
+    /** 个人点支付：企业成员自身余额不足时，确认用个人算力点支付本次任务 */
+    payWithPersonal?: boolean;
   }) => {
     const execCompId = overrides?.componentId || quickSelectedCompId;
     const execInputMaterial = overrides?.inputMaterial ?? quickInputMaterial;
@@ -3021,12 +3031,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       availableTokenForUser !== -1 &&
       availableTokenForUser < gateCost
     ) {
-      toast.error(
-        isMemberView
-          ? `算力点不足：需要 ${gateCost} 点，当前 ${availableTokenForUser} 点，请向空间管理员申请`
-          : `空间剩余额度不足：需要 ${gateCost} 算力点，请联系空间管理员`,
-      );
-      return;
+      if (isMemberView) {
+        // 企业成员自身余额不足：不在此拦截，交给后端裁决；若个人钱包可支付，后端会返回可个人点支付的提示
+      } else {
+        toast.error(`空间剩余额度不足：需要 ${gateCost} 算力点，请联系空间管理员`);
+        return;
+      }
     }
     setIsExecutingTask(true);
     // 先请求后端真实执行（扣费 / 写入任务历史 / 审计闭环），成功后才更新本地状态
@@ -3041,6 +3051,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             fd.append("componentId", execCompId);
             fd.append("taskName", taskName);
             fd.append("inputSource", JSON.stringify(inputSource));
+            fd.append("payWithPersonal", overrides?.payWithPersonal ? "true" : "false");
             fd.append("file", execFile);
             return fetch("/api/studio", {
               method: "POST",
@@ -3063,6 +3074,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               taskName,
               inputMaterial: finalExecInputMaterial,
               inputSource,
+              payWithPersonal: overrides?.payWithPersonal || false,
               // 结构化表单组件：以 formData 提交（服务端按合同字段强校验）
               ...(execIsStructuredForm ? { formData: quickFormData } : {}),
             }),
@@ -3070,6 +3082,18 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
       const data = await res.json();
       if (!res.ok || !data.success) {
+        // 企业成员算力点不足、且可用个人点支付：弹出个人点支付确认框，确认后用个人算力点重试
+        if (data.code === "POINTS_INSUFFICIENT" && data.canPayWithPersonal) {
+          setPersonalPayInfo({
+            requiredPoints: typeof data.personalRequired === "number" ? data.personalRequired : (gateCost ?? 0),
+            availablePoints: typeof data.personalAvailable === "number" ? data.personalAvailable : 0,
+            componentName: selectedComp?.name || "组件",
+            taskName,
+          });
+          setShowPersonalPayModal(true);
+          setIsExecutingTask(false);
+          return;
+        }
         throw new Error(data.error || data.message || "任务执行失败，请稍后重试");
       }
 
@@ -7527,6 +7551,19 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         onConfirm={handleExecuteSimulation}
         componentName={quickSelectedCompId}
         taskName={quickInputMaterial}
+      />
+
+      <PersonalPointsPaymentModal
+        open={showPersonalPayModal}
+        onClose={() => setShowPersonalPayModal(false)}
+        onConfirm={() => {
+          setShowPersonalPayModal(false);
+          handleExecuteSimulation({ payWithPersonal: true });
+        }}
+        componentName={personalPayInfo?.componentName || ""}
+        taskName={personalPayInfo?.taskName || ""}
+        requiredPoints={personalPayInfo?.requiredPoints || 0}
+        availablePoints={personalPayInfo?.availablePoints || 0}
       />
 
       {/* 4. 任务成果预览与沉淀 Modal (使用共享 ResultViewer 组件) */}

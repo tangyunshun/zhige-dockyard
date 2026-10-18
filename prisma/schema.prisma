@@ -626,6 +626,21 @@ model userfeedback {
   @@index([createdAt], map: "UserFeedback_createdAt_idx")
 }
 
+model demorequest {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  company      String
+  phone        String?
+  requirements String?  @db.Text
+  status       String   @default("pending") // pending | contacted | closed
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
 model workspace {
   id                  String                @id
   name                String

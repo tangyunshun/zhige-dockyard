@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useMemo } from "react";
 import { UserInfo } from "@/contexts/UserContext";
+import { isSuperAdminRole } from "@/lib/role-utils";
 
 export interface AdminPermissionContextType {
   user: UserInfo | null;
@@ -34,16 +35,7 @@ export function AdminPermissionProvider({
   permissions,
   loading,
 }: AdminPermissionProviderProps) {
-  const isSuperAdmin = useMemo(() => {
-    if (!user?.role) return false;
-    const r = user.role.toUpperCase().trim();
-    return (
-      r === "SUPER_ADMIN" ||
-      r === "SUPERADMIN" ||
-      r === "SUPER_ADMIN_ROLE" ||
-      r === "SUPER"
-    );
-  }, [user?.role]);
+  const isSuperAdmin = useMemo(() => isSuperAdminRole(user?.role), [user?.role]);
 
   // 后台特权是否被超级管理员停用（前台不受影响，仅后台权限冻结）
   const isSuspended = useMemo(() => {

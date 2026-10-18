@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { getAuthToken } from "@/utils/auth";
 import { dedupeFetch } from "@/lib/requestDedupe";
 import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
+import { isSuperAdminRole, isStandardAdminRole } from "@/lib/role-utils";
 import type { ComponentDefinition, ComponentCategory, CategoryDetails } from "@/constants/components";
 import type { PositionDefinition } from "@/constants/positions";
 
@@ -111,9 +112,9 @@ const getInitialLoginState = (): Pick<UserState, "isLoggedIn" | "userInfo"> => {
   // 必须同时具备：userId、auth_token（localStorage 或 cookie）
   if (userId && (authToken || hasValidToken)) {
     let role: "SuperAdmin" | "Admin" | "User" = "User";
-    if (userRole === "SuperAdmin" || userRole === "SUPER_ADMIN" || userRole === "super_admin") {
+    if (isSuperAdminRole(userRole)) {
       role = "SuperAdmin";
-    } else if (userRole === "Admin" || userRole === "ADMIN" || userRole === "admin") {
+    } else if (isStandardAdminRole(userRole)) {
       role = "Admin";
     }
     
@@ -486,12 +487,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         let role: "SuperAdmin" | "Admin" | "User" = "User";
         const rawRole = String(data.user.role || "").trim();
-        const upper = rawRole.toUpperCase();
-        const superAdminList = ["SUPER_ADMIN", "SUPERADMIN", "superadmin", "super_admin", "Superadmin", "Super_admin"];
-        const adminList = ["ADMIN", "admin", "Admin", "ADMINISTRATOR", "PLATFORM_ADMIN"];
-        if (superAdminList.includes(rawRole) || upper === "SUPER_ADMIN" || upper === "SUPERADMIN") {
+        if (isSuperAdminRole(rawRole)) {
           role = "SuperAdmin";
-        } else if (adminList.includes(rawRole) || upper === "ADMIN" || upper === "ADMINISTRATOR") {
+        } else if (isStandardAdminRole(rawRole)) {
           role = "Admin";
         }
         

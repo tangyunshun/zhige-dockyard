@@ -10,6 +10,7 @@ import {
   SESSION_ERROR_CODES,
 } from "@/lib/session-constants";
 import { dedupeFetch } from "@/lib/requestDedupe";
+import { isAdminRole } from "@/lib/role-utils";
 import { getAuthToken, getCurrentUserId } from "@/utils/auth";
 
 // 不需要检查的公共路径 - 营销页面所有人都能访问
@@ -257,14 +258,7 @@ export default function AuthCheck({ children }: { children: React.ReactNode }) {
         // 活跃时间仅由 ActivityMonitor 在真实用户交互时上报。
 
         const isAdminPage = pathname.startsWith("/admin");
-        const isAdminUser = userRole && [
-          "admin",
-          "super_admin",
-          "superadmin",
-          "ADMIN",
-          "SUPERADMIN",
-          "SUPER_ADMIN"
-        ].includes(userRole);
+        const isAdminUser = isAdminRole(userRole);
 
         if (isAdminPage && !isAdminUser) {
           isRedirectingRef.current = true;

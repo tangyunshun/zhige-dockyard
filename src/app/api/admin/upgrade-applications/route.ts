@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { upgradePersonalToEnterprise } from "@/lib/workspace-upgrade-service";
 
 export async function GET(request: NextRequest) {
   try {
@@ -88,6 +89,47 @@ export async function PATCH(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+
+    // 客户经理签约开通：标记为 COMPLETED 且指定 openPlan 时，将关联的个人空间升级为约定企业套餐。
+    // 取关联工作空间（须为 PERSONAL）；缺失时回落到该用户名下个人空间。
+    if (status === "COMPLETED" && body.openPlan) {
+      const linked = app.workspaceId
+        ? await prisma.workspace.findUnique({ where: { id: app.workspaceId }, select: { id: true, type: true } })
+        : null;
+      const wsToUpgrade = linked && linked.type === "PERSONAL"
+        ? linked.id
+        : (
+            await prisma.workspace.findFirst({
+              where: { ownerId: app.userId, type: "PERSONAL" },
+              select: { id: true },
+            })
+          )?.id;
+      if (wsToUpgrade) {
+        try {
+          const res = await upgradePersonalToEnterprise({
+            workspaceId: wsToUpgrade,
+            targetPlanKey: body.openPlan,
+            billingCycle: body.billingCycle || "YEAR",
+            source: "SALES_SIGNUP",
+            actorId: userId,
+          });
+          await prisma.upgradeapplication.update({
+            where: { id: targetId },
+            data: {
+              adminRemark: `已为客户开通企业套餐 ${body.openPlan}（${res.alreadyEnterprise ? "幂等跳过" : "已开通"}）。${
+                app.adminRemark ? app.adminRemark : ""
+              }`,
+            },
+          });
+        } catch (e) {
+          console.error("签约开通企业空间失败:", e);
+          return NextResponse.json(
+            { error: "签约开通失败：" + (e instanceof Error ? e.message : e) },
+            { status: 500 },
+          );
+        }
+      }
+    }
 
     // 站内通知提交用户：仅状态实际变化时发送，避免重复打扰（通知失败不影响处理结果）
     if (app.status !== status) {

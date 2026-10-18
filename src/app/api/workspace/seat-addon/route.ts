@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { createCharge, resolvePaymentMode } from "@/lib/payment-gateway";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -10,9 +12,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * 席位增购（按剩余计费时长折算价格）：
  *   增购金额 = 增购席位数 × 单席位月单价 × (剩余天数 / 计费周期天数)
  * 单席位月单价 = 套餐月付价 ÷ 套餐自带席位数。
- * 支付成功后，空间席位上限立即增加，新席位有效期至当前套餐到期日（随套餐一并清零）。
+ * 新席位有效期至当前套餐到期日（随套餐一并清零）。
  *
- * 安全：仅空间所有者（OWNER）可发起；企业/旗舰套餐按月/年订阅且未到期方可增购。
+ * 安全与支付：仅空间所有者（OWNER）可发起；企业/团队空间且套餐已订阅（非免费版）方可增购。
+ * 本接口**只创建 PENDING 订单并返回收银台地址**，绝不立即加席位——
+ * 席位增加发生在支付确认（PAYMENT_MODE=mock 走 /api/payments/mock/confirm，
+ * 真实网关模式走网关回调）之后，杜绝“选完支付方式就生效”的模拟支付。
  */
 export async function POST(request: NextRequest) {
   try {
@@ -22,9 +27,11 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       workspaceId?: string;
       seats?: number;
+      paymentMethod?: string;
     };
     const workspaceId = body.workspaceId;
     const seats = Math.floor(Number(body.seats));
+    const channel = body.paymentMethod === "ALIPAY" ? "ALIPAY" : "WECHAT_PAY";
     if (!workspaceId) return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     if (!Number.isFinite(seats) || seats <= 0) {
       return NextResponse.json({ error: "增购席位数必须为正整数" }, { status: 400 });
@@ -36,15 +43,18 @@ export async function POST(request: NextRequest) {
         id: true,
         ownerId: true,
         name: true,
+        type: true,
         plan: true,
         planBillingCycle: true,
         planExpiresAt: true,
-        extraSeats: true,
       },
     });
     if (!workspace) return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
     if (workspace.ownerId !== auth.user.id) {
       return NextResponse.json({ error: "仅空间所有者可增购席位" }, { status: 403 });
+    }
+    if (workspace.type !== "ENTERPRISE") {
+      return NextResponse.json({ error: "席位增购仅面向企业 / 团队空间" }, { status: 400 });
     }
     if (!workspace.plan || workspace.plan === "STANDARD") {
       return NextResponse.json({ error: "免费版不支持席位增购，请先升级套餐" }, { status: 400 });
@@ -70,53 +80,61 @@ export async function POST(request: NextRequest) {
     const remainingDays = Math.max(1, Math.ceil(remainingMs / DAY_MS));
     const daysInCycle = workspace.planBillingCycle === "YEAR" ? 365 : 30;
     const proratedPerSeat = (seatUnitMonthly * remainingDays) / daysInCycle;
-    const amount = Math.round(seats * proratedPerSeat); // 单位：分
+    const amountCents = Math.round(seats * proratedPerSeat); // 单位：分
 
-    // 订单与席位增加在同一事务内完成（模拟支付：即时成功）
-    const billing = await prisma.$transaction(async (tx) => {
-      const record = await tx.billingrecord.create({
-        data: {
-          userId: auth.user!.id,
-          workspaceId,
-          type: "SEAT_ADDON",
-          title: `空间「${workspace.name}」增购 ${seats} 个席位（至 ${workspace.planExpiresAt.toISOString().slice(0, 10)}）`,
-          amount,
-          currency: "CNY",
-          status: "SUCCESS",
-          channel: "SYSTEM",
-          metadata: {
-            seats,
-            billingCycle: workspace.planBillingCycle,
-            remainingDays,
-            seatUnitMonthly,
-            planKey: workspace.plan,
-            expiresAt: workspace.planExpiresAt.toISOString(),
-          },
+    const orderNo = `SA_${Date.now()}_${randomUUID().replace(/-/g, "").slice(0, 8)}`;
+    const expiresAtIso = workspace.planExpiresAt.toISOString();
+    const mode = resolvePaymentMode();
+
+    // 仅创建 PENDING 订单，绝不立即加席位；席位增加发生在支付确认之后
+    await prisma.billingrecord.create({
+      data: {
+        id: orderNo,
+        userId: auth.user.id,
+        workspaceId,
+        type: "SEAT_ADDON",
+        title: `空间「${workspace.name}」增购 ${seats} 个席位（至 ${expiresAtIso.slice(0, 10)}）`,
+        amount: amountCents,
+        currency: "CNY",
+        status: "PENDING",
+        channel,
+        referenceId: workspaceId,
+        metadata: {
+          seats,
+          billingCycle: workspace.planBillingCycle,
+          remainingDays,
+          seatUnitMonthly,
+          planKey: workspace.plan,
+          expiresAt: expiresAtIso,
+          workspaceName: workspace.name,
+          createdVia: "seat-addon",
         },
-      });
-      await tx.workspace.update({
-        where: { id: workspaceId },
-        data: { extraSeats: { increment: seats } },
-      });
-      return record;
+        updatedAt: new Date(),
+      },
     });
 
-    const updated = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { extraSeats: true },
+    // 产出收银台地址（mock 模式为本地模拟页；real 模式为网关支付链接，由回调入账）
+    const charge = createCharge({
+      orderNo,
+      amountCents,
+      subject: "知阁·舟坊 - 席位增购",
+      channel,
     });
 
     return NextResponse.json({
       success: true,
-      amount,
+      orderNo,
+      amountCents,
       seats,
-      extraSeats: updated?.extraSeats ?? seats,
-      expiresAt: workspace.planExpiresAt,
-      billingId: billing.id,
-      message: `已增购 ${seats} 个席位，金额 ¥${(amount / 100).toFixed(2)}（按剩余 ${remainingDays} 天折算），有效期至套餐到期日。`,
+      paymentMode: charge.mode,
+      payUrl: charge.payUrl,
+      notice:
+        charge.mode === "MOCK"
+          ? "当前为【模拟支付】，不会产生真实扣款；支付确认后席位才会生效。"
+          : "已使用真实支付渠道下单，请完成支付。",
     });
   } catch (error) {
-    console.error("[seat-addon] 增购失败:", (error as Error)?.message);
-    return NextResponse.json({ success: false, error: "席位增购失败" }, { status: 500 });
+    console.error("[seat-addon] 创建订单失败:", (error as Error)?.message);
+    return NextResponse.json({ success: false, error: "席位增购下单失败" }, { status: 500 });
   }
 }

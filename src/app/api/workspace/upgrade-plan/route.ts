@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { validateUser } from "@/lib/auth";
+import { isAdminRole, validateUser } from "@/lib/auth";
 import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
 import {
   getWorkspacePlans,
@@ -28,24 +28,35 @@ export async function GET(request: NextRequest) {
     const userId = authResult.user!.id;
     let targetWorkspaceId = request.nextUrl.searchParams.get("workspaceId");
 
-    // 若未传 workspaceId，自动兜底定位用户当前活跃或归属的工作空间
+    // 套餐仅面向企业/团队空间（ENTERPRISE）：个人空间不参与套餐，任何兜底都不得解析到个人空间
+    const ENTERPRISE_ONLY = { type: "ENTERPRISE" as const };
+
+    // 若未传 workspaceId，自动兜底定位用户所属的企业空间（个人空间一律跳过）
     if (!targetWorkspaceId) {
       const userRecord = await prisma.user.findUnique({
         where: { id: userId },
         select: { lastWorkspaceId: true },
       });
       if (userRecord?.lastWorkspaceId) {
-        targetWorkspaceId = userRecord.lastWorkspaceId;
-      } else {
+        // lastWorkspaceId 可能指向个人空间，必须校验为企业空间才可作为套餐载体
+        const lastWs = await prisma.workspace.findFirst({
+          where: { id: userRecord.lastWorkspaceId, ...ENTERPRISE_ONLY },
+          select: { id: true },
+        });
+        if (lastWs) {
+          targetWorkspaceId = lastWs.id;
+        }
+      }
+      if (!targetWorkspaceId) {
         const ownedWs = await prisma.workspace.findFirst({
-          where: { ownerId: userId },
+          where: { ownerId: userId, ...ENTERPRISE_ONLY },
           select: { id: true },
         });
         if (ownedWs) {
           targetWorkspaceId = ownedWs.id;
         } else {
           const memberWs = await prisma.workspacemember.findFirst({
-            where: { userId },
+            where: { userId, workspace: ENTERPRISE_ONLY },
             select: { workspaceId: true },
           });
           targetWorkspaceId = memberWs?.workspaceId || null;
@@ -53,8 +64,48 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 无企业空间时的兜底响应：超管/管理员 → 只读最高套餐视图（不落库）；普通用户 → 空态 404
+    const buildNoEnterpriseView = async () => {
+      if (isAdminRole(authResult.user!.role)) {
+        const allPlans = await getWorkspacePlans({ onlyActive: true });
+        const topPlan = allPlans
+          .filter((p) => p.purchasable)
+          .sort((a, b) => (b.sortOrder || 0) - (a.sortOrder || 0))[0];
+        const currentConfig = await getWorkspacePlanByKey(topPlan?.key || "FLAGSHIP");
+        return NextResponse.json({
+          success: true,
+          data: {
+            workspace: {
+              id: "admin-default",
+              name: "平台管理默认空间",
+              ownerId: userId,
+              planStartedAt: null,
+              planExpiresAt: null,
+              planBillingCycle: null,
+            },
+            currentPlan: currentConfig,
+            allPlans,
+            availablePlans: [],
+            canUpgrade: false,
+            /** 标记为超管默认视图：前端用于隐藏"增购席位"等需要真实空间的操作 */
+            isDefaultAdminWorkspace: true,
+            realtimeUsage: {
+              members: { used: 0, limit: currentConfig.maxMembers ?? -1 },
+              components: { used: 0, limit: currentConfig.maxComponents ?? -1 },
+              storage: { usedBytes: 0, usedMB: 0, limitMB: currentConfig.maxStorage ?? 0 },
+              apiCalls: { used: 0, limit: currentConfig.maxApiCalls ?? 0 },
+            },
+          },
+        });
+      }
+      return NextResponse.json(
+        { error: "暂无可开通套餐的企业空间 / 团队空间" },
+        { status: 404 },
+      );
+    };
+
     if (!targetWorkspaceId) {
-      return NextResponse.json({ error: "暂无可管理的工作空间" }, { status: 404 });
+      return buildNoEnterpriseView();
     }
 
     const workspace = await prisma.workspace.findUnique({
@@ -63,6 +114,7 @@ export async function GET(request: NextRequest) {
         id: true,
         name: true,
         ownerId: true,
+        type: true,
         plan: true,
         quota: true,
         workspacequotaId: true,
@@ -74,6 +126,11 @@ export async function GET(request: NextRequest) {
 
     if (!workspace) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
+    }
+
+    // 显式传入的 workspaceId 同样必须是企业/团队空间：个人空间不参与套餐
+    if (workspace.type !== "ENTERPRISE") {
+      return buildNoEnterpriseView();
     }
 
     const isOwner = workspace.ownerId === userId;
@@ -169,11 +226,11 @@ export async function GET(request: NextRequest) {
         ? Number(quotaRecord.apiCallsLimit)
         : currentConfig.maxApiCalls;
 
-    // 可在线购买的全部套餐（前端需要展示完整阶梯：当前、低阶禁用、高阶可升级）
-    const allPlans = await getWorkspacePlans({ onlyActive: true, onlyPurchasable: true });
-    // 仅阶梯高于当前套餐的选项，用于判断是否可以在线升级
+    // 全部套餐（含线下定制版 CUSTOM，前端完整展示阶梯：当前、低阶禁用、高阶可升级、定制咨询）
+    const allPlans = await getWorkspacePlans({ onlyActive: true });
+    // 仅阶梯高于当前套餐且支持在线购买的选项，用于判断是否可以在线升级（CUSTOM 为线下定制，不参与在线购买）
     const availablePlans = allPlans.filter(
-      (p) => p.sortOrder > currentConfig.sortOrder
+      (p) => p.sortOrder > currentConfig.sortOrder && p.purchasable
     );
 
     return NextResponse.json({
@@ -266,6 +323,7 @@ export async function POST(request: NextRequest) {
         id: true,
         name: true,
         ownerId: true,
+        type: true,
         plan: true,
         workspacequotaId: true,
       },
@@ -273,6 +331,13 @@ export async function POST(request: NextRequest) {
 
     if (!workspace) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
+    }
+    // 套餐仅面向企业/团队空间：个人空间不可在线购买或升级套餐
+    if (workspace.type !== "ENTERPRISE") {
+      return NextResponse.json(
+        { error: "套餐仅面向企业/团队空间，个人空间不支持购买" },
+        { status: 400 }
+      );
     }
     if (workspace.ownerId !== userId) {
       return NextResponse.json({ error: "仅空间所有者可升级空间套餐" }, { status: 403 });

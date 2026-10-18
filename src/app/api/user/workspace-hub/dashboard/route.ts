@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { validateUser } from "@/lib/auth";
+import { validateUser, isAdminRole, normalizeUserRole } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { getMembershipTokenLimit } from "@/lib/quota-token";
 import { serverCacheGet, serverCacheSet } from "@/lib/serverCache";
@@ -64,7 +64,8 @@ export async function GET(request: NextRequest) {
     }
 
     const membershipLevel = dbUser.membershipLevel || "FREE";
-    const isAdmin = dbUser.role === "admin" || dbUser.role === "super_admin";
+    // 统一用 isAdminRole：库中实际存在 superadmin（连写）等变体，内联等值比较会漏判
+    const isAdmin = isAdminRole(dbUser.role);
 
     // 获取会员等级对应配额信息
     const levelData = await prisma.membershiplevel.findUnique({
@@ -72,8 +73,10 @@ export async function GET(request: NextRequest) {
     });
 
     const isVip = membershipLevel !== "FREE" || isAdmin;
-    // 配额一律从 membershiplevel 表读取（不再硬编码）
-    const maxEnterpriseWorkspaces = levelData ? Number(levelData.maxEnterpriseWorkspaces) : 1;
+    // 配额一律从 membershiplevel 表读取（不再硬编码）；
+    // 管理员不受等级 0 配额限制，至少保留 1 个企业空间名额（否则空间中枢升级入口会被 0/0 配置锁死）
+    const levelMaxEnterprise = levelData ? Number(levelData.maxEnterpriseWorkspaces) : 1;
+    const maxEnterpriseWorkspaces = isAdmin ? Math.max(levelMaxEnterprise, 1) : levelMaxEnterprise;
     const maxTeamSize = levelData ? Number(levelData.maxTeamSize) : 5;
     const maxStorage = levelData ? Number(levelData.maxStorage) : 1073741824;
     const maxApiCalls = levelData ? Number(levelData.maxApiCalls) : 1000;
@@ -673,7 +676,7 @@ export async function GET(request: NextRequest) {
           id: dbUser.id,
           name: dbUser.name,
           avatar: dbUser.avatar,
-          role: dbUser.role,
+          role: normalizeUserRole(dbUser.role),
           membershipLevel,
           email: dbUser.email,
         },

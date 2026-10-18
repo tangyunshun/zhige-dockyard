@@ -96,7 +96,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#63b3ed] opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3182ce]"></span>
             </span>
-            V5.0 全新发布:50+ 效能组件上线
+            V5.0 全新发布:60+ 效能组件上线
           </div>
 
           <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-[#3182ce] via-[#2b6cb0] to-[#2b6cb0] bg-clip-text text-transparent leading-[1.15] mb-6">
@@ -683,7 +683,7 @@ export default function HeroSection({ onDemoRequest }: HeroSectionProps) {
             </div>
             <div className="group text-center">
               <div className="text-5xl md:text-6xl font-bold text-[#10b981] mb-2 group-hover:scale-110 transition-transform duration-300">
-                50+
+                60+
               </div>
               <div className="text-xs text-[#64748b] font-medium uppercase tracking-wide">
                 内置全链路原子组件

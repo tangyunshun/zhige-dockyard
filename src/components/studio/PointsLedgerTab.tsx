@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { isAdminRole } from "@/lib/role-utils";
 import {
   Zap,
   RefreshCw,
@@ -485,10 +486,7 @@ export default function PointsLedgerTab({
                           )}
                         </td>
                         <td className="px-5 py-3.5 text-slate-500 font-medium whitespace-nowrap">
-                          {!r.operator ||
-                          r.operator.toLowerCase() === "superadmin" ||
-                          r.operator.toLowerCase() === "super_admin" ||
-                          r.operator.toLowerCase() === "admin"
+                          {!r.operator || isAdminRole(r.operator)
                             ? "系统管理员"
                             : r.operator}
                         </td>

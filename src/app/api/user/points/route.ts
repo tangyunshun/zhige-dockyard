@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { isAdminRole } from "@/lib/role-utils";
 import { UNLIMITED_BALANCE } from "@/lib/credit-service";
 
 /**
@@ -133,8 +134,7 @@ export async function GET(request: NextRequest) {
       : [];
     const normalizeOperatorName = (raw?: string | null) => {
       if (!raw) return "系统管理员";
-      const lower = raw.trim().toLowerCase();
-      if (lower === "superadmin" || lower === "super_admin" || lower === "admin") return "系统管理员";
+      if (isAdminRole(raw)) return "系统管理员";
       return raw;
     };
 

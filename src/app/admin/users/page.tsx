@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { isSuperAdminRole, isAdminRole } from "@/lib/role-utils";
 import { createPortal } from "react-dom";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
@@ -174,41 +175,7 @@ function parseClientDeviceAndBrowser(device?: string | null, userAgent?: string 
   };
 }
 
-// 用户明确规范的角色枚举集合
-// 超级管理员包括：SUPER_ADMIN、SUPERADMIN、superadmin、super_admin、Superadmin、Super_admin
-const SUPER_ADMIN_ROLES = new Set([
-  "SUPER_ADMIN",
-  "SUPERADMIN",
-  "superadmin",
-  "super_admin",
-  "Superadmin",
-  "Super_admin",
-]);
-
-// 管理员包括：ADMIN、admin、Admin
-const ADMIN_ROLES = new Set([
-  "ADMIN",
-  "admin",
-  "Admin",
-]);
-
-// 角色标准化判定辅助函数（严格对齐平台规范角色集合，并兼顾大小写与前后空格）
-const isSuperAdminRole = (role?: string | null): boolean => {
-  if (!role) return false;
-  const raw = String(role).trim();
-  if (SUPER_ADMIN_ROLES.has(raw)) return true;
-  const r = raw.toUpperCase();
-  return r === "SUPER_ADMIN" || r === "SUPERADMIN" || r === "SUPER_ADMIN_ROLE" || r === "SUPER";
-};
-
-const isAdminRole = (role?: string | null): boolean => {
-  if (!role) return false;
-  const raw = String(role).trim();
-  if (ADMIN_ROLES.has(raw)) return true;
-  const r = raw.toUpperCase();
-  return (r === "ADMIN" || r === "ADMINISTRATOR") && !isSuperAdminRole(role);
-};
-
+// 角色判定统一收口到 role-utils（覆盖 admin/superadmin 全部大小写/下划线/连字符/ROLE_ 前缀变体）
 const isPrivilegedRole = (role?: string | null): boolean => {
   return isSuperAdminRole(role) || isAdminRole(role);
 };

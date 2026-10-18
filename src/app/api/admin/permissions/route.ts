@@ -28,17 +28,9 @@ import {
   getApiPermissionRules,
   saveApiPermissionRules,
 } from "@/lib/api-permission-rules";
+import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
 
 export const dynamic = "force-dynamic";
-
-/** 平台管理员/超级管理员角色取值（兼容历史大小写与拼写） */
-const ADMIN_ROLE_VALUES = [
-  "admin",
-  "PLATFORM_ADMIN",
-  "super_admin",
-  "SUPER_ADMIN",
-  "superadmin",
-];
 
 export interface PermissionKeyItem {
   key: string;

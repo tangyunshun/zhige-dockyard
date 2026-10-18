@@ -101,6 +101,14 @@ const adminMenuItems: AdminMenuItem[] = [
     requiredPermission: "user:update",
   },
   {
+    icon: MessagesSquare,
+    label: "演示申请",
+    href: "/admin/demo-requests",
+    description: "查看并跟进用户提交的演示申请线索",
+    group: "用户与风控",
+    requiredPermission: "user:update",
+  },
+  {
     icon: Cpu,
     label: "空间模型策略",
     href: "/admin/workspaces/model-policy",
@@ -983,7 +991,7 @@ export default function AdminLayout({
 
         {/* 内容区 - 局部滚动 */}
         <AdminPermissionProvider user={user} permissions={permissions} loading={loading}>
-          <div className="flex-1 overflow-y-auto p-6 min-h-0">{children}</div>
+          <div className="flex-1 overflow-y-auto p-6 min-h-0 bg-white">{children}</div>
         </AdminPermissionProvider>
       </main>
 

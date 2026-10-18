@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateUser, AuthenticatedUser } from "@/lib/auth";
 import { assertCSRF } from "@/lib/csrf";
+import { isAdminRole } from "@/lib/role-utils";
 
 /**
  * P0-2 修复：统一鉴权 + CSRF HOF
@@ -83,19 +84,9 @@ export function withAuth(
       return fail("ACCOUNT_DELETING", 403);
     }
 
-    // 4. 管理员校验
-    if (options.requireAdmin) {
-      const adminRoles = [
-        "admin",
-        "super_admin",
-        "superadmin",
-        "ADMIN",
-        "SUPERADMIN",
-        "SUPER_ADMIN",
-      ];
-      if (!adminRoles.includes(user.role)) {
-        return fail("FORBIDDEN", 403);
-      }
+    // 4. 管理员校验（统一收口到 role-utils，覆盖 admin/superadmin 及全部大小写/下划线/ROLE_ 前缀变体）
+    if (options.requireAdmin && !isAdminRole(user.role)) {
+      return fail("FORBIDDEN", 403);
     }
 
     return handler(req, user);

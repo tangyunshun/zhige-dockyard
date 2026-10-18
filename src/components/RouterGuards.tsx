@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppContext } from "@/contexts/AppContext";
+import { isAdminRole } from "@/lib/role-utils";
 
 // 客户端停机维护状态轻量缓存（10秒有效期，避免页面跳转时的高频冗余轮询）
 let cachedMaintenance: { inMaintenance: boolean; expiresAt: number } | null = null;
@@ -89,8 +90,7 @@ export default function RouterGuards({
     );
 
     // 核心安全闭环：停机维护模式全站阻断判定（严防普通用户借“返回首页”绕过维护页）
-    const role = (userState.userInfo?.role || "").toLowerCase();
-    const isAdmin = ["superadmin", "super_admin", "admin"].includes(role);
+    const isAdmin = isAdminRole(userState.userInfo?.role);
 
     // 白名单放行路径：维护展示页本身、后台运维路径、以及显式携带 admin=true 的运维登录页
     const isMaintenanceExempt =
@@ -158,8 +158,7 @@ export default function RouterGuards({
       if (!userState.isLoggedIn) {
         router.replace("/");
       } else {
-        const role = (userState.userInfo?.role || '').toLowerCase();
-        const isAdmin = ['superadmin', 'super_admin', 'admin'].includes(role);
+        const isAdmin = isAdminRole(userState.userInfo?.role);
         if (!isAdmin) {
           router.replace("/workspace-hub");
         }

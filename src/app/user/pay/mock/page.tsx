@@ -16,8 +16,10 @@ import { AlertTriangle, CheckCircle2, CreditCard, Loader2 } from "lucide-react";
 interface OrderInfo {
   orderNo: string;
   title: string;
+  type: string;
   amountCents: number;
   points: number;
+  seats: number;
   status: string;
   channel: string;
   paymentMode: "MOCK" | "REAL";
@@ -105,7 +107,9 @@ function MockCashierInner() {
         <div className="p-5 space-y-4">
           <div className="text-center">
             <div className="text-sm text-slate-500">收款方</div>
-            <div className="text-base font-black text-slate-900">知阁·舟坊 · 算力充值</div>
+            <div className="text-base font-black text-slate-900">
+              {order?.type === "SEAT_ADDON" ? "知阁·舟坊 · 席位增购" : "知阁·舟坊 · 算力充值"}
+            </div>
           </div>
 
           {loading ? (
@@ -121,8 +125,14 @@ function MockCashierInner() {
                   ¥{(order.amountCents / 100).toFixed(2)}
                 </div>
                 <div className="text-xs text-slate-500 mt-1">
-                  对应 {order.points.toLocaleString()} 算力点
-                  {order.discountLabel ? ` · 会员${order.discountLabel}优惠` : ""}
+                  {order.type === "SEAT_ADDON" ? (
+                    <>增购 {order.seats} 个团队席位</>
+                  ) : (
+                    <>
+                      对应 {order.points.toLocaleString()} 算力点
+                      {order.discountLabel ? ` · 会员${order.discountLabel}优惠` : ""}
+                    </>
+                  )}
                 </div>
               </div>
 

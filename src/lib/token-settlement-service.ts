@@ -361,8 +361,8 @@ export interface ConsumeAndHoldParams {
   remark?: string | null;
   idempotencyKey?: string | null;
   expiresInMs?: number;
-  /** 个人垫付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减 */
-  advanceFromWallet?: boolean;
+  /** 个人点支付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减 */
+  payWithPersonalWallet?: boolean;
 }
 
 export interface ConsumeAndHoldResult extends HoldResult {
@@ -907,7 +907,7 @@ export async function consumeAndCreateSettlementHold(
             workspaceName: params.workspaceName,
             userEmail: params.userEmail,
             need: needNum,
-            advanceFromWallet: params.advanceFromWallet,
+            payWithPersonalWallet: params.payWithPersonalWallet,
             taskId,
             componentId: params.componentId,
             componentName: params.componentName,

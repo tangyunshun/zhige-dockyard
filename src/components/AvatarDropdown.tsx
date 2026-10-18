@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
+import { isSuperAdminRole, isStandardAdminRole } from "@/lib/role-utils";
 import { useRouter } from "next/navigation";
 import {
   LogOut,
@@ -105,15 +106,9 @@ export default function AvatarDropdown({
   }, [userState.isLoggedIn, userInfo?.email, refreshUserState]);
 
   // === 权限与多管理身份判定逻辑 (全栈互斥算法) ===
-  const isSuperAdmin = !!(
-    userInfo.role?.toUpperCase() === "SUPER_ADMIN" ||
-    userInfo.role?.toUpperCase() === "SUPERADMIN"
-  );
+  const isSuperAdmin = isSuperAdminRole(userInfo.role);
 
-  const isPlatformAdmin = !!(
-    userInfo.role?.toUpperCase() === "ADMIN" ||
-    userInfo.role?.toUpperCase() === "PLATFORM_ADMIN"
-  );
+  const isPlatformAdmin = isStandardAdminRole(userInfo.role);
 
   const isEnterpriseAdmin = workspaceType === "ENTERPRISE" && (userRole === "Owner" || userRole === "Admin");
   const isComponentAdmin = userRole === "ComponentAdmin";

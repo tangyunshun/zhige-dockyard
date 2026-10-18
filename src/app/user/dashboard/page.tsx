@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { normalizeUserRole } from "@/lib/role-utils";
 import {
   FolderOpen,
   Box,
@@ -58,12 +59,11 @@ export default function UserDashboardPage() {
   // 角色中文本地化映射（普通用户、管理员、超级管理员等，拒绝展示英文 user）
   const formatRoleName = (role?: string | null) => {
     if (!role) return "普通用户";
-    const r = role.toLowerCase();
-    if (r === "admin" || r === "administrator") return "系统管理员";
-    if (r === "superadmin" || r === "super_admin") return "超级管理员";
-    if (r === "creator") return "创作者";
-    if (r === "developer") return "开发者";
-    if (r === "user" || r === "member") return "普通用户";
+    const n = normalizeUserRole(role);
+    if (n === "admin") return "系统管理员";
+    if (n === "superadmin") return "超级管理员";
+    if (n === "creator") return "创作者";
+    if (n === "developer") return "开发者";
     return "普通用户";
   };
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { dedupeFetch } from "@/lib/requestDedupe";
+import { isAdminRole } from "@/lib/role-utils";
 import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
 
 export interface Workspace {
@@ -200,8 +201,7 @@ export function useWorkspaceHubData() {
                 maxEnterprise: quotas.enterpriseSlots.total,
                 isMember:
                   quotas.enterpriseSlots.total > 1 ||
-                  bentoData.user?.role === "admin" ||
-                  bentoData.user?.role === "super_admin",
+                  isAdminRole(bentoData.user?.role),
               });
 
               setUsageStats({

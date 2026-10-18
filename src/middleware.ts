@@ -36,6 +36,8 @@ const PUBLIC_PREFIXES = [
   "/api/system/check-maintenance",
   "/api/system/check-update",
   "/api/system/status",
+  // 公开读取客户经理联系方式（前端定价页、定制版卡片引用，无需登录）
+  "/api/contact-info",
   "/privacy-policy",
   "/terms-of-service",
   "/help",

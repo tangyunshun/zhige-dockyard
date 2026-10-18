@@ -105,8 +105,8 @@ export interface ConsumeParams {
   userEmail?: string | null;
   remark?: string | null;
   idempotencyKey?: string | null;
-  /** 个人垫付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减 */
-  advanceFromWallet?: boolean;
+  /** 个人点支付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减 */
+  payWithPersonalWallet?: boolean;
 }
 
 /** 扣点明细来源分桶类型（用于原路退款区分归属，禁止一律退回钱包） */
@@ -499,7 +499,7 @@ export async function consumePoints(params: ConsumeParams): Promise<ConsumeResul
         workspaceName: params.workspaceName,
         userEmail: params.userEmail,
         need,
-        advanceFromWallet: params.advanceFromWallet,
+        payWithPersonalWallet: params.payWithPersonalWallet,
         taskId: params.taskId,
         componentId: params.componentId,
         componentName: params.componentName,
@@ -561,8 +561,8 @@ export interface DeductPointsParams {
   remark?: string | null;
   idempotencyPrefix?: string | null;
   bumpMonthlyUsed?: boolean;
-  /** 个人垫付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减，而非成员独立余额 */
-  advanceFromWallet?: boolean;
+  /** 个人点支付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减，而非成员独立余额 */
+  payWithPersonalWallet?: boolean;
 }
 
 export interface DeductPointsResult {
@@ -588,8 +588,8 @@ export async function deductPointsInTx(
   const now = new Date();
   const need = params.need;
 
-  // 1. 企业空间普通成员：仅从其独立余额扣减，不消耗共享池（个人垫付时跳过，改为从个人钱包扣）
-  if (params.workspaceType === "ENTERPRISE" && !params.advanceFromWallet) {
+  // 1. 企业空间普通成员：仅从其独立余额扣减，不消耗共享池（个人点支付时跳过，改为从个人钱包扣）
+  if (params.workspaceType === "ENTERPRISE" && !params.payWithPersonalWallet) {
     const member = await tx.workspacemember.findUnique({
       where: { userId_workspaceId: { userId: params.userId, workspaceId: params.workspaceId } },
     });
@@ -668,7 +668,7 @@ export async function deductPointsInTx(
     where: {
       status: "ACTIVE",
       remaining: { gt: 0 },
-      OR: params.advanceFromWallet
+      OR: params.payWithPersonalWallet
         ? [{ scope: "WALLET", userId: params.userId }]
         : [
             { scope: "WALLET", userId: params.userId },

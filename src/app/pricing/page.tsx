@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import { useAppContext } from "@/contexts/AppContext";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { isAdminRole } from "@/lib/role-utils";
 import Link from "next/link";
 import UpgradeRequestModal from "@/components/pricing/UpgradeRequestModal";
 import WorkspacePlanSection from "@/components/pricing/WorkspacePlanSection";
@@ -167,8 +168,7 @@ export default function PricingPage() {
 
   // 超级管理员 / 平台管理员默认按最高等级展示（与系统特权一致）：
   // 将展示等级收敛为套餐列表中的最高档（按 sortOrder 取最大值），用于"当前方案"与降级判断。
-  const isPrivilegedRole =
-    userState.userInfo?.role === "SuperAdmin" || userState.userInfo?.role === "Admin";
+  const isPrivilegedRole = isAdminRole(userState.userInfo?.role);
   const highestLevelName =
     levels.length > 0
       ? [...levels].sort((a, b) => (b.sortOrder ?? 0) - (a.sortOrder ?? 0))[0]?.name
@@ -611,7 +611,7 @@ export default function PricingPage() {
       </section>
 
       {/* Pricing Cards Grid */}
-      <section id="pricing-plans" className="relative py-12 z-10">
+      <section id="pricing-plans" className="relative py-12 z-10 scroll-mt-20">
         <div className="max-w-7xl mx-auto px-6">
           {levels.length === 0 ? (
             <div className="text-center py-16 text-slate-400 text-sm font-bold">
@@ -755,25 +755,41 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* 登录态：空间团队资源扩容包（一次性买断，与账号会员订阅相互独立叠加） */}
-      {userState.isLoggedIn && (
-        <section className="relative py-12 z-10">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight flex items-center justify-center gap-2.5">
-                为空间按需扩容
-                <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100 font-black">
-                  一次性买断 · 长期生效
-                </span>
-              </h2>
-              <p className="text-slate-500 text-sm mt-2 font-medium">
-                会员订阅决定账号级权益，扩容包为单个空间追加席位 / 组件装配 / 存储 / 调用额度，两者独立叠加生效
-              </p>
-            </div>
-            <WorkspacePlanSection />
+      {/* 空间团队资源扩容包（一次性买断，与账号会员订阅相互独立叠加）；未登录时展示登录引导 */}
+      <section className="relative py-12 z-10">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight flex items-center justify-center gap-2.5">
+              为空间按需扩容
+              <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100 font-black">
+                一次性买断 · 长期生效
+              </span>
+            </h2>
+            <p className="text-slate-500 text-sm mt-2 font-medium">
+              会员订阅决定账号级权益，扩容包为单个空间追加席位 / 组件装配 / 存储 / 调用额度，两者独立叠加生效
+            </p>
           </div>
-        </section>
-      )}
+          {/* 空间套餐区锚点：hero「立即查看订阅套餐 / 联系客户经理」定位到此（而非上方会员卡片区） */}
+          <div id="workspace-plans" className="scroll-mt-20">
+            {userState.isLoggedIn ? (
+              <WorkspacePlanSection />
+            ) : (
+            <div className="max-w-3xl mx-auto p-6 bg-white/60 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-xs text-center">
+              <p className="text-sm font-bold text-slate-700">登录后即可查看你所属空间的套餐与扩容信息</p>
+              <p className="text-xs text-slate-500 mt-1 font-medium">
+                空间套餐包含团队席位、组件装配、存储与调用额度，支持按需一次性扩容
+              </p>
+              <button
+                onClick={() => router.push("/auth/login?redirect=/pricing")}
+                className="mt-4 h-9 px-6 rounded-lg bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer"
+              >
+                登录 / 注册
+              </button>
+            </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* 核心权益图解解读区段 */}
       <section className="relative py-12 z-10 border-t border-slate-200/30 bg-slate-50/20">
@@ -827,13 +843,13 @@ export default function PricingPage() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-white/80 border-b border-slate-200">
-                    <th className="px-6 py-4 text-left font-black text-slate-700 text-sm">
+                    <th className="px-4 py-4 text-left font-black text-slate-700 text-sm whitespace-nowrap">
                       功能权益对照
                     </th>
                     {levels.map((level, index) => (
                       <th
                         key={level.id}
-                        className={`px-6 py-4 text-center font-black text-sm ${level.isPopular ? "text-[#2b6cb0] bg-blue-50/25" : "text-slate-500"
+                        className={`px-4 py-4 text-center font-black text-sm whitespace-nowrap ${level.isPopular ? "text-[#2b6cb0] bg-blue-50/25" : "text-slate-500"
                           }`}
                         style={level.isPopular ? undefined : { color: level.color }}
                       >
@@ -848,7 +864,7 @@ export default function PricingPage() {
                       key={row.feature}
                       className={`border-b border-slate-100/50 ${rowIndex % 2 === 0 ? "bg-white/30" : "bg-slate-50/30"} hover:bg-[#3182ce]/5 transition-colors`}
                     >
-                      <td className="px-6 py-4 text-slate-700 text-xs md:text-sm font-bold">
+                      <td className="px-4 py-4 text-slate-700 text-xs md:text-sm font-bold whitespace-nowrap">
                         <span className="inline-flex items-center gap-2">
                           <span className="text-slate-400">{row.icon}</span>
                           {row.feature}
@@ -859,7 +875,7 @@ export default function PricingPage() {
                         return (
                           <td
                             key={level.id}
-                            className={`px-6 py-4 text-center text-xs md:text-sm font-bold ${level.isPopular ? "text-[#2b6cb0] font-black bg-blue-50/15" : "text-slate-600"
+                            className={`px-4 py-4 text-center text-xs md:text-sm font-bold whitespace-nowrap ${level.isPopular ? "text-[#2b6cb0] font-black bg-blue-50/15" : "text-slate-600"
                               }`}
                           >
                             {value === "✓" ? (
@@ -903,7 +919,10 @@ export default function PricingPage() {
             <button
               onClick={() => {
                 if (userState.isLoggedIn) {
-                  document.getElementById("pricing-plans")?.scrollIntoView({ behavior: "smooth" });
+                  // 已登录：平滑定位到本页「空间套餐」区域（而非上方会员订阅卡片区）
+                  document
+                    .getElementById("workspace-plans")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
                 } else {
                   router.push("/auth/login?redirect=/pricing");
                 }
@@ -915,12 +934,24 @@ export default function PricingPage() {
             </button>
             <p className="text-slate-400 text-xs font-medium">
               需要定制方案？
-              <Link
-                href="/solutions?consult=true"
-                className="text-white font-black hover:underline ml-1"
+              <button
+                type="button"
+                onClick={() => {
+                  // 定位到套餐区的「定制版」横幅（内含客户经理热线 / 邮箱 / 咨询入口）
+                  const banner = document.getElementById("custom-plan-banner");
+                  if (banner) {
+                    banner.scrollIntoView({ behavior: "smooth", block: "center" });
+                  } else {
+                    // 未登录等场景无定制版横幅时，回退到套餐区顶部
+                    document
+                      .getElementById("workspace-plans")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                }}
+                className="text-white font-black hover:underline ml-1 cursor-pointer"
               >
-                联系咨询架构师
-              </Link>
+                联系客户经理
+              </button>
             </p>
           </div>
         </div>

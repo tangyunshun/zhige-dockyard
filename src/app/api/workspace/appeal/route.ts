@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { addNotification } from "@/lib/notifications-store";
+import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
 
     // 向系统管理员广播待办通知
     const admins = await prisma.user.findMany({
-      where: { role: { in: ["SUPER_ADMIN", "ADMIN"] }, status: "active" },
+      where: { role: { in: [...ADMIN_ROLE_VALUES] }, status: "active" },
       select: { id: true },
       take: 5,
     });

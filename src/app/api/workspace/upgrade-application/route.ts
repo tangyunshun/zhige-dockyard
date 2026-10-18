@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getToken } from "next-auth/jwt";
+import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
 
 const prisma = new PrismaClient();
 
@@ -122,13 +123,8 @@ export async function POST(req: NextRequest) {
         "/pricing"
       );
 
-      // 平台管理员角色命名全覆盖（与 lib/auth 的 isAdminRole 同口径）
-      const adminRoleVariants = [
-        "SUPER_ADMIN", "SUPERADMIN", "superadmin", "super_admin", "Superadmin", "Super_admin",
-        "ADMIN", "admin", "Admin", "ADMINISTRATOR", "administrator", "PLATFORM_ADMIN", "platform_admin",
-      ];
       const admins = await prisma.user.findMany({
-        where: { role: { in: adminRoleVariants }, status: "active" },
+        where: { role: { in: [...ADMIN_ROLE_VALUES] }, status: "active" },
         select: { id: true },
       });
       for (const admin of admins) {

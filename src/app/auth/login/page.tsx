@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
+import { isAdminRole } from "@/lib/role-utils";
 import AppealModal from "@/components/AppealModal";
 import {
   Lock,
@@ -999,16 +1000,7 @@ function LoginForm() {
 
           // 检查是否是管理员页面
           const isAdminPage = targetPath.startsWith("/admin");
-          const isAdminUser =
-            userRole &&
-            [
-              "admin",
-              "super_admin",
-              "superadmin",
-              "ADMIN",
-              "SUPERADMIN",
-              "SUPER_ADMIN",
-            ].includes(userRole);
+          const isAdminUser = isAdminRole(userRole);
 
           let finalPath = targetPath;
 

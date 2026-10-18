@@ -2,25 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import { getJwtSecretKey } from "@/lib/jwt-config";
-
-// 管理员与超级管理员角色列表（严格对齐规范）
-const ADMIN_ROLES = [
-  "SUPER_ADMIN",
-  "SUPERADMIN",
-  "superadmin",
-  "super_admin",
-  "Superadmin",
-  "Super_admin",
-  "ADMIN",
-  "admin",
-  "Admin",
-];
+import { normalizeUserRole, ADMIN_ROLE_VALUES, type UserRole } from "@/lib/role-utils";
 
 export interface AuthenticatedUser {
   id: string;
   email: string;
   name: string;
-  role: string;
+  role: UserRole;
   status: string;
 }
 
@@ -75,12 +63,12 @@ export async function validateAdmin(request: NextRequest): Promise<{
       id: user.id,
       email: user.email || "",
       name: user.name || "",
-      role: user.role,
+      role: normalizeUserRole(user.role),
       status: user.status,
     };
 
     // 检查是否是管理员
-    const isAdmin = ADMIN_ROLES.includes(user.role);
+    const isAdmin = ADMIN_ROLE_VALUES.includes(authenticatedUser.role as any);
 
     return {
       valid: true,
@@ -97,7 +85,7 @@ export async function validateAdmin(request: NextRequest): Promise<{
  * 检查用户是否是管理员角色
  */
 export function isAdminRole(role: string): boolean {
-  return ADMIN_ROLES.includes(role);
+  return ADMIN_ROLE_VALUES.includes(role as any);
 }
 
 /**
@@ -146,7 +134,7 @@ export async function validateUser(authHeader: string | null): Promise<{
         id: user.id,
         email: user.email || "",
         name: user.name || "",
-        role: user.role,
+        role: normalizeUserRole(user.role),
         status: user.status,
       },
     };

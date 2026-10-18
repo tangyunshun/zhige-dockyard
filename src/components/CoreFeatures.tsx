@@ -58,7 +58,7 @@ export default function CoreFeatures() {
               核心组件矩阵库
             </div>
             <h2 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight text-slate-900 leading-tight">
-              50+ 原子组件，
+              60+ 原子组件，
               <span className="bg-gradient-to-r from-[#2b6cb0] to-indigo-500 text-transparent bg-clip-text">
                 覆盖研发全链路
               </span>

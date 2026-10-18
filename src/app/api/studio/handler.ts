@@ -3096,6 +3096,38 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             config: runningTaskConfig,
           });
 
+          // 个人点支付预检：企业空间成员自身余额不足时，提供「用个人算力点支付本次任务」选项
+          let payWithPersonalWallet = false;
+          if (ws?.type === "ENTERPRISE" && currentMember && currentMember.role === "MEMBER") {
+            const memberBalance = Number(currentMember.tokenBalance || 0);
+            if (memberBalance < deductTokens) {
+              const walletGrants = await prisma.pointgrant.findMany({
+                where: {
+                  scope: "WALLET",
+                  userId,
+                  status: "ACTIVE",
+                  remaining: { gt: 0 },
+                  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+                },
+              });
+              const walletAvail = walletGrants.reduce((s: number, g: any) => s + Number(g.remaining), 0);
+              if ((body as any).payWithPersonal === true && walletAvail >= deductTokens) {
+                payWithPersonalWallet = true;
+              } else {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "POINTS_INSUFFICIENT",
+                    canPayWithPersonal: walletAvail >= deductTokens,
+                    personalAvailable: walletAvail,
+                    error: `算力点余额不足：成员账户可用 ${memberBalance} 点，本次需要 ${deductTokens} 点。` + (walletAvail >= deductTokens ? "你可以用个人算力点支付本次任务。" : "且个人钱包余额也不足，请充值后再试。"),
+                  },
+                  { status: 400 },
+                );
+              }
+            }
+          }
+
           // 预扣算力点与结算单创建（启用结算时走原子单事务，未启用时走既有扣费逻辑）
           try {
             if (settlementFeatureEnabled) {
@@ -3120,7 +3152,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                 workspaceType: ws?.type || null,
                 workspaceName: ws?.name || null,
                 idempotencyKey: `CONSUME:${taskId}`,
-                advanceFromWallet,
+                payWithPersonalWallet,
               });
               consumeResult = holdRes.consumeResult;
             } else {
@@ -3134,7 +3166,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                 workspaceType: ws?.type || null,
                 workspaceName: ws?.name || null,
                 idempotencyKey: `CONSUME:${taskId}`,
-                advanceFromWallet,
+                payWithPersonalWallet,
               });
             }
           } catch (consumeErr) {

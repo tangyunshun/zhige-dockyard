@@ -1,12 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { getAuthToken } from "@/utils/auth";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import type {
   OAuthChannelMeta,
 } from "@/constants/oauth";
+import {
+  DEFAULT_CONTACT_MANAGERS,
+  MAX_CONTACT_MANAGERS,
+  MIN_CONTACT_MANAGERS,
+  type ContactManager,
+} from "@/constants/contact-info";
 import type {
   NavPresetItem,
   NavColumnTemplateItem,
@@ -58,6 +64,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
+import QrLightbox from "@/components/QrLightbox";
 import SiteRoutePicker from "@/components/admin/SiteRoutePicker";
 import { EmailInput } from "@/components/EmailInput";
 
@@ -159,6 +166,155 @@ interface DatabaseStats {
   lastBackupTime: string | null;
   lastBackupInfo?: string | null;
   dbEngine: string;
+}
+
+/**
+ * 单字段实时校验（空值放行，供后台输入时即时提示）。
+ * 严格遵循 QQ / 微信官方规范：QQ 号 5~12 位数字不以 0 开头；
+ * 微信号 6~20 位字母开头（可含数字/下划线/减号）或 11 位手机号（支持数字搜索添加）。
+ */
+const QQ_RE = /^[1-9][0-9]{4,11}$/;
+const WECHAT_ID_RE = /^[a-zA-Z][-_a-zA-Z0-9]{5,19}$/;
+const PHONE11_RE = /^1[3-9]\d{9}$/;
+function validateQq(v: string): string | null {
+  const s = (v || "").trim();
+  if (!s) return null;
+  return QQ_RE.test(s) ? null : "QQ 号格式不合法（5~12 位数字，不以 0 开头）";
+}
+function validateWechat(v: string): string | null {
+  const s = (v || "").trim();
+  if (!s) return null;
+  return WECHAT_ID_RE.test(s) || PHONE11_RE.test(s)
+    ? null
+    : "微信号格式不合法（6~20 位字母开头，或 11 位手机号）";
+}
+function validateQrUrl(v: string): string | null {
+  const s = (v || "").trim();
+  if (!s) return null;
+  // 允许站内上传的相对路径（/uploads/xxx.png）或完整 http(s) 链接
+  return /^(https?:\/\/|\/)/.test(s) ? null : "二维码须为站内上传路径或 http(s) 图片链接";
+}
+
+/**
+ * 客户经理联系方式逐项校验：返回错误文案，合法返回 null。
+ * 供「保存按钮内联提示」与「handleSaveSettings 前置校验」复用。
+ */
+function validateContactManagersList(list: ContactManager[]): string | null {
+  if (list.length < MIN_CONTACT_MANAGERS || list.length > MAX_CONTACT_MANAGERS) {
+    return `客户经理联系方式需配置 ${MIN_CONTACT_MANAGERS} ~ ${MAX_CONTACT_MANAGERS} 位`;
+  }
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i];
+    const idx = list.length > 1 ? `第 ${i + 1} 位客户经理的` : "";
+    if (!(m.hotline || "").trim()) return `${idx}咨询热线为必填项`;
+    const email = (m.email || "").trim();
+    if (!email) return `${idx}商务邮箱为必填项`;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return `${idx}商务邮箱格式不合法`;
+    const qqErr = validateQq(m.qq || "");
+    if (qqErr) return `${idx}${qqErr}`;
+    const wxErr = validateWechat(m.wechat || "");
+    if (wxErr) return `${idx}${wxErr}`;
+    const qqQrErr = validateQrUrl(m.qqQr || "");
+    if (qqQrErr) return `${idx}${qqQrErr}`;
+    const wxQrErr = validateQrUrl(m.wechatQr || "");
+    if (wxQrErr) return `${idx}${wxQrErr}`;
+  }
+  return null;
+}
+
+/**
+ * 客户经理二维码上传组件：选择本地图片 → 调 /api/upload → 写入 public/uploads → 返回 URL。
+ * 展示预览、可更换/移除，上传中/失败状态即时反馈（扫码为主的设计，管理员上传二维码）。
+ */
+function ContactQrField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 允许重复选择同一文件
+    if (!file) return;
+    setErr(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const token = getAuthToken();
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: fd,
+      });
+      const d = await res.json();
+      if (!res.ok || !d.success) throw new Error(d.error || "上传失败");
+      onChange(d.url);
+    } catch (e2: any) {
+      setErr(e2?.message || "上传失败，请重试");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <label className="block text-[11px] font-bold text-slate-600">{label}</label>
+      <div className="flex items-center gap-2">
+        {value ? (
+          <img
+            src={value}
+            alt={label}
+            title="点击放大查看"
+            onClick={() => setZoom(true)}
+            className="w-14 h-14 rounded-md border border-amber-200 object-cover shrink-0 cursor-zoom-in hover:opacity-80 transition-opacity"
+          />
+        ) : (
+          <div className="w-14 h-14 rounded-md border border-dashed border-slate-300 flex items-center justify-center text-[10px] text-slate-400 shrink-0">
+            无
+          </div>
+        )}
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="h-8 px-3 border border-amber-300 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-[4px] transition-all cursor-pointer disabled:opacity-50"
+          >
+            {uploading ? "上传中…" : value ? "更换图片" : "上传图片"}
+          </button>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="ml-2 text-[11px] text-red-500 hover:underline cursor-pointer"
+            >
+              移除
+            </button>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={handleFile}
+          />
+          {err && <p className="text-[10px] font-bold text-red-500 mt-0.5">{err}</p>}
+          {!err && value && <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[160px]">{value}</p>}
+        </div>
+      </div>
+      {/* 二维码放大查看浮层（Portal 渲染） */}
+      {zoom && <QrLightbox src={value} title={label} onClose={() => setZoom(false)} />}
+    </div>
+  );
 }
 
 export default function AdminSettingsPage() {
@@ -277,6 +433,9 @@ export default function AdminSettingsPage() {
 
   // 是否存在尚未保存的修改（用于顶部提示与离开页面拦截）
   const [isDirty, setIsDirty] = useState(false);
+
+  // 客户经理联系方式表单的内联校验错误（不用 toast，直接显示在保存按钮上方）
+  const [contactFormError, setContactFormError] = useState<string | null>(null);
 
   // 真实数据库运行状态
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(null);
@@ -791,8 +950,49 @@ export default function AdminSettingsPage() {
     setIsDirty(true);
   };
 
+  // 客户经理联系方式（1~2 位）：以 JSON 字符串形式存于 configs["contact.managers"]，此处解析为列表便于编辑
+  const contactManagers: ContactManager[] = (() => {
+    try {
+      const parsed = JSON.parse(configs["contact.managers"] || "[]");
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed as ContactManager[];
+    } catch {
+      /* 解析失败回退默认 */
+    }
+    return [{ ...DEFAULT_CONTACT_MANAGERS[0] }];
+  })();
+  const updateContactManager = (idx: number, field: keyof ContactManager, value: string) => {
+    const next = contactManagers.map((m, i) => (i === idx ? { ...m, [field]: value } : m));
+    handleConfigChange("contact.managers", JSON.stringify(next));
+    setContactFormError(null);
+  };
+  const addContactManager = () => {
+    if (contactManagers.length >= MAX_CONTACT_MANAGERS) return;
+    setContactFormError(null);
+    handleConfigChange(
+      "contact.managers",
+      JSON.stringify([
+        ...contactManagers,
+        { name: "", hotline: "", email: "", serviceHours: "", qq: "", wechat: "", qqQr: "", wechatQr: "" },
+      ])
+    );
+  };
+  const removeContactManager = (idx: number) => {
+    if (contactManagers.length <= MIN_CONTACT_MANAGERS) return;
+    setContactFormError(null);
+    handleConfigChange(
+      "contact.managers",
+      JSON.stringify(contactManagers.filter((_, i) => i !== idx))
+    );
+  };
+
   // 前置业务校验规则：在提交数据库前拦截非法输入，形成完整的防御性闭环
   const validateModuleSettings = (keys: string[]): string | null => {
+    // 0. 客户经理联系方式校验（复用共享校验，错误经内联提示展示，不走 toast）
+    if (keys.includes("contact.managers")) {
+      const err = validateContactManagersList(contactManagers);
+      if (err) return err;
+    }
+
     // 1. 基础设置校验
     if (keys.includes("siteName")) {
       const siteName = (configs.siteName || "").trim();
@@ -1598,6 +1798,164 @@ export default function AdminSettingsPage() {
                     </div>
                   </div>
 
+                  {/* 商务联系方式 / 客户经理（1~2 位）：前端定价页、定制版卡片统一引用，管理员可随时修改 */}
+                  <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-slate-800">商务联系方式 / 客户经理</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-bold">全站引用</span>
+                      <span className="text-[10px] text-slate-500 font-bold ml-auto">
+                        {contactManagers.length} / {MAX_CONTACT_MANAGERS} 位
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      此处配置将展示在定价页「定制版」卡片与客户经理联系区，用户可点击直接拨号或发邮件。
+                      至少配置 1 位、最多 2 位；更换联系人 / 电话 / 邮箱只需在此修改并保存，全站即时生效，无需改动代码。
+                    </p>
+                    <div className="space-y-3">
+                      {contactManagers.map((manager, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 bg-white/80 border border-amber-200/70 rounded-xl space-y-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-black text-slate-700">
+                              客户经理 {idx + 1}
+                            </span>
+                            {contactManagers.length > MIN_CONTACT_MANAGERS && (
+                              <button
+                                type="button"
+                                onClick={() => removeContactManager(idx)}
+                                className="ml-auto text-[11px] font-bold text-red-500 hover:text-red-600 cursor-pointer"
+                              >
+                                删除该客户经理
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">姓名（选填）</label>
+                              <input
+                                type="text"
+                                value={manager.name || ""}
+                                onChange={(e) => updateContactManager(idx, "name", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="如：张经理"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">咨询热线</label>
+                              <input
+                                type="text"
+                                value={manager.hotline || ""}
+                                onChange={(e) => updateContactManager(idx, "hotline", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="400-900-6688 / 138xxxx8888"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">商务邮箱</label>
+                              <input
+                                type="text"
+                                value={manager.email || ""}
+                                onChange={(e) => updateContactManager(idx, "email", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="business@zhige.com"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">服务时间</label>
+                              <input
+                                type="text"
+                                value={manager.serviceHours || ""}
+                                onChange={(e) => updateContactManager(idx, "serviceHours", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="工作日 9:00 - 18:00"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">QQ 号（选填）</label>
+                              <input
+                                type="text"
+                                value={manager.qq || ""}
+                                onChange={(e) => updateContactManager(idx, "qq", e.target.value)}
+                                className={`w-full px-3.5 h-10 border bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all ${
+                                  validateQq(manager.qq || "") ? "border-red-400" : "border-slate-200"
+                                }`}
+                                placeholder="如：3001234567，前端展示「加QQ」入口"
+                              />
+                              {validateQq(manager.qq || "") && (
+                                <p className="text-[10px] font-bold text-red-500">{validateQq(manager.qq || "")}</p>
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">微信号（选填）</label>
+                              <input
+                                type="text"
+                                value={manager.wechat || ""}
+                                onChange={(e) => updateContactManager(idx, "wechat", e.target.value)}
+                                className={`w-full px-3.5 h-10 border bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all ${
+                                  validateWechat(manager.wechat || "") ? "border-red-400" : "border-slate-200"
+                                }`}
+                                placeholder="如：zhige_biz 或 11 位手机号，前端展示「复制微信号」入口"
+                              />
+                              {validateWechat(manager.wechat || "") && (
+                                <p className="text-[10px] font-bold text-red-500">{validateWechat(manager.wechat || "")}</p>
+                              )}
+                            </div>
+                            <ContactQrField
+                              label="QQ 二维码（选填，扫码添加为主）"
+                              value={manager.qqQr || ""}
+                              onChange={(url) => updateContactManager(idx, "qqQr", url)}
+                            />
+                            <ContactQrField
+                              label="微信二维码（选填，扫码添加为主）"
+                              value={manager.wechatQr || ""}
+                              onChange={(url) => updateContactManager(idx, "wechatQr", url)}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* 内联校验错误：直接显示在操作区上方，不使用 toast */}
+                    {contactFormError && (
+                      <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-[11px] font-bold text-red-600">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>{contactFormError}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 flex-wrap pt-1">
+                      <button
+                        type="button"
+                        onClick={addContactManager}
+                        disabled={contactManagers.length >= MAX_CONTACT_MANAGERS}
+                        className="h-9 px-4 border border-amber-300 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-[4px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        + 添加客户经理
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // 先内联校验：不合规直接在表单内红字提示，不弹 toast
+                          const err = validateContactManagersList(contactManagers);
+                          if (err) {
+                            setContactFormError(err);
+                            return;
+                          }
+                          setContactFormError(null);
+                          handleSaveSettings(
+                            ["contact.managers"],
+                            "商务联系方式 / 客户经理信息已成功保存！"
+                          );
+                        }}
+                        disabled={saving}
+                        className="h-9 px-5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-[4px] shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        保存联系方式
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="pt-2">
                     <button
                       onClick={() =>
@@ -1705,13 +2063,28 @@ export default function AdminSettingsPage() {
                         placeholder="知阁舟坊运维中枢"
                       />
                     </div>
+
+                    {/* 演示申请通知收件邮箱 */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                        <span>演示申请通知收件邮箱</span>
+                        <span className="text-slate-400 text-[10px] font-normal">（用户提交演示申请后，系统将邮件通知此地址；留空则使用发件人邮箱）</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={configs.demoRequestNotifyEmail || ""}
+                        onChange={(e) => handleConfigChange("demoRequestNotifyEmail", e.target.value)}
+                        className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                        placeholder="sales@zhige.com"
+                      />
+                    </div>
                   </div>
 
                   <div className="pt-2 flex items-center gap-3 flex-wrap">
                     <button
                       onClick={() =>
                         handleSaveSettings(
-                          ["smtpHost", "smtpPort", "smtpUser", "smtpPass", "senderEmail", "senderName"],
+                          ["smtpHost", "smtpPort", "smtpUser", "smtpPass", "senderEmail", "senderName", "demoRequestNotifyEmail"],
                           "SMTP 邮件配置已成功更新并即时生效！"
                         )
                       }

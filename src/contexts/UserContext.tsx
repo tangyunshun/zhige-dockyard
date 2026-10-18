@@ -3,13 +3,14 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { getAuthToken } from "@/utils/auth";
 import { dedupeFetch } from "@/lib/requestDedupe";
+import type { UserRole } from "@/lib/role-utils";
 
 export interface UserInfo {
   id: string;
   name: string;
   email: string;
   phone: string;
-  role: string;
+  role: UserRole;
   avatar: string;
   status: string;
   membershipLevel?: string;

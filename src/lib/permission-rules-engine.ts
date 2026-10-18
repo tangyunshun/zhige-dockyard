@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
 import { getAdminPermissions, saveAdminPermissions } from "@/lib/security";
 
 /** 数据库 SystemConfig 键名常量 */
@@ -495,7 +496,7 @@ export async function autoGrantNewFeatureRulesToAdmins(
   try {
     const activeAdmins = await prisma.user.findMany({
       where: {
-        role: { in: ["admin", "PLATFORM_ADMIN"] },
+        role: { in: [...ADMIN_ROLE_VALUES] },
       },
       select: { id: true },
     });
