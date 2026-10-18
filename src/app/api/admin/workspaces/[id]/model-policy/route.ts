@@ -56,6 +56,17 @@ export async function PUT(
     const allowedRaw = Array.isArray(body.allowedDeploymentIds) ? (body.allowedDeploymentIds as unknown[]) : [];
     const allowed = allowedRaw.filter((v): v is string => typeof v === "string" && v.length > 0);
 
+    // 可分配系统模型数量上限（套餐维度）：超过套餐允许数量则拒绝
+    const planKey = workspace?.plan || "STANDARD";
+    const planRow = await prisma.workspaceplan.findUnique({ where: { key: planKey } });
+    const planMaxModels = planRow ? Number(planRow.maxModelAllocations) : 0;
+    if (planMaxModels > 0 && allowed.length > planMaxModels) {
+      return NextResponse.json(
+        { success: false, error: `可分配系统模型数量超过套餐上限（${planMaxModels} 个）` },
+        { status: 400 },
+      );
+    }
+
     // 校验部署存在性 + 写入策略必须在同一把模型注册表命名锁内完成：
     // 与「删除模型部署」共用同一锁，消除「删除检查通过后本请求写入新引用」的竞态
     // （allowedDeploymentIds 为 JSON，无法用数据库外键保护，必须靠该锁串行化）。

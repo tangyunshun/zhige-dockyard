@@ -68,6 +68,37 @@ export async function PUT(request: NextRequest) {
     const parsed = validateByoInput(body as Partial<import("@/lib/workspace-byo-model").WorkspaceByoInput>, { requireApiKey: false });
     if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 });
 
+    // 自建模型数量上限（会员维度）：限制该用户作为所有者拥有 BYO 模型的空间数量
+    const owner = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
+    if (owner?.ownerId) {
+      const ownerUser = await prisma.user.findUnique({
+        where: { id: owner.ownerId },
+        select: { membershipLevel: true },
+      });
+      const ml = await prisma.membershiplevel.findUnique({
+        where: { name: ownerUser?.membershipLevel || "FREE" },
+      });
+      const maxByo = ml ? Number(ml.maxByoModels) : 0;
+      if (maxByo > 0) {
+        const existing = await prisma.workspace_byo_model.findUnique({ where: { workspaceId } });
+        if (!existing) {
+          const ownedWs = await prisma.workspace.findMany({
+            where: { ownerId: owner.ownerId },
+            select: { id: true },
+          });
+          const cnt = await prisma.workspace_byo_model.count({
+            where: { workspaceId: { in: ownedWs.map((w) => w.id) } },
+          });
+          if (cnt >= maxByo) {
+            return NextResponse.json(
+              { success: false, error: `自建模型数量已达会员上限（${maxByo} 个）` },
+              { status: 400 },
+            );
+          }
+        }
+      }
+    }
+
     await upsertWorkspaceByoModel(workspaceId, parsed.data);
     return NextResponse.json({ success: true, data: await getWorkspaceByoModelView(workspaceId) });
   } catch (error) {

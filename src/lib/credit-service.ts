@@ -105,6 +105,8 @@ export interface ConsumeParams {
   userEmail?: string | null;
   remark?: string | null;
   idempotencyKey?: string | null;
+  /** 个人垫付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减 */
+  advanceFromWallet?: boolean;
 }
 
 /** 扣点明细来源分桶类型（用于原路退款区分归属，禁止一律退回钱包） */
@@ -497,6 +499,7 @@ export async function consumePoints(params: ConsumeParams): Promise<ConsumeResul
         workspaceName: params.workspaceName,
         userEmail: params.userEmail,
         need,
+        advanceFromWallet: params.advanceFromWallet,
         taskId: params.taskId,
         componentId: params.componentId,
         componentName: params.componentName,
@@ -558,6 +561,8 @@ export interface DeductPointsParams {
   remark?: string | null;
   idempotencyPrefix?: string | null;
   bumpMonthlyUsed?: boolean;
+  /** 个人垫付：企业空间成员余额不足时，强制从个人钱包（WALLET）扣减，而非成员独立余额 */
+  advanceFromWallet?: boolean;
 }
 
 export interface DeductPointsResult {
@@ -583,8 +588,8 @@ export async function deductPointsInTx(
   const now = new Date();
   const need = params.need;
 
-  // 1. 企业空间普通成员：仅从其独立余额扣减，不消耗共享池
-  if (params.workspaceType === "ENTERPRISE") {
+  // 1. 企业空间普通成员：仅从其独立余额扣减，不消耗共享池（个人垫付时跳过，改为从个人钱包扣）
+  if (params.workspaceType === "ENTERPRISE" && !params.advanceFromWallet) {
     const member = await tx.workspacemember.findUnique({
       where: { userId_workspaceId: { userId: params.userId, workspaceId: params.workspaceId } },
     });
@@ -663,13 +668,15 @@ export async function deductPointsInTx(
     where: {
       status: "ACTIVE",
       remaining: { gt: 0 },
-      OR: [
-        { scope: "WALLET", userId: params.userId },
-        {
-          scope: { in: ["WORKSPACE", "PERSONAL_GIFT"] },
-          workspaceId: params.workspaceId,
-        },
-      ],
+      OR: params.advanceFromWallet
+        ? [{ scope: "WALLET", userId: params.userId }]
+        : [
+            { scope: "WALLET", userId: params.userId },
+            {
+              scope: { in: ["WORKSPACE", "PERSONAL_GIFT"] },
+              workspaceId: params.workspaceId,
+            },
+          ],
       AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }],
     },
   });

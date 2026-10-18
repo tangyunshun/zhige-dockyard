@@ -92,6 +92,7 @@ import {
   type ConsumeDetail,
   type ConsumeDetailKind,
 } from "@/lib/credit-service";
+import { resolveEffectiveCapability } from "@/lib/workspace-capability";
 import { clearServerCache } from "@/lib/serverCache";
 import {
   COST_BASELINE_PLACEHOLDER,
@@ -2591,6 +2592,16 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           }
         }
 
+        // 解析当前用户会员等级 + 空间套餐的"生效能力上限"（就高不就低）
+        const executingMembershipLevel =
+          (await prisma.user.findUnique({ where: { id: userId }, select: { membershipLevel: true } }))?.membershipLevel ||
+          "FREE";
+        const effectiveCap = await resolveEffectiveCapability(
+          executingMembershipLevel,
+          ws?.plan || "STANDARD",
+          ws?.type || "PERSONAL",
+        );
+
         // 任务名称与输入材料来自请求体，但执行状态与产出结果一律由服务端判定
         const taskName = body.taskName;
         const rawInputMaterial = typeof body.inputMaterial === "string" ? body.inputMaterial : "";
@@ -2985,6 +2996,22 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             }
           }
 
+          // 上传文件大小能力上限（会员等级 vs 空间套餐，就高不就低）：作为合同上限之外的账号/空间能力天花板
+          if (
+            effectiveCap.maxSingleFileBytes > 0 &&
+            typeof storedInputSource.fileSize === "number" &&
+            storedInputSource.fileSize > effectiveCap.maxSingleFileBytes
+          ) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: "INPUT_TOO_LARGE",
+                error: `文件过大（${storedInputSource.fileSize} 字节），超过你当前账号/空间允许的 ${effectiveCap.maxSingleFileBytes} 字节上限。`,
+              },
+              { status: 400 },
+            );
+          }
+
           // 模型策略校验：从数据库注册表解析；未注册/未启用/不在白名单 → MODEL_NOT_ALLOWED（绝不降级模拟）
           // MODEL-SELECT-E1：请求只接受 deploymentId 或 "byo"，禁止 baseUrl 任意拼接（严格 SSRF 红线）
           const rawTarget = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
@@ -3043,6 +3070,23 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             inputSource: storedInputSource,
             ...(isAuto ? {} : { deploymentId: rawTarget }),
           });
+          // 并发任务数上限校验（会员等级 vs 空间套餐，就高不就低）
+          if (effectiveCap.maxConcurrency > 0) {
+            const runningCount = await prisma.componenttask.count({
+              where: { userId, workspaceId, status: "RUNNING" },
+            });
+            if (runningCount >= effectiveCap.maxConcurrency) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "CONCURRENCY_LIMIT_EXCEEDED",
+                  error: `当前并发任务数已达上限（${effectiveCap.maxConcurrency}），请等待任务完成后再发起。`,
+                },
+                { status: 429 },
+              );
+            }
+          }
+
           await createRunningTask(prisma, {
             taskId,
             userId,
@@ -3076,6 +3120,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                 workspaceType: ws?.type || null,
                 workspaceName: ws?.name || null,
                 idempotencyKey: `CONSUME:${taskId}`,
+                advanceFromWallet,
               });
               consumeResult = holdRes.consumeResult;
             } else {
@@ -3089,6 +3134,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                 workspaceType: ws?.type || null,
                 workspaceName: ws?.name || null,
                 idempotencyKey: `CONSUME:${taskId}`,
+                advanceFromWallet,
               });
             }
           } catch (consumeErr) {
