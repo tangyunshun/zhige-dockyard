@@ -21,7 +21,7 @@ const GIFT_KEYS = {
 } as const;
 
 /** 读取赠送配置（含默认值：沿用现有注册福利口径 100 点 / 不启用新空间一次性赠送 / 永久有效） */
-export async function loadNewSpaceGiftConfig(): Promise<{
+async function loadNewSpaceGiftConfig(): Promise<{
   enabled: boolean;
   points: number;
   expireDays: number;
@@ -133,7 +133,7 @@ export async function PUT(request: NextRequest) {
     const overlap = freeIds.filter((id) => paidIds.includes(id));
     if (overlap.length > 0) {
       return NextResponse.json(
-        { success: false, error: "同一模型不能同时是默认免费与默认付费，请检查后重试。" },
+        { success: false, error: "同一模型不能同时是默认初始与默认付费，请检查后重试。" },
         { status: 400 },
       );
     }
@@ -186,7 +186,7 @@ export async function PUT(request: NextRequest) {
       }
     });
 
-    // 可选：同步默认免费模型到所有已存在空间
+    // 可选：同步默认初始模型到所有已存在空间
     let syncResult: { synced: number; skipped: number } | null = null;
     if (syncToAll) {
       const { syncFreeDefaultsToAllWorkspaces } = await import("@/lib/platform-default-models");

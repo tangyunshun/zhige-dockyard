@@ -5,6 +5,37 @@ import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MOD
 import { encryptSecret } from "@/lib/crypto-secrets";
 import { withModelRegistryLock, ModelRegistryLockTimeoutError } from "@/lib/model-registry-lock";
 import { PLATFORM_DEFAULT_DEPLOYMENT_KEY } from "@/lib/model-registry";
+import { getProviderDisableImpact, applyProviderDisable } from "@/lib/model-disable-service";
+
+/** GET：预览禁用该供应商的影响面 + 可选替代模型（禁用前必看，口径同模型部署禁用） */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const auth = await requirePlatformPermission(request, "system:manage", "model:manage");
+    if (!auth.authorized) {
+      return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
+    }
+    const { id } = await params;
+    const provider = await prisma.modelprovider.findUnique({ where: { id }, select: { name: true } });
+    if (!provider) return NextResponse.json({ success: false, error: "供应商不存在" }, { status: 404 });
+
+    const [impact, replacements] = await Promise.all([
+      getProviderDisableImpact(provider.name),
+      // 替代候选：仅其它未停用通道下、自身已启用的模型（本通道禁用后将全部不可用，不得作为替代）
+      prisma.modeldeployment.findMany({
+        where: { enabled: true, providerId: { not: provider.name }, provider: { enabled: true } },
+        select: { id: true, providerId: true, modelId: true, displayName: true },
+        orderBy: { createdAt: "asc" },
+      }),
+    ]);
+    return NextResponse.json({ success: true, data: { impact, replacements } });
+  } catch (error) {
+    console.error("[model-provider] 影响面预览失败:", (error as Error)?.message);
+    return NextResponse.json({ success: false, error: "获取影响面失败" }, { status: 500 });
+  }
+}
 
 /** PATCH：更新供应商（含启用/禁用开关） */
 export async function PATCH(
@@ -68,6 +99,55 @@ export async function PATCH(
     }
     if (typeof body.enabled === "boolean") data.enabled = body.enabled;
     if (body.sortOrder !== undefined) data.sortOrder = Number(body.sortOrder) || 0;
+
+    // 禁用通道：与「单模型禁用」同口径 —— 影响面前置 + 强制替代 + 善后（替换默认/清理白名单/通知/审计）
+    if (body.enabled === false) {
+      const replacementDeploymentId =
+        typeof body.replacementDeploymentId === "string" && body.replacementDeploymentId
+          ? body.replacementDeploymentId
+          : null;
+      const reason = typeof body.reason === "string" ? body.reason.trim() : null;
+      const impact = await getProviderDisableImpact(exists.name);
+
+      // 强制替代：通道下有模型被某些空间设为默认时，必须选定一个（其他通道的）替代模型
+      if (impact.asDefault > 0 && !replacementDeploymentId) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "REPLACEMENT_REQUIRED",
+            error: `该供应商下有 ${impact.asDefault} 个空间正在使用的默认模型，必须选择一个可用的替代模型后再停用`,
+            impact,
+          },
+          { status: 400 },
+        );
+      }
+
+      try {
+        const result = await applyProviderDisable({
+          providerId: id,
+          replacementDeploymentId,
+          reason,
+          actorId: auth.user?.id || null,
+        });
+        const row = await prisma.modelprovider.findUnique({ where: { id } });
+        return NextResponse.json({ success: true, data: row, impact: result });
+      } catch (e) {
+        const msg = (e as Error)?.message;
+        if (msg === "REPLACEMENT_NOT_AVAILABLE") {
+          return NextResponse.json(
+            { success: false, error: "替代模型不存在、已被禁用或其所属供应商已停用，请另选一个" },
+            { status: 400 },
+          );
+        }
+        if (msg === "REPLACEMENT_IN_SAME_PROVIDER") {
+          return NextResponse.json(
+            { success: false, error: "替代模型不能来自即将停用的同一供应商通道，请另选其他通道的模型" },
+            { status: 400 },
+          );
+        }
+        throw e;
+      }
+    }
 
     const row = await prisma.modelprovider.update({ where: { id }, data });
     return NextResponse.json({ success: true, data: row });

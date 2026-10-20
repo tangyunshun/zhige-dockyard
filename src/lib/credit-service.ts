@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { addNotification } from "@/lib/notifications-store";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 /**
  * 算力点统一账务服务（全系统唯一入口）
@@ -199,6 +200,11 @@ export async function grantPoints(params: GrantParams): Promise<GrantResult> {
   if (params.scope === "WALLET" && !params.userId) throw new Error("钱包发放必须指定 userId");
   if (params.scope !== "WALLET" && !params.workspaceId) {
     throw new Error("空间发放必须指定 workspaceId");
+  }
+
+  // 只读守卫：归档/停用空间禁止发放（充值/赠送）算力点，避免往只读归档空间注入额度
+  if (params.scope !== "WALLET") {
+    await assertWorkspaceWritable(params.workspaceId);
   }
 
   // 幂等：同一 key 只发放一次
@@ -587,6 +593,9 @@ export async function deductPointsInTx(
 ): Promise<DeductPointsResult> {
   const now = new Date();
   const need = params.need;
+
+  // 只读守卫：归档/停用空间禁止任何算力点扣减（写操作）
+  await assertWorkspaceWritable(params.workspaceId);
 
   // 1. 企业空间普通成员：仅从其独立余额扣减，不消耗共享池（个人点支付时跳过，改为从个人钱包扣）
   if (params.workspaceType === "ENTERPRISE" && !params.payWithPersonalWallet) {

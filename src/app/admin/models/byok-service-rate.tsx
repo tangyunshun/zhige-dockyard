@@ -71,51 +71,91 @@ export function ByokServiceRateSync({ onApplied }: { onApplied?: () => void }) {
   };
 
   return (
-    <div className="bg-gradient-to-br from-[#fffaf0] to-[#fff7e6] border border-[#f6e2b3] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
-      <div className="flex items-center gap-2 text-[#b7791f]">
-        <Percent className="w-5 h-5" />
-        <span className="text-sm font-black tracking-tight">BYO 平台服务费率（单一真源）</span>
+    <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between overflow-hidden">
+      {/* 头部：标题与生效状态 */}
+      <div className="p-4 sm:px-5 sm:py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center shrink-0 shadow-2xs">
+            <Percent className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-black text-slate-800 tracking-tight">BYO 平台服务费率</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100/80">
+                单一真源
+              </span>
+            </div>
+            <div
+              className="text-[11px] text-slate-400 truncate"
+              title="对所有空间自带私有模型（BYO）调用的统一抽佣比例"
+            >
+              自带私有模型（BYO）全局统一抽佣比例
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-100/80 text-emerald-700 text-[11px] font-bold shrink-0"
+          title="修改后即刻生效，无需发版"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          实时生效 · 无需发版
+        </div>
       </div>
 
-      <div className="text-xs text-slate-600">
-        {loading ? (
-          <span className="text-slate-400">读取中…</span>
-        ) : (
-          <>
-            当前：
-            <span className="font-bold text-[#b7791f]">
-              {percent != null ? `${(percent).toFixed(2)}%` : "未配置（回退默认 15%）"}
-            </span>
-            <span className="mx-1.5 text-slate-300">|</span>
-            <span className="font-mono">{bps != null ? `${bps} bps` : "1500 bps"}</span>
-          </>
-        )}
-      </div>
+      {/* 中部：核心指标与配置操作 */}
+      <div className="p-4 sm:p-5 space-y-4">
+        {/* KPI 关键指标栏 */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="bg-slate-50/80 border border-slate-100/90 rounded-lg p-2.5">
+            <div className="text-[11px] text-slate-400 font-medium">当前服务费率 (百分比)</div>
+            <div className="text-lg font-black font-mono text-amber-600 mt-0.5">
+              {loading ? "…" : percent != null ? `${percent.toFixed(2)}%` : "15.00% (默认)"}
+            </div>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-100/90 rounded-lg p-2.5">
+            <div className="text-[11px] text-slate-400 font-medium">对应底层基点折算</div>
+            <div className="text-lg font-black font-mono text-slate-700 mt-0.5">
+              {loading ? "…" : bps != null ? `${bps} bps` : "1500 bps"}
+            </div>
+          </div>
+        </div>
 
-      <div className="flex flex-col gap-2 sm:ml-auto">
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min={0}
-            max={MAX_PERCENT}
-            step={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="如 15"
-            className="w-28 px-3 py-2 bg-white border border-slate-200 rounded-xl focus:border-[#d69e2e] focus:ring-2 focus:ring-[#d69e2e]/20 outline-none text-sm text-slate-800"
-          />
-          <span className="text-sm text-slate-500 font-bold">%</span>
+        {/* 输入框与保存按钮组合栏 */}
+        <div className="flex items-center gap-2.5">
+          <div className="relative flex items-center min-w-[130px] flex-1 sm:flex-initial">
+            <input
+              type="number"
+              min={0}
+              max={MAX_PERCENT}
+              step={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="如 15"
+              className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/15 outline-none text-sm font-semibold text-slate-800 transition-all"
+            />
+            <span className="absolute right-3 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+          </div>
+
           <button
+            type="button"
             disabled={!valid || saving}
             onClick={() => setConfirmOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-[#ecc94b] to-[#d69e2e] hover:from-[#d69e2e] hover:to-[#b7791f] text-white text-xs font-black rounded-xl shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
+            className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold rounded-lg shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${saving ? "animate-spin" : ""}`} />
             保存费率
           </button>
         </div>
-        <span className="text-[11px] text-slate-500">
-          服务费对所有“自带私有模型（BYO）”统一生效；保存后立即对估价 / 结算口径生效，无需发版。
+      </div>
+
+      {/* 底部说明栏 */}
+      <div className="bg-slate-50/70 border-t border-slate-100/90 px-4 sm:px-5 py-2.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+        <span
+          className="truncate"
+          title="服务费对所有自带私有模型（BYO）统一生效，保存后立即对系统估价与结算口径生效"
+        >
+          服务费对所有自带私有模型（BYO）统一生效，保存后立即应用于计费结算
         </span>
       </div>
 
@@ -123,7 +163,7 @@ export function ByokServiceRateSync({ onApplied }: { onApplied?: () => void }) {
         isOpen={confirmOpen}
         type="danger"
         title="确认修改 BYO 平台服务费率？"
-        message="该费率为全局单一真源，将写入系统配置（billing.byokServiceRateBps），对所有空间的自带模型统一生效。已登记价格的自带模型对外收费将按新费率实时重新折算。"
+        message="该费率为全局单一真源，对所有空间的自带模型统一生效。已登记价格的自带模型对外收费将按新费率实时重新折算。"
         warnings={[
           `服务费率：${percent != null ? (percent).toFixed(2) : "—"}% → ${valid ? pctNum.toFixed(2) : "—"}%`,
           "立即对全部自带模型的估价 / 结算口径生效，无法撤销",

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
@@ -304,6 +305,8 @@ export async function POST(request: NextRequest) {
     if (!workspaceId) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
     if (!targetPlan) {
       return NextResponse.json({ error: "缺少目标套餐" }, { status: 400 });
     }

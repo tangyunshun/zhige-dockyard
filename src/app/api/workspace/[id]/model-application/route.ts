@@ -3,6 +3,7 @@ import { validateUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { loadSpaceModelPolicy } from "@/lib/model-registry";
 import { addNotification } from "@/lib/notifications-store";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,8 @@ export async function POST(
 ) {
   try {
     const { id: workspaceId } = await params;
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ success: false, error: "请先登录后再提交申请" }, { status: 401 });

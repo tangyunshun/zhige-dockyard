@@ -112,6 +112,39 @@ export default function PersonalWorkspaceCard({
 
   // 根据状态展示卡片内容
   const renderCardContent = () => {
+    // 只读归档：升级（迁移模式）后原个人空间被归档，资料已迁入企业空间，不可再写入
+    if (workspace?.status === "ARCHIVED") {
+      return (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white/40 border border-slate-200/50 rounded-lg relative">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="w-7.5 h-7.5 rounded bg-amber-50/50 flex items-center justify-center flex-shrink-0 border-none">
+                <Folder className="w-4 h-4 text-amber-600" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-700">{workspace.name}</h4>
+              <span className="px-2.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded border border-amber-200 inline-flex items-center gap-1.5 shrink-0">
+                只读归档
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-md font-semibold">
+              该个人空间已升级并归档为只读状态，资料已保留在企业空间中，不可再写入。
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
+            {onEnter && (
+              <button
+                onClick={onEnter}
+                className="zg-btn zg-btn-default px-3.5 h-[38px] text-sm font-semibold rounded-lg flex items-center gap-1 hover:-translate-y-0.5 transition-all cursor-pointer bg-gradient-to-b from-slate-100 to-slate-200 hover:brightness-105 border-t border-slate-300 text-slate-700 shadow-sm"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>查看（只读）</span>
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     if (state === "NONE" || state === "DELETED") {
       return (
         <div className="flex flex-col items-center justify-center py-6 px-4 text-center">

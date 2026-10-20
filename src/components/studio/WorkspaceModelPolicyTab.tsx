@@ -445,6 +445,8 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
   }, [pool]);
 
   const hasAllocated = allocatedModels.length > 0;
+  // 空间配了默认、但该默认已被平台禁用 → 工作台需明确提示"默认已停用、请重选"，而非误导的"未配置默认"
+  const defaultDisabled = pool?.defaultTarget?.source === "DISABLED";
 
   const myApprovedDefaultDeploymentId = pool?.myApprovedDefaultDeploymentId ?? null;
 
@@ -835,14 +837,14 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                 系统分配模型
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100 font-mono">
-                {allocatedModels.length} 款已分配
+                {allocatedModels.length} 款可用
               </span>
             </div>
             <div className="text-2xl font-black text-slate-900 font-mono">
               {allocatedModels.length}
-              <span className="text-xs font-normal text-slate-500 ml-1.5">个授权部署</span>
+              <span className="text-xs font-normal text-slate-500 ml-1.5">个可用部署</span>
             </div>
-            <p className="text-xs text-slate-500">仅展示系统为本空间分配的模型；未分配的模型不可见也不可调用。</p>
+            <p className="text-xs text-slate-500">展示管理员为本空间授权的可用模型；不在此列的模型不可见也不可调用。</p>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
             <span className="text-slate-400 font-mono flex items-center gap-1">
@@ -874,7 +876,11 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
               </span>
             </div>
             <div className="text-base font-black text-slate-900 tracking-tight break-words">
-              {isPersonal ? (
+              {defaultDisabled ? (
+                <span className="text-rose-600 font-bold">
+                  默认模型（{pool?.defaultTarget?.label}）已被平台停用，请重新设置
+                </span>
+              ) : isPersonal ? (
                 pool?.defaultTarget?.targetDeploymentId ? (
                   <>{pool.defaultTarget.label || "默认模型"}</>
                 ) : hasAllocated || byoModels.length > 0 ? (
@@ -891,7 +897,9 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
               )}
             </div>
             <p className="text-xs text-slate-500 font-mono leading-relaxed break-words">
-              {isPersonal
+              {defaultDisabled
+                ? "该默认模型已被管理员在后台停用，空间任务将无法自动执行；请在下方可用模型中「设为空间默认 / 设为默认」重新指定一个。"
+                : isPersonal
                 ? pool?.defaultTarget?.targetDeploymentId
                   ? `已配置默认模型：${pool.defaultTarget.label || ""} · 任务将自动使用此模型，如需更换可在下方卡片「设为默认」`
                   : hasAllocated || byoModels.length > 0
@@ -1227,6 +1235,37 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
             </div>
           )}
 
+          {/* 已下线模型（白名单内但被平台禁用）：置灰 [已下线]、不隐藏、不可选，避免用户误以为系统 Bug */}
+          {((pool as any)?.offlineModels?.length ?? 0) > 0 && (
+            <div className="bg-white rounded-lg border border-slate-200/80 shadow-2xs p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">已下线模型</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200">
+                  {(pool as any).offlineModels.length} 个已停用
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">以下模型已被平台停用，仅展示、不可调度；请在下方可用模型中重选默认。</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {(pool as any).offlineModels.map((m: any) => (
+                  <div key={m.id} className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-3 opacity-70">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-slate-500 font-mono truncate" title={m.modelId}>
+                        {m.displayName || m.modelId}
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200 shrink-0">
+                        [已下线]
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-1 truncate">
+                      {m.providerId} / {m.modelId}
+                    </div>
+                    <div className="text-[10px] text-rose-500 mt-1">{m.reason}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!hasAllocated ? (
             <div className="bg-white rounded-lg border border-slate-200/80 shadow-2xs p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center mx-auto border border-slate-200">
@@ -1313,8 +1352,15 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
                           </div>
                           <div className="text-[11px] font-mono text-slate-500 mt-1 truncate">上游标识: {modelCode}</div>
                         </div>
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0 flex items-center gap-0.5">
-                          <Check className="w-2.5 h-2.5" /> 已分配
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 flex items-center gap-0.5 ${
+                            m.source === "FREE_DEFAULT"
+                              ? "bg-slate-50 text-slate-600 border-slate-200"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                          }`}
+                          title={m.source === "FREE_DEFAULT" ? "平台免费默认模型，所有空间自动可用" : "由管理员为本空间授权"}
+                        >
+                          {m.source === "FREE_DEFAULT" ? "平台免费默认" : "已分配"}
                         </span>
                       </div>
 

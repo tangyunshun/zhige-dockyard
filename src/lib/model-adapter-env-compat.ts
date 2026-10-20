@@ -2,7 +2,8 @@
  * ⚠️ 测试兼容入口 —— 严禁在生产执行路径调用。
  *
  * 该模块保留「单组 MODEL_* 环境变量」形态的适配器读取，仅供历史单元测试使用。
- * 生产执行唯一入口：resolveModelExecutionPlan() + createModelAdapter()（走数据库模型注册表）。
+ * 生产执行入口：resolveDefaultDeployment() / resolveDeploymentForWorkspace()（model-registry，走数据库模型注册表）。
+ * 注意：resolveModelExecutionPlan() 已不在生产执行链路中，仅测试引用；切勿在生产路径调用本模块或该函数。
  * 受 src/lib/__tests__/model-architecture.test.ts 架构测试保护：
  *   - 生产文件 model-adapter.ts / model-registry.ts 不得出现 MODEL_PROVIDER_ID / MODEL_ID / MODEL_BASE_URL；
  *   - /api/studio 路由不得引用本模块。

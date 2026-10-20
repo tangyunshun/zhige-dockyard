@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { requireStepUp } from "@/lib/step-up";
@@ -21,6 +22,9 @@ export async function DELETE(request: NextRequest) {
     if (!workspaceId) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     if (!["DELETE", "DEACTIVATE"].includes(action)) {
       return NextResponse.json({ error: "无效的操作类型" }, { status: 400 });

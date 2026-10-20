@@ -1427,10 +1427,38 @@ model modeldeployment {
   provider      modelprovider @relation(fields: [providerId], references: [name], onDelete: Restrict, onUpdate: Restrict, map: "ModelDeployment_providerId_fkey")
   /// 被空间模型策略引用为默认模型（RESTRICT：被引用时数据库层面禁止删除）
   defaultInPolicies workspace_model_policy[]
+  /// 该部署的禁用计划（立即/定时），级联删除
+  disableSchedules modeldisableschedule[]
 
   @@unique([providerId, modelId], map: "ModelDeployment_providerId_modelId_key")
   @@index([providerId], map: "ModelDeployment_providerId_idx")
   @@index([enabled], map: "ModelDeployment_enabled_idx")
+}
+
+/// 模型禁用计划：支持「立即 / 定时」禁用。到点由 cron（/api/cron/model-disable-sweep）执行：
+/// 翻 enabled=false、把受影响空间默认替换为替代模型、精准站内信通知受影响 Owner、写审计。
+model modeldisableschedule {
+  id                      String    @id @default(uuid())
+  /// 目标模型部署（删除部署时级联清理计划）
+  deploymentId            String
+  /// 生效时间（立即禁用=创建即由调用方处理；定时=到点由 cron 处理）
+  effectiveAt             DateTime
+  /// 临时替代模型：受影响"默认模型"将被替换为它；为空=仅下线、不替换（默认交由用户重选）
+  replacementDeploymentId String?
+  /// 禁用原因（写入审计与站内信，如"因 OpenAI 欠费紧急下线"）
+  reason                  String?
+  /// 状态：PENDING 待生效 | DONE 已生效 | CANCELLED 已取消
+  status                  String    @default("PENDING")
+  /// 操作人（平台管理员 userId）
+  createdBy               String?
+  createdAt               DateTime  @default(now())
+  processedAt             DateTime?
+  /// 生效时的影响面快照（JSON：{ asDefault, inWhitelist, workspaceIds }）
+  impact                  Json?
+
+  deployment modeldeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, map: "ModelDisableSchedule_deploymentId_fkey")
+
+  @@index([status, effectiveAt], map: "ModelDisableSchedule_status_effectiveAt_idx")
 }
 
 /// 模型价格（供应商成本与用户售价分开保存；单位：微元 / 100 万 Token，1 微元 = 1e-6 元）

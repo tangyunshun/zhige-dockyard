@@ -74,10 +74,11 @@ export async function GET(request: NextRequest) {
     const appStatusByDeployment: Record<string, string> = {};
     for (const a of myApps) appStatusByDeployment[a.deploymentId] = a.status;
 
-    // 1. 读取空间策略与白名单
+    // 1. 读取空间策略（effective = 白名单 − 禁用，唯一权威可用集）
     const policy = await loadSpaceModelPolicy(workspaceId);
+    const effectiveIdSet = new Set(policy.effectiveDeploymentIds || []);
 
-    // 2. 平台系统模型池：仅查询双方启用的部署，并按空间白名单严格过滤
+    // 2. 平台系统模型池：仅查询双方启用的部署
     const allDeployments = await prisma.modeldeployment.findMany({
       where: {
         enabled: true,
@@ -87,10 +88,24 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "asc" },
     });
 
-    // 严格遵循空间策略白名单：仅展示管理员后台为该空间授权的模型；未配置策略（或白名单为空）则展示 0 款，绝不把全站模型池兜底漏出
-    const filteredDeployments = policy.configured
-      ? allDeployments.filter((d) => (policy.allowedDeploymentIds || []).includes(d.id))
-      : [];
+    // 展示口径与执行门禁严格一致：仅展示 effective（白名单 − 禁用）内的模型，
+    // 杜绝「能跑却看不见 / 看得见不能跑」的矛盾。
+    const filteredDeployments = allDeployments.filter((d) => effectiveIdSet.has(d.id));
+
+    // 已下线但仍在白名单的模型：用于前端"置灰 [已下线]、不隐藏"的展示（仅作可见性提示，不可调度）。
+    const offlineDeployments = await prisma.modeldeployment.findMany({
+      where: { id: { in: policy.allowedDeploymentIds || [] } },
+      include: { provider: { select: { name: true, enabled: true } } },
+    });
+    const offlineModels = offlineDeployments
+      .filter((d) => !d.enabled || !d.provider?.enabled)
+      .map((d) => ({
+        id: d.id,
+        providerId: d.providerId,
+        modelId: d.modelId,
+        displayName: d.displayName || d.modelId,
+        reason: !d.enabled ? "该模型已被平台停用" : "该模型所属供应商已被停用",
+      }));
 
     const systemModels = await Promise.all(
       filteredDeployments.map(async (dep) => {
@@ -163,6 +178,8 @@ export async function GET(request: NextRequest) {
           capabilities: Array.isArray(dep.capabilities) ? (dep.capabilities as string[]) : [],
           contextLimit: dep.contextLimit,
           isSpaceDefault: policy.defaultDeploymentId === dep.id,
+          // 白名单为唯一真源：此处展示的均为已授权模型
+          source: "SPACE_ALLOWED",
           // 当前用户对该模型的申请状态（PENDING/APPROVED/REJECTED/null），用于「申请使用」入口展示
           myApplicationStatus: appStatusByDeployment[dep.id] || null,
           pricing: pricingDto,
@@ -319,7 +336,21 @@ export async function GET(request: NextRequest) {
         label: defaultPlan.modelId,
       };
     } catch {
-      // 无法自动裁决时保持 NONE
+      // 区分「空间配了默认但该默认已被平台禁用」与「根本没配默认」：
+      // 前者明确下发 DISABLED，让工作台提示"默认已停用、请重选"，而非误显示"未配置默认模型"。
+      if (policy.defaultDeploymentId) {
+        const dd = await prisma.modeldeployment.findUnique({
+          where: { id: policy.defaultDeploymentId },
+          select: { modelId: true, enabled: true, provider: { select: { enabled: true } } },
+        });
+        if (dd && (!dd.enabled || dd.provider?.enabled === false)) {
+          defaultTarget = {
+            source: "DISABLED",
+            targetDeploymentId: policy.defaultDeploymentId,
+            label: dd.modelId || "默认模型",
+          };
+        }
+      }
     }
 
     return NextResponse.json({
@@ -328,6 +359,7 @@ export async function GET(request: NextRequest) {
         workspaceId,
         isOwner,
         systemModels,
+        offlineModels,
         byoModel,
         byoModels,
         defaultTarget,

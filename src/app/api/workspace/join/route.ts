@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,6 +33,9 @@ export async function POST(request: NextRequest) {
     if (!invitation) {
       return NextResponse.json({ error: "邀请码不存在" }, { status: 404 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(invitation.workspaceId);
 
     // 1. 检查有效期
     if (invitation.expiresAt && new Date() > invitation.expiresAt) {

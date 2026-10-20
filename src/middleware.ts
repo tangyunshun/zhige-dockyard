@@ -30,6 +30,11 @@ const PUBLIC_PREFIXES = [
   "/api/documents/list",
   "/api/system-documents",
   "/api/account-appeal",
+  // 仅供全局中间件内部调用，返回空间是否只读（归档/停用），无需鉴权，避免内部请求被拦截成环
+  // 定时任务入口：不校验登录态（由各 /api/cron/* 路由自行校验 CRON_SECRET 密钥），
+  // 便于 Windows 计划任务 / 外部调度器以服务身份调用（如定时禁用模型扫描、结算对账）。
+  "/api/cron",
+  "/api/internal/workspace-readonly",
   "/api/system/public-config",
   "/api/system/site-routes",
   "/api/system/maintenance",
@@ -208,6 +213,69 @@ async function enforceApiPermissionRules(
   );
 }
 
+/* ============================================================================
+ * 归档 / 停用空间「硬只读」守卫（统一拦截层）
+ * ----------------------------------------------------------------------------
+ * 目的：空间一旦归档（ARCHIVED，升级后只读保留）或停用（DISABLED），任何写操作
+ *       （POST/PUT/PATCH/DELETE）都必须被拒绝，防止往只读空间写入/修改内容。
+ * 实现：中间件运行于 edge，不能直接用 Prisma，故向内部只读状态接口发请求查询；
+ *       工作空间 ID 优先从 URL 路径段（/api/workspace/<id>/...）或查询参数
+ *       （?workspaceId=）提取。请求体中的 workspaceId 由各自路由内部再补一道守卫。
+ * 缓存：同隔离实例内对状态做 3 秒短缓存，减少内部请求；查询失败降级放行（不误伤）。
+ * ==========================================================================*/
+const readonlyCache = new Map<string, { readonly: boolean; at: number }>();
+const READONLY_TTL_MS = 3 * 1000;
+
+async function isWorkspaceReadonly(origin: string, id: string): Promise<boolean> {
+  if (!id) return false;
+  const cached = readonlyCache.get(id);
+  if (cached && Date.now() - cached.at < READONLY_TTL_MS) return cached.readonly;
+  try {
+    const res = await fetch(
+      `${origin}/api/internal/workspace-readonly?id=${encodeURIComponent(id)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return false;
+    const data = (await res.json()) as { readonly?: boolean };
+    const readonly = Boolean(data.readonly);
+    readonlyCache.set(id, { readonly, at: Date.now() });
+    return readonly;
+  } catch {
+    return false;
+  }
+}
+
+async function enforceWorkspaceReadonly(
+  request: NextRequest,
+  pathname: string,
+): Promise<NextResponse | null> {
+  const method = request.method.toUpperCase();
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return null;
+  if (!pathname.startsWith("/api/workspace/")) return null;
+
+  const candidates = new Set<string>();
+  // 1. 路径段：/api/workspace/<id>/...（动态路由 [id] 或误命中静态段都会查，查不到则跳过）
+  const seg = pathname.match(/^\/api\/workspace\/([^/?]+)/);
+  if (seg && seg[1]) candidates.add(seg[1]);
+  // 2. 查询参数：?workspaceId=xxx（members / byo-model / update 等用查询参数传递）
+  const q = request.nextUrl.searchParams.get("workspaceId");
+  if (q) candidates.add(q);
+
+  const origin = request.nextUrl.origin;
+  for (const id of candidates) {
+    if (await isWorkspaceReadonly(origin, id)) {
+      return NextResponse.json(
+        {
+          error: "WORKSPACE_READONLY",
+          message: "该空间已归档为只读，不可写入或修改",
+        },
+        { status: 403 },
+      );
+    }
+  }
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -266,6 +334,10 @@ export async function middleware(request: NextRequest) {
     // 「接口权限规则层」统一拦截（仅对已启用的规则生效；无启用规则时立即返回 null，零开销）
     const denied = await enforceApiPermissionRules(request, pathname, token, userId);
     if (denied) return denied;
+
+    // 归档 / 停用空间硬只读守卫（覆盖路径段 / 查询参数取 workspaceId 的写请求）
+    const roDenied = await enforceWorkspaceReadonly(request, pathname);
+    if (roDenied) return roDenied;
 
     return NextResponse.next({ request: { headers: requestHeaders } });
   } catch {

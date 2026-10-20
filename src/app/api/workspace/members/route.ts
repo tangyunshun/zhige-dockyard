@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 // 1. GET: 获取工作空间下的所有成员列表
 export async function GET(request: NextRequest) {
@@ -173,6 +174,9 @@ export async function PATCH(request: NextRequest) {
     if (!workspaceId || !targetUserId || rolesArray.length === 0) {
       return NextResponse.json({ error: "缺少必要参数或未指定分配岗位" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     // 校验请求者必须是该空间的 OWNER 或 空间创建者
     const workspace = await prisma.workspace.findUnique({

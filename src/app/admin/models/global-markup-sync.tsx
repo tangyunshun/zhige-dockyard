@@ -115,108 +115,146 @@ export function GlobalMarkupSync({ onApplied }: { onApplied?: () => void }) {
   };
 
   return (
-    <div className="bg-gradient-to-br from-[#f0f9ff] to-[#e6fffa] border border-[#bee3f8] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
-      <div className="flex items-center gap-2 text-[#2b6cb0]">
-        <Percent className="w-5 h-5" />
-        <span className="text-sm font-black tracking-tight">全局加价率（单一真源）</span>
-      </div>
+    <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between overflow-hidden">
+      {/* 头部：标题与模式切换 */}
+      <div className="p-4 sm:px-5 sm:py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 text-[#3182ce] flex items-center justify-center shrink-0 shadow-2xs">
+            <Percent className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-black text-slate-800 tracking-tight">全局加价率</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-[#2b6cb0] border border-blue-100/80">
+                单一真源
+              </span>
+            </div>
+            <div
+              className="text-[11px] text-slate-400 truncate"
+              title="管控全部官方提供商模型与时段价上浮系数"
+            >
+              管控全部官方提供商模型与时段价上浮系数
+            </div>
+          </div>
+        </div>
 
-      <div className="text-xs text-slate-600">
-        {loading ? (
-          <span className="text-slate-400">读取中…</span>
-        ) : (
-          <>
-            当前：
-            <span className="font-bold text-[#2b6cb0]">
-              {state.percent != null ? `${(state.percent).toFixed(2)}%` : "未配置"}
-            </span>
-            <span className="mx-1.5 text-slate-300">|</span>
-            共 <span className="font-bold">{state.modelRows}</span> 主表
-            <span className="mx-1.5 text-slate-300">|</span>
-            <span className="font-bold text-slate-500">{state.overriddenModelRows}</span> 个已独立设置
-          </>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2 sm:ml-auto">
-        {/* 模式单选：百分比 / 基点 互斥 */}
-        <div className="flex items-center gap-1 self-end rounded-xl bg-white/70 p-0.5 border border-slate-200">
+        {/* 模式单选：百分比 / 基点 互斥切换 */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 border border-slate-200/60 shrink-0">
           <button
             type="button"
             onClick={() => switchMode("percent")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              mode === "percent" ? "bg-[#3182ce] text-white shadow" : "text-slate-500 hover:text-slate-700"
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+              mode === "percent"
+                ? "bg-white text-[#2b6cb0] shadow-2xs"
+                : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            按百分比 (%)
+            百分比 (%)
           </button>
           <button
             type="button"
             onClick={() => switchMode("bps")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              mode === "bps" ? "bg-[#3182ce] text-white shadow" : "text-slate-500 hover:text-slate-700"
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+              mode === "bps"
+                ? "bg-white text-[#2b6cb0] shadow-2xs"
+                : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            按基点 (bps)
+            基点 (bps)
           </button>
         </div>
+      </div>
 
-        {/* 仅展示当前模式输入框，避免双框赋值冲突 */}
-        <div className="flex items-center gap-2">
-          {mode === "percent" ? (
-            <input
-              type="number"
-              min={0}
-              max={1000}
-              step={1}
-              value={pctInput}
-              onChange={(e) => setPctInput(e.target.value)}
-              placeholder="如 30"
-              className="w-28 px-3 py-2 bg-white border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm text-slate-800"
-            />
-          ) : (
-            <input
-              type="number"
-              min={0}
-              max={100000}
-              step={1}
-              value={bpsInput}
-              onChange={(e) => setBpsInput(e.target.value)}
-              placeholder="如 3000"
-              className="w-28 px-3 py-2 bg-white border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm text-slate-800"
-            />
-          )}
-          <span className="text-sm text-slate-500 font-bold">{mode === "percent" ? "%" : "bps"}</span>
+      {/* 中部：核心指标与配置操作 */}
+      <div className="p-4 sm:p-5 space-y-4">
+        {/* KPI 关键指标栏 */}
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="bg-slate-50/80 border border-slate-100/90 rounded-lg p-2.5">
+            <div className="text-[11px] text-slate-400 font-medium">当前基准加价率</div>
+            <div className="text-lg font-black font-mono text-[#2b6cb0] mt-0.5">
+              {loading ? "…" : state.percent != null ? `${state.percent.toFixed(2)}%` : "未配置"}
+            </div>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-100/90 rounded-lg p-2.5">
+            <div className="text-[11px] text-slate-400 font-medium">覆盖主表总数</div>
+            <div className="text-lg font-black font-mono text-slate-700 mt-0.5">
+              {loading ? "…" : state.modelRows}
+            </div>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-100/90 rounded-lg p-2.5">
+            <div className="text-[11px] text-slate-400 font-medium">独立设置模型数</div>
+            <div className="text-lg font-black font-mono text-slate-500 mt-0.5">
+              {loading ? "…" : state.overriddenModelRows}
+            </div>
+          </div>
+        </div>
+
+        {/* 输入框与操作按钮组合栏 */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="relative flex items-center min-w-[130px] flex-1 sm:flex-initial">
+            {mode === "percent" ? (
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                step={1}
+                value={pctInput}
+                onChange={(e) => setPctInput(e.target.value)}
+                placeholder="如 20"
+                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none text-sm font-semibold text-slate-800 transition-all"
+              />
+            ) : (
+              <input
+                type="number"
+                min={0}
+                max={100000}
+                step={1}
+                value={bpsInput}
+                onChange={(e) => setBpsInput(e.target.value)}
+                placeholder="如 2000"
+                className="w-full pl-3 pr-11 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none text-sm font-semibold text-slate-800 transition-all"
+              />
+            )}
+            <span className="absolute right-3 text-xs text-slate-400 font-bold pointer-events-none">
+              {mode === "percent" ? "%" : "bps"}
+            </span>
+          </div>
+
           <button
+            type="button"
             disabled={nextBps == null || syncing}
             onClick={() => {
               setPendingScope("default");
               setConfirmOpen(true);
             }}
-            className="px-3 py-2 bg-white border border-[#3182ce] text-[#3182ce] hover:bg-[#ebf8ff] text-xs font-black rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="px-3 py-2 bg-white border border-slate-200 text-slate-700 hover:border-[#3182ce] hover:text-[#3182ce] text-xs font-bold rounded-lg shadow-2xs hover:shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
           >
-            设为默认（保留独立）
+            设为默认 (保留独立)
           </button>
+
           <button
+            type="button"
             disabled={nextBps == null || syncing}
             onClick={() => {
               setPendingScope("all");
               setConfirmOpen(true);
             }}
-            className="px-4 py-2 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white text-xs font-black rounded-xl shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#2b6cb0] hover:to-[#234e70] text-white text-xs font-bold rounded-lg shadow-xs hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
             强制全量覆盖
           </button>
         </div>
+      </div>
 
-        {/* 当前模式友好提示 */}
-        <span className="text-[11px] text-slate-500">
+      {/* 底部折算说明栏 */}
+      <div className="bg-slate-50/70 border-t border-slate-100/90 px-4 sm:px-5 py-2.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
+        <span className="truncate">
           {mode === "percent"
             ? `相当于成本加价 ${pctValid ? pctNum : "X"}%，系统售价 = 成本 × ${
                 pctValid ? (1 + pctNum / 100).toFixed(2) : "1.XX"
               }（自动折算为底层 ${pctValid ? Math.round(pctNum * 100) : "NNNN"} 基点）`
-            : `什么是基点？金融与算力标准单位：1% = 100 基点，${
+            : `金融与算力标准单位：1% = 100 基点，${
                 bpsValid ? `${bpsNum} 基点即加价 ${(bpsNum / 100).toFixed(2)}%` : "2000 基点即加价 20.00%"
               }`}
         </span>

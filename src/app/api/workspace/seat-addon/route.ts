@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
@@ -30,6 +31,8 @@ export async function POST(request: NextRequest) {
       paymentMethod?: string;
     };
     const workspaceId = body.workspaceId;
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
     const seats = Math.floor(Number(body.seats));
     const channel = body.paymentMethod === "ALIPAY" ? "ALIPAY" : "WECHAT_PAY";
     if (!workspaceId) return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });

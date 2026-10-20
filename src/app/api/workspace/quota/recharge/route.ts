@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { requireWorkspaceMembership, requirePlatformPermission, writeAuditLog } from "@/lib/security";
@@ -47,6 +48,9 @@ export async function POST(request: NextRequest) {
     if (!workspaceId || !points || typeof points !== "number" || points <= 0) {
       return NextResponse.json({ error: "参数无效：充值点数必须大于 0" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     // 1. 校验空间成员资格
     const isMember = await requireWorkspaceMembership(auth.user.id, workspaceId);

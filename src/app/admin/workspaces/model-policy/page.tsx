@@ -52,6 +52,8 @@ interface DeploymentItem {
   displayName?: string;
   contextLimit?: number;
   enabled: boolean;
+  /** 所属供应商通道是否启用（false = 供应商已禁用，该模型同样不可执行，接口真实下发） */
+  providerEnabled?: boolean;
   capabilities?: string[] | null;
   /** 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（接口真实下发） */
   health?: string;
@@ -204,6 +206,10 @@ export default function WorkspaceModelPolicyPage() {
   const [wsLoading, setWsLoading] = useState(false);
   const [wsPageSize, setWsPageSize] = useState(20);
   const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceItem | null>(null);
+  // 历史脏数据标记：默认模型曾被移出白名单（默认 ∉ 白名单）。加载时自动并回白名单并提示，需保存生效。
+  const [orphanDefault, setOrphanDefault] = useState(false);
+  // 平台默认初始清单：用于在模型卡片上标注「平台默认初始」来源，让管理员一眼分清模型从何而来、能否移除
+  const [freeDefaults, setFreeDefaults] = useState<string[]>([]);
 
   // 详情模态弹窗选中的模型部署
   const [detailDeployment, setDetailDeployment] = useState<DeploymentItem | null>(null);
@@ -272,10 +278,35 @@ export default function WorkspaceModelPolicyPage() {
       const res = await authFetch(`/api/admin/workspaces/${selectedWs}/model-policy`);
       const row = res?.data;
       setConfigured(!!row);
-      setDefaultId(row?.defaultDeploymentId || "");
-      setAllowed(Array.isArray(row?.allowedDeploymentIds) ? row.allowedDeploymentIds : []);
-      setLoadedDefaultId(row?.defaultDeploymentId || "");
-      setLoadedAllowed(Array.isArray(row?.allowedDeploymentIds) ? row.allowedDeploymentIds : []);
+      setFreeDefaults(Array.isArray(res?.freeDefaultDeploymentIds) ? res.freeDefaultDeploymentIds : []);
+      const loadedDefault = row?.defaultDeploymentId || "";
+      const loadedAllowed = Array.isArray(row?.allowedDeploymentIds) ? row.allowedDeploymentIds : [];
+      setDefaultId(loadedDefault);
+      setOrphanDefault(false);
+      // 自愈历史脏数据：默认模型曾被移出白名单（默认 ∉ 白名单）时，立即并回白名单并落库，
+      // 令 后台页 / 数据库 / 工作台 三方即刻一致（此前只在本地勾选未保存，导致三方对不上）。
+      const orphan = !!loadedDefault && !loadedAllowed.includes(loadedDefault);
+      if (orphan) {
+        const healed = Array.from(new Set([...loadedAllowed, loadedDefault]));
+        try {
+          await authFetch(`/api/admin/workspaces/${selectedWs}/model-policy`, {
+            method: "PUT",
+            body: JSON.stringify({ defaultDeploymentId: loadedDefault, allowedDeploymentIds: healed }),
+          });
+          setAllowed(healed);
+          setLoadedAllowed(healed);
+          toast.success("已自动修复历史脏数据：默认模型已加入可用白名单");
+          return;
+        } catch {
+          // 自愈失败（如默认模型已被平台禁用）：展示真实态并告警，交管理员人工处理
+          setOrphanDefault(true);
+          setAllowed(loadedAllowed);
+          setLoadedAllowed(loadedAllowed);
+          return;
+        }
+      }
+      setAllowed(loadedAllowed);
+      setLoadedAllowed(loadedAllowed);
     } catch (e) {
       toast.error((e as Error)?.message || "加载空间模型策略失败");
     }
@@ -315,15 +346,20 @@ export default function WorkspaceModelPolicyPage() {
     return () => clearTimeout(timer);
   }, [searchWs, typeFilter, loadWorkspaces]);
 
-  const enabledDeployments = useMemo(() => deployments.filter((d) => d.enabled), [deployments]);
+  // 模型「可用」= 自身启用 且 所属供应商通道启用。
+  // 供应商被禁用时其下模型同样不可执行（后端 available-models / 执行路径与本次策略保存校验同口径）。
+  const isDeploymentUsable = (d: { enabled: boolean; providerEnabled?: boolean }) =>
+    d.enabled && d.providerEnabled !== false;
+
+  const enabledDeployments = useMemo(() => deployments.filter(isDeploymentUsable), [deployments]);
 
   // 白名单网格需要展示「已启用的部署」以及「虽被平台禁用、但本空间已勾选的部署」，
   // 否则用户会陷入「以为没配、实际勾了禁用项却看不见、也无法取消」的状态，
   // 与后端「默认/白名单中的部署一旦被禁用即拒绝执行（MODEL_NOT_ALLOWED）」直接矛盾。
   const whitelistDeployments = useMemo(() => {
-    const base = deployments.filter((d) => d.enabled);
+    const base = deployments.filter(isDeploymentUsable);
     deployments
-      .filter((d) => !d.enabled && allowed.includes(d.id))
+      .filter((d) => !isDeploymentUsable(d) && allowed.includes(d.id))
       .forEach((d) => {
         if (!base.find((m) => m.id === d.id)) base.push(d);
       });
@@ -349,7 +385,7 @@ export default function WorkspaceModelPolicyPage() {
     try {
       // 受控：模型注册表中已禁用的模型不得作为空间默认模型或保留在白名单。
       // 保存前主动剔除（与后端 enabled 校验双保险），避免禁用模型被持久化为可用模型。
-      const disabledIds = new Set(deployments.filter((d) => !d.enabled).map((d) => d.id));
+      const disabledIds = new Set(deployments.filter((d) => !isDeploymentUsable(d)).map((d) => d.id));
       let nextDefaultId = defaultId;
       let nextAllowed = allowed;
       const stripped: string[] = [];
@@ -360,6 +396,11 @@ export default function WorkspaceModelPolicyPage() {
       const before = nextAllowed.length;
       nextAllowed = nextAllowed.filter((id) => !disabledIds.has(id));
       if (nextAllowed.length < before) stripped.push("白名单中的已禁用模型");
+
+      // 不变量：默认模型必须在白名单内（后端亦会自愈，这里同步本地，避免保存后仍显示矛盾态）
+      if (nextDefaultId && !nextAllowed.includes(nextDefaultId)) {
+        nextAllowed = [...nextAllowed, nextDefaultId];
+      }
 
       await authFetch(`/api/admin/workspaces/${selectedWs}/model-policy`, {
         method: "PUT",
@@ -381,6 +422,11 @@ export default function WorkspaceModelPolicyPage() {
   };
 
   const toggleAllowed = (id: string) => {
+    // 空间默认模型不可从白名单移除（否则空间将无法执行）；需先在工作台取消其默认
+    if (id === defaultId) {
+      toast.warning("该模型是用户空间配置默认模型，无法对其进行名单移除操作");
+      return;
+    }
     setAllowed((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
@@ -700,6 +746,17 @@ export default function WorkspaceModelPolicyPage() {
                   </div>
                 </div>
 
+                {/* 配置不一致告警：默认模型曾被移出白名单（历史脏数据），已自动并回，需保存生效 */}
+                {orphanDefault && (
+                  <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="text-[11px] text-amber-800 leading-relaxed">
+                      <span className="font-bold">默认模型不在可用白名单：</span>
+                      该空间的默认模型此前被移出了白名单，这会导致空间无法执行任务。自动修复未成功（可能该模型已被平台禁用），请手动处理——将其重新加入白名单，或通知空间所有者在工作台更换默认模型。
+                    </div>
+                  </div>
+                )}
+
                 {/* 2. 可用模型白名单配置（授权制：本页唯一职责） */}
                 <div className="p-5 space-y-3 flex-1 flex flex-col min-h-[380px]">
                   <div className="flex items-center justify-between flex-wrap gap-2">
@@ -718,8 +775,8 @@ export default function WorkspaceModelPolicyPage() {
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        白名单即该空间被授予的可用模型清单；为空时，该空间内所有组件都无法调度模型执行。
-                        空间默认模型由工作台（个人 / 企业空间）页面设置，且须包含在本清单内。
+                        勾选即授权该空间可用此模型；「平台默认初始」是新空间自动开通的，可随时取消以停止本空间使用。
+                        空间默认模型由用户工作台设置，且默认模型不可在此取消勾选。
                       </p>
                     </div>
 
@@ -759,8 +816,9 @@ export default function WorkspaceModelPolicyPage() {
                         >
                           <input
                             type="checkbox"
-                            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                            className={`mt-0.5 w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] ${isDefault ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
                             checked={isChecked}
+                            disabled={isDefault}
                             onChange={() => toggleAllowed(d.id)}
                             onClick={(e) => e.stopPropagation()}
                           />
@@ -799,6 +857,22 @@ export default function WorkspaceModelPolicyPage() {
 
                             {/* 能力标签 */}
                             <div className="flex flex-wrap gap-1 mt-1">
+                              {/* 来源标注：平台默认初始（新空间自动开通，可在此取消以停止本空间使用）/ 空间授权（管理员手动授权） */}
+                              {freeDefaults.includes(d.id) ? (
+                                <span
+                                  className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200"
+                                  title="平台默认初始模型：新空间自动开通；取消勾选即可停止本空间使用，不影响其他空间"
+                                >
+                                  平台默认初始
+                                </span>
+                              ) : allowed.includes(d.id) ? (
+                                <span
+                                  className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  title="由管理员为本空间授权"
+                                >
+                                  空间授权
+                                </span>
+                              ) : null}
                               {Array.isArray(d.capabilities) && d.capabilities.length > 0 ? (
                                 d.capabilities.slice(0, 3).map((c) => (
                                   <span
@@ -818,7 +892,10 @@ export default function WorkspaceModelPolicyPage() {
                                 </span>
                               )}
                               {isDefault && (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-50 text-[#805ad5] border border-purple-200">
+                                <span
+                                  className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-50 text-[#805ad5] border border-purple-200"
+                                  title="该空间默认模型（在工作台设置），必须在白名单内，不可在此取消"
+                                >
                                   空间默认
                                 </span>
                               )}

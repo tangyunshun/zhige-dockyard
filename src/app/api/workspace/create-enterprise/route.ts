@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { generateEnterpriseWorkspaceName } from "@/lib/workspace-naming";
 import { validateUser } from "@/lib/auth";
 import { TEAM_SIZE_OPTIONS } from "@/lib/membership";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
@@ -35,10 +36,7 @@ export async function POST(request: NextRequest) {
       visibility = "PRIVATE",
     } = body;
 
-    if (!name || !name.trim()) {
-      return NextResponse.json({ error: "请输入工作空间名称" }, { status: 400 });
-    }
-
+    // 企业空间名称改为可选：留空由系统按「企业空间-<用户名>」自动命名，填写则用用户的
     if (!contactEmail || !contactEmail.trim()) {
       return NextResponse.json({ error: "请输入联系邮箱" }, { status: 400 });
     }
@@ -46,7 +44,7 @@ export async function POST(request: NextRequest) {
     // 检查用户的会员等级（配额一律以数据库 membershiplevel 为准，杜绝硬编码）
     const dbUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { membershipLevel: true },
+      select: { membershipLevel: true, name: true },
     });
     const userMembershipLevel = dbUser?.membershipLevel || 'FREE';
 
@@ -141,10 +139,14 @@ export async function POST(request: NextRequest) {
     const workspaceId = generateId("ws");
 
     // 创建工作空间
+    // 新建企业空间：用户填了名称就用用户的，留空按「企业空间-<用户名>」自动命名（重名加序号）
+    const workspaceName = name?.trim()
+      ? name.trim()
+      : await generateEnterpriseWorkspaceName(userId, dbUser?.name);
     const workspace = await prisma.workspace.create({
       data: {
         id: workspaceId,
-        name: name.trim(),
+        name: workspaceName,
         description: description?.trim() || null,
         type: "ENTERPRISE",
         ownerId: userId,
@@ -191,9 +193,9 @@ export async function POST(request: NextRequest) {
     // 物理载入并初始化默认组件
     await ensureDefaultComponents(workspace.id, userId);
 
-    // 平台默认模型池：企业空间同样自动继承「默认免费模型」，保证开箱即用
+    // 平台默认模型池：企业空间同样自动继承「默认初始模型」，保证开箱即用
     await inheritFreeDefaultModelsForNewWorkspace(workspace.id).catch((e) =>
-      console.warn("[创建企业空间] 继承平台默认免费模型非致命提示:", e),
+      console.warn("[创建企业空间] 继承平台默认初始模型非致命提示:", e),
     );
 
     // 新空间体验额度：按企业套餐差异化赠送（plan.trialGift），独立于充值额度、优先消耗
@@ -217,7 +219,7 @@ export async function POST(request: NextRequest) {
         action: "CREATE_ENTERPRISE_WORKSPACE",
         resource: "Workspace",
         details: {
-          workspaceName: name,
+          workspaceName,
           workspaceType: "ENTERPRISE",
           workspacePlan: plan,
           workspaceVisibility: visibility,

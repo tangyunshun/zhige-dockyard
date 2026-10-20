@@ -426,9 +426,9 @@ async function createDefaultWorkspace(userId: string, userName?: string | null, 
       }
     });
 
-    // 平台默认模型池：新空间自动继承「默认免费模型」，保证用户注册后立即可用
+    // 平台默认模型池：新空间自动继承「默认初始模型」，保证用户注册后立即可用
     await inheritFreeDefaultModelsForNewWorkspace(workspace.id).catch((e) =>
-      console.warn("[注册] 继承平台默认免费模型非致命提示:", e),
+      console.warn("[注册] 继承平台默认初始模型非致命提示:", e),
     );
 
     // 新空间体验额度：按后台配置发放一次性体验额度（可配开关 / 数值 / 有效期，独立于注册福利）

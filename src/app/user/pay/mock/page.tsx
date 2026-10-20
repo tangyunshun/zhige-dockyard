@@ -26,6 +26,7 @@ interface OrderInfo {
   discountPercent: number;
   discountLabel: string;
   workspaceId: string;
+  planName?: string;
 }
 
 function MockCashierInner() {
@@ -108,7 +109,11 @@ function MockCashierInner() {
           <div className="text-center">
             <div className="text-sm text-slate-500">收款方</div>
             <div className="text-base font-black text-slate-900">
-              {order?.type === "SEAT_ADDON" ? "知阁·舟坊 · 席位增购" : "知阁·舟坊 · 算力充值"}
+              {order?.type === "SEAT_ADDON"
+                ? "知阁·舟坊 · 席位增购"
+                : order?.type === "PLAN_UPGRADE"
+                  ? "知阁·舟坊 · 升级企业空间"
+                  : "知阁·舟坊 · 算力充值"}
             </div>
           </div>
 
@@ -127,6 +132,8 @@ function MockCashierInner() {
                 <div className="text-xs text-slate-500 mt-1">
                   {order.type === "SEAT_ADDON" ? (
                     <>增购 {order.seats} 个团队席位</>
+                  ) : order.type === "PLAN_UPGRADE" ? (
+                    <>升级为「{order.planName || "企业"}」企业空间</>
                   ) : (
                     <>
                       对应 {order.points.toLocaleString()} 算力点
@@ -155,18 +162,29 @@ function MockCashierInner() {
                     {result}
                   </div>
                   <div className="flex gap-2">
-                    <Link
-                      href="/user/billing-center"
-                      className="flex-1 text-center px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-black hover:bg-indigo-700"
-                    >
-                      查看我的算力账单
-                    </Link>
-                    <Link
-                      href="/user/points"
-                      className="flex-1 text-center px-4 py-2.5 border border-slate-200 rounded-lg text-sm font-black hover:bg-slate-50"
-                    >
-                      前往算力中心
-                    </Link>
+                    {order?.type === "PLAN_UPGRADE" ? (
+                      <Link
+                        href="/workspace-hub"
+                        className="flex-1 text-center px-4 py-2.5 bg-[#3182ce] text-white rounded-lg text-sm font-black hover:bg-[#2b6cb0]"
+                      >
+                        返回工作台
+                      </Link>
+                    ) : (
+                      <>
+                        <Link
+                          href="/user/billing-center"
+                          className="flex-1 text-center px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-black hover:bg-indigo-700"
+                        >
+                          查看我的算力账单
+                        </Link>
+                        <Link
+                          href="/user/points"
+                          className="flex-1 text-center px-4 py-2.5 border border-slate-200 rounded-lg text-sm font-black hover:bg-slate-50"
+                        >
+                          前往算力中心
+                        </Link>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (

@@ -21,7 +21,7 @@ import {
 
 /**
  * 平台级默认配置页：
- *  1) 默认模型池（默认免费 / 默认付费），新空间自动继承免费模型；
+ *  1) 默认模型池（默认初始 / 默认付费），新空间自动继承免费模型；
  *  2) 新空间一次性体验额度（开关 / 数值 / 有效期）；
  *  3) 可选「同步到所有空间」（谨慎使用，仅对未显式禁用该模型的空间生效）。
  */
@@ -295,7 +295,7 @@ export default function PlatformDefaultsPage() {
             <div>
               <h2 className="text-sm font-black text-slate-800">默认模型池</h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                默认免费模型：新空间自动开通 · 默认付费模型：不自动开通，需管理员为单个空间额外开通
+                默认初始模型：新空间自动开通 · 默认付费模型：不自动开通，需管理员为单个空间额外开通
               </p>
             </div>
           </div>
@@ -313,7 +313,7 @@ export default function PlatformDefaultsPage() {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
-            <div className="text-xs font-black text-emerald-700">默认免费模型（{freeIds.length}）</div>
+            <div className="text-xs font-black text-emerald-700">默认初始模型（{freeIds.length}）</div>
             <div className="text-[10px] text-emerald-600/80 mt-0.5">新空间创建时自动加入可用清单</div>
           </div>
           <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-100">
@@ -327,7 +327,7 @@ export default function PlatformDefaultsPage() {
           <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-slate-50 text-[10px] font-bold text-slate-500">
             <div className="col-span-6">模型</div>
             <div className="col-span-2 text-center">平台状态</div>
-            <div className="col-span-2 text-center">默认免费</div>
+            <div className="col-span-2 text-center">默认初始</div>
             <div className="col-span-2 text-center">默认付费</div>
           </div>
           <div className="divide-y divide-slate-100 max-h-[480px] overflow-y-auto">
@@ -394,7 +394,7 @@ export default function PlatformDefaultsPage() {
                 同时同步到所有已存在的空间
               </div>
               <div className="text-[10px] text-amber-700/80 mt-0.5 leading-snug">
-                默认只对新创建的空间生效。勾选后，会把「默认免费模型」追加到所有空间已有的可用清单中；
+                默认只对新创建的空间生效。勾选后，会把「默认初始模型」追加到所有空间已有的可用清单中；
                 已被空间显式禁用的模型不会被强行开启。
               </div>
             </div>

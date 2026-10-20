@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { validateUser, isAdminRole } from "@/lib/auth";
 import { getStandardPostsFromDB } from "@/app/api/admin/posts/standard/route";
 
@@ -94,6 +95,9 @@ export async function POST(request: NextRequest) {
     if (!workspaceId || !Array.isArray(postIds) || postIds.length === 0) {
       return NextResponse.json({ error: "缺少工作空间ID或待导入岗位列表" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     // 权限校验
     const hasPermission = await verifyWorkspaceAdmin(auth.user.id, workspaceId);

@@ -2,6 +2,7 @@
 import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 /**
  * 工作空间集成 / 模型凭证接口
@@ -102,6 +103,9 @@ export async function POST(req: NextRequest) {
     if (!provider || !name || !workspaceId) {
       return NextResponse.json({ error: "缺少必填字段（provider / name / workspaceId）" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     const ws = await prisma.workspace.findUnique({
       where: { id: workspaceId },

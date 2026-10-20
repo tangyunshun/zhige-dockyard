@@ -54,6 +54,10 @@ export const DEFAULT_ACTION_DICT: Record<string, string> = {
   "workspace:delete": "删除工作空间",
   "workspace:leave": "退出工作空间",
   "workspace:quota_update": "调整工作空间配额",
+  // 模型注册 / 禁用启用
+  "model:disable": "禁用模型部署",
+  "model:enable": "启用模型部署",
+  "model:schedule_disable": "设置定时禁用模型",
   // 组件 / 微前端
   BIND_COMPONENT: "绑定微前端组件",
   UNBIND_COMPONENT: "解绑微前端组件",

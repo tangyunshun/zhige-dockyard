@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { requireWorkspaceMembership, writeAuditLog } from "@/lib/security";
@@ -72,6 +73,9 @@ export async function PATCH(request: NextRequest) {
     if (!workspaceId) {
       return NextResponse.json({ error: "缺少 workspaceId" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     const isMember = await requireWorkspaceMembership(auth.user.id, workspaceId);
     if (!isMember) {

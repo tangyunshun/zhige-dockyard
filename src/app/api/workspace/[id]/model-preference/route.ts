@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export async function PUT(
     if (!workspaceId) {
       return NextResponse.json({ success: false, error: "缺少 workspaceId" }, { status: 400 });
     }
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     // 必须为空间成员或空间所有者（与 available-models 路由的权限口径一致：
     // 空间所有者未必存在于 workspacemember 表，但同样允许设置个人偏好）

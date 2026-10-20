@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { validateUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { addNotification } from "@/lib/notifications-store";
@@ -22,6 +23,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     const trimmedReason = appealReason.trim();
     if (trimmedReason.length < 5) {

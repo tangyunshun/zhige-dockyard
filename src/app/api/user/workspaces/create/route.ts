@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { generateEnterpriseWorkspaceName } from "@/lib/workspace-naming";
 import { validateUser } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, type, description, industry, contactEmail, contactPhone, plan } = body;
 
-    if (!name || !type) {
+    if (!type) {
       return NextResponse.json({ error: "缺少必填字段" }, { status: 400 });
     }
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     // 会员等级与套餐配置：企业空间按套餐初始化，个人空间固定使用标准版
     const dbUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { membershipLevel: true },
+      select: { membershipLevel: true, name: true },
     });
     const membershipLevelName = dbUser?.membershipLevel || "FREE";
 
@@ -110,10 +111,18 @@ export async function POST(request: NextRequest) {
       `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     const workspaceId = generateId("ws");
 
+    // 企业空间：填了用用户的，留空按「企业空间-<用户名>」自动命名（重名加序号）；个人空间沿用填写名
+    const workspaceName =
+      type === "ENTERPRISE"
+        ? name?.trim()
+          ? name.trim()
+          : await generateEnterpriseWorkspaceName(userId, dbUser?.name)
+        : name;
+
     const workspace = await prisma.workspace.create({
       data: {
         id: workspaceId,
-        name,
+        name: workspaceName,
         type,
         description: description || null,
         industry: industry || null,

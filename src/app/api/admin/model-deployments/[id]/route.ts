@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import {
+  getModelDisableImpact,
+  applyModelDisable,
+  scheduleModelDisable,
+} from "@/lib/model-disable-service";
 import { withModelRegistryLock, ModelRegistryLockTimeoutError } from "@/lib/model-registry-lock";
 import { PLATFORM_DEFAULT_DEPLOYMENT_KEY } from "@/lib/model-registry";
 import { ALLOWED_MODEL_CAPABILITIES } from "@/lib/component-contract/capabilities";
@@ -77,11 +82,133 @@ export async function PATCH(
       if (Number.isFinite(n)) data[key] = n;
     }
 
+    const isDisabling = data.enabled === false;
+    const isEnabling = data.enabled === true;
+
+    // 禁用：走统一服务（立即 / 定时），内含影响面、强制替代、精准通知、审计
+    if (isDisabling) {
+      const replacementDeploymentId =
+        typeof body.replacementDeploymentId === "string" && body.replacementDeploymentId
+          ? body.replacementDeploymentId
+          : null;
+      const reason = typeof body.reason === "string" ? body.reason.trim() : null;
+      const impact = await getModelDisableImpact(id);
+
+      // 强制替代：若是某些空间的默认模型，必须选一个可用替代模型才能禁用
+      if (impact.asDefault > 0 && !replacementDeploymentId) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "REPLACEMENT_REQUIRED",
+            error: `该模型是 ${impact.asDefault} 个空间的默认模型，必须选择一个可用的替代模型后再禁用`,
+            impact,
+          },
+          { status: 400 },
+        );
+      }
+
+      // 定时禁用：到点由 /api/cron/model-disable-sweep 执行
+      if (body.mode === "scheduled") {
+        const effectiveAt = typeof body.effectiveAt === "string" ? new Date(body.effectiveAt) : null;
+        if (!effectiveAt || isNaN(effectiveAt.getTime()) || effectiveAt.getTime() <= Date.now()) {
+          return NextResponse.json(
+            { success: false, error: "请选择有效的定时生效时间（需晚于当前时间）" },
+            { status: 400 },
+          );
+        }
+        const schedule = await scheduleModelDisable({
+          deploymentId: id,
+          effectiveAt,
+          replacementDeploymentId,
+          reason,
+          actorId: auth.user?.id || null,
+        });
+        await writeAuditLog(
+          auth.user?.id || null,
+          "model:schedule_disable",
+          {
+            deploymentId: id,
+            effectiveAt: effectiveAt.toISOString(),
+            replacementDeploymentId,
+            reason,
+            asDefault: impact.asDefault,
+            inWhitelist: impact.inWhitelist,
+          },
+          null,
+          undefined,
+          request,
+        );
+        return NextResponse.json({
+          success: true,
+          scheduled: true,
+          schedule: { id: schedule.id, effectiveAt: schedule.effectiveAt },
+          impact,
+        });
+      }
+
+      // 立即禁用：翻开关 + 替换受影响默认 + 精准通知 + 审计
+      try {
+        const result = await applyModelDisable({
+          deploymentId: id,
+          replacementDeploymentId,
+          reason,
+          actorId: auth.user?.id || null,
+        });
+        const row = await prisma.modeldeployment.findUnique({ where: { id } });
+        return NextResponse.json({ success: true, data: row, impact: result });
+      } catch (e) {
+        if ((e as Error)?.message === "REPLACEMENT_NOT_AVAILABLE") {
+          return NextResponse.json(
+            { success: false, error: "替代模型不存在或已被禁用，请另选一个" },
+            { status: 400 },
+          );
+        }
+        throw e;
+      }
+    }
+
+    // 其它字段更新 / 启用（启用只翻开关、不改回用户配置，符合需求）
     const row = await prisma.modeldeployment.update({ where: { id }, data });
+    if (isEnabling) {
+      await writeAuditLog(
+        auth.user?.id || null,
+        "model:enable",
+        { deploymentId: id, providerId: exists.providerId, modelId: exists.modelId },
+        null,
+        undefined,
+        request,
+      );
+    }
     return NextResponse.json({ success: true, data: row });
   } catch (error) {
     console.error("[model-deployment] 更新失败:", (error as Error)?.message);
     return NextResponse.json({ success: false, error: "更新模型部署失败" }, { status: 500 });
+  }
+}
+
+/** GET：预览禁用某模型的影响面 + 可选替代模型（供禁用前模态框展示） */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const auth = await requirePlatformPermission(request, "system:manage", "model:manage");
+    if (!auth.authorized) {
+      return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
+    }
+    const { id } = await params;
+    const [impact, replacements] = await Promise.all([
+      getModelDisableImpact(id),
+      prisma.modeldeployment.findMany({
+        where: { enabled: true, id: { not: id } },
+        select: { id: true, providerId: true, modelId: true, displayName: true },
+        orderBy: { createdAt: "asc" },
+      }),
+    ]);
+    return NextResponse.json({ success: true, data: { impact, replacements } });
+  } catch (error) {
+    console.error("[model-deployment] 影响面预览失败:", (error as Error)?.message);
+    return NextResponse.json({ success: false, error: "获取影响面失败" }, { status: 500 });
   }
 }
 

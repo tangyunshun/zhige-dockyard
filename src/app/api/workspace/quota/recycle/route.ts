@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { requireWorkspaceMembership, writeAuditLog } from "@/lib/security";
@@ -28,6 +29,9 @@ export async function POST(request: NextRequest) {
     if (!workspaceId || !Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json({ error: "参数无效：回收点数必须为大于 0 的整数" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     const isMember = await requireWorkspaceMembership(auth.user.id, workspaceId);
     if (!isMember) {

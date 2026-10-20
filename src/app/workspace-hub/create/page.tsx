@@ -322,7 +322,8 @@ function CreateEnterpriseWorkspaceForm() {
   const handleCreate = async () => {
     const newErrors: typeof errors = {};
 
-    if (!formData.name.trim()) {
+    // 创建企业空间：名称可选（留空由系统按「企业空间-用户名」自动命名）；编辑/扩容仍必填
+    if (mode !== "create" && !formData.name.trim()) {
       newErrors.name = "请输入空间名称";
     }
 
@@ -711,7 +712,11 @@ function CreateEnterpriseWorkspaceForm() {
                   {/* 第一行：空间名称 + 空间标识 */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2 zg-required">
+                      <label
+                        className={`block text-sm font-bold text-slate-700 mb-2 ${
+                          mode === "create" ? "" : "zg-required"
+                        }`}
+                      >
                         空间名称
                       </label>
                       <input
@@ -721,7 +726,11 @@ function CreateEnterpriseWorkspaceForm() {
                           setFormData({ ...formData, name: e.target.value });
                           if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
                         }}
-                        placeholder="例如：知阁研发中心"
+                        placeholder={
+                          mode === "create"
+                            ? "选填，留空将自动命名为「企业空间-用户名」"
+                            : "例如：知阁研发中心"
+                        }
                         className={`zg-input bg-white/95 ${
                           errors.name ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100" : ""
                         }`}
@@ -1127,7 +1136,7 @@ function CreateEnterpriseWorkspaceForm() {
                       onClick={handleCreate}
                       disabled={
                         loading ||
-                        !formData.name.trim() ||
+                        (mode !== "create" && !formData.name.trim()) ||
                         (mode === "create" && !formData.slug.trim()) ||
                         (mode === "create" && !formData.teamSize) ||
                         (mode === "create" && !formData.industry) ||

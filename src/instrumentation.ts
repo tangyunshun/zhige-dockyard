@@ -58,4 +58,22 @@ export async function register() {
     await scanZombies();
     setInterval(scanZombies, DAY_MS);
   }, 90 * 1000);
+
+  // 模型定时禁用扫描：每 10 分钟执行一次（进程内兜底，与外部调度 /api/cron/model-disable-sweep 互为冗余）。
+  // 首跑延后 2 分钟（避开启动高峰），之后每 10 分钟一次；processDueModelDisables 内部原子认领，并发安全。
+  const sweepModelDisables = async () => {
+    try {
+      const { processDueModelDisables } = await import("@/lib/model-disable-service");
+      const res = await processDueModelDisables();
+      if (res.processed > 0) {
+        console.log(`[model-disable-sweep] 定时禁用扫描：已生效 ${res.processed} 个计划`);
+      }
+    } catch (e) {
+      console.error("[model-disable-sweep] 定时禁用扫描失败:", e);
+    }
+  };
+  setTimeout(async () => {
+    await sweepModelDisables();
+    setInterval(sweepModelDisables, 10 * 60 * 1000);
+  }, 2 * 60 * 1000);
 }

@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { withModelRegistryLock, ModelRegistryLockTimeoutError } from "@/lib/model-registry-lock";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 /**
  * 前台「空间模型策略」API：允许空间所有者/管理员配置本空间的默认模型 + 官方模型白名单。
@@ -81,6 +82,8 @@ export async function PUT(
 ) {
   try {
     const { id: workspaceId } = await params;
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
     const check = await assertSpaceManager(request, workspaceId);
     if (!check.ok) return check.res;
 
@@ -92,16 +95,24 @@ export async function PUT(
     const allowed = allowedRaw.filter((v): v is string => typeof v === "string" && v.length > 0);
 
     const result = await withModelRegistryLock(async (tx) => {
+      // 白名单：必须真实存在且「已启用」（含所属供应商通道启用），三处口径与执行路径一致，
+      // 避免落库「列表看不见、执行却因供应商禁用而直接失败」的不一致状态。
       if (allowed.length > 0) {
         const found = await tx.modeldeployment.findMany({
           where: { id: { in: allowed } },
-          select: { id: true, enabled: true },
+          select: { id: true, enabled: true, provider: { select: { enabled: true } } },
         });
         if (found.length !== allowed.length) {
           return { status: 400 as const, body: { success: false, error: "白名单包含不存在的模型部署 ID，请刷新后重试。" } };
         }
-        if (found.some((f) => !f.enabled)) {
-          return { status: 400 as const, body: { success: false, error: "白名单包含已在模型注册表禁用的模型，请先移除或重新启用后再保存。" } };
+        if (found.some((f) => !f.enabled || !f.provider?.enabled)) {
+          return {
+            status: 400 as const,
+            body: {
+              success: false,
+              error: "白名单包含已禁用的模型（模型自身被禁用，或其所属供应商通道已被禁用），请先移除或重新启用后再保存。",
+            },
+          };
         }
       }
 
@@ -109,12 +120,26 @@ export async function PUT(
       if (typeof body.defaultDeploymentId === "string" && body.defaultDeploymentId) {
         const dep = await tx.modeldeployment.findUnique({
           where: { id: body.defaultDeploymentId },
-          select: { id: true, enabled: true },
+          select: { id: true, enabled: true, provider: { select: { enabled: true } } },
         });
         if (!dep) return { status: 400 as const, body: { success: false, error: "默认模型不存在" } };
         if (!dep.enabled)
           return { status: 400 as const, body: { success: false, error: "默认模型已在模型注册表禁用，不可作为空间默认模型，请另选模型" } };
+        if (!dep.provider?.enabled)
+          return {
+            status: 400 as const,
+            body: {
+              success: false,
+              error: "默认模型所属供应商通道已被禁用，不可作为空间默认模型，请先启用该供应商或另选模型",
+            },
+          };
         defaultId = dep.id;
+      }
+
+      // 授权制不变量：默认模型必须落在白名单内，否则会存下「默认模型被自身白名单排除、永远无法调度」的矛盾配置。
+      // 自愈：默认模型不在白名单（含白名单为空的场景）时自动并入，绝不落库矛盾状态。
+      if (defaultId && !allowed.includes(defaultId)) {
+        allowed.push(defaultId);
       }
 
       const existing = await tx.workspace_model_policy.findUnique({ where: { workspaceId } });

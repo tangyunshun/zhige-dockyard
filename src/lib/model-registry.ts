@@ -347,13 +347,14 @@ export interface ResolvedModelPlan {
 /** 空间模型策略 */
 export interface SpaceModelPolicy {
   defaultDeploymentId: string | null;
-  /** 空间级额外开通清单（不含平台默认免费模型） */
+  /** 空间级额外开通清单（不含平台默认初始模型） */
   allowedDeploymentIds: string[];
-  /** 空间级禁用清单（即使默认免费或已开通也不可用） */
+  /** 空间级禁用清单（即使默认初始或已开通也不可用） */
   disabledDeploymentIds: string[];
   /**
-   * 授权制下的有效模型清单 = 平台默认免费 + allowedDeploymentIds − disabledDeploymentIds。
-   * 这是模型门禁的唯一权威口径；为空表示该空间未被授权任何模型。
+   * 授权制下的有效模型清单 = allowedDeploymentIds − disabledDeploymentIds（白名单为唯一真源）。
+   * 平台默认初始模型通过「新空间继承 / 同步到所有空间」写入各自白名单，不在读时隐藏合并；
+   * 为空表示该空间未授权任何模型。
    */
   effectiveDeploymentIds: string[];
   configured: boolean;
@@ -438,7 +439,7 @@ export function assertModelAllowed(params: {
   }
 }
 
-/** 读取空间模型策略；未配置时继承平台默认免费模型 */
+/** 读取空间模型策略；未配置时继承平台默认初始模型 */
 export async function loadSpaceModelPolicy(workspaceId: string): Promise<SpaceModelPolicy> {
   const empty: SpaceModelPolicy = {
     defaultDeploymentId: null,
@@ -459,7 +460,7 @@ export async function loadSpaceModelPolicy(workspaceId: string): Promise<SpaceMo
   const allowed = ids.filter((v) => typeof v === "string");
   const disabled = disabledIds.filter((v) => typeof v === "string");
 
-  // 平台默认免费模型是所有空间的公共供给，与空间级覆盖合并后得到有效清单
+  // 平台默认初始模型是所有空间的公共供给，与空间级覆盖合并后得到有效清单
   const freeDefaults = await loadFreeDefaultDeploymentIds();
   const effectiveDeploymentIds = computeEffectiveDeploymentIds({
     freeDefaults,

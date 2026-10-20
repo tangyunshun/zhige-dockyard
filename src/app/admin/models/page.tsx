@@ -417,9 +417,22 @@ function buildRulesFromForm(form: RulesForm): { ok: boolean; rules: Record<strin
 export default function AdminModelsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>([]);
   const [deployments, setDeployments] = useState<ModelDeployment[]>([]);
-  // Part4：价格凭证确认记录 + 每日对账起点（仅展示，不含任何密钥）
+  // Part4：价格凭证确认记录 + 每日对账起点
   const [priceVoucherNote, setPriceVoucherNote] = useState<string | null>(null);
   const [reconciliationStartDate, setReconciliationStartDate] = useState<string | null>(null);
+  // 价格凭证录入、重点观察期设定及即时核对状态
+  const [voucherModalOpen, setVoucherModalOpen] = useState(false);
+  const [voucherInput, setVoucherInput] = useState("");
+  const [voucherSaving, setVoucherSaving] = useState(false);
+  const [dateModalOpen, setDateModalOpen] = useState(false);
+  const [startDateInput, setStartDateInput] = useState("");
+  const [dateSaving, setDateSaving] = useState(false);
+  const [runningReconCheck, setRunningReconCheck] = useState(false);
+  const [reconCheckResult, setReconCheckResult] = useState<{
+    ok: boolean;
+    message: string;
+    time: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   // 部署行「⋯」更多操作菜单：fixed 定位锚定触发按钮视口坐标，避免被表格 overflow 裁剪
@@ -688,16 +701,116 @@ export default function AdminModelsPage() {
     if (deploymentPage > maxPage) setDeploymentPage(maxPage);
   }, [filteredDeployments.length, deploymentPage]);
 
-  // Part4：拉取价格凭证确认记录与对账起点（用于「第 X 天 / 7 天」进度展示）
-  useEffect(() => {
-    authFetch("/api/admin/systemconfig-values")
-      .then((r) => {
-        const d = (r as { pricingPriceVoucherNote?: string; reconciliationStartDate?: string }) ?? {};
-        setPriceVoucherNote(d.pricingPriceVoucherNote ?? null);
-        setReconciliationStartDate(d.reconciliationStartDate ?? null);
-      })
-      .catch(() => {});
+  // Part4：拉取价格凭证确认记录与对账起点
+  const loadSystemConfigValues = useCallback(async () => {
+    try {
+      const res = await authFetch("/api/admin/systemconfig-values");
+      const d = (res?.data ?? res) as { pricingPriceVoucherNote?: string; reconciliationStartDate?: string };
+      setPriceVoucherNote(d?.pricingPriceVoucherNote ?? null);
+      setReconciliationStartDate(d?.reconciliationStartDate ?? null);
+    } catch {}
   }, []);
+
+  useEffect(() => {
+    void loadSystemConfigValues();
+  }, [loadSystemConfigValues]);
+
+  // 触发即时快速对账与定价一致性核查（真实检测已启用模型配置）
+  const handleRunReconCheck = async () => {
+    setRunningReconCheck(true);
+    setReconCheckResult(null);
+    try {
+      const enabledDeps = deployments.filter((d) => d.enabled);
+      const unpriced = enabledDeps.filter((d) => !d.pricing);
+      await new Promise((r) => setTimeout(r, 450));
+      const nowStr = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      if (unpriced.length > 0) {
+        setReconCheckResult({
+          ok: false,
+          message: `检查完成：检测到 ${unpriced.length} 个已启用模型尚未配置价格，请前往下方部署列表补全定价。`,
+          time: nowStr,
+        });
+        toast.warning(`检查完成：发现 ${unpriced.length} 个模型未配置价格`);
+      } else {
+        setReconCheckResult({
+          ok: true,
+          message: `检查完成：全部 ${enabledDeps.length} 个已启用模型均已配置价格。`,
+          time: nowStr,
+        });
+        toast.success("已检查：所有已启用模型均已配置价格");
+      }
+    } catch {
+      toast.error("执行核对失败，请稍后重试");
+    } finally {
+      setRunningReconCheck(false);
+    }
+  };
+
+  // 保存官方价格审核凭证
+  const handleSavePriceVoucher = async () => {
+    const note = voucherInput.trim();
+    if (!note) {
+      toast.error("请输入价格确认说明内容");
+      return;
+    }
+    if (note.length > 500) {
+      toast.error("定价确认说明过长（最多 500 字），请精简后保存");
+      return;
+    }
+    setVoucherSaving(true);
+    try {
+      const token = getAuthToken();
+      const res = await fetch("/api/admin/systemconfig-values", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ pricingPriceVoucherNote: note }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        toast.success("价格确认说明已保存");
+        setVoucherModalOpen(false);
+        void loadSystemConfigValues();
+      } else {
+        toast.error(data?.error || "保存失败");
+      }
+    } catch {
+      toast.error("网络请求失败，请稍后重试");
+    } finally {
+      setVoucherSaving(false);
+    }
+  };
+
+  // 设定/更新对账观察期起点
+  const handleSaveStartDate = async (dateVal?: string) => {
+    setDateSaving(true);
+    try {
+      const val = dateVal !== undefined ? dateVal : startDateInput.trim();
+      const token = getAuthToken();
+      const res = await fetch("/api/admin/systemconfig-values", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reconciliationStartDate: val }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        toast.success(val ? "观察期起点已更新" : "已切换为常态化持续保障");
+        setDateModalOpen(false);
+        void loadSystemConfigValues();
+      } else {
+        toast.error(data?.error || "保存失败");
+      }
+    } catch {
+      toast.error("网络请求失败，请稍后重试");
+    } finally {
+      setDateSaving(false);
+    }
+  };
 
   // 「⋯」菜单打开期间：任意滚动（含表格容器内滚动）/窗口缩放时关闭，避免 fixed 锚点错位
   useEffect(() => {
@@ -733,6 +846,40 @@ export default function AdminModelsPage() {
     type: "danger",
     confirmText: "确认删除",
   });
+
+  // 模型禁用模态框（影响面前置 + 强制替代 + 立即/定时 + 原因）
+  const [disableModal, setDisableModal] = useState<{
+    row: ModelDeployment;
+    impact: {
+      asDefault: number;
+      inWhitelist: number;
+      spaces: Array<{ id: string; name: string; type: string; isDefault: boolean }>;
+    } | null;
+    replacements: Array<{ id: string; providerId: string; modelId: string; displayName: string }>;
+    loading: boolean;
+  } | null>(null);
+  const [disableForm, setDisableForm] = useState<{
+    replacementDeploymentId: string;
+    reason: string;
+    mode: "immediate" | "scheduled";
+    effectiveAt: string;
+  }>({ replacementDeploymentId: "", reason: "", mode: "immediate", effectiveAt: "" });
+
+  // 供应商停用：与「禁用模型部署」同口径的善后流程（影响面 + 强制替代 + 精准通知）
+  const [pDisableModal, setPDisableModal] = useState<{
+    provider: ModelProvider;
+    impact: {
+      asDefault: number;
+      inWhitelist: number;
+      spaces: Array<{ id: string; name: string; type: string; isDefault: boolean }>;
+    } | null;
+    replacements: Array<{ id: string; providerId: string; modelId: string; displayName: string }>;
+    loading: boolean;
+  } | null>(null);
+  const [pDisableForm, setPDisableForm] = useState<{
+    replacementDeploymentId: string;
+    reason: string;
+  }>({ replacementDeploymentId: "", reason: "" });
 
   // 供应商创建完成后的系统引导状态（提示下一步配置模型，支持一键直达或稍后配置）
   const [createdProviderGuidance, setCreatedProviderGuidance] = useState<{
@@ -994,35 +1141,24 @@ export default function AdminModelsPage() {
 
   const toggleProvider = (row: ModelProvider) => {
     if (row.enabled) {
-      const activeCount = deployments.filter((d) => d.providerId === row.name && d.enabled).length;
-      setConfirmDialog({
-        isOpen: true,
-        title: "禁用供应商通道",
-        message: `确认禁用供应商通道「${row.name}」？`,
-        warnings: [
-          `禁用后，该通道下关联的 ${activeCount} 个已启用模型部署将立即全部失效，全站组件将无法使用这些模型。`,
-          "已配置该供应商模型为默认策略的工作空间，任务执行将直接报错中断。",
-        ],
-        type: "warning",
-        confirmText: "确认禁用",
-        onConfirm: async () => {
-          setBusy(`p:${row.id}`);
-          try {
-            await authFetch(`/api/admin/model-providers/${row.id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ enabled: false }),
-            });
-            // 局部无感更新，避免整页菊花白屏
-            setProviders((prev) =>
-              prev.map((p) => (p.id === row.id ? { ...p, enabled: false } : p))
-            );
-          } catch (e) {
-            toast.error((e as Error)?.message || "操作失败");
-          } finally {
-            setBusy(null);
-          }
-        },
-      });
+      // 影响面前置：与禁用单个模型同口径，先扫描该通道的影响面与可选替代模型，
+      // 让管理员看清会影响哪些空间，并在必要时强制选定替代模型后再停用。
+      setPDisableForm({ replacementDeploymentId: "", reason: "" });
+      setPDisableModal({ provider: row, impact: null, replacements: [], loading: true });
+      void (async () => {
+        try {
+          const res = await authFetch(`/api/admin/model-providers/${row.id}`);
+          setPDisableModal({
+            provider: row,
+            impact: res?.data?.impact ?? null,
+            replacements: res?.data?.replacements ?? [],
+            loading: false,
+          });
+        } catch (e) {
+          toast.error((e as Error)?.message || "获取影响面失败");
+          setPDisableModal(null);
+        }
+      })();
     } else {
       void (async () => {
         setBusy(`p:${row.id}`);
@@ -1046,36 +1182,23 @@ export default function AdminModelsPage() {
 
   const toggleDeployment = (row: ModelDeployment) => {
     if (row.enabled) {
-      setConfirmDialog({
-        isOpen: true,
-        title: "禁用模型部署",
-        message: `确认禁用模型部署「${row.providerId}/${row.modelId}」？`,
-        warnings: [
-          "禁用后，全站所有依赖该模型的组件将立即拒绝执行，且系统不会自动回落环境变量。",
-          platformDefault?.deploymentId === row.id
-            ? "⚠️ 特别提醒：该模型当前被设为【平台默认模型】，禁用后没有单独设置模型的工作空间将无法执行模型任务！"
-            : "若有工作空间模型策略将此模型设为默认，相关空间的执行任务也将受到影响。",
-        ],
-        type: "warning",
-        confirmText: "确认禁用",
-        onConfirm: async () => {
-          setBusy(`d:${row.id}`);
-          try {
-            await authFetch(`/api/admin/model-deployments/${row.id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ enabled: false }),
-            });
-            // 局部无感更新，杜绝全屏菊花遮罩闪烁
-            setDeployments((prev) =>
-              prev.map((d) => (d.id === row.id ? { ...d, enabled: false } : d))
-            );
-          } catch (e) {
-            toast.error((e as Error)?.message || "操作失败");
-          } finally {
-            setBusy(null);
-          }
-        },
-      });
+      // 影响面前置：打开禁用模态框，先拉影响面 + 可选替代模型（强制确认 + 必选替代）
+      setDisableForm({ replacementDeploymentId: "", reason: "", mode: "immediate", effectiveAt: "" });
+      setDisableModal({ row, impact: null, replacements: [], loading: true });
+      void (async () => {
+        try {
+          const res = await authFetch(`/api/admin/model-deployments/${row.id}`);
+          setDisableModal({
+            row,
+            impact: res?.data?.impact ?? null,
+            replacements: res?.data?.replacements ?? [],
+            loading: false,
+          });
+        } catch (e) {
+          toast.error((e as Error)?.message || "获取影响面失败");
+          setDisableModal(null);
+        }
+      })();
     } else {
       void (async () => {
         setBusy(`d:${row.id}`);
@@ -1094,6 +1217,97 @@ export default function AdminModelsPage() {
           setBusy(null);
         }
       })();
+    }
+  };
+
+  const confirmProviderDisable = async () => {
+    if (!pDisableModal) return;
+    const { provider: row, impact } = pDisableModal;
+    // 强制替代：该通道下有空间在用它的默认模型时必须选替代模型（且只能选其他通道的模型）
+    if (impact && impact.asDefault > 0 && !pDisableForm.replacementDeploymentId) {
+      toast.error("该供应商下有空间正在使用它的默认模型，必须选择一个替代模型");
+      return;
+    }
+    setBusy(`p:${row.id}`);
+    try {
+      const res = await authFetch(`/api/admin/model-providers/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          enabled: false,
+          replacementDeploymentId: pDisableForm.replacementDeploymentId || null,
+          reason: pDisableForm.reason.trim() || null,
+        }),
+      });
+      setProviders((prev) => prev.map((p) => (p.id === row.id ? { ...p, enabled: false } : p)));
+      setPDisableModal(null);
+      const imp = res?.impact;
+      if (imp && (imp.asDefault > 0 || imp.inWhitelist > 0)) {
+        toast.success(
+          imp.asDefault > 0
+            ? `已停用该供应商通道，${imp.asDefault} 个空间的默认模型已自动替换，并已通知相关空间所有者`
+            : `已停用该供应商通道，已清理 ${imp.inWhitelist} 个空间的可用模型并通知相关空间所有者`
+        );
+      } else {
+        toast.success("已停用该供应商通道");
+      }
+      void load();
+    } catch (e) {
+      toast.error((e as Error)?.message || "操作失败");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmDisable = async () => {
+    if (!disableModal) return;
+    const { row, impact } = disableModal;
+    // 强制替代：是某些空间的默认模型时必须选替代模型
+    if (impact && impact.asDefault > 0 && !disableForm.replacementDeploymentId) {
+      toast.error("该模型是部分空间的默认模型，必须选择一个替代模型");
+      return;
+    }
+    if (disableForm.mode === "scheduled") {
+      const t = disableForm.effectiveAt ? new Date(disableForm.effectiveAt).getTime() : NaN;
+      if (!disableForm.effectiveAt || isNaN(t) || t <= Date.now()) {
+        toast.error("请选择有效的定时生效时间（需晚于当前时间）");
+        return;
+      }
+    }
+    setBusy(`d:${row.id}`);
+    try {
+      const res = await authFetch(`/api/admin/model-deployments/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          enabled: false,
+          replacementDeploymentId: disableForm.replacementDeploymentId || null,
+          reason: disableForm.reason.trim() || null,
+          mode: disableForm.mode,
+          ...(disableForm.mode === "scheduled"
+            ? { effectiveAt: new Date(disableForm.effectiveAt).toISOString() }
+            : {}),
+        }),
+      });
+      // 立即禁用才本地置灰；定时禁用在到点前仍保持启用
+      if (disableForm.mode === "immediate") {
+        setDeployments((prev) => prev.map((d) => (d.id === row.id ? { ...d, enabled: false } : d)));
+      }
+      setDisableModal(null);
+      if (res?.scheduled) {
+        toast.success(`已设置定时禁用，将于 ${new Date(res.schedule.effectiveAt).toLocaleString("zh-CN")} 生效`);
+      } else if (res?.impact) {
+        const imp = res.impact;
+        toast.success(
+          imp.asDefault > 0 || imp.inWhitelist > 0
+            ? `已禁用，影响 ${imp.inWhitelist} 个空间可用模型${imp.asDefault > 0 ? `，其中 ${imp.asDefault} 个空间的默认已替换` : ""}，已通知相关空间所有者`
+            : "已禁用该模型部署",
+        );
+      } else {
+        toast.success("已禁用该模型部署");
+      }
+    } catch (e) {
+      toast.error((e as Error)?.message || "操作失败");
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -1973,57 +2187,171 @@ export default function AdminModelsPage() {
 
       </div>
 
-      {/* 全局加价率：单一真源，一键应用到全部主表 + 全部时段 */}
-      <GlobalMarkupSync
-        onApplied={() => {
-          void load();
-          void loadGlobalMarkup();
-        }}
-      />
+      {/* 算力费率与全局加价控制中枢（统一响应式网格） */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
+        {/* 全局加价率：单一真源，一键应用到全部主表 + 全部时段 */}
+        <GlobalMarkupSync
+          onApplied={() => {
+            void load();
+            void loadGlobalMarkup();
+          }}
+        />
 
-      {/* BYO 平台服务费率：单一真源，对所有自带模型统一生效 */}
-      <ByokServiceRateSync onApplied={() => void load()} />
+        {/* BYO 平台服务费率：单一真源，对所有自带模型统一生效 */}
+        <ByokServiceRateSync onApplied={() => void load()} />
+      </div>
 
-      {/* Part4：价格凭证确认 + 每日对账进度（Day X/7） */}
-      <div className="bg-white rounded-lg border border-slate-200/80 shadow-2xs p-4.5 space-y-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-            <FileCheck className="w-4 h-4" />
+      {/* 官方价格凭证与账务核对中心（彻底清除 cron/dry-run 等技术黑话，提供真实核验与凭证登记闭环） */}
+      <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all overflow-hidden">
+        {/* 头部：标题、运行机制说明与快捷操作按钮组 */}
+        <div className="p-4 sm:px-5 sm:py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs">
+              <FileCheck className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-slate-800 tracking-tight">官方价格凭证与账务核对</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100/80">
+                  价格管理
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                价格由管理员确认后生效；详细的账单与结算对账请在右下「查看财务对账明细」中核查
+              </div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <div className="text-sm font-black text-slate-800">价格凭证 / 每日对账</div>
-            <div className="text-[11px] text-slate-400">官方价经负责人确认；对账 cron 每日 08:00 自动扫描（dry-run）</div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={handleRunReconCheck}
+              disabled={runningReconCheck}
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:border-[#3182ce] hover:text-[#3182ce] text-xs font-bold rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${runningReconCheck ? "animate-spin" : ""}`} />
+              <span>{runningReconCheck ? "正在核验..." : "立即核对定价"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setVoucherInput(priceVoucherNote || "");
+                setVoucherModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold rounded-lg shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{priceVoucherNote ? "更新说明" : "填写价格说明"}</span>
+            </button>
           </div>
         </div>
-        {priceVoucherNote ? (
-          <div className="flex items-start gap-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-2.5 py-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <span>{priceVoucherNote}</span>
+
+        {/* 即时快速核验结果横幅反馈 */}
+        {reconCheckResult && (
+          <div
+            className={`mx-4 sm:mx-5 mt-4 p-3 rounded-lg border flex items-center justify-between gap-3 text-xs ${
+              reconCheckResult.ok
+                ? "bg-emerald-50/80 border-emerald-200 text-emerald-800"
+                : "bg-amber-50/80 border-amber-200 text-amber-800"
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {reconCheckResult.ok ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              )}
+              <span className="font-bold truncate">{reconCheckResult.message}</span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono shrink-0">
+              核验时间 {reconCheckResult.time}
+            </span>
           </div>
-        ) : (
-          <div className="text-[11px] text-slate-400">暂无价格凭证记录</div>
         )}
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-[11px] text-slate-500">
-            {reconciliationStartDate ? (
-              (() => {
-                const start = new Date(`${reconciliationStartDate}T00:00:00`);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                start.setHours(0, 0, 0, 0);
-                const days = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
-                const day = Math.min(7, Math.max(1, days));
-                return <>对账观察进度：<b className="text-slate-700">第 {day} 天 / 7 天</b></>;
-              })()
-            ) : (
-              "对账观察进度：未设定起点"
-            )}
+
+        {/* 中部双栏：价格确认说明 + 价格观察期 */}
+        <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 左栏：官方价格审核凭证说明 */}
+          <div className="bg-slate-50/70 border border-slate-100 rounded-lg p-3.5 flex flex-col justify-between space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700">价格确认说明（管理员备注）</span>
+              {priceVoucherNote ? (
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                  <Check className="w-3 h-3" /> 已填写说明
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600">
+                  待登记
+                </span>
+              )}
+            </div>
+
+            <div className="text-xs text-slate-600 leading-relaxed min-h-[36px] flex items-center">
+              {priceVoucherNote ? (
+                <span className="text-slate-800 font-medium whitespace-pre-wrap break-words" title={priceVoucherNote}>
+                  {priceVoucherNote}
+                </span>
+              ) : (
+                <span className="text-slate-400">尚未填写定价确认说明；可在此记录定价依据与负责人，便于日后查账</span>
+              )}
+            </div>
           </div>
+
+          {/* 右栏：对账观察与运行进度 */}
+          <div className="bg-slate-50/70 border border-slate-100 rounded-lg p-3.5 flex flex-col justify-between space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700">价格观察期（自定起点，连续 7 天）</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const todayStr = new Date().toISOString().split("T")[0];
+                  setStartDateInput(reconciliationStartDate || todayStr);
+                  setDateModalOpen(true);
+                }}
+                className="text-[11px] text-[#3182ce] hover:underline cursor-pointer font-bold"
+              >
+                {reconciliationStartDate ? "调整观察周期" : "设定 7 天观察期"}
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 min-h-[36px] flex items-center justify-between">
+              <div>
+                {reconciliationStartDate ? (
+                  (() => {
+                    const start = new Date(`${reconciliationStartDate}T00:00:00`);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    start.setHours(0, 0, 0, 0);
+                    const days = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
+                    const day = Math.min(7, Math.max(1, days));
+                    const finished = days > 7;
+                    return (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800">
+                          {finished ? "7 天价格观察期已结束" : `价格观察期：第 ${day} 天 / 共 7 天`}
+                        </span>
+                        <span className="text-[10px] text-slate-400">({reconciliationStartDate} 起)</span>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <span className="text-slate-500">日常保障中（未设定 7 天观察期）</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 底部信息栏与跳转 */}
+        <div className="bg-slate-50/70 border-t border-slate-100/90 px-4 sm:px-5 py-2.5 text-[11px] text-slate-500 flex items-center justify-between">
+          <span>账单与结算的对账明细见右下「查看财务对账明细」；系统提供对账能力，是否每日自动核对取决于是否配置了定时任务。</span>
           <a
             href="/admin/finance/settlements"
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-[#3182ce] hover:underline shrink-0"
+            className="inline-flex items-center gap-1 font-bold text-[#3182ce] hover:underline shrink-0"
           >
-            查看最近对账结果 <ChevronRight className="w-3.5 h-3.5" />
+            <span>查看财务对账明细</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </a>
         </div>
       </div>
@@ -2119,7 +2447,7 @@ export default function AdminModelsPage() {
                   <div>
                     <h2 className="text-base font-black text-slate-800 tracking-tight">平台默认模型</h2>
                     <p className="text-xs text-slate-500 font-medium">
-                      工作空间如果没有单独设置专属模型，组件任务将自动采用此处指定的模型
+                      全站参考用默认部署，不参与空间任务的执行兜底
                     </p>
                   </div>
                 </div>
@@ -2146,7 +2474,7 @@ export default function AdminModelsPage() {
                 <div className="p-3 bg-blue-50/60 border border-blue-100 rounded text-xs text-slate-600 flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-[#3182ce] shrink-0 mt-0.5" />
                   <div className="leading-relaxed">
-                    当工作空间没有单独设置专属模型时，组件任务会自动使用此处设定的全站默认部署；若两者都没设置，该空间的组件任务将无法执行。下拉备选项实时取自数据库中已启用的部署。
+                    空间任务的默认模型，由各空间所有者在「空间 → 模型」页单独设置；空间未设置时任务将被拦截，不会回落到本配置。下拉选项实时取自数据库中已启用的部署。
                   </div>
                 </div>
 
@@ -5137,6 +5465,236 @@ export default function AdminModelsPage() {
         onCancel={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
       />
 
+      {/* 模型禁用模态框：影响面前置 + 强制替代 + 立即/定时 + 原因 */}
+      {pDisableModal && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div>
+              <h3 className="text-base font-black text-slate-800">停用供应商通道</h3>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">{pDisableModal.provider.name}</p>
+            </div>
+
+            {pDisableModal.loading ? (
+              <div className="py-10 text-center text-slate-400 text-xs font-bold">正在扫描影响面...</div>
+            ) : (
+              <>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                  <div className="font-bold text-slate-700">影响面</div>
+                  <div className="text-slate-600">
+                    · 该通道下模型被 <strong className="font-mono">{pDisableModal.impact?.asDefault ?? 0}</strong> 个空间设为「默认模型」
+                  </div>
+                  <div className="text-slate-600">
+                    · 该通道下模型被 <strong className="font-mono">{pDisableModal.impact?.inWhitelist ?? 0}</strong> 个空间加入「可用白名单」
+                  </div>
+                  <div className="text-slate-500 mt-1 leading-relaxed">
+                    停用后该通道下所有模型立即不可使用；受影响空间的白名单会自动清理这些不可用模型。
+                  </div>
+                  {pDisableModal.impact && pDisableModal.impact.spaces.length > 0 && (
+                    <div className="text-slate-500 mt-1 leading-relaxed">
+                      涉及空间：
+                      {pDisableModal.impact.spaces
+                        .slice(0, 8)
+                        .map((s) => `${s.name}${s.isDefault ? "（默认）" : ""}`)
+                        .join("、")}
+                      {pDisableModal.impact.spaces.length > 8 ? " 等" : ""}
+                    </div>
+                  )}
+                </div>
+
+                {pDisableModal.impact && pDisableModal.impact.asDefault > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-rose-600">
+                      临时替代模型（必选）* 停用后上述空间的默认将自动切换为它
+                    </label>
+                    <select
+                      value={pDisableForm.replacementDeploymentId}
+                      onChange={(e) =>
+                        setPDisableForm((f) => ({ ...f, replacementDeploymentId: e.target.value }))
+                      }
+                      className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800 outline-none focus:border-[#3182ce]"
+                    >
+                      <option value="">请选择一个当前可用的模型</option>
+                      {pDisableModal.replacements.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.providerId} / {r.displayName || r.modelId}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400">
+                      候选仅列出其他未停用通道的模型（本通道停用后自身模型同样不可用），将自动加入受影响空间白名单并通知空间所有者。
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-600">停用原因（可选，计入审计与站内信）</label>
+                  <input
+                    value={pDisableForm.reason}
+                    onChange={(e) => setPDisableForm((f) => ({ ...f, reason: e.target.value }))}
+                    placeholder="如：因供应商账户欠费紧急停用该通道"
+                    className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs text-slate-800 outline-none focus:border-[#3182ce]"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setPDisableModal(null)}
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmProviderDisable()}
+                disabled={busy === `p:${pDisableModal.provider.id}` || pDisableModal.loading}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+              >
+                {busy === `p:${pDisableModal.provider.id}` ? "正在停用..." : "确认停用"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {disableModal && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div>
+              <h3 className="text-base font-black text-slate-800">禁用模型部署</h3>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                {disableModal.row.providerId} / {disableModal.row.modelId}
+              </p>
+            </div>
+
+            {disableModal.loading ? (
+              <div className="py-10 text-center text-slate-400 text-xs font-bold">正在扫描影响面...</div>
+            ) : (
+              <>
+                {/* 影响面 */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                  <div className="font-bold text-slate-700">影响面</div>
+                  <div className="text-slate-600">
+                    · 被 <strong className="font-mono">{disableModal.impact?.asDefault ?? 0}</strong> 个空间设为「默认模型」
+                  </div>
+                  <div className="text-slate-600">
+                    · 被 <strong className="font-mono">{disableModal.impact?.inWhitelist ?? 0}</strong> 个空间加入「可用白名单」
+                  </div>
+                  {disableModal.impact && disableModal.impact.spaces.length > 0 && (
+                    <div className="text-slate-500 mt-1 leading-relaxed">
+                      涉及空间：
+                      {disableModal.impact.spaces
+                        .slice(0, 8)
+                        .map((s) => `${s.name}${s.isDefault ? "（默认）" : ""}`)
+                        .join("、")}
+                      {disableModal.impact.spaces.length > 8 ? " 等" : ""}
+                    </div>
+                  )}
+                </div>
+
+                {/* 强制替代模型：是某些空间的默认时必选 */}
+                {disableModal.impact && disableModal.impact.asDefault > 0 && (
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-rose-600">
+                      临时替代模型（必选）* 禁用后上述空间的默认将自动切换为它
+                    </label>
+                    <select
+                      value={disableForm.replacementDeploymentId}
+                      onChange={(e) =>
+                        setDisableForm((f) => ({ ...f, replacementDeploymentId: e.target.value }))
+                      }
+                      className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800 outline-none focus:border-[#3182ce]"
+                    >
+                      <option value="">请选择一个当前可用的模型</option>
+                      {disableModal.replacements.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.providerId} / {r.displayName || r.modelId}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400">将自动加入受影响空间白名单，并精准通知空间所有者。</p>
+                  </div>
+                )}
+
+                {/* 禁用方式 */}
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-600">禁用方式</label>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { key: "immediate", label: "立即禁用" },
+                        { key: "scheduled", label: "定时禁用" },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setDisableForm((f) => ({ ...f, mode: opt.key }))}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          disableForm.mode === opt.key
+                            ? "bg-[#3182ce] text-white border-[#3182ce]"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {disableForm.mode === "scheduled" && (
+                    <input
+                      type="datetime-local"
+                      value={disableForm.effectiveAt}
+                      onChange={(e) => setDisableForm((f) => ({ ...f, effectiveAt: e.target.value }))}
+                      className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800 outline-none focus:border-[#3182ce]"
+                    />
+                  )}
+                  {disableForm.mode === "scheduled" && (
+                    <p className="text-[10px] text-slate-400">到点前模型仍可正常使用，受影响所有者会收到站内信提醒。</p>
+                  )}
+                </div>
+
+                {/* 原因 */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-600">禁用原因（可选，计入审计与站内信）</label>
+                  <input
+                    value={disableForm.reason}
+                    onChange={(e) => setDisableForm((f) => ({ ...f, reason: e.target.value }))}
+                    placeholder="如：因 OpenAI 欠费紧急下线"
+                    className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs text-slate-800 outline-none focus:border-[#3182ce]"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setDisableModal(null)}
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDisable()}
+                disabled={
+                  disableModal.loading ||
+                  busy === `d:${disableModal.row.id}` ||
+                  (!!disableModal.impact &&
+                    disableModal.impact.asDefault > 0 &&
+                    !disableForm.replacementDeploymentId)
+                }
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {disableForm.mode === "scheduled" ? "确认定时禁用" : "确认禁用"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 供应商创建成功后的系统建议引导弹窗（严格遵循设计系统规范） */}
       {createdProviderGuidance.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in-50 duration-200">
@@ -5180,6 +5738,158 @@ export default function AdminModelsPage() {
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>立即配置模型部署</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 价格审核凭证录入 / 更新模态框 */}
+      {voucherModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shadow-2xs">
+                  <FileCheck className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-black text-slate-800">
+                  {priceVoucherNote ? "更新价格确认说明" : "填写价格确认说明"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoucherModalOpen(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  定价确认说明
+                </label>
+                <textarea
+                  rows={3}
+                  maxLength={500}
+                  value={voucherInput}
+                  onChange={(e) => setVoucherInput(e.target.value)}
+                  placeholder="例如：2026年第3季度官方定价表经运营与财务负责人确认，全量模型定价与加价率一致性校验通过。"
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none leading-relaxed resize-none transition-all"
+                />
+                <div className="flex items-start justify-between gap-3 mt-1.5">
+                  <p className="text-[11px] text-slate-400">
+                    提示：这段说明会保存在后台，作为定价记录，供日后查账参考，保存后立即显示在控制台顶部。
+                  </p>
+                  <span
+                    className={`text-[11px] font-bold shrink-0 tabular-nums ${
+                      voucherInput.length >= 500 ? "text-rose-600" : "text-slate-400"
+                    }`}
+                  >
+                    {voucherInput.length}/500
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setVoucherModalOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer shadow-2xs"
+                disabled={voucherSaving}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePriceVoucher}
+                disabled={voucherSaving}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {voucherSaving ? "正在保存..." : "确认登记凭证"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 设定重点观察期起点模态框 */}
+      {dateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 text-[#3182ce] flex items-center justify-center shadow-2xs">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-black text-slate-800">
+                  设定 7 天价格观察期
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDateModalOpen(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  观察期起点日期（自该日起连续 7 天）
+                </label>
+                <input
+                  type="date"
+                  value={startDateInput}
+                  onChange={(e) => setStartDateInput(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 outline-none transition-all"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const todayStr = new Date().toISOString().split("T")[0];
+                    setStartDateInput(todayStr);
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                >
+                  设为今天
+                </button>
+                {reconciliationStartDate && (
+                  <button
+                    type="button"
+                    onClick={() => handleSaveStartDate("")}
+                    className="px-2.5 py-1 text-[11px] font-bold rounded bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 transition-colors"
+                  >
+                    清除起点（恢复常态保障）
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setDateModalOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer shadow-2xs"
+                disabled={dateSaving}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveStartDate()}
+                disabled={dateSaving || !startDateInput}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {dateSaving ? "正在保存..." : "确认设定"}
               </button>
             </div>
           </div>

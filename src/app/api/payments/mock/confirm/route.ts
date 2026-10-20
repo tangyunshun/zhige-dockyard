@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { grantPoints, getBalanceSummary } from "@/lib/credit-service";
 import { resolvePaymentMode } from "@/lib/payment-gateway";
+import { fulfillEnterpriseUpgradeFromOrder } from "@/lib/workspace-upgrade-service";
 
 /**
  * 模拟支付：收银台确认（**唯一在模拟模式下产生入账动作的地方**）
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
         discountPercent: Number(meta.discountPercent ?? 0),
         discountLabel: String(meta.discountLabel ?? ""),
         workspaceId: order.workspaceId,
+        planName: String(meta.planName ?? ""),
       },
     });
   } catch (error) {
@@ -87,6 +89,14 @@ export async function POST(request: NextRequest) {
           alreadyProcessed: true,
           seats: Number(meta.seats ?? 0),
           message: "该订单此前已完成入账，未重复扣款。",
+        });
+      }
+      if (orderType === "PLAN_UPGRADE") {
+        return NextResponse.json({
+          success: true,
+          alreadyProcessed: true,
+          workspaceId: String(meta.newWorkspaceId ?? ""),
+          message: "该订单此前已完成入账，企业空间已开通。",
         });
       }
       const balance = await getBalanceSummary(auth.user.id, order.workspaceId);
@@ -133,6 +143,30 @@ export async function POST(request: NextRequest) {
         alreadyProcessed: false,
         seats,
         message: `模拟收款成功，已为空间增购 ${seats} 个席位（非真实扣款）`,
+      });
+    }
+
+    // 企业空间升级：支付确认后真正开通企业空间（含孤儿补偿，幂等）
+    if (orderType === "PLAN_UPGRADE") {
+      const fulfillment = await fulfillEnterpriseUpgradeFromOrder(orderNo);
+      await billingModel.update({
+        where: { id: orderNo },
+        data: {
+          status: "SUCCESS",
+          updatedAt: new Date(),
+          metadata: {
+            ...meta,
+            paidAt: new Date().toISOString(),
+            paymentMode: "MOCK",
+            newWorkspaceId: fulfillment.newWorkspaceId,
+          },
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        alreadyProcessed: false,
+        workspaceId: fulfillment.newWorkspaceId,
+        message: `模拟收款成功，企业空间已开通（${fulfillment.message}）`,
       });
     }
 

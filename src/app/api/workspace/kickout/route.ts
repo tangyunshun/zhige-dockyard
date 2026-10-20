@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 /**
  * 空间级别踢出接口
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     // 检查工作空间是否存在
     const workspace = await prisma.workspace.findUnique({

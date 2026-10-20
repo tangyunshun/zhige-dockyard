@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { randomBytes } from "crypto";
 import { getInvitePolicy } from "@/lib/invitation-policy";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 // 生成邀请码
 function generateInvitationCode(): string {
@@ -27,6 +28,9 @@ export async function POST(request: NextRequest) {
     if (!workspaceId) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     // 验证工作空间是否存在
     const workspace = await prisma.workspace.findUnique({

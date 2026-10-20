@@ -13,7 +13,7 @@ export interface Workspace {
   name: string;
   type: "PERSONAL" | "ENTERPRISE";
   ownerId: string;
-  status: "ACTIVE" | "DISABLED";
+  status: "ACTIVE" | "DISABLED" | "ARCHIVED";
   componentCount?: number;
   memberCount?: number;
   createdAt: string;

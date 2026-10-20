@@ -41,6 +41,27 @@ nul
 # OCR 训练数据（体积大，不入库）
 *.traineddata
 
+# 测试覆盖率产物
+coverage/
+
+# 其它前端框架 / 构建工具缓存（防止未来引入后误入库）
+.cache/
+.vite/
+.parcel-cache/
+.nuxt/
+.output/
+
+# 本地工具 / 代理数据目录（保留在本地，不入库）
+.agents/
+
+# 日志目录与进程 / 备份临时文件
+logs/
+*.pid
+*.bak
+*.tmp
+*.temp
+desktop.ini
+
 # OS & Editor files
 .DS_Store
 Thumbs.db

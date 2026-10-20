@@ -4,7 +4,7 @@
  * 设计要点：
  *  - 真源是 platformdefaultmodel 表（FREE / PAID 两类），管理员后台可动态调整；
  *  - 新空间（个人 / 企业）创建时自动继承 FREE 清单写入 workspace_model_policy.allowedDeploymentIds；
- *  - 有效模型统一按「平台默认免费 + 空间额外开通 - 空间禁用」三段式计算，任何调用方不得自行拼装；
+ *  - 有效模型统一按「平台默认初始 + 空间额外开通 - 空间禁用」三段式计算，任何调用方不得自行拼装；
  *  - 付费模型（PAID）永不自动开通，只能由管理员为单个空间额外加入白名单。
  */
 
@@ -28,7 +28,7 @@ export async function loadPlatformDefaultModels(
   return rows;
 }
 
-/** 仅取默认免费模型 ID 列表 */
+/** 仅取默认初始模型 ID 列表 */
 export async function loadFreeDefaultDeploymentIds(): Promise<string[]> {
   const rows = await loadPlatformDefaultModels("FREE");
   return rows.map((r) => r.deploymentId);
@@ -42,25 +42,23 @@ export async function loadPaidDefaultDeploymentIds(): Promise<string[]> {
 
 /**
  * 计算空间的有效模型清单：
- *   平台默认免费 ∪ 空间额外开通（allowedDeploymentIds）− 空间禁用（disabledDeploymentIds）
+ *   空间白名单（allowedDeploymentIds）− 空间禁用（disabledDeploymentIds）
  *
- * 注意：此结果是「授权清单」的唯一权威口径，assertModelAllowed 与前端展示都应基于它。
- * 当白名单与禁用清单都为空时，有效模型仍等于平台默认免费模型（保证新空间开箱即用）。
+ * 白名单是唯一真源：平台默认初始模型通过「新空间继承 / 同步到所有空间」写入各自白名单，
+ * 不再在读时隐藏合并——避免"能跑却不在任何列表显示"的自相矛盾，也让管理员在空间模型策略里全量可见、可勾选/移除。
  */
 export function computeEffectiveDeploymentIds(params: {
-  freeDefaults: string[];
+  freeDefaults?: string[];
   allowedDeploymentIds: string[];
   disabledDeploymentIds: string[];
 }): string[] {
   const disabled = new Set(params.disabledDeploymentIds || []);
-  const merged = Array.from(
-    new Set([...(params.freeDefaults || []), ...(params.allowedDeploymentIds || [])]),
-  );
+  const merged = Array.from(new Set([...(params.allowedDeploymentIds || [])]));
   return merged.filter((id) => !disabled.has(id));
 }
 
 /**
- * 读取某空间的有效模型清单（含平台默认免费模型）。
+ * 读取某空间的有效模型清单（含平台默认初始模型）。
  * 相比 loadSpaceModelPolicy，此函数把「平台默认供给」与「空间级覆盖」合并，是上层应使用的入口。
  */
 export async function resolveEffectiveDeploymentIds(workspaceId: string): Promise<string[]> {
@@ -85,7 +83,7 @@ export async function resolveEffectiveDeploymentIds(workspaceId: string): Promis
 }
 
 /**
- * 新空间创建时调用：把平台默认免费模型写入该空间白名单。
+ * 新空间创建时调用：把平台默认初始模型写入该空间白名单。
  * 使用模型注册表命名锁，避免与「删除部署 / 删除供应商」产生竞态。
  * 幂等：重复调用只会合并去重，不会清空空间已有的额外开通项。
  */
@@ -123,7 +121,7 @@ export async function inheritFreeDefaultModelsForNewWorkspace(workspaceId: strin
   return freeDefaults;
 }
 
-/** 把平台默认免费模型同步到所有空间（管理员手动触发，谨慎使用） */
+/** 把平台默认初始模型同步到所有空间（管理员手动触发，谨慎使用） */
 export async function syncFreeDefaultsToAllWorkspaces(): Promise<{ synced: number; skipped: number }> {
   const freeDefaults = await loadFreeDefaultDeploymentIds();
   if (freeDefaults.length === 0) return { synced: 0, skipped: 0 };

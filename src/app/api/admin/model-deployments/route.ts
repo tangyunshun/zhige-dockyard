@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const rows = await prisma.modeldeployment.findMany({
       where: providerId ? { providerId } : undefined,
       orderBy: [{ providerId: "asc" }, { modelId: "asc" }],
+      include: { provider: { select: { enabled: true } } },
     });
     // 价格唯一真源为 modelpricing：列表一并返回，前端不再读取 deployment 旧价格字段
     const pricings = await prisma.modelpricing.findMany({
@@ -45,6 +46,9 @@ export async function GET(request: NextRequest) {
       success: true,
       data: rows.map((r) => ({
         ...r,
+        // 所属供应商通道是否启用：供应商禁用时该模型同样不可执行，
+        // 供管理端（空间模型策略等）识别并自动剔除，避免保存被后端校验拒绝。
+        providerEnabled: r.provider?.enabled ?? false,
         // 显式下发健康字段（即使客户端未感知该列也保证有确定值，前端据此渲染）
         health: r.health || "unknown",
         lastTestedAt: r.lastTestedAt ? r.lastTestedAt.toISOString() : null,
