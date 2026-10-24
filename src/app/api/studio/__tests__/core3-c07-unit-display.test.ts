@@ -21,6 +21,8 @@ const ROUTE_SRC = read("src/app/api/studio/handler.ts");
 const WORKSPACE_SRC = read("src/components/WorkspaceInternalLayoutV3.tsx");
 const RESULT_VIEWER_SRC = read("src/components/studio/ResultViewer.tsx");
 const TASKS_PAGE_SRC = read("src/app/tasks/page.tsx");
+// 工作空间内被拆出的独立展示组件（原属 V3，拆分后单位标注文案随之迁移）
+const AIMATCH_SRC = read("src/components/workspace/AiMatchDetailModal.tsx");
 
 describe("C07 Token 与算力点单位不得混用（§六）", () => {
   it("1. 路由分别持久化 Token 用量与算力点，且算力点取自扣点结果而非合同 estimatedTokens", () => {
@@ -37,10 +39,15 @@ describe("C07 Token 与算力点单位不得混用（§六）", () => {
   });
 
   it("2. Workspace 不得把 estimatedModelTokens 显示为「点」", () => {
-    assert.ok(!/estimatedModelTokens[^}\n]*\}\s*点/.test(WORKSPACE_SRC),
-      "estimatedModelTokens 是模型 Token 估算，严禁拼接为「点」");
-    assert.ok(/预估模型 Token/.test(WORKSPACE_SRC),
-      "预估模型 Token 必须明确标注为 Token");
+    assert.ok(
+      !/estimatedModelTokens[^}\n]*\}\s*点/.test(WORKSPACE_SRC) &&
+        !/estimatedModelTokens[^}\n]*\}\s*点/.test(AIMATCH_SRC),
+      "estimatedModelTokens 是模型 Token 估算，严禁拼接为「点」",
+    );
+    assert.ok(
+      /预估模型 Token/.test(WORKSPACE_SRC) || /预估模型 Token/.test(AIMATCH_SRC),
+      "预估模型 Token 必须明确标注为 Token",
+    );
   });
 
   it("3. ResultViewer 算力点变量不得沿用 tokenCost 命名，且必须给出估算兼容提示", () => {
