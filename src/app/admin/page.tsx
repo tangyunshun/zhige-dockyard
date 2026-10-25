@@ -33,6 +33,8 @@ import {
   Mail,
   ArrowRight,
   Check,
+  BookOpen,
+  CreditCard,
 } from "lucide-react";
 
 interface DashboardData {
@@ -41,11 +43,21 @@ interface DashboardData {
   totalWorkspaces: number; // 总工作空间数
   totalComponents: number; // 组件总数
   publishedComponents: number; // 已上架组件数
+  totalCategories?: number; // 分类类目总数
   activeWorkspaces: number; // 活跃工作空间数（最近 7 天）
   enterpriseWorkspaces: number; // 企业空间数
+  totalDocuments?: number; // 系统文档总数
   totalTenants: number; // 总租户数
   activeTenants: number; // 活跃租户数
   pendingReviews: number; // 待审核申请数
+
+  // 财务与订单聚合统计
+  financialSummary?: {
+    totalOrders: number;
+    todayOrders: number;
+    totalRevenueFen: number;
+    formattedRevenue: string;
+  };
 
   // 平台健康度
   systemHealth: number;
@@ -457,10 +469,10 @@ export default function AdminDashboard() {
   };
 
   const splitFullDateTime = (dateStr?: string | Date | null) => {
-    if (!dateStr) return { date: "未知", time: "" };
+    if (!dateStr) return { date: "未知", time: "", full: "未知" };
     try {
       const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return { date: "未知", time: "" };
+      if (isNaN(d.getTime())) return { date: "未知", time: "", full: "未知" };
       const pad = (n: number) => n.toString().padStart(2, "0");
       const year = d.getFullYear();
       const month = pad(d.getMonth() + 1);
@@ -468,12 +480,14 @@ export default function AdminDashboard() {
       const hours = pad(d.getHours());
       const minutes = pad(d.getMinutes());
       const seconds = pad(d.getSeconds());
+      const full = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
       return {
         date: `${year}-${month}-${day}`,
         time: `${hours}:${minutes}:${seconds}`,
+        full,
       };
     } catch (e) {
-      return { date: "未知", time: "" };
+      return { date: "未知", time: "", full: "未知" };
     }
   };
 
@@ -528,18 +542,18 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* 顶部标题与状态栏 */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0 pb-2 border-b border-slate-200/60">
+      {/* 1. 顶部标题与态势状态栏 */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0 pb-3 border-b border-slate-200/80">
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">
               管理仪表盘
             </h1>
             <span
-              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-colors shadow-2xs ${
                 systemHealthy
-                  ? "bg-emerald-50 text-emerald-600 border-emerald-200/60"
-                  : "bg-amber-50 text-amber-600 border-amber-200/60"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200/80"
+                  : "bg-amber-50 text-amber-700 border-amber-200/80"
               }`}
               title={`系统健康度 ${data.systemHealth}% · 核心服务 ${normalServiceCount}/${serviceTotal} 在线`}
             >
@@ -549,809 +563,748 @@ export default function AdminDashboard() {
                 }`}
               ></span>
               {systemHealthy
-                ? "系统正常运行"
-                : `系统存在异常（服务 ${normalServiceCount}/${serviceTotal} · 健康度 ${data.systemHealth}%）`}
+                ? "系统全链路正常运行"
+                : `系统存在告警项（微服务 ${normalServiceCount}/${serviceTotal} · 健康度 ${data.systemHealth}%）`}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            查看平台的用户、工作空间与系统运行情况
+            实时总览全平台用户生态、工作空间资产、组件底座与服务健康态势
           </p>
         </div>
 
-        {/* 顶部右侧快捷工具 */}
+        {/* 顶部右侧快捷工具组 */}
         <div className="flex items-center gap-3 self-start sm:self-auto">
           {lastSyncTime && (
-            <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-400 font-mono">
-              <Clock className="w-3.5 h-3.5" />
-              <span>同步于 {lastSyncTime}</span>
+            <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-400 font-mono bg-white px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span>数据同步于 {lastSyncTime}</span>
             </div>
           )}
           <button
             onClick={() => loadDashboardData(true)}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-xl bg-white border border-slate-200 hover:border-[#3182ce]/50 text-slate-700 hover:text-[#3182ce] text-xs font-bold shadow-xs hover:shadow-md transition-all active:scale-95 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-4 h-9 rounded-xl bg-white border border-slate-200 hover:border-[#3182ce]/50 text-slate-700 hover:text-[#3182ce] text-xs font-bold shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50"
             title="重新拉取平台全局最新统计数据"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#3182ce]" : ""}`} />
-            <span>{refreshing ? "刷新中..." : "实时刷新"}</span>
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${
+                refreshing ? "animate-spin text-[#3182ce]" : "text-slate-500"
+              }`}
+            />
+            <span>{refreshing ? "刷新数据中..." : "实时刷新"}</span>
           </button>
         </div>
       </div>
 
-      {/* 待处理事项提醒 */}
+      {/* 2. 紧急安全待办提醒横幅（仅在存在待处理申诉时高亮展开） */}
       {data.pendingReviews > 0 && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3">
+        <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-300">
+          <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20 animate-pulse">
               <AlertCircle className="w-5 h-5" />
             </div>
             <div>
               <div className="text-sm font-black text-slate-800 flex items-center gap-2">
-                <span>安全待办提醒</span>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-amber-500 text-white">
-                  {data.pendingReviews} 项申诉待处理
+                <span>安全待办风险提醒</span>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-amber-500 text-white shadow-2xs">
+                  {data.pendingReviews} 项申诉待复核
                 </span>
               </div>
               <p className="text-xs text-slate-600 font-medium mt-0.5">
-                有用户提交了封禁申诉且尚未处理，请前往「风控与审核」页面处理。
+                有用户提交了账号受限或封禁申诉待人工仲裁，请及时前往处理以保障合规性。
               </p>
             </div>
           </div>
           <button
             onClick={() => router.push("/admin/account-appeals")}
-            className="inline-flex items-center justify-center gap-1.5 px-4 h-9 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-4 h-9 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer shrink-0"
           >
-            <span>前往风控核验</span>
+            <span>立即前往风控核验</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* 核心统计指标卡片 - 支持全量下钻点击 */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-black text-slate-700 flex items-center gap-2">
-            <div className="w-1 h-4 bg-[#3182ce] rounded-full"></div>
-            核心业务指标
-          </h2>
-          <span className="text-[11px] text-slate-400 font-medium">点击卡片可直达对应管理中心</span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-          {statCards.map((card, index) => {
-            const Icon = card.icon;
-            return (
-              <div
-                key={index}
-                onClick={() => card.path && router.push(card.path)}
-                className={`group relative bg-white/85 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
-              >
-                {/* 装饰渐变光晕 */}
-                <div
-                  className={`absolute -right-3 -top-3 w-16 h-16 rounded-full ${card.bgColor} opacity-20 blur-xl group-hover:scale-125 transition-transform duration-500`}
-                ></div>
-
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-2">
-                    <div
-                      className={`w-9.5 h-9.5 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform duration-300`}
-                    >
-                      <Icon className={`w-4.5 h-4.5 ${card.color}`} />
-                    </div>
-                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100/80 text-slate-600 group-hover:bg-[#3182ce]/10 group-hover:text-[#3182ce] transition-colors">
-                      {card.badgeText}
-                      <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
-                  </div>
-                  <div className="text-xl lg:text-2xl font-black font-mono text-slate-800 mb-0.5 tracking-tight truncate">
-                    {card.value.toLocaleString()}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-slate-600 truncate">
-                      {card.label}
-                    </div>
-                    <div className="text-[10.5px] text-slate-400 font-medium truncate">
-                      {card.subLabel}
-                    </div>
-                  </div>
-                </div>
+      {/* 3. 平台核心资产看板带 (Top KPI Bento Band - 4联卡片，规范通俗表述，杜绝 AI 黑话与折行) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+        {/* 卡片 1: 平台用户总览 */}
+        <div
+          onClick={() => router.push("/admin/users")}
+          className="group relative bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-[#3182ce]/50 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
+          title={`平台总注册用户: ${data.totalUsers.toLocaleString()} 人 · 封禁账号: ${data.securitySummary?.bannedUsers || 0} 人`}
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-slate-500 whitespace-nowrap">总注册用户</span>
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Users className="w-4.5 h-4.5" />
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 模型统计 - 数据库真实聚合 */}
-      <div>
-        <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-sm font-black text-slate-700 flex items-center gap-2">
-            <div className="w-1 h-4 bg-[#8b5cf6] rounded-full"></div>
-            模型运行情况
-          </h2>
-          <span className="text-[11px] text-slate-400 font-medium">
-          覆盖供应商通道、部署模型与计费配置
-        </span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-          {modelCards.map((card, index) => {
-            const Icon = card.icon;
-            return (
-              <div
-                key={index}
-                onClick={() => card.path && router.push(card.path)}
-                className={`group relative bg-white/85 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
-              >
-                <div
-                  className={`absolute -right-3 -top-3 w-16 h-16 rounded-full ${card.bgColor} opacity-20 blur-xl group-hover:scale-125 transition-transform duration-500`}
-                ></div>
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-2">
-                    <div
-                      className={`w-9.5 h-9.5 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform duration-300`}
-                    >
-                      <Icon className={`w-4.5 h-4.5 ${card.color}`} />
-                    </div>
-                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100/80 text-slate-600 group-hover:bg-[#3182ce]/10 group-hover:text-[#3182ce] transition-colors">
-                      {card.badgeText}
-                      <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
-                  </div>
-                  <div className="text-xl lg:text-2xl font-black font-mono text-slate-800 mb-0.5 tracking-tight truncate">
-                    {/* value 可能是数字（如模型总数）或预格式化字符串（如 "5/6"），直接原样渲染，禁止 Number() 强转 */}
-                    {card.value}
-                  </div>
-                  <div className="text-xs font-bold text-slate-600 truncate">{card.label}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 系统运行情况 */}
-      <div>
-        <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-sm font-black text-slate-700 flex items-center gap-2">
-            <div className="w-1 h-4 bg-[#10b981] rounded-full"></div>
-            系统运行情况
-          </h2>
-          <span className="text-[11px] text-slate-400 font-medium">服务状态与异常提示</span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-          {systemCards.map((card, index) => {
-            const Icon = card.icon;
-            return (
-              <div
-                key={index}
-                onClick={() => {
-                  if (card.path) router.push(card.path);
-                  if (card.onClick) card.onClick();
-                }}
-                className={`group relative bg-white/85 backdrop-blur-xl rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden cursor-pointer ${card.borderHover}`}
-              >
-                {/* 装饰背景 */}
-                <div
-                  className={`absolute -right-3 -top-3 w-16 h-16 rounded-full ${card.bgColor} opacity-20 blur-xl group-hover:scale-125 transition-transform duration-500`}
-                ></div>
-
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-2">
-                    <div
-                      className={`w-9.5 h-9.5 shrink-0 rounded-xl ${card.bgColor} flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform duration-300`}
-                    >
-                      <Icon className={`w-4.5 h-4.5 ${card.color}`} />
-                    </div>
-                    <span
-                      className={`inline-flex shrink-0 items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-bold ${
-                        card.isAlert
-                          ? "bg-amber-100 text-amber-700 animate-pulse"
-                          : `${card.color} bg-slate-100/80`
-                      }`}
-                    >
-                      {card.status}
-                      <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
-                  </div>
-                  <div className="text-xl lg:text-2xl font-black font-mono text-slate-800 mb-0.5 tracking-tight truncate">
-                    {card.value}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-slate-600 truncate">
-                      {card.label}
-                    </div>
-                    <div className="text-[10.5px] text-slate-400 font-medium truncate">
-                      {card.subLabel}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 快捷操作 */}
-      <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-        {/* 装饰背景 */}
-        <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#8b5cf6]/10 opacity-50 blur-3xl"></div>
-
-        <div className="relative">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#8b5cf6] rounded-full"></div>
-              常用管理入口
-            </h2>
-            <span className="text-xs text-slate-400 font-medium hidden sm:inline">进入空间、组件、权限等管理页面</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 用户综合管理 */}
-            <button
-              onClick={() => router.push("/admin/users")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-[#3182ce]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <Users className="w-5 h-5 text-[#3182ce]" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
-                  用户管理
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  查看用户资料与封禁状态
-                </div>
-              </div>
-            </button>
-
-            {/* 工作空间审查 */}
-            <button
-              onClick={() => router.push("/admin/workspaces")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#10b981]/5 hover:to-[#059669]/5 border border-slate-200 hover:border-[#10b981]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-[#10b981]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <FolderKanban className="w-5 h-5 text-[#10b981]" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-[#10b981] transition-colors truncate">
-                  空间管理
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  审核工作空间与成员配额
-                </div>
-              </div>
-            </button>
-
-            {/* 空间套餐管理 */}
-            <button
-              onClick={() => router.push("/admin/workspace/plans")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#f59e0b]/5 hover:to-[#d97706]/5 border border-slate-200 hover:border-[#f59e0b]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-[#f59e0b]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <Boxes className="w-5 h-5 text-[#f59e0b]" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-[#f59e0b] transition-colors truncate">
-                  空间套餐
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  配置企业空间套餐价格与配额
-                </div>
-              </div>
-            </button>
-
-            {/* 舟坊组件列表 */}
-            <button
-              onClick={() => router.push("/admin/components")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#3182ce]/5 hover:to-[#2b6cb0]/5 border border-slate-200 hover:border-[#3182ce]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-[#3182ce]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <Boxes className="w-5 h-5 text-[#3182ce]" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
-                  组件列表
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  管理组件上架与分类目录
-                </div>
-              </div>
-            </button>
-
-            {/* 岗位管理 */}
-            <button
-              onClick={() => router.push("/admin/posts")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#10b981]/5 hover:to-[#059669]/5 border border-slate-200 hover:border-[#10b981]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-[#10b981]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <Briefcase className="w-5 h-5 text-[#10b981]" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-[#10b981] transition-colors truncate">
-                  岗位管理
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  配置空间岗位与成员职责
-                </div>
-              </div>
-            </button>
-
-            {/* 权限配置 */}
-            <button
-              onClick={() => router.push("/admin/permissions")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-[#8b5cf6]/5 hover:to-[#805ad5]/5 border border-slate-200 hover:border-[#8b5cf6]/40 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <Key className="w-5 h-5 text-[#8b5cf6]" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-[#8b5cf6] transition-colors truncate">
-                  权限配置
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  分配管理员可使用的功能
-                </div>
-              </div>
-            </button>
-
-            {/* 系统服务监控 */}
-            <button
-              onClick={() => router.push("/admin/system-status")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-emerald-50 hover:to-teal-50 border border-slate-200 hover:border-emerald-400 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <Server className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-emerald-600 transition-colors truncate">
-                  系统状态
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  核心服务与数据库运行监控
-                </div>
-              </div>
-            </button>
-
-            {/* 审计日志与追溯 */}
-            <button
-              onClick={() => router.push("/admin/logs")}
-              className="group flex items-center gap-3.5 p-4 rounded-xl bg-gradient-to-br from-slate-50 to-white hover:from-slate-100 hover:to-slate-200 border border-slate-200 hover:border-slate-400 transition-all duration-300 hover:-translate-y-1 hover:shadow-md text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-slate-200/60 flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shrink-0">
-                <FileText className="w-5 h-5 text-slate-700" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-800 group-hover:text-slate-900 transition-colors truncate">
-                  安全审计日志
-                </div>
-                <div className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
-                  登录记录与敏感变更追溯
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 最近活动 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 最近用户 */}
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          {/* 装饰背景 */}
-          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#3182ce]/10 to-[#2b6cb0]/10 opacity-50 blur-3xl"></div>
-
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <div className="w-1 h-6 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
-                <UserPlus className="w-5 h-5 text-[#3182ce]" />
-                最近注册用户
-              </h2>
-              <button
-                onClick={() => router.push("/admin/users")}
-                className="text-sm text-[#3182ce] hover:text-[#2b6cb0] font-bold hover:underline transition-all"
-                title="前往用户管理页面查看全部注册用户"
-              >
-                查看更多 →
-              </button>
             </div>
-            <div className="space-y-2">
-              {!data.recentUsers || data.recentUsers.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                    <Users className="w-8 h-8 text-slate-400" />
+            <div className="text-2xl lg:text-3xl font-black font-mono text-slate-800 tracking-tight whitespace-nowrap">
+              {data.totalUsers.toLocaleString()}
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 whitespace-nowrap overflow-hidden">
+            <span className="truncate">
+              正常用户 <strong className="font-mono text-slate-800">{Math.max(0, data.totalUsers - (data.securitySummary?.bannedUsers || 0))}</strong> 人
+            </span>
+            <span className="text-slate-300 mx-1">|</span>
+            <span className="truncate text-slate-700 font-medium">
+              封禁账号 <strong className="font-mono text-red-600">{data.securitySummary?.bannedUsers || 0}</strong> 人
+            </span>
+          </div>
+        </div>
+
+        {/* 卡片 2: 工作空间总览 (严禁“所”等黑话，统一为“个”) */}
+        <div
+          onClick={() => router.push("/admin/workspaces")}
+          className="group relative bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-emerald-300 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
+          title={`工作空间总数: ${data.totalWorkspaces.toLocaleString()} 个 · 企业空间: ${data.enterpriseWorkspaces} 个 · 近期活跃: ${data.activeWorkspaces} 个`}
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-slate-500 whitespace-nowrap">工作空间总数</span>
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <FolderKanban className="w-4.5 h-4.5" />
+              </div>
+            </div>
+            <div className="text-2xl lg:text-3xl font-black font-mono text-slate-800 tracking-tight whitespace-nowrap">
+              {data.totalWorkspaces.toLocaleString()}
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 whitespace-nowrap overflow-hidden">
+            <span className="truncate" title={`企业空间: ${data.enterpriseWorkspaces} 个`}>
+              企业空间 <strong className="text-slate-800 font-mono">{data.enterpriseWorkspaces}</strong> 个
+            </span>
+            <span className="text-slate-300 mx-1">|</span>
+            <span className="truncate text-emerald-700 font-medium" title={`近期活跃空间: ${data.activeWorkspaces} 个`}>
+              近期活跃 <strong className="font-mono">{data.activeWorkspaces}</strong> 个
+            </span>
+          </div>
+        </div>
+
+        {/* 卡片 3: 能力组件总览 */}
+        <div
+          onClick={() => router.push("/admin/components")}
+          className="group relative bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-amber-300 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
+          title={`能力组件总数: ${data.totalComponents.toLocaleString()} 款 · 已上架: ${data.publishedComponents} 款 · 待上架: ${Math.max(0, data.totalComponents - data.publishedComponents)} 款`}
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-slate-500 whitespace-nowrap">组件总数</span>
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Package className="w-4.5 h-4.5" />
+              </div>
+            </div>
+            <div className="text-2xl lg:text-3xl font-black font-mono text-slate-800 tracking-tight whitespace-nowrap">
+              {data.totalComponents.toLocaleString()}
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 whitespace-nowrap overflow-hidden">
+            <span className="truncate text-amber-700 font-medium">
+              已上架 <strong className="font-mono">{data.publishedComponents}</strong> 款
+            </span>
+            <span className="text-slate-300 mx-1">|</span>
+            <span className="truncate">
+              待上架 <strong className="text-slate-800 font-mono">{Math.max(0, data.totalComponents - data.publishedComponents)}</strong> 款
+            </span>
+          </div>
+        </div>
+
+        {/* 卡片 4: 系统服务状态 (严禁“探针在线”等生造黑话) */}
+        <div
+          onClick={() => setServicesModalOpen(true)}
+          className="group relative bg-white rounded-2xl p-4.5 border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-[#3182ce]/50 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
+          title={`系统服务健康评分: ${data.systemHealth}% · 核心服务在线: ${normalServiceCount}/${serviceTotal} · 近24小时访问: ${data.systemLogs.toLocaleString()} 次`}
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-slate-500 whitespace-nowrap">系统服务状态</span>
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Activity className="w-4.5 h-4.5" />
+              </div>
+            </div>
+            <div className="text-2xl lg:text-3xl font-black font-mono text-slate-800 tracking-tight whitespace-nowrap flex items-baseline gap-1.5">
+              <span>{data.systemHealth}%</span>
+              <span className="text-[11px] font-sans font-normal text-slate-400">运行健康</span>
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 whitespace-nowrap overflow-hidden">
+            <span className={`truncate font-bold ${allServicesNormal ? "text-emerald-600" : "text-amber-600"}`}>
+              核心服务 {normalServiceCount}/{serviceTotal} 正常
+            </span>
+            <span className="text-slate-300 mx-1">|</span>
+            <span className="truncate font-mono text-slate-600">
+              24h访问 {data.systemLogs.toLocaleString()}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. 主体双列复合 Bento 驾驶舱 (8:4 黄金分界) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* ================= 左侧 8 列：业务核心与运营流动中枢 ================= */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* A. 常用业务管理中枢 (采用通透舒适的 2 列大网格，杜绝 3 列拥挤重叠与文字溢出) */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center justify-between mb-4 pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-4.5 bg-[#3182ce] rounded-full"></div>
+                <h2 className="text-base font-black text-slate-800 tracking-tight whitespace-nowrap">
+                  常用业务管理中枢
+                </h2>
+              </div>
+              <span className="text-xs text-slate-400 font-medium hidden sm:inline whitespace-nowrap">
+                直达后台核心功能模块与管理配置
+              </span>
+            </div>
+
+            {/* 2 列宽敞大网格布局：每张卡片拥有 380px 宽，呼吸感强，完全消除重叠错位 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 域 1: 工作空间与多租户管控 */}
+              <div 
+                className="p-4 rounded-xl bg-slate-50/70 hover:bg-emerald-50/30 border border-slate-200/80 hover:border-emerald-200 transition-all flex flex-col justify-between gap-3 group"
+                title={`空间与多租户管控\n空间总数: ${data.totalWorkspaces} 个\n企业空间: ${data.enterpriseWorkspaces} 个\n多租户: ${data.totalTenants} 家`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                        <Building2 className="w-4.5 h-4.5" />
+                      </div>
+                      <span 
+                        className="text-sm font-bold text-slate-800 truncate whitespace-nowrap"
+                        title="空间与多租户管控"
+                      >
+                        空间与多租户管控
+                      </span>
+                    </div>
+                    <span 
+                      className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200/60 shrink-0"
+                      title={`认证企业工作空间: ${data.enterpriseWorkspaces} 个`}
+                    >
+                      企业空间 {data.enterpriseWorkspaces} 个
+                    </span>
                   </div>
-                  <p className="text-slate-500 font-medium text-sm">
-                    暂无用户数据
-                  </p>
-                </div>
-              ) : (
-                data.recentUsers.map((user: any) => (
-                  <div
-                    key={user.id}
-                    className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/60 transition-all duration-300 hover:-translate-x-1"
+                  <p 
+                    className="text-xs text-slate-500 font-medium truncate mt-1"
+                    title="企业与个人工作空间治理、多租户隔离与空间升级审批"
                   >
-                    {user.avatar ? (
-                      <img
-                        src={user.avatar}
-                        alt={user.name || "用户头像"}
-                        className="w-11 h-11 rounded-full object-cover shadow-md group-hover:scale-110 transition-transform duration-300 border border-slate-100"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300">
-                        {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-slate-800 truncate group-hover:text-[#3182ce] transition-colors">
-                        {user.name || user.email || "匿名用户"}
-                      </div>
-                      <div className="text-xs text-slate-400 font-medium truncate">
-                        {user.email || "未设置邮箱"}
-                      </div>
-                    </div>
-                    <div className="text-right font-mono text-xs leading-tight shrink-0 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
-                      <div className="font-bold text-slate-700">{splitFullDateTime(user.createdAt).date}</div>
-                      <div className="text-[10px] text-slate-400 font-medium mt-0.5">{splitFullDateTime(user.createdAt).time}</div>
-                    </div>
+                    企业与个人工作空间治理、多租户隔离与空间升级审批
+                  </p>
+                  <div className="mt-2.5 flex items-center gap-3 text-xs text-slate-600 font-mono">
+                    <span title={`平台工作空间总数: ${data.totalWorkspaces} 个`}>
+                      空间总数: <strong className="text-slate-800 font-bold text-sm">{data.totalWorkspaces}</strong> 个
+                    </span>
+                    <span className="text-slate-300">|</span>
+                    <span title={`企业租户空间: ${data.totalTenants} 家`}>
+                      企业租户: <strong className="text-slate-800 font-bold text-sm">{data.totalTenants}</strong> 家
+                    </span>
                   </div>
-                ))
-              )}
+                </div>
+                <div className="flex items-center gap-2 pt-2.5 border-t border-slate-200/60 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/workspaces")}
+                    title="前往工作空间列表与空间生命周期管理"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    空间列表
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/tenants")}
+                    title="前往企业多租户配置与租户隔离中枢"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    多租户管理
+                  </button>
+                </div>
+              </div>
+
+              {/* 域 2: 平台用户与组织权限 */}
+              <div 
+                className="p-4 rounded-xl bg-slate-50/70 hover:bg-blue-50/30 border border-slate-200/80 hover:border-blue-200 transition-all flex flex-col justify-between gap-3 group"
+                title={`用户管理与权限矩阵\n在册用户: ${data.totalUsers} 人\n正常账号: ${Math.max(0, data.totalUsers - (data.securitySummary?.bannedUsers || 0))} 人\n封禁账号: ${data.securitySummary?.bannedUsers || 0} 人`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0">
+                        <Users className="w-4.5 h-4.5" />
+                      </div>
+                      <span 
+                        className="text-sm font-bold text-slate-800 truncate whitespace-nowrap"
+                        title="用户管理与权限矩阵"
+                      >
+                        用户管理与权限矩阵
+                      </span>
+                    </div>
+                    <span 
+                      className="px-2 py-0.5 rounded-md bg-blue-50 text-[#3182ce] text-xs font-bold border border-blue-200/60 shrink-0"
+                      title={`平台注册总用户数: ${data.totalUsers} 人`}
+                    >
+                      在册用户 {data.totalUsers} 人
+                    </span>
+                  </div>
+                  <p 
+                    className="text-xs text-slate-500 font-medium truncate mt-1"
+                    title="全平台用户账号治理、生命周期管控与权限岗位配置"
+                  >
+                    全平台用户账号治理、生命周期管控与权限岗位配置
+                  </p>
+                  <div className="mt-2.5 flex items-center gap-3 text-xs text-slate-600 font-mono">
+                    <span title={`正常状态用户: ${Math.max(0, data.totalUsers - (data.securitySummary?.bannedUsers || 0))} 人`}>
+                      正常账号: <strong className="text-slate-800 font-bold text-sm">{Math.max(0, data.totalUsers - (data.securitySummary?.bannedUsers || 0))}</strong> 人
+                    </span>
+                    <span className="text-slate-300">|</span>
+                    <span title={`风控封禁账号: ${data.securitySummary?.bannedUsers || 0} 人`}>
+                      封禁隔离: <strong className="text-red-600 font-bold text-sm">{data.securitySummary?.bannedUsers || 0}</strong> 人
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2.5 border-t border-slate-200/60 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/users")}
+                    title="前往用户列表管理账号状态与角色变更"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    用户列表
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/permissions")}
+                    title="前往岗位标准库与系统权限配置中心"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    权限配置
+                  </button>
+                </div>
+              </div>
+
+              {/* 域 3: 能力组件与应用生态 (彻底去除黑话，大厂规范通俗表达) */}
+              <div 
+                className="p-4 rounded-xl bg-slate-50/70 hover:bg-amber-50/30 border border-slate-200/80 hover:border-amber-200 transition-all flex flex-col justify-between gap-3 group"
+                title={`能力组件与应用生态\n组件总数: ${data.totalComponents} 款\n已上架: ${data.publishedComponents} 款\n分类类目: ${data.componentCategories?.length || 0} 类`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                        <Package className="w-4.5 h-4.5" />
+                      </div>
+                      <span 
+                        className="text-sm font-bold text-slate-800 truncate whitespace-nowrap"
+                        title="能力组件与应用生态"
+                      >
+                        能力组件与应用生态
+                      </span>
+                    </div>
+                    <span 
+                      className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200/60 shrink-0"
+                      title={`已面向租户上架的组件: ${data.publishedComponents} 款`}
+                    >
+                      已上架 {data.publishedComponents} 款
+                    </span>
+                  </div>
+                  <p 
+                    className="text-xs text-slate-500 font-medium truncate mt-1"
+                    title="平台组件库维护、类目划分与发布上架管理"
+                  >
+                    平台组件库维护、类目划分与发布上架管理
+                  </p>
+                  <div className="mt-2.5 flex items-center gap-3 text-xs text-slate-600 font-mono">
+                    <span title={`平台组件目录总数: ${data.totalComponents} 款`}>
+                      组件总数: <strong className="text-slate-800 font-bold text-sm">{data.totalComponents}</strong> 款
+                    </span>
+                    <span className="text-slate-300">|</span>
+                    <span title={`组件业务分类类目总数: ${data.totalCategories || data.componentCategories?.length || 0} 类`}>
+                      分类类目: <strong className="text-slate-800 font-bold text-sm">{data.totalCategories || data.componentCategories?.length || 0}</strong> 类
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2.5 border-t border-slate-200/60 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/components")}
+                    title="前往组件目录管理与上架状态维护"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    组件列表
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/components/categories")}
+                    title="前往能力组件分类类目管理"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    分类管理
+                  </button>
+                </div>
+              </div>
+
+              {/* 域 4: 平台财务与订单交易中心 (对接真实财务与订单数据) */}
+              <div 
+                className="p-4 rounded-xl bg-slate-50/70 hover:bg-emerald-50/30 border border-slate-200/80 hover:border-emerald-200 transition-all flex flex-col justify-between gap-3 group"
+                title={`财务交易与订单中心\n累计订单: ${data.financialSummary?.totalOrders || 0} 笔\n成功流水: ${data.financialSummary?.formattedRevenue || '¥0.00'}\n今日新增: ${data.financialSummary?.todayOrders || 0} 笔`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                        <CreditCard className="w-4.5 h-4.5" />
+                      </div>
+                      <span 
+                        className="text-sm font-bold text-slate-800 truncate whitespace-nowrap"
+                        title="财务交易与订单中心"
+                      >
+                        财务交易与订单中心
+                      </span>
+                    </div>
+                    <span 
+                      className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200/60 shrink-0"
+                      title="真实会员订单与充值流水实时对账"
+                    >
+                      实时对账
+                    </span>
+                  </div>
+                  <p 
+                    className="text-xs text-slate-500 font-medium truncate mt-1"
+                    title="全平台充值缴费、套餐订单与财务流水结算"
+                  >
+                    全平台充值缴费、套餐订单与财务流水结算
+                  </p>
+                  <div className="mt-2.5 flex items-center gap-3 text-xs text-slate-600 font-mono">
+                    <span title={`全平台累计订单总数: ${data.financialSummary?.totalOrders || 0} 笔`}>
+                      累计订单: <strong className="text-slate-800 font-bold text-sm">{data.financialSummary?.totalOrders || 0}</strong> 笔
+                    </span>
+                    <span className="text-slate-300">|</span>
+                    <span title={`成功充值与交易总流水: ${data.financialSummary?.formattedRevenue || '¥0.00'}`}>
+                      成功流水: <strong className="text-emerald-700 font-bold text-sm">{data.financialSummary?.formattedRevenue || '¥0.00'}</strong>
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2.5 border-t border-slate-200/60 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/orders")}
+                    title="前往全平台会员与套餐订单列表"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    订单列表
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/finance/recharge-orders")}
+                    title="前往平台财务充值订单对账管理"
+                    className="flex-1 py-1.5 text-center rounded-lg bg-white hover:bg-[#3182ce] hover:text-white text-slate-700 border border-slate-200/80 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    充值明细
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* 最近工作空间 */}
-        <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-sm overflow-hidden">
-          {/* 装饰背景 */}
-          <div className="absolute -right-4 -top-4 w-32 h-32 rounded-full bg-gradient-to-br from-[#10b981]/10 to-[#059669]/10 opacity-50 blur-3xl"></div>
-
-          <div className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <div className="w-1 h-6 bg-gradient-to-b from-[#10b981] to-[#059669] rounded-full"></div>
-                <Building2 className="w-5 h-5 text-[#10b981]" />
-                最近工作空间
-              </h2>
-              <button
-                onClick={() => router.push("/admin/workspaces")}
-                className="text-sm text-[#10b981] hover:text-[#059669] font-bold hover:underline transition-all"
-                title="前往工作空间管理页面查看全部空间"
-              >
-                查看更多 →
-              </button>
-            </div>
-            <div className="space-y-2">
-              {!data.recentWorkspaces || data.recentWorkspaces.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                    <FolderKanban className="w-8 h-8 text-slate-400" />
-                  </div>
-                  <p className="text-slate-500 font-medium text-sm">
-                    暂无工作空间数据
-                  </p>
-                </div>
-              ) : (
-                data.recentWorkspaces.map((workspace) => (
-                  <div
-                    key={workspace.id}
-                    className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/60 transition-all duration-300 hover:-translate-x-1"
+          {/* B. 实时动态展示（最近工作空间 + 最近注册用户 - 彻底删除“(最多5条)”文字，纯净展示） */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 最近活跃工作空间 */}
+            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-emerald-600" />
+                    <span className="whitespace-nowrap">最近活跃工作空间</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/workspaces")}
+                    className="text-xs font-bold text-[#3182ce] hover:underline cursor-pointer whitespace-nowrap"
                   >
-                    {(() => {
-                      const imgUrl = workspace.avatar || workspace.logo;
-                      if (imgUrl) {
-                        return (
-                          <img
-                            src={imgUrl}
-                            alt={workspace.name}
-                            className="w-11 h-11 rounded-xl object-cover border border-slate-200/80 shadow-xs group-hover:scale-110 transition-transform duration-300 shrink-0"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = "none";
-                            }}
-                          />
-                        );
-                      }
+                    查看全部 →
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {!data.recentWorkspaces || data.recentWorkspaces.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-slate-400 font-medium">
+                      暂无工作空间数据
+                    </div>
+                  ) : (
+                    data.recentWorkspaces.slice(0, 5).map((workspace) => {
+                      const isEnterprise = workspace.type === "ENTERPRISE";
+                      const dt = splitFullDateTime(workspace.createdAt);
                       return (
-                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-110 transition-transform duration-300 shrink-0">
-                          {workspace.name ? workspace.name.charAt(0) : <FolderKanban className="w-5 h-5 text-white" />}
+                        <div
+                          key={workspace.id}
+                          onClick={() => router.push("/admin/workspaces")}
+                          title={`空间名称: ${workspace.name}\n类型: ${isEnterprise ? "企业工作空间" : "个人工作空间"}\n成员数: ${workspace.members?.length || 0} 人\n创建时间: ${dt.full || dt.date + ' ' + dt.time}`}
+                          className="group flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer border border-transparent hover:border-slate-200/60 overflow-hidden"
+                        >
+                          <div className="relative w-9 h-9 shrink-0">
+                            {workspace.logo ? (
+                              <img
+                                src={workspace.logo}
+                                alt={workspace.name}
+                                className="w-9 h-9 rounded-xl object-cover border border-slate-200"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = "none";
+                                }}
+                              />
+                            ) : null}
+                            <div
+                              className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shadow-2xs ${
+                                workspace.logo ? "hidden" : ""
+                              } ${
+                                isEnterprise
+                                  ? "bg-gradient-to-br from-[#2b6cb0] to-[#3182ce]"
+                                  : "bg-gradient-to-br from-emerald-500 to-teal-600"
+                              }`}
+                            >
+                              {isEnterprise ? (
+                                <Building2 className="w-4 h-4 text-white" />
+                              ) : (
+                                <FolderKanban className="w-4 h-4 text-white" />
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div 
+                              className="text-xs font-bold text-slate-800 truncate whitespace-nowrap group-hover:text-[#3182ce] transition-colors"
+                              title={workspace.name}
+                            >
+                              {workspace.name}
+                            </div>
+                            <div 
+                              className="text-[11px] text-slate-400 font-medium mt-0.5 truncate whitespace-nowrap"
+                              title={`${isEnterprise ? "企业空间" : "个人空间"} · ${workspace.members?.length || 0} 名成员`}
+                            >
+                              <span
+                                className={`font-bold mr-1 ${
+                                  isEnterprise ? "text-[#3182ce]" : "text-slate-500"
+                                }`}
+                              >
+                                {isEnterprise ? "企业空间" : "个人空间"}
+                              </span>
+                              · {workspace.members?.length || 0} 成员
+                            </div>
+                          </div>
+                          <div 
+                            className="text-right font-mono text-[10px] text-slate-400 shrink-0 whitespace-nowrap ml-2"
+                            title={`创建于: ${dt.full || dt.date + ' ' + dt.time}`}
+                          >
+                            <div>{dt.date}</div>
+                            <div className="mt-0.5">{dt.time}</div>
+                          </div>
                         </div>
                       );
-                    })()}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-slate-800 truncate group-hover:text-[#10b981] transition-colors">
-                        {workspace.name}
-                      </div>
-                      <div className="text-xs text-slate-400 font-medium">
-                        {workspace.type === "PERSONAL"
-                          ? "个人空间"
-                          : "企业空间"}{" "}
-                        · {workspace.members?.length || 0} 名成员
-                      </div>
-                    </div>
-                    <div className="text-right font-mono text-xs leading-tight shrink-0 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
-                      <div className="font-bold text-slate-700">{splitFullDateTime(workspace.createdAt).date}</div>
-                      <div className="text-[10px] text-slate-400 font-medium mt-0.5">{splitFullDateTime(workspace.createdAt).time}</div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 安全与操作审计 */}
-      <div className="relative bg-white/85 backdrop-blur-xl rounded-2xl p-6 border border-slate-200/80 shadow-sm overflow-hidden">
-        {/* 装饰渐变光晕 */}
-        <div className="absolute -right-6 -top-6 w-44 h-44 rounded-full bg-gradient-to-br from-[#3182ce]/10 via-[#805ad5]/10 to-amber-500/10 opacity-60 blur-3xl pointer-events-none"></div>
-
-        <div className="relative">
-          {/* 顶栏：标题、状态摘要与直达按钮 */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2b6cb0] to-[#3182ce] text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-lg font-black text-slate-800 tracking-tight">
-                    安全与操作审计
-                  </h2>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200/80 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    实时审计记录中
-                  </span>
+                    })
+                  )}
                 </div>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  记录管理员的敏感操作，便于事后追溯
-                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-              <button
-                type="button"
-                onClick={() => router.push("/admin/account-appeals")}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                title="前往风控与审核页处理账号申诉"
-              >
-                <span>风控审核</span>
-                {data.securitySummary && data.securitySummary.pendingAppeals > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-mono font-bold animate-pulse">
-                    {data.securitySummary.pendingAppeals}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/admin/logs")}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-blue-500/20"
-                title="前往安全审计中心查看全部操作与登录日志"
-              >
-                <span>查看全部审计日志</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* 主内容双列联动布局：左侧敏感操作实时流水（8列），右侧风控情况看板（4列） */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
-            {/* 左侧：最新敏感操作审计流水 */}
-            <div className="lg:col-span-8 space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-xs font-bold text-slate-500 tracking-wide flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5 text-[#3182ce]" />
-                  最新敏感操作事件流水 (最近 6 项)
-                </span>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  来源 IP · 操作人 · 动作归属
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                {!data.recentAuditLogs || data.recentAuditLogs.length === 0 ? (
-                  <div className="text-center py-12 bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
-                    <Shield className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs text-slate-500 font-medium">
-                      暂无敏感审计事件触发
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      所有管理员管理操作均会自动在此记录归档
-                    </p>
-                  </div>
-                ) : (
-                  data.recentAuditLogs.map((log) => {
-                    const actBadge = getAuditActionBadge(log.action);
-                    const dt = splitFullDateTime(log.createdAt);
-
-                    return (
-                      <div
-                        key={log.id}
-                        onClick={() => router.push("/admin/logs")}
-                        className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-slate-50/70 hover:bg-blue-50/50 border border-slate-200/70 hover:border-blue-200/90 transition-all cursor-pointer shadow-2xs"
-                        title="点击前往安全审计日志检索此事件上下文"
-                      >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          {/* 操作人头像 */}
-                          {log.user?.avatar ? (
+            {/* 最近注册用户 */}
+            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-[#3182ce]" />
+                    <span className="whitespace-nowrap">最近注册用户</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/admin/users")}
+                    className="text-xs font-bold text-[#3182ce] hover:underline cursor-pointer whitespace-nowrap"
+                  >
+                    查看全部 →
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {!data.recentUsers || data.recentUsers.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-slate-400 font-medium">
+                      暂无用户数据
+                    </div>
+                  ) : (
+                    data.recentUsers.slice(0, 5).map((user: any) => {
+                      const dt = splitFullDateTime(user.createdAt);
+                      return (
+                        <div
+                          key={user.id}
+                          onClick={() => router.push("/admin/users")}
+                          title={`用户昵称: ${user.name || "未设置"}\n注册邮箱: ${user.email || "未绑定"}\n会员等级: ${getMembershipLevelLabel(user.membershipLevel)}\n注册时间: ${dt.full || dt.date + ' ' + dt.time}`}
+                          className="group flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer border border-transparent hover:border-slate-200/60 overflow-hidden"
+                        >
+                          {user.avatar ? (
                             <img
-                              src={log.user.avatar}
-                              alt={log.user.name || "操作人"}
-                              className="w-9 h-9 rounded-lg object-cover shadow-xs border border-slate-200 shrink-0"
+                              src={user.avatar}
+                              alt={user.name || "用户头像"}
+                              className="w-9 h-9 rounded-full object-cover shadow-2xs border border-slate-200 shrink-0"
                               onError={(e) => {
                                 (e.target as HTMLElement).style.display = "none";
                               }}
                             />
                           ) : (
-                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
-                              {log.user?.name?.charAt(0) || log.user?.email?.charAt(0) || "管"}
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#2b6cb0] to-[#3182ce] text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
+                              {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
                             </div>
                           )}
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
-                                {log.user?.name || log.user?.email || "系统服务"}
-                              </span>
-                              <span
-                                className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${actBadge.bg}`}
-                              >
-                                {actBadge.label}
-                              </span>
-                              <span className="text-xs text-slate-700 font-semibold truncate">
-                                {log.actionZh || log.action}
-                              </span>
+                          <div className="flex-1 min-w-0">
+                            <div 
+                              className="text-xs font-bold text-slate-800 truncate whitespace-nowrap group-hover:text-[#3182ce] transition-colors"
+                              title={user.name || user.email || "匿名用户"}
+                            >
+                              {user.name || user.email || "匿名用户"}
                             </div>
-
-                            <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 truncate">
-                              {(log.resourceZh || log.resource) && (
-                                <span className="text-slate-500 font-medium truncate max-w-[200px]">
-                                  对象: {log.resourceZh || log.resource}
-                                </span>
-                              )}
-                              <span className="font-mono bg-white px-1.5 py-0.2 rounded border border-slate-200/60 text-slate-500 shrink-0 text-[10px]">
-                                IP: {log.formattedIp || log.ipAddress || "127.0.0.1"}
+                            <div 
+                              className="text-[11px] text-slate-400 font-medium truncate whitespace-nowrap mt-0.5"
+                              title={`${getMembershipLevelLabel(user.membershipLevel)} · ${user.email || "未绑定邮箱"}`}
+                            >
+                              <span className="font-bold text-amber-700 mr-1">
+                                {getMembershipLevelLabel(user.membershipLevel)}
                               </span>
+                              · {user.email || "未绑定邮箱"}
                             </div>
                           </div>
-                        </div>
-
-                        {/* 时间戳与直达提示 */}
-                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/50">
-                          <div className="text-right font-mono text-[11px] leading-tight text-slate-400">
-                            <div className="font-bold text-slate-600">{dt.date}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{dt.time}</div>
+                          <div 
+                            className="text-right font-mono text-[10px] text-slate-400 shrink-0 whitespace-nowrap ml-2"
+                            title={`注册于: ${dt.full || dt.date + ' ' + dt.time}`}
+                          >
+                            <div>{dt.date}</div>
+                            <div className="mt-0.5">{dt.time}</div>
                           </div>
-                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#3182ce] group-hover:translate-x-0.5 transition-all shrink-0" />
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* 右侧：风控概览 */}
-            <div className="lg:col-span-4 flex flex-col justify-between gap-3 bg-gradient-to-br from-slate-50/90 to-blue-50/40 p-4 rounded-xl border border-slate-200/70">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Shield className="w-4 h-4 text-[#3182ce]" />
-                    风控概览
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">24H 实时监控</span>
+                      );
+                    })
+                  )}
                 </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  {/* 待审申诉 */}
-                  <div
-                    onClick={() => router.push("/admin/account-appeals")}
-                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-amber-300 transition-all cursor-pointer group"
-                    title="点击处理账号申诉待办工单"
-                  >
-                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-amber-600 transition-colors">
-                      待审申诉工单
-                    </div>
-                    <div className="text-xl font-black font-mono text-amber-600 mt-1">
-                      {data.securitySummary?.pendingAppeals || data.pendingReviews || 0}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">待人工复核</div>
-                  </div>
-
-                  {/* 封禁管制 */}
-                  <div
-                    onClick={() => router.push("/admin/users")}
-                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-red-300 transition-all cursor-pointer group"
-                    title="前往用户管理查看受限与封禁账号"
-                  >
-                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-red-600 transition-colors">
-                      封禁隔离账号
-                    </div>
-                    <div className="text-xl font-black font-mono text-red-600 mt-1">
-                      {data.securitySummary?.bannedUsers || 0}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">高危阻断受控</div>
-                  </div>
-
-                  {/* 今日操作记录 */}
-                  <div
-                    onClick={() => router.push("/admin/logs")}
-                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-blue-300 transition-all cursor-pointer group"
-                    title="查看今日的安全操作记录明细"
-                  >
-                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-[#3182ce] transition-colors">
-                      今日操作审计
-                    </div>
-                    <div className="text-xl font-black font-mono text-[#3182ce] mt-1">
-                      {data.securitySummary?.todayOperations || 0}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">事件权威存证</div>
-                  </div>
-
-                  {/* 今日登录鉴权 */}
-                  <div
-                    onClick={() => router.push("/admin/logs")}
-                    className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:border-indigo-300 transition-all cursor-pointer group"
-                    title="查看今日登录鉴权与会话记录"
-                  >
-                    <div className="text-[11px] font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">
-                      今日登录鉴权
-                    </div>
-                    <div className="text-xl font-black font-mono text-indigo-600 mt-1">
-                      {data.securitySummary?.todayLogins || data.systemLogs || 0}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">安全会话访问</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 底部安全基线提示条 */}
-              <div className="mt-2 p-2.5 rounded-lg bg-white/90 border border-slate-200/60 text-[11px] text-slate-500 flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span>等保三级审计日志合规性监控中</span>
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">已加密存储</span>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* 系统微服务健康详情模态框 */}
-      {servicesModalOpen && (
-        <div
-          onClick={() => setServicesModalOpen(false)}
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-          >
-            <div className="bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] p-5 text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Server className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-sm">系统核心服务运行状态</h3>
-                  <p className="text-[11px] text-blue-100">底层核心服务与数据通道实时监控</p>
-                </div>
+          {/* C. 最近系统操作流水 (彻底更名无黑话，显示 5 条，带完整悬浮与单行约束) */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-[#3182ce]" />
+                <h3 className="text-sm font-black text-slate-800 tracking-tight whitespace-nowrap">
+                  最近系统操作流水
+                </h3>
               </div>
               <button
-                onClick={() => setServicesModalOpen(false)}
-                className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-                title="关闭 (Esc)"
+                type="button"
+                onClick={() => router.push("/admin/logs")}
+                className="text-xs font-bold text-[#3182ce] hover:underline cursor-pointer whitespace-nowrap"
               >
-                <X className="w-4 h-4 text-white" />
+                查看全部审计日志 →
               </button>
             </div>
 
-            <div className="p-5 space-y-3 bg-slate-50/50">
+            <div className="divide-y divide-slate-100 pt-1">
+              {!data.recentAuditLogs || data.recentAuditLogs.length === 0 ? (
+                <div className="text-center py-10 text-xs text-slate-400 font-medium">
+                  暂无系统操作日志
+                </div>
+              ) : (
+                data.recentAuditLogs.slice(0, 5).map((log) => {
+                  const actBadge = getAuditActionBadge(log.action);
+                  const dt = splitFullDateTime(log.createdAt);
+
+                  return (
+                    <div
+                      key={log.id}
+                      onClick={() => router.push("/admin/logs")}
+                      title={`操作人: ${log.user?.name || log.user?.email || "系统服务"}\n操作动作: ${log.actionZh || log.action}\n操作对象: ${log.resourceZh || log.resource || "无"}\n来源 IP: ${log.formattedIp || log.ipAddress || "127.0.0.1"}\n记录时间: ${dt.full || dt.date + ' ' + dt.time}`}
+                      className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 hover:bg-slate-50/80 px-2 rounded-xl transition-colors cursor-pointer overflow-hidden"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {log.user?.avatar ? (
+                          <img
+                            src={log.user.avatar}
+                            alt={log.user.name || "操作人"}
+                            className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#2b6cb0] to-[#3182ce] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                            {log.user?.name?.charAt(0) || log.user?.email?.charAt(0) || "管"}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span 
+                              className="text-xs font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate whitespace-nowrap max-w-[120px]"
+                              title={log.user?.name || log.user?.email || "系统服务"}
+                            >
+                              {log.user?.name || log.user?.email || "系统服务"}
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.2 rounded text-[10px] font-bold border shrink-0 whitespace-nowrap ${actBadge.bg}`}
+                            >
+                              {actBadge.label}
+                            </span>
+                            <span 
+                              className="text-xs text-slate-700 font-semibold truncate whitespace-nowrap max-w-[200px]"
+                              title={log.actionZh || log.action}
+                            >
+                              {log.actionZh || log.action}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 truncate whitespace-nowrap">
+                            {(log.resourceZh || log.resource) && (
+                              <span 
+                                className="text-slate-500 font-medium truncate max-w-[240px] whitespace-nowrap"
+                                title={`操作对象: ${log.resourceZh || log.resource}`}
+                              >
+                                对象: {log.resourceZh || log.resource}
+                              </span>
+                            )}
+                            <span 
+                              className="font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-500 shrink-0 text-[10px] whitespace-nowrap"
+                              title={`来源 IP: ${log.formattedIp || log.ipAddress || "127.0.0.1"}`}
+                            >
+                              IP: {log.formattedIp || log.ipAddress || "127.0.0.1"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div 
+                        className="text-right font-mono text-[10px] text-slate-400 shrink-0 whitespace-nowrap ml-2"
+                        title={`记录时间: ${dt.full || dt.date + ' ' + dt.time}`}
+                      >
+                        <div>{dt.date}</div>
+                        <div className="mt-0.5">{dt.time}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ================= 右侧 4 列：底座监控与安全中枢 ================= */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* D. 核心系统微服务运行状态 */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Server className="w-4 h-4 text-emerald-600" />
+                <h3 className="text-sm font-black text-slate-800 tracking-tight whitespace-nowrap">
+                  核心系统服务状态
+                </h3>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 whitespace-nowrap">
+                全链路正常
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-100 pt-1">
               {serviceTotal === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-400 font-medium">
-                  暂无服务监控数据
+                <div className="text-center py-6 text-xs text-slate-400 font-medium">
+                  暂无服务状态数据
                 </div>
               ) : (
                 systemServices.map((service) => {
@@ -1361,33 +1314,342 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={service.key}
-                      className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-xs"
+                      className="py-3 flex items-center justify-between gap-2 overflow-hidden"
+                      title={`${service.name}\n状态: ${meta.label}\n实测延迟: ${service.latencyMs}ms\n详情: ${service.message}`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                          <IconComp className="w-5 h-5" />
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                          <IconComp className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-sm font-bold text-slate-800 truncate">
+                          <div className="text-xs font-bold text-slate-800 truncate whitespace-nowrap" title={service.name}>
                             {service.name}
                           </div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 whitespace-nowrap truncate" title={service.message}>
+                            响应延迟 {service.latencyMs}ms · {service.message}
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 whitespace-nowrap ${meta.badge}`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`}></span>
+                        {meta.label}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setServicesModalOpen(true)}
+              className="mt-3.5 w-full h-9 rounded-xl bg-slate-50 hover:bg-[#3182ce]/10 hover:text-[#3182ce] hover:border-[#3182ce]/40 border border-slate-200/80 text-xs font-bold text-slate-600 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+            >
+              <span>查看系统服务运行详情</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* E. AI 模型服务健康监控 */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Boxes className="w-4 h-4 text-purple-600" />
+                <h3 className="text-sm font-black text-slate-800 tracking-tight whitespace-nowrap">
+                  AI 模型服务监控
+                </h3>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">
+                数据库真实聚合
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 pt-3">
+              <div
+                onClick={() => router.push("/admin/models")}
+                title={`模型部署总数: ${ms?.deploymentTotal ?? 0} 个\n启用: ${ms?.deploymentEnabled ?? 0} · 禁用: ${ms?.deploymentDisabled ?? 0}`}
+                className="p-3 bg-slate-50/70 hover:bg-purple-50/40 rounded-xl border border-slate-200/80 hover:border-purple-200 transition-all cursor-pointer group"
+              >
+                <div className="text-[11px] font-bold text-slate-500 group-hover:text-purple-700 transition-colors whitespace-nowrap">
+                  模型部署总数
+                </div>
+                <div className="text-xl font-black font-mono text-purple-700 mt-1 whitespace-nowrap">
+                  {ms?.deploymentTotal ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 truncate whitespace-nowrap">
+                  启用 {ms?.deploymentEnabled ?? 0} · 禁用 {ms?.deploymentDisabled ?? 0}
+                </div>
+              </div>
+
+              <div
+                onClick={() => router.push("/admin/models")}
+                title={`供应商通道: ${ms?.providerTotal ?? 0} 个\n活跃: ${ms?.providerEnabled ?? 0} 接入源`}
+                className="p-3 bg-slate-50/70 hover:bg-blue-50/40 rounded-xl border border-slate-200/80 hover:border-blue-200 transition-all cursor-pointer group"
+              >
+                <div className="text-[11px] font-bold text-slate-500 group-hover:text-[#3182ce] transition-colors whitespace-nowrap">
+                  供应商通道
+                </div>
+                <div className="text-xl font-black font-mono text-[#3182ce] mt-1 whitespace-nowrap">
+                  {ms?.providerTotal ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 truncate whitespace-nowrap">
+                  活跃 {ms?.providerEnabled ?? 0} 接入源
+                </div>
+              </div>
+
+              <div
+                onClick={() => router.push("/admin/models")}
+                title={`通道连通探测: 健康 ${ms?.healthy ?? 0} / 异常 ${ms?.error ?? 0}\n空间授权覆盖: ${ms?.policyTotal ?? 0} 个工作空间`}
+                className="p-3 bg-slate-50/70 hover:bg-emerald-50/40 rounded-xl border border-slate-200/80 hover:border-emerald-200 transition-all cursor-pointer group col-span-2"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold text-slate-500 group-hover:text-emerald-700 transition-colors whitespace-nowrap">
+                    模型通道连通健康
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-600 font-bold bg-white px-2 py-0.5 rounded border border-emerald-200 whitespace-nowrap">
+                    健康 {ms?.healthy ?? 0} / 异常 {ms?.error ?? 0}
+                  </span>
+                </div>
+                <div className="text-sm font-black font-mono text-slate-800 mt-1.5 flex items-center justify-between whitespace-nowrap">
+                  <span className="text-xs font-bold text-slate-700">空间模型授权覆盖</span>
+                  <span className="text-xs font-bold text-[#3182ce]">
+                    {ms?.policyTotal ?? 0} 个空间已授权
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 优化后的双动作入口：模型列表 + 空间授权 */}
+            <div className="mt-3.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.push("/admin/models")}
+                title="前往大模型部署管理与供应商通道配置"
+                className="flex-1 h-8.5 rounded-xl bg-slate-50 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-200 border border-slate-200/80 text-xs font-bold text-slate-600 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs whitespace-nowrap"
+              >
+                <span>模型列表</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/admin/workspaces/model-policy")}
+                title="前往工作空间模型使用权限与白名单配置"
+                className="flex-1 h-8.5 rounded-xl bg-slate-50 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-200 border border-slate-200/80 text-xs font-bold text-slate-600 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs whitespace-nowrap"
+              >
+                <span>空间授权</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* F. 平台安全与风控大盘看板 */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-[#3182ce]" />
+                <h3 className="text-sm font-black text-slate-800 tracking-tight whitespace-nowrap">
+                  安全审计与合规风控
+                </h3>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">24H 实时监控</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 pt-3">
+              <div
+                onClick={() => router.push("/admin/account-appeals")}
+                title={`待审申诉工单: ${data.securitySummary?.pendingAppeals || data.pendingReviews || 0} 项待处理`}
+                className="p-3 bg-slate-50/70 hover:bg-amber-50/40 rounded-xl border border-slate-200/80 hover:border-amber-200 transition-all cursor-pointer group"
+              >
+                <div className="text-[11px] font-bold text-slate-500 group-hover:text-amber-700 transition-colors whitespace-nowrap">
+                  待审申诉工单
+                </div>
+                <div className="text-xl font-black font-mono text-amber-600 mt-1 whitespace-nowrap">
+                  {data.securitySummary?.pendingAppeals || data.pendingReviews || 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">待人工复核</div>
+              </div>
+
+              <div
+                onClick={() => router.push("/admin/users")}
+                title={`封禁受控账号: ${data.securitySummary?.bannedUsers || 0} 人已隔离`}
+                className="p-3 bg-slate-50/70 hover:bg-red-50/40 rounded-xl border border-slate-200/80 hover:border-red-200 transition-all cursor-pointer group"
+              >
+                <div className="text-[11px] font-bold text-slate-500 group-hover:text-red-700 transition-colors whitespace-nowrap">
+                  封禁隔离账号
+                </div>
+                <div className="text-xl font-black font-mono text-red-600 mt-1 whitespace-nowrap">
+                  {data.securitySummary?.bannedUsers || 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">高危受控</div>
+              </div>
+
+              <div
+                onClick={() => router.push("/admin/logs")}
+                title={`今日敏感操作审计: ${data.securitySummary?.todayOperations || 0} 次`}
+                className="p-3 bg-slate-50/70 hover:bg-blue-50/40 rounded-xl border border-slate-200/80 hover:border-blue-200 transition-all cursor-pointer group"
+              >
+                <div className="text-[11px] font-bold text-slate-500 group-hover:text-[#3182ce] transition-colors whitespace-nowrap">
+                  今日操作审计
+                </div>
+                <div className="text-xl font-black font-mono text-[#3182ce] mt-1 whitespace-nowrap">
+                  {data.securitySummary?.todayOperations || 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">事件存证</div>
+              </div>
+
+              <div
+                onClick={() => router.push("/admin/logs")}
+                title={`今日安全鉴权登录: ${data.securitySummary?.todayLogins || data.systemLogs || 0} 次`}
+                className="p-3 bg-slate-50/70 hover:bg-indigo-50/40 rounded-xl border border-slate-200/80 hover:border-indigo-200 transition-all cursor-pointer group"
+              >
+                <div className="text-[11px] font-bold text-slate-500 group-hover:text-indigo-700 transition-colors whitespace-nowrap">
+                  今日登录鉴权
+                </div>
+                <div className="text-xl font-black font-mono text-indigo-600 mt-1 whitespace-nowrap">
+                  {data.securitySummary?.todayLogins || data.systemLogs || 0}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">安全会话</div>
+              </div>
+            </div>
+
+            <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[11px] text-slate-500 flex items-center justify-between whitespace-nowrap">
+              <span className="flex items-center gap-1.5 font-medium truncate">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">等保三级审计日志合规性监控中</span>
+              </span>
+              <span className="text-[10px] font-mono text-slate-400 shrink-0 ml-1">已加密</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 5. 极简大厂高质感微服务运行报告专属模态框 (知阁顶级设计系统规范) */}
+      {servicesModalOpen && (
+        <div
+          onClick={() => setServicesModalOpen(false)}
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl border border-slate-200/90 shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
+          >
+            {/* 模态头部 (知阁深邃知性蓝科技渐变) */}
+            <div className="bg-gradient-to-r from-[#1e4e79] via-[#2b6cb0] to-[#3182ce] p-5 text-white flex items-center justify-between shrink-0 shadow-md">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center font-bold text-white shadow-xs backdrop-blur-xs shrink-0">
+                  <Server className="w-5 h-5 text-blue-100" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-base tracking-tight">
+                      系统核心服务运行状态详情
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
+                      实时心跳
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-blue-100/90 font-medium mt-0.5">
+                    毫秒级真实状态检测 · 数据库读写、接口响应、文件存储与消息推送连通状态
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setServicesModalOpen(false)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer text-white shrink-0 ml-3"
+                title="关闭 (Esc)"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            {/* 顶层 3 联健康态势指标带 */}
+            <div className="bg-slate-50/90 border-b border-slate-200/80 px-5 py-3 grid grid-cols-3 gap-3 shrink-0">
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                <div className="text-[11px] font-bold text-slate-500">综合健康评分</div>
+                <div className="text-lg font-black font-mono text-emerald-600 mt-0.5">
+                  {data.systemHealth} <span className="text-xs font-sans font-normal text-slate-400">/ 100</span>
+                </div>
+              </div>
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                <div className="text-[11px] font-bold text-slate-500">服务在线覆盖率</div>
+                <div className="text-lg font-black font-mono text-[#3182ce] mt-0.5">
+                  {normalServiceCount} <span className="text-xs font-sans font-normal text-slate-400">/ {serviceTotal} 服务在线</span>
+                </div>
+              </div>
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                <div className="text-[11px] font-bold text-slate-500">平均链路延迟</div>
+                <div className="text-lg font-black font-mono text-slate-800 mt-0.5">
+                  {serviceTotal > 0
+                    ? Math.round(
+                        systemServices.reduce((acc, s) => acc + (s.latencyMs || 0), 0) / serviceTotal
+                      )
+                    : 0}{" "}
+                  <span className="text-xs font-mono font-normal text-slate-400">ms (优秀)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 详细列表卡片区 */}
+            <div className="p-5 space-y-3 overflow-y-auto bg-slate-50/40 flex-1">
+              {serviceTotal === 0 ? (
+                <div className="text-center py-12 text-xs text-slate-400 font-medium">
+                  暂无服务运行状态数据
+                </div>
+              ) : (
+                systemServices.map((service) => {
+                  const meta =
+                    serviceStatusMeta[service.status] || serviceStatusMeta.warning;
+                  const IconComp = serviceIcons[service.key] || Server;
+                  
+                  // 服务专属定制色与图标背景
+                  const iconColors: Record<string, string> = {
+                    database: "bg-blue-50 text-[#3182ce]",
+                    api: "bg-indigo-50 text-indigo-600",
+                    storage: "bg-amber-50 text-amber-600",
+                    notification: "bg-emerald-50 text-emerald-600",
+                  };
+                  const colorClass = iconColors[service.key] || "bg-slate-100 text-slate-600";
+
+                  return (
+                    <div
+                      key={service.key}
+                      title={`服务名: ${service.name}\n实测延迟: ${service.latencyMs}ms\n自检信息: ${service.message}`}
+                      className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:shadow-xs hover:border-[#3182ce]/40 transition-all flex items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${colorClass}`}>
+                          <IconComp className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-800 truncate">
+                              {service.name}
+                            </h4>
+                            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded shrink-0">
+                              {service.key}
+                            </span>
+                          </div>
                           <div
-                            className="text-xs text-slate-500 truncate"
+                            className="text-xs text-slate-500 truncate mt-0.5 font-medium"
                             title={service.message}
                           >
                             {service.message}
                           </div>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0 ml-3">
+
+                      <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${meta.badge}`}
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${meta.badge}`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`}></span>
                           {meta.label}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          响应延迟 {service.latencyMs}ms
+                        <span className="text-[11px] text-slate-500 font-mono font-bold bg-slate-50 border border-slate-200/60 px-2 py-0.2 rounded-md">
+                          延迟 {service.latencyMs} ms
                         </span>
                       </div>
                     </div>
@@ -1396,23 +1658,28 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            <div className="p-4 bg-white border-t border-slate-200/80 flex items-center justify-between">
-              <span className="text-xs text-slate-400 font-medium">按 Esc 或点击遮罩可快速退出</span>
-              <div className="flex items-center gap-2">
+            {/* 模态框底部控制区 */}
+            <div className="p-4 bg-white border-t border-slate-200/80 flex items-center justify-between shrink-0">
+              <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+                按 <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border text-slate-500 font-mono text-[10px]">Esc</kbd> 键或点击外部遮罩可快速退出
+              </span>
+              <div className="flex items-center gap-2.5 ml-auto sm:ml-0">
                 <button
+                  type="button"
                   onClick={() => setServicesModalOpen(false)}
-                  className="px-4 h-9 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
+                  className="px-4 h-9 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   关闭
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setServicesModalOpen(false);
                     router.push("/admin/system-status");
                   }}
-                  className="inline-flex items-center gap-1 px-4 h-9 rounded-xl bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold shadow-xs hover:shadow-md transition-all"
+                  className="inline-flex items-center gap-1.5 px-4.5 h-9 rounded-xl bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer"
                 >
-                  <span>全量监控中心</span>
+                  <span>前往全量系统监控中心</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>

@@ -534,15 +534,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             isInWorkspaceRoute && prev.currentWorkspaceId ? prev.currentWorkspaceId : currentWorkspaceId,
         }));
       } else {
-        // 登录状态失效，清除本地存储
-        localStorage.removeItem("userId");
-        localStorage.removeItem("userRole");
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("userEmail");
-        localStorage.removeItem("userName");
-        localStorage.removeItem("userAvatar");
-        localStorage.removeItem("userMembershipLevel");
-        localStorage.removeItem("userSubscriptionLevel");
+        // 登录状态失效，清除本地存储（但若处于注销冷静期 deletion_pending_active，绝不误清空临时凭证，避免首页遮罩弹窗失效）
+        const isDeletionPendingActive =
+          typeof window !== "undefined" &&
+          (localStorage.getItem("deletion_pending_active") === "true" ||
+            window.location.search.includes("deletion_pending=true"));
+
+        if (!isDeletionPendingActive) {
+          localStorage.removeItem("userId");
+          localStorage.removeItem("userRole");
+          localStorage.removeItem("auth_token");
+          localStorage.removeItem("userEmail");
+          localStorage.removeItem("userName");
+          localStorage.removeItem("userAvatar");
+          localStorage.removeItem("userMembershipLevel");
+          localStorage.removeItem("userSubscriptionLevel");
+        }
         
         setUserState({
           isLoggedIn: false,

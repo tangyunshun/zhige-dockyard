@@ -165,8 +165,9 @@ async function enforceApiPermissionRules(
   token: string,
   userId: string
 ): Promise<NextResponse | null> {
-  // 灰度范围：仅后台管理接口；且绝不拦截拦截层自身依赖的系统接口（防递归）
-  if (!pathname.startsWith("/api/admin")) return null;
+  // 灰度范围：仅后台管理接口（路径段边界，避免 /api/admin-xxx 误入闸门）；
+  // 且绝不拦截拦截层自身依赖的系统接口（防递归）
+  if (!/^\/api\/admin(\/|$)/.test(pathname)) return null;
   if (pathname.startsWith("/api/system")) return null;
 
   const origin = request.nextUrl.origin;

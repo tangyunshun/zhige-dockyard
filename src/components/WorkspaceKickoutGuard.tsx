@@ -60,11 +60,26 @@ export default function WorkspaceKickoutGuard() {
           return;
         }
 
-        // 2. 检测是否已被移出空间
+        // 2. 从未加入该空间 / 无权限访问（跨浏览器深链他人空间等场景）：
+        //    严禁弹「您已被移出该空间」误导用户（尤其是刚注册登录的用户），静默返回中控台。
+        const notMember =
+          res.status === 403 &&
+          (data.code === SESSION_ERROR_CODES.W_002 ||
+            data.error === "WORKSPACE_NOT_MEMBER");
+
+        if (notMember && !handledRef.current) {
+          handledRef.current = true;
+          setUserState((prev) =>
+            prev.currentWorkspaceId ? { ...prev, currentWorkspaceId: null } : prev
+          );
+          router.replace("/workspace-hub");
+          return;
+        }
+
+        // 3. 检测是否已被移出空间（真踢出：服务端存在踢出记录，W-001）
         const removed =
           res.status === 403 &&
-          (data.isMember === false ||
-            data.code === SESSION_ERROR_CODES.W_001 ||
+          (data.code === SESSION_ERROR_CODES.W_001 ||
             data.error === "WORKSPACE_REMOVED");
 
         if (removed && !handledRef.current) {

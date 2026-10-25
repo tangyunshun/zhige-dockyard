@@ -18,6 +18,18 @@ if (!(Test-Path $BackupDir)) { New-Item -ItemType Directory -Path $BackupDir | O
 $out   = Join-Path $BackupDir ("{0}_latest.sql" -f $DbName)
 $err   = Join-Path $BackupDir ("{0}_latest.err" -f $DbName)
 
+# === 等待 MySQL 就绪（开机竞态防护）：3306 端口未就绪则每 5 秒重试，最长等 5 分钟 ===
+$mysqlReady = $false
+$deadline = (Get-Date).AddMinutes(5)
+while ((Get-Date) -lt $deadline) {
+  if (Get-NetTCPConnection -LocalPort 3306 -State Listen -ErrorAction SilentlyContinue) {
+    $mysqlReady = $true
+    break
+  }
+  Start-Sleep -Seconds 5
+}
+if (-not $mysqlReady) { throw "MySQL 3306 端口在 5 分钟内未就绪，中止备份（请检查 MySQL 服务状态）" }
+
 # cmd /c 重定向保证字节级完整写入（避免 PowerShell 管道二次编码）
 $line = "`"$mysqldump`" --single-transaction --routines --triggers --hex-blob --default-character-set=utf8mb4 -u $DbUser -p$DbPass $DbName > `"$out`" 2>`"$err`""
 cmd /c $line

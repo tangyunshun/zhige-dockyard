@@ -738,27 +738,6 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
     ],
   },
   {
-    group: "API 密钥管理模块 (API Keys)",
-    moduleRoute: "/admin/api-keys",
-    description: "开发者 API Key 发放流水监控、调用鉴权审查与违规密钥吊销",
-    keys: [
-      {
-        key: "apikey:read",
-        label: "查看全站 API 密钥流水",
-        desc: "浏览各工作空间及用户创建的 API Key 列表与调用频次",
-        moduleName: "API 密钥管理",
-        level: "read",
-      },
-      {
-        key: "apikey:manage",
-        label: "吊销违规密钥与调整限流",
-        desc: "手动冻结、吊销异常调用密钥，或调整其单日接口调用频次上限",
-        moduleName: "API 密钥管理",
-        level: "high",
-      },
-    ],
-  },
-  {
     group: "多租户机构管理模块 (Tenants)",
     moduleRoute: "/admin/tenants",
     description: "企业客户多租户架构配置、机构域名白名单与组织专属权限隔离",
@@ -842,6 +821,27 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
       },
     ],
   },
+  {
+    group: "演示申请管理模块 (Demo Requests)",
+    moduleRoute: "/admin/demo-requests",
+    description: "官网访客产品演示预约申请的查阅、检索与跟进状态流转管理",
+    keys: [
+      {
+        key: "demo:read",
+        label: "查看演示申请列表",
+        desc: "查阅访客提交的产品演示预约申请（姓名、联系方式、公司与需求说明）",
+        moduleName: "演示申请管理",
+        level: "read",
+      },
+      {
+        key: "demo:manage",
+        label: "处理演示申请跟进",
+        desc: "更新演示申请的处理状态流转（待处理 / 已联系 / 已关闭）",
+        moduleName: "演示申请管理",
+        level: "normal",
+      },
+    ],
+  },
 ];
 
 const getCleanRole = (role: string | null | undefined): string => {
@@ -858,59 +858,146 @@ const getCleanRole = (role: string | null | undefined): string => {
   return "USER";
 };
 
-// 辅助：从数据库读取系统权限目录（结合数据库模块注册表与规则引擎自动自愈对齐）
-export async function getPermissionCatalogFromDB(): Promise<PermissionGroupItem[]> {
-  try {
-    const record = await prisma.systemconfig.findUnique({
-      where: { key: PLATFORM_PERMISSION_CATALOG_KEY },
-    });
-    if (record && record.value) {
-      const parsed = JSON.parse(record.value);
-      if (Array.isArray(parsed)) {
-        return parsed;
+// 目录乐观锁版本号（独立 systemconfig 行，仅用于「读-改-写」并发控制，不参与业务展示）
+const PERMISSION_CATALOG_VERSION_KEY = "PLATFORM_PERMISSION_CATALOG_VER_V1";
+
+/**
+ * 读取权限目录及其乐观锁版本号。
+ * ⚠️ 版本号与目录必须在同一事务快照内读取：否则「先读目录后读版本」会在并发写时
+ * 出现「新目录 + 旧版本」或「旧目录 + 新版本」的错配，导致 CAS 失效或陈旧数据覆盖。
+ * ⚠️ fail-fast：读取失败或 JSON 损坏时必须抛出，严禁回退官方种子目录——
+ * 调用方全部是「读全目录 → 内存修改 → 全量写回」模式，一旦把种子数据当真源参与写回，
+ * 管理员的全部自定义模块与权限项会被整体覆盖抹除。冷启动（记录不存在）是唯一合法的种子写入时机。
+ * 注意：路由文件只允许导出 HTTP handler，辅助函数一律不导出（避免 Next 生成类型校验报错）
+ */
+async function getPermissionCatalogWithVersion(): Promise<{
+  catalog: PermissionGroupItem[];
+  version: number;
+}> {
+  return prisma.$transaction(async (tx) => {
+    const [catalogRow, versionRow] = await Promise.all([
+      tx.systemconfig.findUnique({ where: { key: PLATFORM_PERMISSION_CATALOG_KEY } }),
+      tx.systemconfig.findUnique({ where: { key: PERMISSION_CATALOG_VERSION_KEY } }),
+    ]);
+
+    let catalog: PermissionGroupItem[];
+    if (catalogRow && catalogRow.value) {
+      try {
+        const parsed = JSON.parse(catalogRow.value);
+        if (!Array.isArray(parsed)) throw new Error("非数组结构");
+        catalog = parsed;
+      } catch (parseErr) {
+        console.error("权限目录 JSON 解析失败（PLATFORM_PERMISSION_CATALOG_V1 已损坏）:", parseErr);
+        throw new Error("PERMISSION_CATALOG_CORRUPTED");
       }
+    } else {
+      // 首次冷启动：写入数据库持久化（此后一律以数据库为准）
+      await tx.systemconfig.upsert({
+        where: { key: PLATFORM_PERMISSION_CATALOG_KEY },
+        create: {
+          key: PLATFORM_PERMISSION_CATALOG_KEY,
+          value: JSON.stringify(INITIAL_PERMISSIONS_CATALOG),
+        },
+        update: {
+          value: JSON.stringify(INITIAL_PERMISSIONS_CATALOG),
+        },
+      });
+      catalog = INITIAL_PERMISSIONS_CATALOG;
     }
 
-    // 首次冷启动：写入数据库持久化（此后一律以数据库为准）
-    await prisma.systemconfig.upsert({
-      where: { key: PLATFORM_PERMISSION_CATALOG_KEY },
-      create: {
-        key: PLATFORM_PERMISSION_CATALOG_KEY,
-        value: JSON.stringify(INITIAL_PERMISSIONS_CATALOG),
-      },
-      update: {
-        value: JSON.stringify(INITIAL_PERMISSIONS_CATALOG),
-      },
-    });
-    return INITIAL_PERMISSIONS_CATALOG;
-  } catch (err) {
-    console.error("从数据库读取权限目录失败:", err);
-    return INITIAL_PERMISSIONS_CATALOG;
-  }
+    let version = 0;
+    if (versionRow?.value) {
+      const parsed = Number(versionRow.value);
+      version = Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+    } else {
+      // 首次初始化版本行（upsert 幂等，并发重复写同值无害）
+      await tx.systemconfig.upsert({
+        where: { key: PERMISSION_CATALOG_VERSION_KEY },
+        create: { key: PERMISSION_CATALOG_VERSION_KEY, value: "0" },
+        update: {},
+      });
+    }
+
+    return { catalog, version };
+  });
 }
 
-// 辅助：持久化保存系统权限目录到数据库
-export async function savePermissionCatalogToDB(catalog: PermissionGroupItem[]): Promise<boolean> {
+// 辅助：从数据库读取系统权限目录（只读场景用；写场景请用 getPermissionCatalogWithVersion 拿版本号）
+async function getPermissionCatalogFromDB(): Promise<PermissionGroupItem[]> {
+  const { catalog } = await getPermissionCatalogWithVersion();
+  return catalog;
+}
+
+// 辅助：持久化保存系统权限目录到数据库（带乐观锁 CAS）
+// expectedVersion 必须来自与本次修改同一轮的 getPermissionCatalogWithVersion()：
+// 版本号在「读取之后」被任何其他请求推进过（CAS 不命中），本次写回即被拒绝，返回 false，
+// 调用方应向客户端返回 409 并提示刷新重试，绝不静默覆盖他人改动。
+async function savePermissionCatalogToDB(
+  catalog: PermissionGroupItem[],
+  expectedVersion?: number
+): Promise<boolean> {
   try {
-    await prisma.systemconfig.upsert({
-      where: { key: PLATFORM_PERMISSION_CATALOG_KEY },
-      create: {
-        key: PLATFORM_PERMISSION_CATALOG_KEY,
-        value: JSON.stringify(catalog),
-      },
-      update: {
-        value: JSON.stringify(catalog),
-      },
+    // 兜底：未提供期望版本时退化为直接写（不参与 CAS，仅供无并发风险的内部路径使用）
+    if (typeof expectedVersion !== "number") {
+      await prisma.systemconfig.upsert({
+        where: { key: PLATFORM_PERMISSION_CATALOG_KEY },
+        create: {
+          key: PLATFORM_PERMISSION_CATALOG_KEY,
+          value: JSON.stringify(catalog),
+        },
+        update: {
+          value: JSON.stringify(catalog),
+        },
+      });
+      return true;
+    }
+
+    const committed = await prisma.$transaction(async (tx) => {
+      // CAS：仅当版本号仍等于期望值时原子推进（updateMany 条件更新自带行锁，天然互斥）
+      const cas = await tx.systemconfig.updateMany({
+        where: {
+          key: PERMISSION_CATALOG_VERSION_KEY,
+          value: String(expectedVersion),
+        },
+        data: { value: String(expectedVersion + 1) },
+      });
+      if (cas.count === 0) {
+        // 版本已被并发请求推进：拒绝本次写回，防止后写者覆盖先写者
+        return false;
+      }
+      await tx.systemconfig.upsert({
+        where: { key: PLATFORM_PERMISSION_CATALOG_KEY },
+        create: {
+          key: PLATFORM_PERMISSION_CATALOG_KEY,
+          value: JSON.stringify(catalog),
+        },
+        update: {
+          value: JSON.stringify(catalog),
+        },
+      });
+      return true;
     });
-    return true;
+    return committed;
   } catch (err) {
     console.error("保存权限目录到数据库失败:", err);
     return false;
   }
 }
 
+/** 目录写回 CAS 冲突时的统一 409 响应（绝不静默覆盖其他管理员的改动） */
+function catalogConflictResponse() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: "PERMISSION_CATALOG_CONFLICT",
+      message: "权限目录已被其他管理员同步修改，为避免覆盖已取消本次操作，请刷新页面后重试",
+    },
+    { status: 409 }
+  );
+}
+
 /** 辅助：从数据库读取风险等级字典（冷启动时写入官方标准值） */
-export async function getPermissionLevelsFromDB(): Promise<PermissionLevelItem[]> {
+async function getPermissionLevelsFromDB(): Promise<PermissionLevelItem[]> {
   try {
     const record = await prisma.systemconfig.findUnique({
       where: { key: PLATFORM_PERMISSION_LEVELS_KEY },
@@ -953,7 +1040,7 @@ async function purgeInvalidPermissionsFromAdmins(invalidKeys: Set<string>): Prom
   let affectedAdmins = 0;
   try {
     const adminUsers = await prisma.user.findMany({
-      where: { role: { in: ADMIN_ROLE_VALUES } },
+      where: { role: { in: [...ADMIN_ROLE_VALUES] } },
       select: { id: true },
     });
     for (const admin of adminUsers) {
@@ -1006,7 +1093,7 @@ export async function GET(request: NextRequest) {
     const admins = await prisma.user.findMany({
       where: {
         role: {
-          in: ADMIN_ROLE_VALUES,
+          in: [...ADMIN_ROLE_VALUES],
         },
       },
       select: {
@@ -1152,16 +1239,13 @@ export async function POST(request: NextRequest) {
         isSystemCore: false,
       };
 
-      // 1. 存入数据库模块注册表
-      const updatedModules = [...existingModules, newModuleRecord];
-      await saveFeatureModulesToDB(updatedModules);
-
-      // 2. 从数据库读取规则配置，自动派生出权限项
+      // 1. 读取规则配置，自动派生出权限项
       const rules = await getPermissionRulesFromDB();
       const derivedKeys = derivePermissionsByModuleAndRules(newModuleRecord, rules);
 
-      // 3. 将派生权限自动注入数据库权限目录
-      const currentCatalog = await getPermissionCatalogFromDB();
+      // 2. 将派生权限自动注入数据库权限目录（乐观锁：最先写目录并校验并发冲突）
+      const { catalog: currentCatalog, version: catalogVersion } =
+        await getPermissionCatalogWithVersion();
       const targetGroupTitle = `${cleanName} (${cleanResourceKey.toUpperCase()})`;
       const existingGroup = currentCatalog.find(
         (g) => g.group === targetGroupTitle || g.moduleRoute === cleanRoute
@@ -1189,7 +1273,12 @@ export async function POST(request: NextRequest) {
         ];
       }
 
-      await savePermissionCatalogToDB(updatedCatalog);
+      const catalogSaved = await savePermissionCatalogToDB(updatedCatalog, catalogVersion);
+      if (!catalogSaved) return catalogConflictResponse();
+
+      // 3. 目录写入成功后再落模块注册表（冲突时不会留下「有模块无目录」的半成品状态）
+      const updatedModules = [...existingModules, newModuleRecord];
+      await saveFeatureModulesToDB(updatedModules);
 
       // 4. 执行新功能上线自动赋权规则（按数据库策略为普通管理员追加默认基线权限）
       const grantedAdminCount = await autoGrantNewFeatureRulesToAdmins(
@@ -1249,13 +1338,18 @@ export async function POST(request: NextRequest) {
 
     // 动作 2：纯数据库驱动 - 手动触发全系统功能自愈与自适应对齐
     if (action === "sync_rules_healing") {
-      const currentCatalog = await getPermissionCatalogFromDB();
+      const { catalog: currentCatalog, version: catalogVersion } =
+        await getPermissionCatalogWithVersion();
       const healingResult = await autoHealPermissionsByDBRules(currentCatalog);
       const rules = await getPermissionRulesFromDB();
       const modules = await getFeatureModulesFromDB();
 
       if (healingResult.addedModulesCount > 0 || healingResult.addedKeysCount > 0) {
-        await savePermissionCatalogToDB(healingResult.healedCatalog);
+        const catalogSaved = await savePermissionCatalogToDB(
+          healingResult.healedCatalog,
+          catalogVersion
+        );
+        if (!catalogSaved) return catalogConflictResponse();
         await autoGrantNewFeatureRulesToAdmins(healingResult.newlyDiscoveredKeys, rules);
       }
 
@@ -1369,7 +1463,8 @@ export async function POST(request: NextRequest) {
     // 动作：恢复数据库中的官方标准权限字典
     if (action === "reset_defaults") {
       // 智能恢复官方标准：补齐缺失的标准项 + 修正被改动的标准项，保留管理员自定义补充项
-      const currentCatalog = await getPermissionCatalogFromDB();
+      const { catalog: currentCatalog, version: catalogVersion } =
+        await getPermissionCatalogWithVersion();
       const currentKeySet = new Set(
         currentCatalog.flatMap((g) => g.keys.map((k) => k.key))
       );
@@ -1405,7 +1500,8 @@ export async function POST(request: NextRequest) {
       const totalKeys = mergedCatalog.reduce((acc, g) => acc + g.keys.length, 0);
       const retainedCustomKeys = Math.max(0, totalKeys - officialKeySet.size);
 
-      await savePermissionCatalogToDB(mergedCatalog);
+      const catalogSaved = await savePermissionCatalogToDB(mergedCatalog, catalogVersion);
+      if (!catalogSaved) return catalogConflictResponse();
       await writeAuditLog(
         operatorId,
         "system:settings",
@@ -1443,7 +1539,8 @@ export async function POST(request: NextRequest) {
       const desc = (permission.desc || labelTrimmed).trim();
       const level = resolveLevel(permission.level, await getPermissionLevelsFromDB());
 
-      const currentCatalog = await getPermissionCatalogFromDB();
+      const { catalog: currentCatalog, version: catalogVersion } =
+        await getPermissionCatalogWithVersion();
       const allKeys = currentCatalog.flatMap((g) => g.keys.map((k) => k.key));
       if (allKeys.includes(keyTrimmed)) {
         return NextResponse.json({ error: `权限代号【${keyTrimmed}】已存在，请勿重复添加` }, { status: 400 });
@@ -1481,7 +1578,8 @@ export async function POST(request: NextRequest) {
         ];
       }
 
-      await savePermissionCatalogToDB(updatedCatalog);
+      const catalogSaved = await savePermissionCatalogToDB(updatedCatalog, catalogVersion);
+      if (!catalogSaved) return catalogConflictResponse();
       await writeAuditLog(
         operatorId,
         "system:settings",
@@ -1516,7 +1614,8 @@ export async function POST(request: NextRequest) {
       const groupDesc = String(permission.description || "").trim();
       const level = resolveLevel(permission.level, await getPermissionLevelsFromDB());
 
-      const currentCatalog = await getPermissionCatalogFromDB();
+      const { catalog: currentCatalog, version: catalogVersion } =
+        await getPermissionCatalogWithVersion();
       const located = currentCatalog.find((g) =>
         g.keys.some((k) => k.key === originalKeyTrimmed)
       );
@@ -1559,7 +1658,8 @@ export async function POST(request: NextRequest) {
         ];
       }
 
-      await savePermissionCatalogToDB(updatedCatalog);
+      const catalogSaved = await savePermissionCatalogToDB(updatedCatalog, catalogVersion);
+      if (!catalogSaved) return catalogConflictResponse();
       await writeAuditLog(
         operatorId,
         "system:settings",
@@ -1605,7 +1705,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const currentCatalog = await getPermissionCatalogFromDB();
+      const { catalog: currentCatalog, version: catalogVersion } =
+        await getPermissionCatalogWithVersion();
 
       // 仅统一等级：原地更新，不改变所属模块
       if (!targetGroupName && nextLevel) {
@@ -1613,7 +1714,8 @@ export async function POST(request: NextRequest) {
           ...g,
           keys: g.keys.map((k) => (keySet.has(k.key) ? { ...k, level: nextLevel } : k)),
         }));
-        await savePermissionCatalogToDB(updatedCatalog);
+        const catalogSaved = await savePermissionCatalogToDB(updatedCatalog, catalogVersion);
+        if (!catalogSaved) return catalogConflictResponse();
         await writeAuditLog(
           operatorId,
           "system:settings",
@@ -1659,7 +1761,8 @@ export async function POST(request: NextRequest) {
         ];
       }
 
-      await savePermissionCatalogToDB(updatedCatalog);
+      const catalogSaved = await savePermissionCatalogToDB(updatedCatalog, catalogVersion);
+      if (!catalogSaved) return catalogConflictResponse();
       await writeAuditLog(
         operatorId,
         "system:settings",
@@ -1685,7 +1788,8 @@ export async function POST(request: NextRequest) {
 
     // 动作：全系统功能智能差量扫描与合并补全（自动将全系统 24 大模块缺失项补入数据库，不覆盖已有自定义项）
     if (action === "sync_system_catalog") {
-      const currentCatalog = await getPermissionCatalogFromDB();
+      const { catalog: currentCatalog, version: catalogVersion } =
+        await getPermissionCatalogWithVersion();
       const currentKeySet = new Set(currentCatalog.flatMap((g) => g.keys.map((k) => k.key)));
       const currentGroupMap = new Map(currentCatalog.map((g) => [g.group, g]));
 
@@ -1719,7 +1823,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      await savePermissionCatalogToDB(mergedCatalog);
+      const catalogSaved = await savePermissionCatalogToDB(mergedCatalog, catalogVersion);
+      if (!catalogSaved) return catalogConflictResponse();
       await writeAuditLog(
         operatorId,
         "system:settings",
@@ -1829,8 +1934,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "缺少待删除的权限 key" }, { status: 400 });
     }
 
-    // 1. 从数据库读取现有权限字典
-    const currentCatalog = await getPermissionCatalogFromDB();
+    // 1. 从数据库读取现有权限字典（带乐观锁版本号）
+    const { catalog: currentCatalog, version: catalogVersion } =
+      await getPermissionCatalogWithVersion();
     const deleteKeySet = new Set(keysToDelete);
 
     // 2. 在数据库权限结构中执行删除
@@ -1841,8 +1947,9 @@ export async function DELETE(request: NextRequest) {
       }))
       .filter((group) => group.keys.length > 0);
 
-    // 3. 将修改后的权限字典持久化写入数据库
-    await savePermissionCatalogToDB(updatedCatalog);
+    // 3. 将修改后的权限字典持久化写入数据库（CAS：冲突时 409，绝不覆盖他人改动）
+    const catalogSaved = await savePermissionCatalogToDB(updatedCatalog, catalogVersion);
+    if (!catalogSaved) return catalogConflictResponse();
 
     // 3.1 同步剔除各管理员权限包中已失效的 key，避免残留脏权限
     const removedKeys = new Set(
@@ -1851,6 +1958,34 @@ export async function DELETE(request: NextRequest) {
         .filter((k) => deleteKeySet.has(k))
     );
     const affectedAdmins = await purgeInvalidPermissionsFromAdmins(removedKeys);
+
+    // 3.1.5 联动停用「接口权限规则层」中引用已删除权限点的已启用规则，防止幽灵拦截：
+    //     若不处理，中间件会继续要求一个已不存在（无法再授予任何管理员）的权限点，
+    //     导致除超管外所有命中该规则的请求被永久 403，且页面上无从排查。
+    let affectedRules = 0;
+    try {
+      const rules = await getApiPermissionRules(true);
+      const impacted = rules.filter((r) => r.enabled && removedKeys.has(r.permission));
+      if (impacted.length > 0) {
+        const nowIso = new Date().toISOString();
+        const nextRules = rules.map((r) =>
+          r.enabled && removedKeys.has(r.permission)
+            ? {
+                ...r,
+                enabled: false,
+                note: `${r.note ? `${r.note}；` : ""}权限点 ${r.permission} 已被删除，规则自动停用（${nowIso.slice(0, 10)}）`,
+                updatedAt: nowIso,
+              }
+            : r,
+        );
+        if (await saveApiPermissionRules(nextRules)) {
+          affectedRules = impacted.length;
+        }
+      }
+    } catch (ruleError) {
+      // 规则联动失败不阻断删除本身，但必须显式暴露（响应中 affectedRules=0 + 服务端日志）
+      console.error("[permissions] 联动停用接口权限规则失败:", ruleError);
+    }
 
     // 3.2 同步更新 feature_modules 模块登记记录（剔除已删除的 action，注销无权限的模块）
     const existingModules = await getFeatureModulesFromDB();
@@ -1875,6 +2010,7 @@ export async function DELETE(request: NextRequest) {
         deletedKeys: keysToDelete,
         remainingGroups: updatedCatalog.length,
         affectedAdmins,
+        affectedRules,
       },
       null,
       null,
@@ -1884,11 +2020,14 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message:
-        affectedAdmins > 0
-          ? `成功从数据库中移除 ${keysToDelete.length} 项功能权限，并回收 ${affectedAdmins} 位管理员的失效授权！`
-          : `成功从数据库中移除 ${keysToDelete.length} 项功能权限！`,
+        affectedRules > 0
+          ? `成功移除 ${keysToDelete.length} 项功能权限，回收 ${affectedAdmins} 位管理员的失效授权，并自动停用 ${affectedRules} 条引用这些权限点的接口拦截规则（可在「接口权限设置」重新配置）。`
+          : affectedAdmins > 0
+            ? `成功从数据库中移除 ${keysToDelete.length} 项功能权限，并回收 ${affectedAdmins} 位管理员的失效授权！`
+            : `成功从数据库中移除 ${keysToDelete.length} 项功能权限！`,
       catalog: updatedCatalog,
       affectedAdmins,
+      affectedRules,
     });
   } catch (error) {
     console.error("Delete permission items error:", error);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
@@ -8,6 +9,7 @@ import { getAuthToken } from "@/utils/auth";
 import {
   Filter,
   Building2,
+  FolderKanban,
   Users,
   Trash2,
   Eye,
@@ -33,6 +35,7 @@ import Pagination from "@/components/Pagination";
 import { StatusBadge, ActionButton, RowActions } from "@/components/common";
 import { ComponentIcon } from "@/lib/component-icons";
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 
 interface DisableCheckResult {
@@ -91,7 +94,7 @@ interface Workspace {
     role: string;
     monthlyTokenLimit?: number | null;
     monthlyTokenUsed?: number;
-    user: { name: string | null; email: string | null };
+    user: { name: string | null; email: string | null; avatar?: string | null };
   }>;
   _count: { members?: number; workspacemember?: number };
 }
@@ -136,6 +139,7 @@ const PAGE_SIZE = 10;
 
 export default function AdminWorkspacesPage() {
   const toast = useToast();
+  const maxRows = useExportMaxRows();
   const router = useRouter();
 
   // 统一平台 RBAC 细粒度权限判断（无权直接隐藏，杜绝 403 页面）
@@ -293,7 +297,7 @@ export default function AdminWorkspacesPage() {
       }
 
       exportToExcel({
-        filename: "知阁工作空间清单",
+        filename: "工作空间清单",
         sheetName: "空间列表",
         columns: [
           { header: "空间ID", key: "id", width: 28 },
@@ -365,6 +369,8 @@ export default function AdminWorkspacesPage() {
           },
         ],
         data: exportList,
+        maxRows: maxRows,
+        trace: { exportType: "工作空间", rowCount: exportList.length, page: "/admin/workspaces" },
       });
 
       toast.success(`已成功导出 ${exportList.length} 个工作空间数据为 Excel 表格！`);
@@ -1189,22 +1195,37 @@ export default function AdminWorkspacesPage() {
                         <td className="px-4.5 py-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-3">
                             {(() => {
-                              const avatarUrl = workspace.avatar || workspace.logo || workspace.owner?.avatar;
-                              if (avatarUrl) {
-                                return (
-                                  <img
-                                    src={avatarUrl}
-                                    alt={workspace.name}
-                                    className="w-9 h-9 shrink-0 rounded-xl object-cover border border-slate-200/80 shadow-2xs"
-                                    onError={(e) => {
-                                      (e.target as HTMLElement).style.display = "none";
-                                    }}
-                                  />
-                                );
-                              }
+                              const logoUrl = workspace.logo;
+                              const isEnterprise = workspace.type === "ENTERPRISE";
                               return (
-                                <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] flex items-center justify-center text-white font-bold text-xs shadow-2xs">
-                                  {workspace.name ? workspace.name.charAt(0) : <Building2 className="w-4.5 h-4.5" />}
+                                <div className="relative w-9 h-9 shrink-0">
+                                  {logoUrl ? (
+                                    <img
+                                      src={logoUrl}
+                                      alt={workspace.name}
+                                      className="w-9 h-9 shrink-0 rounded-xl object-cover border border-slate-200/80 shadow-2xs"
+                                      onError={(e) => {
+                                        (e.target as HTMLElement).style.display = "none";
+                                        const fallback = (e.target as HTMLElement).parentElement?.querySelector(".ws-list-fallback-icon");
+                                        if (fallback) (fallback as HTMLElement).classList.remove("hidden");
+                                      }}
+                                    />
+                                  ) : null}
+                                  <div
+                                    className={`ws-list-fallback-icon w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-white font-bold text-xs shadow-2xs ${
+                                      logoUrl ? "hidden" : ""
+                                    } ${
+                                      isEnterprise
+                                        ? "bg-gradient-to-br from-[#3182ce] to-[#2b6cb0]"
+                                        : "bg-gradient-to-br from-[#10b981] to-[#059669]"
+                                    }`}
+                                  >
+                                    {isEnterprise ? (
+                                      <Building2 className="w-4.5 h-4.5 text-white" />
+                                    ) : (
+                                      <FolderKanban className="w-4.5 h-4.5 text-white" />
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })()}
@@ -1242,9 +1263,13 @@ export default function AdminWorkspacesPage() {
                               个人空间
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-black rounded-lg">
+                            <Link
+                              href={`/admin/tenants?search=${encodeURIComponent(workspace.name)}`}
+                              className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-black rounded-lg hover:bg-purple-100 transition-colors cursor-pointer"
+                              title="在租户（企业空间）管理中查看该公司"
+                            >
                               企业空间
-                            </span>
+                            </Link>
                           )}
                         </td>
                         <td className="px-4.5 py-3.5 whitespace-nowrap">
@@ -1625,10 +1650,22 @@ export default function AdminWorkspacesPage() {
                         className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-sm font-bold">
-                            {member.user.name?.charAt(0).toUpperCase() ||
-                              member.user.email?.charAt(0).toUpperCase() ||
-                              "U"}
+                          <div className="relative w-8 h-8 shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white text-sm font-bold">
+                              {member.user.name?.charAt(0).toUpperCase() ||
+                                member.user.email?.charAt(0).toUpperCase() ||
+                                "U"}
+                            </div>
+                            {member.user.avatar && (
+                              <img
+                                src={member.user.avatar}
+                                alt={member.user.name || ""}
+                                className="absolute inset-0 w-8 h-8 rounded-full object-cover border border-white"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = "none";
+                                }}
+                              />
+                            )}
                           </div>
                           <div>
                             <div className="text-sm font-bold text-slate-800">

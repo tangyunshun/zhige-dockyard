@@ -30,9 +30,12 @@ import {
   Building2,
   FileCheck,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  X,
+  Bookmark
 } from "lucide-react";
 import Footer from "@/components/Footer";
+import DocumentContentRenderer from "@/components/docs/DocumentContentRenderer";
 
 interface DocArticle {
   id: string;
@@ -233,6 +236,7 @@ export default function DocsPage() {
   const [activeSection, setActiveSection] = useState("all");
   const [selectedArticle, setSelectedArticle] = useState<DocArticle | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [copiedAllText, setCopiedAllText] = useState(false);
   const [articleFeedbackState, setArticleFeedbackState] = useState<Record<string, "up" | "down">>({});
 
   // 真实 API 反馈 Modal 状态
@@ -386,9 +390,11 @@ export default function DocsPage() {
       articles: [],
     }));
 
+    const dynamicSectionsMap = new Map<string, DocSection>();
+
     dbDocuments.forEach((doc: any) => {
-      const normalized = String(doc?.category || "")
-        .trim()
+      const rawCategory = String(doc?.category || "").trim();
+      const normalized = rawCategory
         .toLowerCase()
         .replace(/_/g, "-");
       const defIndex = DOC_SECTION_DEFS.findIndex(def =>
@@ -396,10 +402,24 @@ export default function DocsPage() {
       );
       if (defIndex >= 0) {
         sections[defIndex].articles.push(toDocArticle(doc));
+      } else {
+        // 动态支持后台新建并存入数据库的自定义业务分类，自动生成专区 Tab 避免数据遗漏
+        const catKey = normalized || "custom-topics";
+        if (!dynamicSectionsMap.has(catKey)) {
+          const catTitle = toCategoryBadgeLabel(rawCategory, null);
+          dynamicSectionsMap.set(catKey, {
+            id: catKey,
+            title: catTitle || "业务拓展与专题文档",
+            icon: FileCheck,
+            description: `涵盖【${catTitle || "业务专题"}】相关规约、操作指引与技术手册`,
+            articles: [],
+          });
+        }
+        dynamicSectionsMap.get(catKey)!.articles.push(toDocArticle(doc));
       }
     });
 
-    return sections;
+    return [...sections, ...Array.from(dynamicSectionsMap.values())];
   }, [dbDocuments]);
 
   // 依据 Tab 筛选与全文检索过滤
@@ -633,7 +653,7 @@ export default function DocsPage() {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className="px-2.5 py-0.5 bg-indigo-50/80 text-indigo-700 border border-indigo-100 rounded text-[10px] font-black">
-                              {article.category}
+                              {toCategoryBadgeLabel(article.category, null)}
                             </span>
                             {article.contentCode && (
                               <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-mono font-bold flex items-center gap-1">
@@ -702,104 +722,121 @@ export default function DocsPage() {
         </div>
       </main>
 
-      {/* 详细文档全屏/半屏阅读 Modal */}
+      {/* 详细文档全屏/半屏阅读 Modal (知阁设计系统顶级视觉与专业 Markdown / Code 排版规范) */}
       {selectedArticle && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-[24px] border border-white/90 shadow-2xl max-w-3xl w-full max-h-[85vh] p-6 flex flex-col animate-fadeIn text-left">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl max-w-4xl lg:max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 text-left">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-xs font-black shrink-0">
-                  {selectedArticle.category}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-50/80 via-indigo-50/30 to-white border-b border-slate-200/70 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="px-2.5 py-1 bg-[#2b6cb0] text-white rounded-lg text-xs font-black shrink-0 shadow-2xs">
+                  {toCategoryBadgeLabel(selectedArticle.category, null)}
                 </span>
-                <h3 className="text-base font-extrabold text-slate-800 truncate">
-                  {selectedArticle.title}
-                </h3>
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-black text-slate-800 truncate tracking-tight">
+                    {selectedArticle.title}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400 font-medium">
+                    <span>
+                      共 {(selectedArticle.fullContent || "").length} 字 · 约需{" "}
+                      {Math.max(1, Math.round((selectedArticle.fullContent || "").length / 400))} 分钟阅读
+                    </span>
+                    <span className="hidden sm:inline">· 平台官方知识库认证</span>
+                  </div>
+                </div>
               </div>
+
               <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => handleExportMarkdown(selectedArticle)}
-                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-xs flex items-center gap-1 transition-all border border-slate-200 cursor-pointer"
-                  title="导出为 Markdown 文件"
+                  type="button"
+                  onClick={() => {
+                    const fullText = `# ${selectedArticle.title}\n\n${selectedArticle.summary || ""}\n\n${selectedArticle.fullContent || ""}${
+                      selectedArticle.contentCode ? `\n\n\`\`\`python\n${selectedArticle.contentCode}\n\`\`\`` : ""
+                    }`;
+                    navigator.clipboard.writeText(fullText);
+                    setCopiedAllText(true);
+                    setTimeout(() => setCopiedAllText(false), 2000);
+                  }}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 cursor-pointer shadow-2xs"
+                  title="复制文档全文 Markdown"
                 >
-                  <Download className="w-3.5 h-3.5" /> 导出 MD
+                  {copiedAllText ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-600">已复制全文</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      <span>复制全文</span>
+                    </>
+                  )}
                 </button>
                 <button
-                  onClick={() => setSelectedArticle(null)}
-                  className="text-slate-400 hover:text-slate-600 font-bold border-none bg-transparent cursor-pointer text-sm ml-2"
+                  type="button"
+                  onClick={() => handleExportMarkdown(selectedArticle)}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 cursor-pointer shadow-2xs"
+                  title="导出为 Markdown 文件"
                 >
-                  ✕ 关闭
+                  <Download className="w-3.5 h-3.5 text-slate-500" /> 导出 MD
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedArticle(null)}
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors flex items-center justify-center cursor-pointer ml-1"
+                  title="关闭阅读视窗"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
             {/* Modal Content Body */}
-            <div className="flex-1 overflow-y-auto space-y-4 text-xs py-4 my-1 pr-1 custom-scrollbar">
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700 leading-relaxed font-bold">
-                {selectedArticle.summary}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs custom-scrollbar bg-[#f8fafc]/50">
+              {/* 仅在 summary 具备真实导读价值时展示为知性蓝高亮引言卡片 */}
+              {selectedArticle.summary ? (
+                <div className="p-4 bg-gradient-to-r from-blue-50/90 to-indigo-50/40 rounded-2xl border-l-4 border-[#3182ce] text-slate-700 leading-relaxed font-bold shadow-2xs">
+                  <div className="text-[11px] text-[#2b6cb0] font-black uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                    <Bookmark className="w-3.5 h-3.5" />
+                    <span>核心导读与要点摘要</span>
+                  </div>
+                  <div className="text-xs text-slate-700 font-medium">{selectedArticle.summary}</div>
+                </div>
+              ) : null}
+
+              {/* 使用现代化专业排版与代码高亮渲染器 */}
+              <div className="p-5 sm:p-7 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+                <DocumentContentRenderer
+                  content={selectedArticle.fullContent || ""}
+                  title={selectedArticle.title}
+                  category={selectedArticle.category}
+                  codeSample={selectedArticle.contentCode}
+                />
               </div>
 
-              {selectedArticle.fullContent && (
-                <div className="space-y-2">
-                  <h4 className="font-extrabold text-slate-800 text-xs">📖 详细架构与操作规范</h4>
-                  <div className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 text-slate-600 leading-relaxed font-medium">
-                    {selectedArticle.fullContent}
-                  </div>
-                </div>
-              )}
-
-              {selectedArticle.contentCode && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-extrabold text-slate-800 text-xs flex items-center gap-1">
-                      <Code className="w-4 h-4 text-indigo-600" />
-                      开发者 API & Webhook 代码示例
-                    </h4>
-                    <button
-                      onClick={() => handleCopyCode(selectedArticle.contentCode!, selectedArticle.id)}
-                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-[11px] flex items-center gap-1 transition-all border border-indigo-100 cursor-pointer"
-                    >
-                      {copiedCodeId === selectedArticle.id ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-600" /> 已复制
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3" /> 一键复制代码
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  <pre className="p-4 bg-slate-900 text-indigo-200 rounded-xl font-mono text-[11px] leading-relaxed overflow-x-auto shadow-inner">
-                    <code>{selectedArticle.contentCode}</code>
-                  </pre>
-                </div>
-              )}
-
               {/* 点赞有用评价与关联模块快捷跳转 */}
-              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <div className="pt-3 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-slate-400 font-bold text-[11px]">这篇文章对您有帮助吗？</span>
                   <button
                     onClick={() => handleRateArticle(selectedArticle.id, "up")}
-                    className={`px-2.5 py-1 rounded-lg font-bold text-[11px] border transition-all flex items-center gap-1 cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
                       articleFeedbackState[selectedArticle.id] === "up"
                         ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                     }`}
                   >
-                    <ThumbsUp className="w-3 h-3" /> 有帮助
+                    <ThumbsUp className="w-3.5 h-3.5" /> 有帮助
                   </button>
                   <button
                     onClick={() => handleRateArticle(selectedArticle.id, "down")}
-                    className={`px-2.5 py-1 rounded-lg font-bold text-[11px] border transition-all flex items-center gap-1 cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
                       articleFeedbackState[selectedArticle.id] === "down"
                         ? "bg-amber-50 text-amber-600 border-amber-200"
-                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                     }`}
                   >
-                    <ThumbsDown className="w-3 h-3" /> 需改进
+                    <ThumbsDown className="w-3.5 h-3.5" /> 需改进
                   </button>
                 </div>
 
@@ -810,35 +847,40 @@ export default function DocsPage() {
                       setSelectedArticle(null);
                       handleProtectedAction(path);
                     }}
-                    className="text-indigo-600 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                    className="h-8 px-3.5 rounded-xl bg-blue-50 text-[#2b6cb0] hover:bg-blue-100 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-blue-100"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                    {selectedArticle.relatedLink.label}
+                    <span>前往关联模块：{selectedArticle.relatedLink.label}</span>
                   </button>
                 )}
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="pt-3 shrink-0 flex justify-end gap-2 border-t border-slate-100">
-              {selectedArticle.contentCode && (
+            <div className="p-3.5 sm:px-6 bg-slate-50/80 border-t border-slate-200/80 shrink-0 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                知阁·舟坊技术中枢 · 按 ESC 或点击遮罩层可快捷退出阅读
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                {selectedArticle.contentCode && (
+                  <button
+                    onClick={() => {
+                      setSelectedArticle(null);
+                      handleProtectedAction("/settings/webhooks");
+                    }}
+                    className="px-4 h-9 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    前往 Webhooks 通道测试
+                  </button>
+                )}
                 <button
-                  onClick={() => {
-                    setSelectedArticle(null);
-                    handleProtectedAction("/settings/webhooks");
-                  }}
-                  className="px-4 h-9 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                  onClick={() => setSelectedArticle(null)}
+                  className="px-4 h-9 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-2xs"
                 >
-                  <Play className="w-3.5 h-3.5" />
-                  前往 Webhooks 通道测试
+                  关闭阅读
                 </button>
-              )}
-              <button
-                onClick={() => setSelectedArticle(null)}
-                className="px-4 h-9 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs transition-all cursor-pointer"
-              >
-                关闭阅读
-              </button>
+              </div>
             </div>
           </div>
         </div>

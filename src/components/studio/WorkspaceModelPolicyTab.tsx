@@ -49,6 +49,7 @@ import {
 
 interface PoolModel {
   id: string;
+  source?: string;
   providerId?: string;
   providerName?: string;
   providerCode?: string;

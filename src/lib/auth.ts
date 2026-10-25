@@ -153,16 +153,28 @@ export async function validateUser(
     // 修复：此前 toAccountStatus("deleting") 返回 ACTIVE，导致注销中的账号被当作正常用户放行，
     // 用户重新登录后可以正常操作系统（注销弹窗闪烁后即进入系统）。
     if (user.status === "deleting") {
-      const requestPath =
-        typeof (request as any)?.nextUrl?.pathname === "string"
-          ? (request as any).nextUrl.pathname
-          : "";
+      let requestPath = "";
+      if (typeof (request as any)?.nextUrl?.pathname === "string") {
+        requestPath = (request as any).nextUrl.pathname;
+      } else if (typeof request?.url === "string") {
+        try {
+          requestPath = new URL(request.url, "http://localhost").pathname;
+        } catch {
+          requestPath = "";
+        }
+      }
+
+      // 兼容冷静期专属临时撤销令牌（含 deletionStatus === "cancelling" 载荷）
+      const isCancellingToken = (payload as any)?.deletionStatus === "cancelling";
+
       const isDeletionRecoveryPath =
         requestPath === "/api/auth/me" ||
         requestPath === "/api/user/cancel-deletion" ||
-        requestPath === "/auth/cancel-deletion";
+        requestPath === "/auth/cancel-deletion" ||
+        requestPath.startsWith("/api/auth/me") ||
+        requestPath.startsWith("/api/user/cancel-deletion");
 
-      if (!isDeletionRecoveryPath) {
+      if (!isDeletionRecoveryPath && !isCancellingToken) {
         return { valid: false, error: "ACCOUNT_DELETING" };
       }
 

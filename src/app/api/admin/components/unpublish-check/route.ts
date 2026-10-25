@@ -18,7 +18,9 @@ async function getLoadedWorkspaces(componentIds: string[]) {
     };
   }
 
-  // 1. 从 componentusage 中查询已装配/载入的工作空间及对应使用用户
+  // 1. 从 componentusage 中查询已装配/载入的工作空间及对应使用用户。
+  // componentusage 是装配关系的唯一权威来源：绑定时写入记录、解绑时整批删除，
+  // 因此该表内存在 workspaceId 记录即代表组件仍装配在该空间中。
   const usages = await prisma.componentusage.findMany({
     where: {
       componentId: { in: componentIds },
@@ -32,35 +34,17 @@ async function getLoadedWorkspaces(componentIds: string[]) {
     },
   });
 
-  // 2. 从 componentpermission 中查询已授权该组件的岗位及其所属空间
-  const permissions = await prisma.componentpermission.findMany({
-    where: {
-      componentId: { in: componentIds },
-      OR: [
-        { canView: true },
-        { canExecute: true },
-      ],
-    },
-    select: {
-      componentId: true,
-      post: {
-        select: {
-          workspaceId: true,
-        },
-      },
-    },
-  });
-
-  // 汇集所有涉及的 workspaceId
+  // 汇集所有涉及的 workspaceId。
+  // 注意：componentpermission 是「岗位授权记录」（创建岗位时会自动批量授予组件查看/执行权，
+  // 个人空间亦不例外），它代表"该岗位有权使用组件"，而非"组件已装配进空间"，
+  // 绝不能作为受影响空间的判定依据——否则任何组件的下架检测都会把所有建过岗位的
+  // 空间全部误报为受影响（历史 bug：未绑定任何组件的个人空间也出现在清单里）。
   const workspaceIdSet = new Set<string>();
   const affectedUserIdSet = new Set<string>();
 
   usages.forEach((u) => {
     if (u.workspaceId) workspaceIdSet.add(u.workspaceId);
     if (u.userId) affectedUserIdSet.add(u.userId);
-  });
-  permissions.forEach((p) => {
-    if (p.post?.workspaceId) workspaceIdSet.add(p.post.workspaceId);
   });
 
   if (workspaceIdSet.size === 0) {

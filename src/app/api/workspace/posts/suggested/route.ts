@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { validateUser, isAdminRole } from "@/lib/auth";
-import { getStandardPostsFromDB } from "@/app/api/admin/posts/standard/route";
+import { getStandardPostsFromDB, computeStandardPostUsageStats } from "@/lib/standard-posts";
 
 export const dynamic = "force-dynamic";
 
@@ -47,9 +47,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
     }
 
+    // 岗位库引入属空间管理动作：仅空间 OWNER/ADMIN（或平台管理员）可读取装配状态
+    const hasPermission = await verifyWorkspaceAdmin(auth.user.id, workspaceId);
+    if (!hasPermission) {
+      return NextResponse.json({ error: "权限不足，仅空间管理员可查看可引入岗位" }, { status: 403 });
+    }
+
     // 1. 获取平台启用的标准岗位（排除系统保留岗位，如空间所有者）
     const standardPosts = await getStandardPostsFromDB();
     const activePosts = standardPosts.filter((p) => p.status === "ACTIVE" && !p.isSystemReserved);
+
+    // 1.1 真实装配统计（与后台岗位页同一共享口径：全网装配空间数 / 在编成员 / 空间清单）
+    const { statsByPostId } = await computeStandardPostUsageStats(activePosts);
 
     // 2. 获取当前空间已存在的岗位名称
     const existingPosts = await prisma.workspacepost.findMany({
@@ -59,15 +68,23 @@ export async function GET(request: NextRequest) {
 
     const existingNameSet = new Set(existingPosts.map((p) => p.name));
 
-    // 3. 组合返回
-    const suggestedPosts = activePosts.map((sp) => ({
-      id: sp.id,
-      name: sp.name,
-      code: sp.code,
-      description: sp.description,
-      color: sp.color,
-      isImported: existingNameSet.has(sp.name),
-    }));
+    // 3. 组合返回（目录公开元数据 + 真实装配统计，供「添加岗位(系统库)」弹窗直接消费）
+    const suggestedPosts = activePosts.map((sp) => {
+      const stat = statsByPostId.get(sp.id);
+      return {
+        id: sp.id,
+        name: sp.name,
+        code: sp.code,
+        description: sp.description,
+        color: sp.color,
+        icon: sp.icon,
+        sortOrder: sp.sortOrder,
+        usageCount: stat?.usageCount || 0,
+        totalAssignedMembers: stat?.totalAssignedMembers || 0,
+        usedWorkspaces: stat?.usedWorkspaces || [],
+        isImported: existingNameSet.has(sp.name),
+      };
+    });
 
     return NextResponse.json({
       success: true,

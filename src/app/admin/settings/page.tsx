@@ -78,17 +78,19 @@ const AUTH_MODE_LABEL: Record<string, string> = {
   hybrid: "扫码/跳转双模",
 };
 
-export interface NavLinkItem {
+// 注意：Next.js page 文件只允许导出默认组件与路由段配置，以下类型与常量严禁 export
+// （曾因导出触发 .next 生成类型校验错误 TS2344；本页无任何外部引用方）
+interface NavLinkItem {
   label: string;
   url: string;
 }
 
-export interface NavColumnItem {
+interface NavColumnItem {
   title: string;
   links: NavLinkItem[];
 }
 
-export interface OAuthChannelItem {
+interface OAuthChannelItem {
   id: string;
   type: string;
   name: string;
@@ -99,18 +101,18 @@ export interface OAuthChannelItem {
 }
 
 /** 平台标准前台公开页面分类路由字典（供前台页脚导航配置时快速选择与参考，杜绝盲填或路径错误） */
-export interface SystemSiteRouteItem {
+interface SystemSiteRouteItem {
   label: string;
   url: string;
   description: string;
 }
 
-export interface SystemSiteRouteGroup {
+interface SystemSiteRouteGroup {
   category: string;
   routes: SystemSiteRouteItem[];
 }
 
-export const SYSTEM_SITE_ROUTE_GROUPS: SystemSiteRouteGroup[] = [
+const SYSTEM_SITE_ROUTE_GROUPS: SystemSiteRouteGroup[] = [
   {
     category: "核心业务与工作台",
     routes: [
@@ -1643,6 +1645,50 @@ export default function AdminSettingsPage() {
                     </p>
                   </div>
 
+                  {/* 数据导出设置：导出条数上限（systemconfig.export.maxRows） */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                        <Download className="w-4 h-4 text-emerald-600" />
+                        数据导出设置
+                      </h4>
+                      <p className="text-[11px] text-slate-400 font-medium mt-1">
+                        全站 Excel 导出的单文件最大行数。达到上限时文件末尾会追加提示行，建议保持 5000 以内以保证导出性能。
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        <span>导出条数上限（行 / 文件）</span>
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={1}
+                          max={50000}
+                          value={configs["export.maxRows"] || "5000"}
+                          onChange={(e) => handleConfigChange("export.maxRows", e.target.value)}
+                          className="w-36 px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold transition-all"
+                        />
+                        <span className="text-xs text-slate-500 font-bold">行</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const n = Number(configs["export.maxRows"]);
+                        if (!Number.isInteger(n) || n < 1 || n > 50000) {
+                          toast.warning("导出上限需为 1 ~ 50000 之间的整数");
+                          return;
+                        }
+                        await handleSaveSettings(["export.maxRows"], "导出上限配置已保存");
+                      }}
+                      disabled={saving}
+                      className="h-9 px-5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-[4px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      保存导出设置
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
@@ -3022,20 +3068,20 @@ export default function AdminSettingsPage() {
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">全国公安机关互联网站安全管理服务备案号</label>
                         <input
                           type="text"
-                          value={configs.footerPoliceIcp || "京公网安备 31000000000000 号"}
+                          value={configs.footerPoliceIcp || ""}
                           onChange={(e) => handleConfigChange("footerPoliceIcp", e.target.value)}
                           className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
-                          placeholder="京公网安备 31000000000000 号"
+                          placeholder="如：陕公网安备61010202001234号（留空则前台不展示）"
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1.5">工信部 ICP 备案许可编号 (双向同步)</label>
                         <input
                           type="text"
-                          value={configs.icpNumber || "京ICP备 2026000000 号-1"}
+                          value={configs.icpNumber || ""}
                           onChange={(e) => handleConfigChange("icpNumber", e.target.value)}
                           className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
-                          placeholder="京ICP备 2026000000 号-1"
+                          placeholder="如：陕ICP备2026000000号-1（留空则前台不展示）"
                         />
                       </div>
                     </div>

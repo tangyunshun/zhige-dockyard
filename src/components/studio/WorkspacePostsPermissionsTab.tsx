@@ -513,7 +513,9 @@ export default function WorkspacePostsPermissionsTab({
     setStandardQuery("");
     setLoadingStandard(true);
     try {
-      const res = await fetch("/api/admin/posts/standard", {
+      // 走空间侧接口（/api/workspace/**）：该目录为全平台公共参考数据，
+      // 但 /api/admin/posts/standard 受中间件平台管理员规则保护，普通空间所有者读取会被 403。
+      const res = await fetch(`/api/workspace/posts/suggested?workspaceId=${encodeURIComponent(workspaceId)}`, {
         headers: { Authorization: `Bearer ${getAuthToken()}` },
         credentials: "include",
       });
@@ -523,10 +525,10 @@ export default function WorkspacePostsPermissionsTab({
         setStandardPosts([]);
         return;
       }
-      const raw: any[] = data.posts || [];
+      const raw: any[] = data.suggestedPosts || [];
       const existingNames = new Set(posts.map((p) => p.name.trim().toLowerCase()));
       const list: StandardPostItem[] = raw
-        .filter((p) => p.status !== "DISABLED" && !p.isSystemReserved && !existingNames.has((p.name || "").trim().toLowerCase()))
+        .filter((p) => !existingNames.has((p.name || "").trim().toLowerCase()))
         .map((p) => ({
           id: p.id,
           name: p.name,
@@ -534,11 +536,11 @@ export default function WorkspacePostsPermissionsTab({
           description: p.description || "",
           color: p.color || "#3182ce",
           icon: p.icon || null,
-          status: p.status,
+          status: "ACTIVE",
           sortOrder: p.sortOrder || 1,
-          usageCount: p.usageCount || 0,
-          totalAssignedMembers: p.totalAssignedMembers || 0,
-          usedWorkspaces: p.usedWorkspaces || [],
+          usageCount: 0,
+          totalAssignedMembers: 0,
+          usedWorkspaces: [],
           isWorkspaceDefault: Boolean(p.isWorkspaceDefault),
           isSystemReserved: Boolean(p.isSystemReserved),
           createdAt: p.createdAt || "",

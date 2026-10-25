@@ -90,9 +90,45 @@ export async function GET(
     });
   }
 
-  // F-03：确实已被移出空间，返回 W-001 错误码，前端清空空间缓存跳转中控台
+  // 非成员需区分两种完全不同的语义，严禁混为一谈：
+  //  A. 曾被移出该空间（存在踢出记录）→ W-001 WORKSPACE_REMOVED（前端弹"您已被移出该空间"）
+  //  B. 从未加入过该空间 / 只是无权限访问（如跨浏览器深链他人空间 URL）→ W-002 WORKSPACE_NOT_MEMBER
+  //     （前端必须静默返回中控台，绝不能弹"被移出"误导刚注册/从未入空间的用户）
+  // 踢出信号双源兜底：workspacekickhistory（kickout 路由落库）+ operationlog（WORKSPACE_KICK，members 路由落库）
+  let wasKicked = false;
+  const currentUserId = auth.user.id;
+  try {
+    const [kickHistory, kickLogs] = await Promise.all([
+      prisma.workspacekickhistory.findFirst({
+        where: { workspaceId, userId: currentUserId },
+        select: { id: true },
+      }),
+      prisma.operationlog.findMany({
+        where: { workspaceId, action: "WORKSPACE_KICK" },
+        select: { details: true },
+        take: 200,
+      }),
+    ]);
+    wasKicked =
+      Boolean(kickHistory) ||
+      kickLogs.some((l) => (l.details as any)?.kickedUserId === currentUserId);
+  } catch (e) {
+    // 踢出记录查询失败时按"曾被移出"处理（保持 F-03 安全语义：宁可提示被移出也不静默放行误解）
+    console.warn("[my-membership] 踢出记录查询失败，按 W-001 处理:", e);
+    wasKicked = true;
+  }
+
+  if (wasKicked) {
+    // F-03：确实已被移出空间，返回 W-001 错误码，前端清空空间缓存跳转中控台
+    return NextResponse.json(
+      { isMember: false, error: "WORKSPACE_REMOVED", code: SESSION_ERROR_CODES.W_001 },
+      { status: 403 },
+    );
+  }
+
+  // 从未加入/无权限访问：返回 W-002，前端静默返回中控台，不做"被移出"提示
   return NextResponse.json(
-    { isMember: false, error: "WORKSPACE_REMOVED", code: SESSION_ERROR_CODES.W_001 },
+    { isMember: false, error: "WORKSPACE_NOT_MEMBER", code: SESSION_ERROR_CODES.W_002 },
     { status: 403 },
   );
 }

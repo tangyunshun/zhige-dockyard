@@ -44,6 +44,7 @@ import {
   ChevronRight,
   Loader2,
   Pencil,
+  Lock,
 } from "lucide-react";
 
 interface Document {
@@ -74,6 +75,7 @@ interface DocumentSummary {
   unPublishedDocs: number;
   totalViews: number;
   categoryCounts: Record<string, number>;
+  customCategories?: Array<{ key: string; label: string; description?: string }>;
 }
 
 interface DocumentFormData {
@@ -135,11 +137,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   policy: "平台用户隐私保护协议",
 };
 
+// 数据库动态自定义分类运行时缓存（确保列表Badge、弹窗、快照等所有联动处100%展示中文名称）
+export const DYNAMIC_CATEGORY_CACHE = new Map<string, string>();
+
 export function getCategoryLabel(category: string | null | undefined): string {
   if (!category) return "综合知识文档";
   const raw = String(category).trim();
+  // 1. 优先从数据库动态分类缓存匹配
+  if (DYNAMIC_CATEGORY_CACHE.has(raw)) return DYNAMIC_CATEGORY_CACHE.get(raw)!;
   if (CATEGORY_LABELS[raw]) return CATEGORY_LABELS[raw];
   const normalized = raw.toLowerCase().replace(/_/g, "-");
+  if (DYNAMIC_CATEGORY_CACHE.has(normalized)) return DYNAMIC_CATEGORY_CACHE.get(normalized)!;
   if (CATEGORY_LABELS[normalized]) return CATEGORY_LABELS[normalized];
   if (normalized.includes("privacy")) return "平台用户隐私保护协议";
   if (normalized.includes("term")) return "平台用户服务条款协议";
@@ -245,32 +253,405 @@ export default function AdminDocumentsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // 动态融合数据库中真实存在的分类项，保证零静态写死，数据库增改分类前台自动同步
-  const availableCategories = useMemo(() => {
-    const list: { key: string; label: string; count?: number }[] = STANDARD_CATEGORIES.map((cat) => ({
-      key: cat.key,
-      label: cat.label,
-      count: summary?.categoryCounts?.[cat.key] || 0,
-    }));
+  // 数据库持久化的自定义分类列表（从数据库 systemconfig 动态读取）
+  const [customCategories, setCustomCategories] = useState<
+    Array<{ key: string; label: string; description?: string; isCustom?: boolean }>
+  >([]);
 
+  // 弹窗内快捷新建业务分类面板状态
+  const [showInlineNewCategory, setShowInlineNewCategory] = useState(false);
+  const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
+  const [newCatLabel, setNewCatLabel] = useState("");
+  const [newCatKey, setNewCatKey] = useState("");
+  const [newCatDesc, setNewCatDesc] = useState("");
+  const [catSubmitting, setCatSubmitting] = useState(false);
+
+  // 顶部分类胶囊栏与全局快捷重命名分类模态框状态
+  const [editCatModal, setEditCatModal] = useState<{
+    isOpen: boolean;
+    key: string;
+    label: string;
+    description: string;
+    docCount: number;
+    submitting: boolean;
+  }>({
+    isOpen: false,
+    key: "",
+    label: "",
+    description: "",
+    docCount: 0,
+    submitting: false,
+  });
+
+  // 动态融合数据库中真实存在的分类项（标准分类 + 数据库持久化自定义分类 + 存量文档分类），零静态写死
+  const availableCategories = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number; isCustom?: boolean; icon?: any }>();
+
+    // 1. 系统标准基础分类
+    STANDARD_CATEGORIES.forEach((cat) => {
+      map.set(cat.key, {
+        key: cat.key,
+        label: cat.label,
+        count: summary?.categoryCounts?.[cat.key] || 0,
+        isCustom: false,
+        icon: cat.icon,
+      });
+    });
+
+    // 2. 数据库自定义分类（覆盖或动态注入）
+    customCategories.forEach((cat) => {
+      const existing = map.get(cat.key);
+      map.set(cat.key, {
+        key: cat.key,
+        label: cat.label,
+        count: summary?.categoryCounts?.[cat.key] || (existing?.count || 0),
+        isCustom: true,
+        icon: Tag,
+      });
+    });
+
+    // 3. 存量文档中已存在的历史孤儿分类（兼容性兜底）
     if (summary?.categoryCounts) {
       Object.keys(summary.categoryCounts).forEach((k) => {
-        if (!list.some((item) => item.key === k)) {
-          list.push({
+        if (!map.has(k)) {
+          map.set(k, {
             key: k,
             label: getCategoryLabel(k),
             count: summary.categoryCounts[k] || 0,
+            isCustom: true,
+            icon: Tag,
           });
         }
       });
     }
-    return list;
-  }, [summary?.categoryCounts]);
+
+    return Array.from(map.values());
+  }, [summary?.categoryCounts, customCategories]);
+
+  // 新建文档分类提交方法（持久化存入数据库 systemconfig 表，并即时联动选中）
+  const handleCreateNewCategory = async () => {
+    const trimmedLabel = newCatLabel.trim();
+    if (!trimmedLabel) {
+      toast.warning("请输入分类中文名称");
+      return;
+    }
+    if (trimmedLabel.length < 2 || trimmedLabel.length > 30) {
+      toast.warning("分类名称长度须在 2 到 30 个字之间");
+      return;
+    }
+
+    try {
+      setCatSubmitting(true);
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/documents/categories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          label: trimmedLabel,
+          key: newCatKey.trim() || undefined,
+          description: newCatDesc.trim() || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        toast.error(json.error || "新建分类失败，请重试");
+        return;
+      }
+
+      const createdCat = json.data;
+      DYNAMIC_CATEGORY_CACHE.set(createdCat.key, createdCat.label);
+      DYNAMIC_CATEGORY_CACHE.set(createdCat.key.toLowerCase().replace(/_/g, "-"), createdCat.label);
+
+      setCustomCategories((prev) => {
+        if (prev.some((c) => c.key === createdCat.key)) return prev;
+        return [...prev, createdCat];
+      });
+
+      // 自动在文档表单中选中新分类并清除错误提示
+      setFormData((prev) => ({
+        ...prev,
+        category: createdCat.key,
+        errors: { ...prev.errors, category: "" },
+      }));
+
+      // 重置新建表单并关闭内联面板
+      setNewCatLabel("");
+      setNewCatKey("");
+      setNewCatDesc("");
+      setShowInlineNewCategory(false);
+
+      toast.success(`新业务分类【${createdCat.label}】已成功存入数据库并选中！`);
+      // 静默刷新列表与统计指标
+      loadDocuments(true);
+    } catch (err: any) {
+      console.error("创建分类异常:", err);
+      toast.error("网络异常，创建分类失败");
+    } finally {
+      setCatSubmitting(false);
+    }
+  };
+
+  // 启动自定义分类重命名/编辑
+  const handleStartEditCategory = (cat: { key: string; label: string; description?: string }) => {
+    setShowInlineNewCategory(true);
+    setEditingCategoryKey(cat.key);
+    setNewCatLabel(cat.label);
+    setNewCatKey(cat.key);
+    setNewCatDesc(cat.description || "");
+  };
+
+  // 取消分类编辑
+  const handleCancelCategoryEdit = () => {
+    setEditingCategoryKey(null);
+    setNewCatLabel("");
+    setNewCatKey("");
+    setNewCatDesc("");
+  };
+
+  // 提交自定义分类名称与说明修改（持久化写入数据库 systemconfig 表并即时全系统联动）
+  const handleUpdateCategory = async () => {
+    if (!editingCategoryKey) return;
+    const trimmedLabel = newCatLabel.trim();
+    if (!trimmedLabel) {
+      toast.warning("请输入分类中文名称");
+      return;
+    }
+    if (trimmedLabel.length < 2 || trimmedLabel.length > 30) {
+      toast.warning("分类名称长度须在 2 到 30 个字之间");
+      return;
+    }
+
+    try {
+      setCatSubmitting(true);
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/documents/categories", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          key: editingCategoryKey,
+          label: trimmedLabel,
+          description: newCatDesc.trim() || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        toast.error(json.error || "修改分类失败，请重试");
+        return;
+      }
+
+      const updated = json.data;
+      DYNAMIC_CATEGORY_CACHE.set(updated.key, updated.label);
+      DYNAMIC_CATEGORY_CACHE.set(updated.key.toLowerCase().replace(/_/g, "-"), updated.label);
+
+      setCustomCategories((prev) =>
+        prev.map((c) =>
+          c.key === updated.key
+            ? { ...c, label: updated.label, description: updated.description }
+            : c
+        )
+      );
+
+      handleCancelCategoryEdit();
+      toast.success(json.message || `分类【${updated.label}】名称已更新`);
+      loadDocuments(true);
+    } catch (err: any) {
+      console.error("更新分类异常:", err);
+      toast.error("网络异常，修改分类失败");
+    } finally {
+      setCatSubmitting(false);
+    }
+  };
+
+  // 打开顶部分类胶囊栏上的自定义分类编辑/重命名模态框
+  const handleOpenEditCategoryModal = (cat: {
+    key: string;
+    label: string;
+    description?: string;
+    count?: number;
+  }) => {
+    const targetCustom = customCategories.find((c) => c.key === cat.key);
+    const count =
+      cat.count !== undefined
+        ? cat.count
+        : (summary.categoryCounts[cat.key] || 0) +
+          (summary.categoryCounts[cat.key.replace(/-/g, "_")] || 0);
+
+    setEditCatModal({
+      isOpen: true,
+      key: cat.key,
+      label: cat.label,
+      description: targetCustom?.description || cat.description || "",
+      docCount: count,
+      submitting: false,
+    });
+  };
+
+  // 提交分类重命名与描述保存（持久化更新数据库 systemconfig，全平台即时生效）
+  const handleSaveEditCategoryModal = async () => {
+    if (!editCatModal.key) return;
+    const trimmedLabel = editCatModal.label.trim();
+    if (!trimmedLabel) {
+      toast.warning("请输入分类中文名称");
+      return;
+    }
+    if (trimmedLabel.length < 2 || trimmedLabel.length > 30) {
+      toast.warning("分类名称长度须在 2 到 30 个字之间");
+      return;
+    }
+
+    try {
+      setEditCatModal((prev) => ({ ...prev, submitting: true }));
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/documents/categories", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          key: editCatModal.key,
+          label: trimmedLabel,
+          description: editCatModal.description.trim() || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        toast.error(json.error || "修改分类失败，请重试");
+        setEditCatModal((prev) => ({ ...prev, submitting: false }));
+        return;
+      }
+
+      const updated = json.data;
+      DYNAMIC_CATEGORY_CACHE.set(updated.key, updated.label);
+      DYNAMIC_CATEGORY_CACHE.set(
+        updated.key.toLowerCase().replace(/_/g, "-"),
+        updated.label
+      );
+
+      setCustomCategories((prev) =>
+        prev.map((c) =>
+          c.key === updated.key
+            ? { ...c, label: updated.label, description: updated.description }
+            : c
+        )
+      );
+
+      setEditCatModal({
+        isOpen: false,
+        key: "",
+        label: "",
+        description: "",
+        docCount: 0,
+        submitting: false,
+      });
+
+      toast.success(json.message || `分类【${updated.label}】名称已更新`);
+      loadDocuments(true);
+    } catch (err: any) {
+      console.error("更新自定义分类异常:", err);
+      toast.error("网络异常，修改分类失败");
+      setEditCatModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
+  // 删除自定义业务分类（严格业务校验：分类下必须无任何文档，有文档时阻断并提示用户先移除文档）
+  const handleDeleteCategory = (catKey: string, catLabel: string, count: number) => {
+    // 1. 前置业务强校验：若仍有关联文档，严禁删除，阻断并提示用户移出文档
+    if (count > 0) {
+      toast.warning(
+        `业务分类【${catLabel}】下仍关联 ${count} 篇知识文档，无法直接删除！请先将该分类下的文档迁移至其他分类或移除后再行删除。`
+      );
+      return;
+    }
+
+    // 2. 检查是否为内置标准分类（绝对保护）
+    if (STANDARD_CATEGORIES.some((c) => c.key === catKey)) {
+      toast.error("系统内置标准业务分类属于平台核心基础设施，受保护不可修改或删除");
+      return;
+    }
+
+    // 3. 唤起知阁设计系统统一确认模态框（去除生硬拼接机器码，呈现大厂级精致确认卡片）
+    setConfirmModal({
+      isOpen: true,
+      title: "确认删除业务分类",
+      message: (
+        <div className="space-y-3 pt-1 text-left">
+          <div className="p-3 bg-rose-50/80 rounded-xl border border-rose-200/80 flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <Tag className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-bold text-slate-800 text-sm truncate">
+                【{catLabel}】
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-white text-emerald-700 border border-emerald-200 text-[11px] font-bold font-mono shrink-0 shadow-2xs">
+              关联文档：0 篇 (可安全删除)
+            </span>
+          </div>
+          <p className="text-xs text-slate-600 leading-relaxed font-medium">
+            确定要从数据库中永久物理移除该业务分类吗？删除后该分类将不再可供选用，此操作不可撤销。
+          </p>
+        </div>
+      ),
+      type: "danger",
+      onConfirm: async () => {
+        try {
+          const authToken = getAuthToken();
+          const res = await fetch(`/api/admin/documents/categories?key=${encodeURIComponent(catKey)}`, {
+            method: "DELETE",
+            headers: {
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
+          });
+
+          const json = await res.json();
+          if (!res.ok || !json.success) {
+            toast.error(json.error || "删除分类失败");
+            return;
+          }
+
+          // 同步清理动态字典缓存
+          DYNAMIC_CATEGORY_CACHE.delete(catKey);
+          DYNAMIC_CATEGORY_CACHE.delete(catKey.toLowerCase().replace(/_/g, "-"));
+
+          // 从当前分类列表中剔除
+          setCustomCategories((prev) => prev.filter((c) => c.key !== catKey));
+
+          // 若当前文档弹窗正选中该分类，安全回退至系统默认快速入门
+          setFormData((prev) => {
+            if (prev.category === catKey) {
+              return { ...prev, category: "user-guide" };
+            }
+            return prev;
+          });
+
+          // 若顶部筛选正选中该分类，重置筛选
+          if (filterCategory === catKey) {
+            setFilterCategory("");
+          }
+
+          toast.success(json.message || `分类【${catLabel}】已成功删除`);
+          loadDocuments(true);
+        } catch (err: any) {
+          console.error("删除分类异常:", err);
+          toast.error("网络异常，删除分类失败");
+        }
+      },
+    });
+  };
 
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message: string | React.ReactNode;
     type: "info" | "warning" | "danger";
     onConfirm: () => void;
   }>({
@@ -324,6 +705,16 @@ export default function AdminDocumentsPage() {
         setTotal(data.data.total || 0);
         if (data.data.summary) {
           setSummary(data.data.summary);
+          // 联动注入从数据库拉取的自定义分类字典
+          if (Array.isArray(data.data.summary.customCategories)) {
+            setCustomCategories(data.data.summary.customCategories);
+            data.data.summary.customCategories.forEach((c: any) => {
+              if (c?.key && c?.label) {
+                DYNAMIC_CATEGORY_CACHE.set(c.key, c.label);
+                DYNAMIC_CATEGORY_CACHE.set(c.key.toLowerCase().replace(/_/g, "-"), c.label);
+              }
+            });
+          }
         }
       } else {
         const errorText = await res.text();
@@ -558,6 +949,10 @@ export default function AdminDocumentsPage() {
     });
     setEditingDoc(null);
     setEditorTab("edit");
+    setShowInlineNewCategory(false);
+    setNewCatLabel("");
+    setNewCatKey("");
+    setNewCatDesc("");
     setShowCreateModal(true);
   };
 
@@ -578,6 +973,10 @@ export default function AdminDocumentsPage() {
     });
     setEditingDoc(doc);
     setEditorTab("edit");
+    setShowInlineNewCategory(false);
+    setNewCatLabel("");
+    setNewCatKey("");
+    setNewCatDesc("");
     setShowCreateModal(true);
   };
 
@@ -1076,38 +1475,82 @@ export default function AdminDocumentsPage() {
               </span>
             </button>
 
-            {STANDARD_CATEGORIES.map((cat) => {
+            {availableCategories.map((cat) => {
               const count =
-                (summary.categoryCounts[cat.key] || 0) +
-                (summary.categoryCounts[cat.key.replace(/-/g, "_")] || 0);
-              const Icon = cat.icon;
+                cat.count !== undefined
+                  ? cat.count
+                  : (summary.categoryCounts[cat.key] || 0) +
+                    (summary.categoryCounts[cat.key.replace(/-/g, "_")] || 0);
+              const Icon = cat.icon || Tag;
               const isSelected = filterCategory === cat.key;
               return (
-                <button
+                <div
                   key={cat.key}
-                  type="button"
-                  onClick={() => {
-                    setFilterCategory(cat.key);
-                    setCurrentPage(1);
-                  }}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer inline-flex items-center gap-1.5 ${
+                  className={`inline-flex items-center rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                     isSelected
                       ? "bg-[#3182ce] text-white shadow-xs"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  <Icon className="w-3 h-3" />
-                  <span>{cat.label}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                      isSelected
-                        ? "bg-white/20 text-white"
-                        : "bg-slate-200 text-slate-700"
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterCategory(cat.key);
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-1 inline-flex items-center gap-1.5 cursor-pointer"
                   >
-                    {count}
-                  </span>
-                </button>
+                    <Icon className="w-3 h-3" />
+                    <span>{cat.label}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                        isSelected
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                  {cat.isCustom && (
+                    <div className="inline-flex items-center gap-0.5 pr-2 pl-0.5">
+                      <button
+                        type="button"
+                        title={`编辑/重命名自定义分类【${cat.label}】`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditCategoryModal({ ...cat, count });
+                        }}
+                        className={`p-1 rounded transition-colors cursor-pointer ${
+                          isSelected
+                            ? "text-white/80 hover:text-white hover:bg-white/20"
+                            : "text-slate-400 hover:text-[#3182ce] hover:bg-blue-50"
+                        }`}
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        title={
+                          count > 0
+                            ? `该分类下仍关联 ${count} 篇文档，需先将文档移出才可删除`
+                            : `删除自定义分类【${cat.label}】`
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCategory(cat.key, cat.label, count);
+                        }}
+                        className={`p-1 rounded transition-colors cursor-pointer ${
+                          isSelected
+                            ? "text-white/80 hover:text-white hover:bg-white/20"
+                            : "text-slate-400 hover:text-red-500 hover:bg-red-50"
+                        }`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -1482,27 +1925,256 @@ export default function AdminDocumentsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* 分类 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      文档归属分类 <span className="text-red-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-700">
+                        文档归属分类 <span className="text-red-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowInlineNewCategory(!showInlineNewCategory)}
+                        className="text-[11px] font-bold text-[#3182ce] hover:text-[#2b6cb0] flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{showInlineNewCategory ? "收起新建面板" : "新建业务分类"}</span>
+                      </button>
+                    </div>
                     <select
                       value={formData.category}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        if (e.target.value === "__CREATE_NEW_CATEGORY__") {
+                          setShowInlineNewCategory(true);
+                          return;
+                        }
                         setFormData({
                           ...formData,
                           category: e.target.value,
                           errors: { ...formData.errors, category: "" },
-                        })
-                      }
+                        });
+                      }}
                       className="w-full px-3 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white cursor-pointer"
                     >
                       <option value="">-- 请选择归属业务分类 --</option>
                       {availableCategories.map((cat) => (
                         <option key={cat.key} value={cat.key}>
-                          {cat.label}
+                          {cat.label} {cat.isCustom ? " (自定义)" : ""}
                         </option>
                       ))}
+                      <option value="__CREATE_NEW_CATEGORY__" className="text-[#3182ce] font-bold bg-blue-50/60">
+                        ➕ 新建自定义业务分类...
+                      </option>
                     </select>
+
+                    {/* 业务分类管理与内联拓展面板（支持新建与名称修改，持久化写入数据库 systemconfig 表并自动联动） */}
+                    {showInlineNewCategory && (
+                      <div className="mt-2.5 p-3.5 rounded-xl border border-blue-200/90 bg-blue-50/50 space-y-3 animate-in fade-in slide-in-from-top-1 duration-150 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs font-black text-slate-800">
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#3182ce]"></div>
+                            <span>
+                              {editingCategoryKey ? "修改业务分类名称" : "新建业务分类入库"}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              {editingCategoryKey ? "（修改后全系统实时生效）" : "（自动持久化至数据库）"}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleCancelCategoryEdit();
+                              setShowInlineNewCategory(false);
+                            }}
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title="关闭分类管理面板"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          {/* 分类中文名称 */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[11px] font-bold text-slate-700">
+                                分类名称 <span className="text-red-500">*</span>
+                              </span>
+                              <span className="text-[10px] text-slate-400">2-30 字</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={newCatLabel}
+                              onChange={(e) => setNewCatLabel(e.target.value)}
+                              placeholder="如：安全运维与合规审计、算力与计费规则"
+                              className="w-full px-3 h-8.5 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
+                            />
+                          </div>
+
+                          {/* 分类标识 Key */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[11px] font-bold text-slate-700">
+                                分类代码 Key{" "}
+                                <span className="text-slate-400 font-normal">
+                                  {editingCategoryKey ? "(唯一标识不可修改)" : "(选填，留空自动生成)"}
+                                </span>
+                              </span>
+                              <span className="text-[10px] text-slate-400">限小写英文与短横线</span>
+                            </div>
+                            <input
+                              type="text"
+                              disabled={!!editingCategoryKey}
+                              value={newCatKey}
+                              onChange={(e) => setNewCatKey(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ""))}
+                              placeholder="如：security-audit、billing-rules"
+                              className={`w-full px-3 h-8.5 text-xs font-mono font-medium rounded-lg border ${
+                                editingCategoryKey
+                                  ? "bg-slate-100/80 text-slate-400 border-slate-200 cursor-not-allowed"
+                                  : "text-slate-700 bg-white border-slate-200 focus:outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
+                              }`}
+                            />
+                          </div>
+
+                          {/* 简要描述 */}
+                          <div>
+                            <span className="block text-[11px] font-bold text-slate-700 mb-1">
+                              分类简要说明 <span className="text-slate-400 font-normal">(选填)</span>
+                            </span>
+                            <input
+                              type="text"
+                              value={newCatDesc}
+                              onChange={(e) => setNewCatDesc(e.target.value)}
+                              placeholder="简述该分类收录的文档范畴与定位"
+                              className="w-full px-3 h-8.5 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce]/20"
+                            />
+                          </div>
+                        </div>
+
+                        {/* 已有自定义业务分类列表与编辑/安全删除维护 */}
+                        {customCategories.length > 0 && (
+                          <div className="pt-2 border-t border-blue-100/90 space-y-1.5">
+                            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                              <span>已建自定义业务分类 ({customCategories.length})</span>
+                              <span className="text-[10px] text-slate-400 font-normal">支持重命名 · 关联 0 篇可删除</span>
+                            </div>
+                            <div className="max-h-32 overflow-y-auto space-y-1 pr-0.5 custom-scrollbar">
+                              {customCategories.map((c) => {
+                                const docCount =
+                                  (summary.categoryCounts[c.key] || 0) +
+                                  (summary.categoryCounts[c.key.replace(/-/g, "_")] || 0);
+                                const isCurrentEditing = editingCategoryKey === c.key;
+                                return (
+                                  <div
+                                    key={c.key}
+                                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
+                                      isCurrentEditing
+                                        ? "bg-blue-100/60 border-blue-300"
+                                        : "bg-white border-slate-200 hover:border-blue-200"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5 truncate mr-2 min-w-0">
+                                      <Tag className="w-3 h-3 text-[#3182ce] shrink-0" />
+                                      <span className="font-bold text-slate-800 truncate">{c.label}</span>
+                                      <span className="text-[10px] text-slate-400 font-mono shrink-0">({c.key})</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span
+                                        className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium ${
+                                          docCount > 0
+                                            ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                        }`}
+                                      >
+                                        {docCount > 0 ? `${docCount} 篇` : "0 篇"}
+                                      </span>
+                                      {/* 编辑名称按钮 */}
+                                      <button
+                                        type="button"
+                                        title={`修改分类【${c.label}】名称`}
+                                        onClick={() =>
+                                          handleOpenEditCategoryModal({ ...c, count: docCount })
+                                        }
+                                        className="p-1 rounded text-slate-400 hover:text-[#3182ce] hover:bg-blue-50 transition-colors cursor-pointer"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      {/* 删除按钮 */}
+                                      <button
+                                        type="button"
+                                        title={
+                                          docCount > 0
+                                            ? `该分类下仍关联 ${docCount} 篇文档，需先将文档移出才可删除`
+                                            : `从数据库删除分类【${c.label}】`
+                                        }
+                                        onClick={() => handleDeleteCategory(c.key, c.label, docCount)}
+                                        className={`p-1 rounded transition-colors cursor-pointer ${
+                                          docCount > 0
+                                            ? "text-slate-300 hover:text-amber-600 hover:bg-amber-50"
+                                            : "text-red-500 hover:bg-red-50 hover:text-red-600"
+                                        }`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 操作按钮组 */}
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-blue-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleCancelCategoryEdit();
+                              setShowInlineNewCategory(false);
+                            }}
+                            className="px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+                          >
+                            取消
+                          </button>
+                          {editingCategoryKey ? (
+                            <button
+                              type="button"
+                              onClick={handleUpdateCategory}
+                              disabled={catSubmitting || !newCatLabel.trim()}
+                              className="px-3 py-1 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                            >
+                              {catSubmitting ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>更新中...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>保存名称修改</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleCreateNewCategory}
+                              disabled={catSubmitting || !newCatLabel.trim()}
+                              className="px-3 py-1 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                            >
+                              {catSubmitting ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>保存入库中...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>确认入库并选中</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* 排序权重 */}
@@ -2438,6 +3110,157 @@ export default function AdminDocumentsPage() {
                   <>
                     <EyeOff className="w-3.5 h-3.5" />
                     <span>确认下架为草稿</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 自定义业务分类编辑/重命名模态框（知阁设计系统标准高阶交互） */}
+      {editCatModal.isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() =>
+            !editCatModal.submitting &&
+            setEditCatModal((prev) => ({ ...prev, isOpen: false }))
+          }
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 顶栏 Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] flex items-center justify-between text-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center font-bold text-white shrink-0 backdrop-blur-xs shadow-xs">
+                  <Pencil className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black tracking-tight text-white">
+                    编辑自定义业务分类
+                  </h3>
+                  <p className="text-[11px] text-white/80 mt-0.5 font-medium">
+                    修改分类展示名称与说明，全系统实时同步生效
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={editCatModal.submitting}
+                onClick={() => setEditCatModal((prev) => ({ ...prev, isOpen: false }))}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 核心内容区 */}
+            <div className="p-6 space-y-4 text-left">
+              {/* 分类代码只读提示 */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>分类唯一标识代码 (Key)</span>
+                </label>
+                <div className="px-3.5 h-10 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between text-xs font-mono font-bold text-slate-500">
+                  <span>{editCatModal.key}</span>
+                  <span className="text-[10px] text-slate-400 font-sans font-normal">
+                    物理外键绑定·锁定保护
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  作为数据库与文档外键绑定的核心底层键，受保护禁止变更以确保数据一致性。
+                </p>
+              </div>
+
+              {/* 分类中文名称 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <span>分类中文名称</span>
+                    <span className="text-red-500 font-bold">*</span>
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {editCatModal.label.trim().length} / 30 字
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  maxLength={30}
+                  value={editCatModal.label}
+                  onChange={(e) =>
+                    setEditCatModal((prev) => ({ ...prev, label: e.target.value }))
+                  }
+                  placeholder="如：合规治理、计费结算、安全审计"
+                  className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs font-bold text-slate-800 transition-all bg-slate-50/50 focus:bg-white"
+                />
+              </div>
+
+              {/* 分类简要描述 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700">
+                    分类简要说明 <span className="text-slate-400 font-normal">(选填)</span>
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {editCatModal.description.length} / 100 字
+                  </span>
+                </div>
+                <textarea
+                  rows={2}
+                  maxLength={100}
+                  value={editCatModal.description}
+                  onChange={(e) =>
+                    setEditCatModal((prev) => ({ ...prev, description: e.target.value }))
+                  }
+                  placeholder="简述该分类收录的业务文档定位与范畴"
+                  className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce] text-xs text-slate-800 font-medium transition-all focus:bg-white resize-none"
+                />
+              </div>
+
+              {/* 关联文档提示条 */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200/70 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Tag className="w-3.5 h-3.5 text-[#3182ce]" />
+                  <span className="font-bold text-slate-700">当前归属知识文档：</span>
+                </div>
+                <span className="font-mono font-bold text-[#3182ce] bg-white px-2 py-0.5 rounded border border-blue-200 shadow-2xs">
+                  {editCatModal.docCount} 篇
+                </span>
+              </div>
+            </div>
+
+            {/* 底部操作条 */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex items-center justify-end gap-2.5 shrink-0">
+              <button
+                type="button"
+                disabled={editCatModal.submitting}
+                onClick={() => setEditCatModal((prev) => ({ ...prev, isOpen: false }))}
+                className="px-4 h-9 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={
+                  editCatModal.submitting ||
+                  !editCatModal.label.trim() ||
+                  editCatModal.label.trim().length < 2
+                }
+                onClick={handleSaveEditCategoryModal}
+                className="px-5 h-9 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                {editCatModal.submitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>保存中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>保存修改</span>
                   </>
                 )}
               </button>

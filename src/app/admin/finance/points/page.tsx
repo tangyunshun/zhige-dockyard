@@ -15,7 +15,11 @@ import {
   Clock3,
   ShieldCheck,
   ShieldAlert,
+  Download,
 } from "lucide-react";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 
 interface LedgerRow {
   id: string;
@@ -66,9 +70,12 @@ export default function AdminPointsLedgerPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 1 });
   const toast = useToast();
+  const maxRows = useExportMaxRows();
   const [expireLoading, setExpireLoading] = useState(false);
   const [expireMsg, setExpireMsg] = useState<string | null>(null);
   const [expireOk, setExpireOk] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
 
   const loadSummary = useCallback(async () => {
     try {
@@ -112,6 +119,63 @@ export default function AdminPointsLedgerPage() {
       setLoadingLedger(false);
     }
   }, [typeFilter, page]);
+
+  const POINT_TYPE_LABEL: Record<string, string> = {
+    CONSUME: "组件执行扣点",
+    REFUND: "退款",
+    RECHARGE: "充值",
+    OFFLINE_RECHARGE: "线下充值",
+    GIFT_REGISTER: "注册赠送",
+    MEMBERSHIP_GRANT: "会员发放",
+    GIFT_EXPIRE: "赠送过期",
+    MANUAL_ADJUST: "手动调整",
+  };
+
+  const handleExportExcel = useCallback(async () => {
+    if (!isSuperAdmin && !hasPermission("billing:export")) {
+      toast.warning("当前账号未配置导出权限，请联系超级管理员");
+      return;
+    }
+    try {
+      setExporting(true);
+      const token = getAuthToken();
+      const sp = new URLSearchParams({ type: typeFilter, page: "1", pageSize: String(maxRows) });
+      sp.set("export", "1");
+      const res = await fetch(`/api/admin/points/ledger?${sp.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "导出数据拉取失败");
+      const list: LedgerRow[] = json.data?.records || [];
+      if (list.length === 0) {
+        toast.warning("当前筛选条件下暂无数据可导出");
+        return;
+      }
+      exportToExcel({
+        filename: "算力点流水",
+        sheetName: "算力点流水",
+        maxRows: maxRows,
+        trace: { exportType: "算力点流水", filters: { type: typeFilter }, rowCount: list.length, page: "/admin/finance/points" },
+        columns: [
+          { header: "发生时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
+          { header: "类型", key: "type", width: 16, formatter: (v: string, row: LedgerRow) => POINT_TYPE_LABEL[v] || row.typeLabel || v },
+          { header: "说明", key: "title", width: 30 },
+          { header: "点数变动", key: "points", width: 14, formatter: (v: number) => (v > 0 ? `+${v}` : String(v)) },
+          { header: "变动后余额", key: "balanceAfter", width: 14 },
+          { header: "关联单号", key: "orderNo", width: 22 },
+          { header: "空间名称", key: "workspaceName", width: 20 },
+        ],
+        data: list,
+      });
+      toast.success(`已导出 ${list.length} 条算力点流水`);
+    } catch (e: any) {
+      toast.error(e?.message || "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }, [typeFilter, isSuperAdmin, hasPermission, toast]);
 
   useEffect(() => {
     loadSummary();
@@ -187,6 +251,14 @@ export default function AdminPointsLedgerPage() {
             className="px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-600 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             <Clock3 className="w-3.5 h-3.5" /> {expireLoading ? "清算中..." : "到期清算"}
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || (!isSuperAdmin && !hasPermission("billing:export"))}
+            title={!isSuperAdmin && !hasPermission("billing:export") ? "当前账号未配置导出权限，请联系超级管理员" : "将当前筛选条件下的全量算力点流水导出为 Excel"}
+            className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" /> {exporting ? "导出中…" : "导出 Excel"}
           </button>
         </div>
       </div>

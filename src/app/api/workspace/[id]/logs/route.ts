@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { requireWorkspaceMembership, getLogicalWorkspaceRole } from "@/lib/security";
+import { getAuditDictionariesFromDb, translateAction } from "@/lib/audit-dict";
 
 /**
  * 工作空间维度操作审计日志（前端「空间审计日志」页真实数据源）
@@ -112,7 +113,10 @@ export async function GET(
     const dbPositions = await prisma.position.findMany({ select: { code: true, name: true } }).catch(() => []);
     const positionMap = new Map(dbPositions.map((p) => [p.code.toUpperCase(), p.name]));
 
-    // 数据库动态联表查询 2: 提取日志中所有 targetUserId，从 prisma.user 表获取真实姓名
+    // 数据库动态查询 2: 从数据库 system_config 获取权威审计动作与显示字典
+    const { actionDict } = await getAuditDictionariesFromDb();
+
+    // 数据库动态联表查询 3: 提取日志中所有 targetUserId，从 prisma.user 表获取真实姓名
     const targetUserIds = Array.from(new Set(allLogs.map((l: any) => {
       const d = parseDetails(l.details);
       return d.targetUserId || d.targetId || null;
@@ -126,7 +130,7 @@ export async function GET(
       : [];
     const targetUserMap = new Map(targetUsers.map((u) => [u.id, u.name || u.email || u.phone || "关联成员"]));
 
-    // 动态转换封装带有数据库真实中文名信息的 details
+    // 动态转换封装带有数据库真实中文名信息的 details 与行为中文标签
     const enrichedLogs = pagedLogs.map((l: any) => {
       const det = parseDetails(l.details);
       const rawRole = det.newRole || det.role || det.positionCode || "";
@@ -147,8 +151,31 @@ export async function GET(
       const targetUserObj = det.targetUserId ? targetUserMap.get(det.targetUserId) : null;
       const resolvedTargetName = det.targetName || det.targetUserName || targetUserObj || (det.targetUserId ? "关联成员" : null);
 
+      // 从数据库字典体系动态翻译行为动作，严格从数据库获取中文描述，绝不向前端暴露裸大写英文
+      const translated = translateAction(l.action, actionDict);
+      const actionLabel = actionDict[l.action] || translated.label;
+      const actionCategory = (
+        l.action.startsWith("component:") || l.action.includes("COMPONENT") ? "组件装配" :
+        l.action.startsWith("task:") || l.action.includes("TASK") ? "任务执行" :
+        l.action.startsWith("asset:") ? "资料管理" :
+        l.action.startsWith("KNOWLEDGE_") ? "知识沉淀" :
+        (l.action.includes("WORKSPACE") || l.action.includes("MEMBER") || l.action.includes("UPGRADE") || l.action === "workspace:update") ? "成员与配置" :
+        "其他"
+      );
+
+      // 针对空间升级类核心操作，在详情中补充具体业务描述
+      if (l.action === "UPGRADE_PERSONAL_TO_ENTERPRISE" || l.action === "UPGRADE_WORKSPACE" || l.action === "UPGRADE_WORKSPACE_PLAN") {
+        if (!det.message) {
+          const planText = det.toPlan === "ENTERPRISE" || det.toPlan === "enterprise" ? "企业旗舰版" : (det.toPlan || "企业版");
+          const cycleText = det.billingCycle === "YEAR" ? "年付" : det.billingCycle === "MONTH" ? "月付" : "";
+          det.message = `个人空间成功升级为企业工作空间 · ${planText}${cycleText ? `（${cycleText}）` : ""}`;
+        }
+      }
+
       return {
         ...l,
+        actionLabel,
+        actionCategory,
         details: {
           ...det,
           newRoleName: dbRoleName,

@@ -1518,12 +1518,14 @@ export async function completeSettlement(
           // 场景 0: 无限额度独立处理 —— 不扣真实点数，不退差额，只记录用量与供应商成本，零虚假流水
           auditMsg += `; 无限额度空间用量结算（不产生资金退扣）`;
         } else if (actualPricePoints < holdPoints) {
-          // 场景 A: 实际使用低于预扣 -> 按 LIFO 逆序原路退还差额点数
+          // 场景 A（只补不退策略，定价审核调整）：实际使用低于预扣 → 差额不再退还用户，
+          // 预扣即实扣（固定包干制），仅记录留存点数供对账。下方释放循环因 remainingToRefund
+          // 置零成为空操作（保留原代码路径，便于策略回退）。
           const diffToRelease = holdPoints - actualPricePoints;
-          releasedPoints = diffToRelease;
+          releasedPoints = B_ZERO;
           const details = storedHold.details;
 
-          let remainingToRefund = diffToRelease;
+          let remainingToRefund = B_ZERO;
           // LIFO 逆序释放：优先返还最后扣除的分桶
           const reversedDetails = [...details].reverse();
 
@@ -1641,12 +1643,9 @@ export async function completeSettlement(
             });
           }
 
-          // 回滚月度用量
+          // 只补不退：用量真实发生，不回滚月度用量（rollbackMonthly 置零，保留更新路径）
           if (current.monthlyTokenUsedIncremented > B_ZERO) {
-            const rollbackMonthly =
-              diffToRelease < current.monthlyTokenUsedIncremented
-                ? diffToRelease
-                : current.monthlyTokenUsedIncremented;
+            const rollbackMonthly = B_ZERO;
 
             const affected = await tx.$executeRaw`
               UPDATE \`workspacemember\`
@@ -1658,7 +1657,7 @@ export async function completeSettlement(
             }
           }
 
-          auditMsg += `; 多扣差额释放 ${diffToRelease} 点`;
+          auditMsg += `; 固定包干结算：留存差额 ${diffToRelease} 点（只补不退，不向用户释放）`;
         } else if (actualPricePoints > holdPoints) {
           // 场景 B: 实际消耗超出预扣 -> 强校验 BigInt 范围后复用 deductPointsInTx 追加补扣
           const diffToSupplement = actualPricePoints - holdPoints;

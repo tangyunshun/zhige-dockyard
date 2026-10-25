@@ -32,6 +32,8 @@ export interface UpgradePersonalToEnterpriseInput {
   actorId?: string | null;
   /** 强制重跑（即便已是企业且同套餐），默认 false */
   force?: boolean;
+  /** 指定工作空间配额记录 ID；缺省按 workspaceId 反查 */
+  workspacequotaId?: string;
 }
 
 export interface UpgradePersonalToEnterpriseResult {
@@ -297,7 +299,7 @@ export async function provisionEnterpriseUpgrade(input: {
   targetPlanKey?: string;
   billingCycle?: "MONTH" | "YEAR";
   source?: UpgradeSource;
-}): Promise<{ newWorkspaceId: string; message: string; giftMigrated: boolean }> {
+}): Promise<{ newWorkspaceId: string; message: string; giftMigrated: number }> {
   const { personalWorkspaceId, userId, option } = input;
   const source = input.source || "SELF_SERVICE_PURCHASE";
 
@@ -453,7 +455,7 @@ async function movePersonalAssetsToEnterprise(
 export async function fulfillEnterpriseUpgradeFromOrder(orderNo: string): Promise<{
   newWorkspaceId: string;
   message: string;
-  giftMigrated: boolean;
+  giftMigrated: number;
 }> {
   const order = await prisma.billingrecord.findUnique({ where: { id: orderNo } });
   if (!order) throw new Error("ORDER_NOT_FOUND");
@@ -463,7 +465,7 @@ export async function fulfillEnterpriseUpgradeFromOrder(orderNo: string): Promis
     return {
       newWorkspaceId: meta.newWorkspaceId || "",
       message: "企业空间已开通",
-      giftMigrated: false,
+      giftMigrated: 0,
     };
   }
   if (order.status !== "PENDING") throw new Error(`ORDER_STATE_${order.status}`);

@@ -133,7 +133,7 @@ export default function PersonalWorkspaceCard({
           <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
             {onEnter && (
               <button
-                onClick={onEnter}
+                onClick={() => workspace && onEnter(workspace)}
                 className="zg-btn zg-btn-default px-3.5 h-[38px] text-sm font-semibold rounded-lg flex items-center gap-1 hover:-translate-y-0.5 transition-all cursor-pointer bg-gradient-to-b from-slate-100 to-slate-200 hover:brightness-105 border-t border-slate-300 text-slate-700 shadow-sm"
               >
                 <Eye className="w-3.5 h-3.5" />

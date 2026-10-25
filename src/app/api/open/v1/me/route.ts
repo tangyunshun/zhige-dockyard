@@ -38,12 +38,19 @@ export async function GET(request: NextRequest) {
 
   let tokenBalance = 0;
   try {
+    // ⚠️ 按 workspacequota.workspaceId 正向查询：workspace.workspacequotaId 外键历史为 NULL，
+    // 依赖 include 关系会把有余额的个人空间误读成 0。
     const personalWs = await prisma.workspace.findFirst({
       where: { ownerId: user.id, type: "PERSONAL" },
-      include: { workspacequota: true },
+      select: { id: true },
     });
-    if (personalWs?.workspacequota) {
-      tokenBalance = Number(personalWs.workspacequota.tokenBalance);
+    if (personalWs) {
+      const personalQuota = await prisma.workspacequota.findUnique({
+        where: { workspaceId: personalWs.id },
+      });
+      if (personalQuota) {
+        tokenBalance = Number(personalQuota.tokenBalance);
+      }
     }
   } catch {
     // 忽略配额查询异常，不影响主体信息返回

@@ -223,7 +223,6 @@ function PermissionsContent() {
   const [permModalMode, setPermModalMode] = useState<"add" | "edit">("add");
   const [editingPermKey, setEditingPermKey] = useState<string>("");
   const [isAddingPerm, setIsAddingPerm] = useState(false);
-  const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
   const [isResettingCatalog, setIsResettingCatalog] = useState(false);
   const [isSyncingKeys, setIsSyncingKeys] = useState(false);
   const [newPermForm, setNewPermForm] = useState<{
@@ -419,7 +418,8 @@ function PermissionsContent() {
         await loadData(true);
       } else {
         await loadData(true);
-        toast.success("权限状态监测完成：已同步最新权限矩阵！");
+        // 失败必须如实报错，不得伪装成同步成功误导管理员
+        toast.error(data?.error || data?.message || "权限规则校准同步失败，请稍后重试");
       }
     } catch {
       await loadData(true);
@@ -903,35 +903,6 @@ function PermissionsContent() {
     }
   };
 
-  // 一键全系统功能智能差量合并补充（将全系统24大模块缺失项补入数据库，不破坏已有配置）
-  const handleSyncAllSystemModules = async () => {
-    try {
-      setIsSyncingCatalog(true);
-      const authToken = getAuthToken();
-      const res = await fetch("/api/admin/permissions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({ action: "sync_system_catalog" }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success(data.message || "已成功与全系统 24 大模块完成对接与同步！");
-        if (Array.isArray(data.catalog)) {
-          setPermissionCatalog(data.catalog);
-        }
-      } else {
-        toast.error(data.error || "同步全系统功能失败");
-      }
-    } catch {
-      toast.error("同步异常，请稍后重试");
-    } finally {
-      setIsSyncingCatalog(false);
-    }
-  };
-
   // 同步代码权限点：调用脚本扫描逻辑，把代码中已用但目录缺失的权限点补录进来（只增不删）
   const handleSyncCodeKeys = async () => {
     try {
@@ -1223,17 +1194,17 @@ function PermissionsContent() {
             <div className="pb-4 border-b border-slate-100 space-y-3">
               {/* 第一层：标题与主操作栏 */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div className="min-w-0 flex items-center gap-2">
+                <div className="min-w-0 flex-1 flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0 border border-blue-100">
                     <ShieldCheck className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
-                    <span>授权配置矩阵：</span>
-                    <span className="text-[#3182ce]">{currentAdmin?.name || "未知管理员"}</span>
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5 min-w-0">
+                    <span className="shrink-0 whitespace-nowrap">授权配置矩阵：</span>
+                    <span className="text-[#3182ce] truncate">{currentAdmin?.name || "未知管理员"}</span>
                   </h3>
                   {currentAdmin && (
                     <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
                         currentAdmin.isSuper
                           ? "bg-amber-50 text-amber-600 border border-amber-200"
                           : "bg-blue-50 text-[#3182ce] border border-blue-200"
@@ -1636,7 +1607,7 @@ function PermissionsContent() {
                               <div
                                 key={perm.key}
                                 onClick={() => handleTogglePermission(perm.key)}
-                                className={`p-3 rounded-xl border flex items-start justify-between cursor-pointer select-none transition-all group/item relative ${
+                                className={`p-3 rounded-xl border grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 cursor-pointer select-none transition-all group/item relative ${
                                   isBatchMode
                                     ? isBatchSelected
                                       ? "bg-red-50/80 border-red-500 shadow-xs ring-1 ring-red-400"
@@ -1646,7 +1617,7 @@ function PermissionsContent() {
                                     : "bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300"
                                 }`}
                               >
-                                <div className="min-w-0 pr-2 space-y-1 flex-1">
+                                <div className="min-w-0 col-start-1 row-start-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
                                       className={`text-xs block ${
@@ -1664,17 +1635,9 @@ function PermissionsContent() {
                                       label={levelLabelMap[perm.level] || perm.level}
                                     />
                                   </div>
-
-                                  <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-                                    {perm.desc}
-                                  </p>
-
-                                  <span className="text-[9px] font-bold text-slate-400 font-mono block">
-                                    {perm.key}
-                                  </span>
                                 </div>
 
-                                <div className="flex items-center gap-1.5 shrink-0 mt-0.5 ml-2">
+                                <div className="flex items-center gap-1.5 shrink-0 mt-0.5 col-start-2 row-start-1">
                                   {/* 编辑按钮（修正名称 / 说明 / 风险等级 / 所属模块） */}
                                   {!isBatchMode && (
                                     <button
@@ -1744,6 +1707,15 @@ function PermissionsContent() {
                                         )}
                                   </div>
                                 </div>
+
+                                {/* 说明与 KEY 平铺整卡宽度，不再被操作按钮挤压成窄条 */}
+                                <p className="col-span-2 mt-2 text-[11px] text-slate-500 font-medium leading-relaxed">
+                                  {perm.desc}
+                                </p>
+
+                                <span className="col-span-2 mt-1 block text-[9px] font-bold text-slate-400 font-mono">
+                                  {perm.key}
+                                </span>
                               </div>
                             );
                           })}

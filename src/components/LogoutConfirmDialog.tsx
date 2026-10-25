@@ -61,7 +61,7 @@ export default function LogoutConfirmDialog({
 
   const dialog = (
     <div
-      className={`fixed inset-0 z-[10000] flex items-end sm:items-center justify-center transition-opacity duration-300 ${
+      className={`fixed inset-0 z-[999999] flex items-end sm:items-center justify-center transition-opacity duration-300 ${
         isOpen ? "opacity-100" : "opacity-0"
       }`}
       role="dialog"

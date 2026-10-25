@@ -13,7 +13,7 @@
 
 import { test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { runStudioPost } from "../route";
+import { runStudioPost } from "../handler";
 import { ModelAdapterError } from "@/lib/model-adapter";
 
 // 控制结算开关（路由在 2615 行读取 isTokenSettlementFeatureEnabled）
@@ -134,10 +134,19 @@ function fakePrisma() {
                 if (where && where.status) rows = rows.filter((r) => r.status === where.status);
                 return rows;
               },
+              // 并发任务数上限校验（新功能）依赖 count：按状态过滤后计数
+              count: async ({ where }: any) => {
+                let rows = Array.from(store.values());
+                if (where && where.status) rows = rows.filter((r) => r.status === where.status);
+                return { count: rows.length };
+              },
             };
           case "componentcatalog":
             return { findUnique: async ({ where }: any) => ({ id: where.id, name: "测试组件", estimatedModelTokens: 50, activeContractId: where.id }), update: async () => ({}) };
-          case "componentstats":
+          case "membershiplevel":
+            // 并发上限新功能依赖：给测试发高级别配额（maxConcurrency=5），避免 FREE=1 限制并发用例
+            return { findUnique: async ({ where }: any) => ({ name: where.name, maxConcurrency: 5, maxSingleFileBytes: 0, maxModelAllocations: 0, maxByoModels: 0 }) };
+                    case "componentstats":
             return { upsert: async () => ({}) };
           case "workspacequota":
             return { update: async ({ data }: any) => data, findUnique: async () => ({ id: "q1", tokenBalance: 1000 }) };

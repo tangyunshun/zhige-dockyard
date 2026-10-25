@@ -56,14 +56,21 @@ export const GET = withAuth(async (req, user) => {
     }
 
     // 附带查询用户当前个人空间的可用算力点（只读实际余额，不赠送/兜底）
+    // ⚠️ 按 workspacequota.workspaceId 正向查询：workspace.workspacequotaId 外键历史为 NULL，
+    // 依赖 include 关系会把有余额的个人空间误读成 0。
     let tokenBalance = 0;
     try {
       const personalWs = await prisma.workspace.findFirst({
         where: { ownerId: user.id, type: "PERSONAL" },
-        include: { workspacequota: true },
+        select: { id: true },
       });
-      if (personalWs?.workspacequota) {
-        tokenBalance = Number(personalWs.workspacequota.tokenBalance);
+      if (personalWs) {
+        const personalQuota = await prisma.workspacequota.findUnique({
+          where: { workspaceId: personalWs.id },
+        });
+        if (personalQuota) {
+          tokenBalance = Number(personalQuota.tokenBalance);
+        }
       }
     } catch (e) {
       console.warn("[profile] 查询算力非致命提示:", e);

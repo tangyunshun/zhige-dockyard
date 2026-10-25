@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import AppLayout from "@/components/AppLayout";
 
@@ -24,7 +25,9 @@ export default function RootLayout({
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
         {/* 首屏外观偏好应用：在其他脚本之前读取本地缓存，避免主题/密度闪烁 */}
-        <script
+        <Script
+          id="zhige-appearance-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html:
               "(function(){try{var p=JSON.parse(localStorage.getItem('zhige_appearance')||'{}');var d=document.documentElement;d.dataset.density=p.displayDensity||'comfortable';var t=p.theme||'light';if(t==='auto'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}d.dataset.theme=t;}catch(e){}})();",

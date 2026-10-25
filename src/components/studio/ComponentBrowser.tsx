@@ -201,7 +201,9 @@ export default function ComponentBrowser({
   const [sortBy, setSortBy] = useState<"default" | "hot" | "success" | "new">("default");
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [activeTab, setActiveTab] = useState<"recent" | "favorites">("recent");
+  // 我的收藏筛选：收藏数据按账号云端持久化（componentfavorite 表，跨设备/跨空间可见），
+  // 此开关仅在组件大厅内做列表过滤，不影响任何后端数据。
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
 
   // 工作模式分流：smart - 自动匹配推荐；active - 主动选择
   const [workMode, setWorkMode] = useState<"active" | "smart">("smart");
@@ -1188,19 +1190,20 @@ export default function ComponentBrowser({
                   {/* 装饰微光 */}
                   <div className="absolute right-0 top-0 w-48 h-48 bg-blue-100/30 rounded-full filter blur-3xl pointer-events-none scale-150 transform translate-x-20 -translate-y-10" />
 
-                  <div className="space-y-1.5 relative z-10 max-w-lg">
+                  <div className="space-y-1.5 relative z-10">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] flex items-center justify-center text-white shadow-md shadow-blue-500/10">
                         <Workflow className="w-4 h-4" />
                       </div>
                       <h3 className="text-sm font-black text-slate-800 tracking-tight">应用需求快速检索</h3>
                     </div>
-                    <p className="text-xs text-slate-400 font-bold leading-normal">
+                    {/* 桌面端单行完整展示（不换行、不省略）；仅窄屏（flex-col 堆叠）允许折行 */}
+                    <p className="text-xs text-slate-400 font-bold leading-normal md:whitespace-nowrap">
                       输入您的应用需求（如“标书解析”或“数据库建模”），系统将自动筛选出适合您的应用组件。
                     </p>
                   </div>
 
-                  <form onSubmit={handleTaskMatchSearch} className="relative z-10 flex items-center bg-slate-100/30 border border-slate-200 p-1 rounded-xl transition-all focus-within:border-[#3182ce]/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/5 shadow-inner w-full md:max-w-md shrink-0">
+                  <form onSubmit={handleTaskMatchSearch} className="relative z-10 flex items-center bg-slate-100/30 border border-slate-200 p-1 rounded-xl transition-all focus-within:border-[#3182ce]/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/5 shadow-inner w-full md:max-w-md shrink min-w-[240px]">
                     <input
                       type="text"
                       placeholder="例如：我想要逆向数据库生成API单测和Dockerfile..."
@@ -1376,6 +1379,21 @@ export default function ComponentBrowser({
                     </>
                   )}
 
+                  {/* 我的收藏筛选（登录可见）：收藏按账号云端保存，此处提供聚合查看入口 */}
+                  {isLoggedIn && (
+                    <button
+                      onClick={() => setOnlyFavorites((v) => !v)}
+                      className={`h-9 px-4 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shrink-0 ${onlyFavorites
+                        ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                        : "bg-white text-slate-700 border-slate-200 hover:border-amber-500"
+                        }`}
+                      title="仅查看我已收藏的组件（按账号云端保存，跨设备与跨工作空间均可见）"
+                    >
+                      <Star className={`w-3.5 h-3.5 ${onlyFavorites ? "fill-current" : ""}`} />
+                      <span>我的收藏{favorites.length > 0 ? ` ${favorites.length}` : ""}</span>
+                    </button>
+                  )}
+
                   {/* 视图切换 */}
                   <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/60 shadow-sm shrink-0">
                     <button
@@ -1432,14 +1450,45 @@ export default function ComponentBrowser({
                   );
                 }
 
-                // 过滤搜索内容
-                const comps = currentStage.components.filter((c) => {
+                // 过滤搜索内容（叠加「我的收藏」筛选；收藏视图跨全部研发阶段平铺，不被阶段 Tab 切碎）
+                const baseList = onlyFavorites ? COMPONENTS : currentStage.components;
+                const comps = baseList.filter((c) => {
+                  if (onlyFavorites && !favorites.includes(c.id)) return false;
                   const matchesSearch =
                     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     c.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
                   return matchesSearch;
                 });
+
+                if (comps.length === 0 && onlyFavorites) {
+                  // 收藏专属空态：区分「从未收藏」与「当前阶段/搜索词下没有收藏」
+                  return (
+                    <div className="bg-white border border-amber-200/80 rounded-2xl p-10 text-center shadow-sm space-y-3">
+                      <Star className="w-8 h-8 text-amber-400 block mx-auto" />
+                      <div>
+                        <p className="text-xs font-black text-slate-700">
+                          {favorites.length === 0
+                            ? "你还没有收藏任何组件"
+                            : `当前阶段/检索条件下没有已收藏的组件（你共收藏了 ${favorites.length} 个）`}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                          在任意组件卡片或详情面板点击右上角星形即可收藏；
+                          收藏按账号云端保存，更换设备、切换工作空间都不会丢失。
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setOnlyFavorites(false)}
+                          className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all cursor-pointer"
+                        >
+                          返回全部组件
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
 
                 if (comps.length === 0) {
                   return (
@@ -1455,11 +1504,15 @@ export default function ComponentBrowser({
                   <div className="space-y-4">
                     <div className="flex items-center gap-2.5 pb-2 border-b border-[#e2e8f0]/60">
                       <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
-                        <FolderOpen className="w-4 h-4 text-[#3182ce]" />
-                        <span>{currentStage.name} 研发阶段精品货架</span>
+                        {onlyFavorites ? (
+                          <Star className="w-4 h-4 text-amber-500 fill-current" />
+                        ) : (
+                          <FolderOpen className="w-4 h-4 text-[#3182ce]" />
+                        )}
+                        <span>{onlyFavorites ? "我的收藏（跨全部研发阶段）" : `${currentStage.name} 研发阶段精品货架`}</span>
                       </h3>
-                      <span className="px-2.5 py-0.5 bg-blue-50 text-[#3182ce] text-xs font-bold rounded-full border border-blue-100/50 font-mono">
-                        {comps.length} 项资产已就绪
+                      <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border font-mono ${onlyFavorites ? "bg-amber-50 text-amber-600 border-amber-100" : "bg-blue-50 text-[#3182ce] border-blue-100/50"}`}>
+                        {onlyFavorites ? `已收藏 ${comps.length} 项` : `${comps.length} 项资产已就绪`}
                       </span>
                     </div>
 

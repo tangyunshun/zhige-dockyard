@@ -43,9 +43,12 @@ import {
   ChevronRight,
   ChevronDown,
   Download,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 
 interface Component {
@@ -65,6 +68,14 @@ interface Component {
   hint?: string;
   createdAt: string;
   updatedAt: string;
+  // 深度详情（长介绍 fullDescription / usage / apiDoc），来自数据库 component_catalog.detail
+  detail?: any;
+  // 计费改版：成本底线 / 选型模型 / 预估 Token / 复杂度
+  costFloorPoints?: number | null;
+  costModelDeploymentId?: string | null;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  pricingComplexity?: string | null;
 }
 
 interface ComponentFormData {
@@ -78,6 +89,13 @@ interface ComponentFormData {
   isPublished: boolean;
   estimatedModelTokens: number;
   config?: any;
+  detail?: any;
+  // 计费改版：成本底线 / 选型模型 / 预估 Token / 复杂度
+  costModelDeploymentId?: string | null;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  pricingComplexity?: string | null;
+  costFloorPoints?: number | null;
 }
 
 const MAX_COMPONENT_NAME_LENGTH = 50;
@@ -324,7 +342,33 @@ function CategorySelect({
  * 辅助管理员给组件配置固定点数时参考（建议配点 ≥ 成本折点 × 加价系数，防止定价倒贴）。
  * 价格唯一真源为模型注册表（modelpricing），本工具不做任何硬编码单价。
  */
-function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) {
+function CostReferenceTool({
+  costModelDeploymentId,
+  estimatedInputTokens: inputTokensProp = 4000,
+  estimatedOutputTokens: outputTokensProp = 2000,
+  finalPrice,
+  pricingComplexity,
+  onChange,
+  onApply,
+  onTokenLimitState,
+}: {
+  /** 选型模型部署（受控）：组件成本底线计算依据，保存入库 */
+  costModelDeploymentId?: string | null;
+  /** 预估输入 Token（受控） */
+  estimatedInputTokens?: number;
+  /** 预估输出 Token（受控） */
+  estimatedOutputTokens?: number;
+  /** 当前最终对外售价（受控，= 父组件 formData.estimatedModelTokens） */
+  finalPrice: number;
+  /** 业务复杂度（受控） */
+  pricingComplexity?: string | null;
+  /** 局部更新父组件 formData 定价字段 */
+  onChange: (patch: Partial<ComponentFormData>) => void;
+  /** 将建议售价写入「每次执行扣除算力点数」输入框并高亮 */
+  onApply: (points: number) => void;
+  /** 预估 Token 是否超出所选模型技术上限（向上汇报，父组件据此置灰保存按钮） */
+  onTokenLimitState?: (over: boolean) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string>("");
@@ -335,27 +379,24 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
       costIn: number | null;
       costOut: number | null;
       markupBps: number | null;
+      /** 模型上下文上限（tokens）：预估输入/输出 Token 的技术红线，未登记为 null */
+      contextLimit: number | null;
     }>
   >([]);
   const [globalMarkupBps, setGlobalMarkupBps] = useState<number>(0);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [inputTokens, setInputTokens] = useState(4000);
-  const [outputTokens, setOutputTokens] = useState(2000);
-  // 毛利系数 k（建议配点 = 模型售价折点 × k），管理员可调并本地记住；默认 2.5（毛利 60%）
-  // 仅影响「建议配点」参考值，不影响模型售价折点（成本×20% 加价）与实际扣点
-  const MARGIN_K_KEY = "admin_cost_ref_margin_k";
-  const [marginK, setMarginK] = useState<number>(() => {
-    if (typeof window === "undefined") return 2.5;
-    const v = Number(window.localStorage.getItem(MARGIN_K_KEY));
-    return Number.isFinite(v) && v >= 1 && v <= 20 ? v : 2.5;
-  });
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(MARGIN_K_KEY, String(marginK));
-    } catch {
-      // 本地存储不可用时忽略，仅本次会话生效
-    }
-  }, [marginK]);
+  // 选型模型与预估 Token 由父组件 formData 受控（保存入库）；本地仅作展示与实时计算
+  const selectedId = costModelDeploymentId || deployments[0]?.id || "";
+  const inputTokens = Number(inputTokensProp) || 0;
+  const outputTokens = Number(outputTokensProp) || 0;
+
+  // 业务复杂度 → 建议售价档位（定价审核后与全站价格带对齐：50~300 点，毛利 78%+）。
+  // 选择档位只是把「建议售价」填入输入框，最终以管理员填写为准，且绝不低于成本底线。
+  const COMPLEXITY_OPTIONS = [
+    { value: "LIGHT", label: "轻量级（简单润色 / 翻译 / 问答）· 建议 50 点", points: 50 },
+    { value: "MEDIUM", label: "中量级（分析 / 设计 / 生成）· 建议 100 点", points: 100 },
+    { value: "HEAVY", label: "重量级（深度文档 / 多步 / 大输出）· 建议 200 点", points: 200 },
+    { value: "PREMIUM", label: "旗舰级（标书 / 合规级深度处理）· 建议 300 点", points: 300 },
+  ];
 
   const loadDeployments = async () => {
     setLoading(true);
@@ -376,12 +417,14 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
           const num = (v: unknown) =>
             Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
           const bps = Number(p?.markupRateBps);
+          const limit = Number(r?.contextLimit);
           return {
             id: String(r?.id ?? ""),
             label: `${r?.providerId || ""} · ${r?.modelId || r?.id || ""}`.replace(/^ · /, ""),
             costIn: num(p.costInputMicrosPerMillion),
             costOut: num(p.costOutputMicrosPerMillion),
             markupBps: Number.isFinite(bps) ? bps : null,
+            contextLimit: Number.isFinite(limit) && limit > 0 ? limit : null,
           };
         })
         .filter((d: any) => d.id);
@@ -389,7 +432,6 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
       // 全局加价系数（基点）：接口已做旧版乘数口径矫正
       const g = Number(data?.globalMarkupBps);
       setGlobalMarkupBps(Number.isFinite(g) && g > 0 ? g : 0);
-      if (list.length > 0) setSelectedId(list[0].id);
     } catch (e: any) {
       setLoadError(e?.message || "读取模型注册表失败，请重试");
     } finally {
@@ -403,6 +445,15 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // 选型模型为空时，自动对齐面板当前展示的第一个模型。
+  // 修复「下拉显示有模型、实际保存为空」的假象：否则成本底线不落库，防亏本红线对新组件失效。
+  useEffect(() => {
+    if (!costModelDeploymentId && deployments.length > 0) {
+      onChange({ costModelDeploymentId: deployments[0].id });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [costModelDeploymentId, deployments.length]);
+
   const selected = deployments.find((d) => d.id === selectedId) || null;
   // 售价口径与系统一致：用户售价 = 供应商成本价 × 加价系数 k（模型级 markupRateBps 覆盖全局）
   const calcFor = (dep: (typeof deployments)[number]) => {
@@ -411,17 +462,38 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
     const hasPrice = dep.costIn != null || dep.costOut != null;
     const costYuan = hasPrice ? (inputTokens * (dep.costIn ?? 0) + outputTokens * (dep.costOut ?? 0)) / 1e12 : 0;
     const costPoints = costYuan / YUAN_PER_POINT;
+    // 系统成本底线（防亏本红线）= 供应商成本 × 加价系数 k，与 /api/admin/components 服务端计算同口径
     const salePoints = costPoints * kk;
-    const suggested = Math.ceil(salePoints * marginK);
-    return { kk, hasPrice, costYuan, costPoints, salePoints, suggested };
+    return { kk, hasPrice, costYuan, costPoints, salePoints };
   };
   const calc = selected ? calcFor(selected) : null;
-  const k = calc?.kk ?? 1;
+  // 系统成本底线（只读展示，防亏本红线）：选中模型 + 预估 Token 折算得到的算力点。
+  // 与服务端同口径向上取整（服务端存 ceil），避免面板显示 3.6 / 服务端拦截按 4 的口径差。
+  const costFloor = calc ? Math.ceil(calc.salePoints) : 0;
   const hasPrice = calc?.hasPrice ?? false;
   const costYuan = calc?.costYuan ?? 0;
   const costPoints = calc?.costPoints ?? 0;
-  const salePoints = calc?.salePoints ?? 0;
-  const suggestedPoints = calc?.suggested ?? 0;
+  const k = calc?.kk ?? 1;
+  // 当前最终对外售价（来自父组件 formData.estimatedModelTokens，即大厅一口价）
+  const finalPriceNum = Number(finalPrice) || 0;
+  // 实时毛利率（相对成本底线）：(售价 - 底线) / 底线
+  const marginPct =
+    costFloor > 0 && finalPriceNum > 0
+      ? Math.round(((finalPriceNum - costFloor) / costFloor) * 100)
+      : null;
+  const belowFloor = costFloor > 0 && finalPriceNum > 0 && finalPriceNum < costFloor;
+  const complexityPoints =
+    COMPLEXITY_OPTIONS.find((o) => o.value === pricingComplexity)?.points ?? null;
+
+  // 预估 Token 技术上限校验：上限随所选模型动态读取（模型未登记上限时不校验、不展示）
+  const modelContextLimit = selected?.contextLimit ?? null;
+  const inputOverLimit = modelContextLimit != null && inputTokens > modelContextLimit;
+  const outputOverLimit = modelContextLimit != null && outputTokens > modelContextLimit;
+  const tokenOverLimit = inputOverLimit || outputOverLimit;
+  useEffect(() => {
+    onTokenLimitState?.(tokenOverLimit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenOverLimit]);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/60">
@@ -432,7 +504,7 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
       >
         <span className="flex items-center gap-1.5">
           <Coins className="w-3.5 h-3.5 text-amber-500" />
-          成本折点参考（按模型单价估算一次典型调用的成本，辅助配点定价）
+          成本底线与定价参考（按模型单价估算成本底线，并辅助设定对外售价）
         </span>
         <span className="text-slate-400">{open ? "收起 ▲" : "展开 ▼"}</span>
       </button>
@@ -459,10 +531,10 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1">执行模型</label>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">执行模型（成本底线依据）</label>
                   <select
                     value={selectedId}
-                    onChange={(e) => setSelectedId(e.target.value)}
+                    onChange={(e) => onChange({ costModelDeploymentId: e.target.value })}
                     className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-[11px] font-bold bg-white cursor-pointer"
                   >
                     {deployments.map((d) => {
@@ -470,7 +542,7 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
                       return (
                         <option key={d.id} value={d.id}>
                           {d.label}
-                          {c.hasPrice ? `（建议 ${c.suggested} 点）` : "（未登记成本价）"}
+                          {c.hasPrice ? `（底线 ${Math.ceil(c.salePoints)} 点）` : "（未登记成本价）"}
                         </option>
                       );
                     })}
@@ -482,9 +554,18 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
                     type="number"
                     min={0}
                     value={inputTokens}
-                    onChange={(e) => setInputTokens(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-[11px] font-mono font-bold bg-white"
+                    onChange={(e) => onChange({ estimatedInputTokens: Math.max(0, Number(e.target.value) || 0) })}
+                    className={`w-full px-2.5 py-2 border rounded-lg text-[11px] font-mono font-bold bg-white ${
+                      inputOverLimit ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200"
+                    }`}
                   />
+                  {modelContextLimit != null && (
+                    <p className={`mt-1 text-[10px] font-bold leading-relaxed ${inputOverLimit ? "text-rose-600" : "text-slate-400"}`}>
+                      {inputOverLimit
+                        ? `⚠ 输入预估已超过该模型的最大限制（${modelContextLimit.toLocaleString("en-US")}），请调低或更换模型。`
+                        : `技术限制：当前模型最大输入上限 ${modelContextLimit.toLocaleString("en-US")}`}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 mb-1">输出 Token（估）</label>
@@ -492,61 +573,95 @@ function CostReferenceTool({ onApply }: { onApply?: (points: number) => void }) 
                     type="number"
                     min={0}
                     value={outputTokens}
-                    onChange={(e) => setOutputTokens(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-[11px] font-mono font-bold bg-white"
+                    onChange={(e) => onChange({ estimatedOutputTokens: Math.max(0, Number(e.target.value) || 0) })}
+                    className={`w-full px-2.5 py-2 border rounded-lg text-[11px] font-mono font-bold bg-white ${
+                      outputOverLimit ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200"
+                    }`}
                   />
+                  {modelContextLimit != null && (
+                    <p className={`mt-1 text-[10px] font-bold leading-relaxed ${outputOverLimit ? "text-rose-600" : "text-slate-400"}`}>
+                      {outputOverLimit
+                        ? `⚠ 输出预估已超过该模型的最大限制（${modelContextLimit.toLocaleString("en-US")}），请调低或更换模型。`
+                        : `技术限制：当前模型最大输出上限 ${modelContextLimit.toLocaleString("en-US")}`}
+                    </p>
+                  )}
                 </div>
               </div>
+
               {selected && !hasPrice ? (
                 <p className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-700 leading-relaxed">
-                  该模型尚未在「模型注册表」登记供应商成本单价，无法折算成本。请先登记成本价后再使用本参考。
+                  该模型尚未在「模型注册表」登记供应商成本单价，无法折算成本底线。请先登记成本价后再使用本参考。
                 </p>
               ) : (
-                <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>平台成本（付给厂商）：</span>
-                    <span className="font-mono">
-                      ¥{costYuan.toFixed(4)}（折 {costPoints.toFixed(1)} 算力点）
-                    </span>
+                <>
+                  {/* 区块 A：系统成本底线（只读，防亏本红线） */}
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>平台成本（付给厂商）：</span>
+                      <span className="font-mono">
+                        ¥{costYuan.toFixed(4)}（折 {costPoints.toFixed(1)} 算力点）
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[#3182ce]">
+                      <span>系统成本底线（成本 × 加价系数 k={k.toFixed(2)}，即 {Math.round(k * 100 - 100)}% 平台加价）：</span>
+                      <span className="font-mono font-black">{costFloor.toFixed(1)} 算力点</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 leading-relaxed bg-rose-50 border border-rose-200 rounded-lg px-2 py-1.5">
+                      ⚠ 低于此价将导致平台亏损；最终对外售价不得低于成本底线，保存时将被拦截。
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between gap-2 text-[#3182ce]">
-                    <span>模型售价折点（成本 × 加价系数 k={k.toFixed(2)}，即你配的 {Math.round(k * 100 - 100)}% 加价）：</span>
-                    <span className="font-mono font-black">{salePoints.toFixed(1)} 算力点</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-emerald-700">建议配点（售价 × 毛利系数）：</span>
-                    <span className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={20}
-                        step={0.1}
-                        value={marginK}
+
+                  {/* 区块 B：最终售卖定价（管理员可操作） */}
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 space-y-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">业务复杂度参考（自动生成建议售价）</label>
+                      <select
+                        value={pricingComplexity ?? ""}
                         onChange={(e) => {
-                          const v = Number(e.target.value);
-                          if (Number.isFinite(v)) setMarginK(Math.min(20, Math.max(1, v)));
+                          const opt = COMPLEXITY_OPTIONS.find((o) => o.value === e.target.value);
+                          // 同步复杂度，并按档位建议售价自动填入「最终对外售价」输入框；
+                          // 兜底不低于系统成本底线（防亏本红线）
+                          onChange({ pricingComplexity: e.target.value || null });
+                          if (opt) onApply(Math.max(opt.points, Math.ceil(costFloor)));
                         }}
-                        className="w-16 px-2 py-1 border border-slate-200 rounded-lg text-[11px] font-mono font-black bg-white text-center"
-                        title="毛利系数：建议配点 = 模型售价折点 × 此系数（2.5 ≈ 60% 毛利）；仅影响建议值，不影响你的 20% 加价与实际扣点"
-                      />
-                      <span className="font-mono font-black text-emerald-700">≥ {suggestedPoints.toLocaleString("zh-CN")} 算力点</span>
-                    </span>
+                        className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-[11px] font-bold bg-white cursor-pointer"
+                      >
+                        <option value="">— 请选择（或手动填写售价）—</option>
+                        {COMPLEXITY_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      {complexityPoints != null && (
+                        <p className="mt-1 text-[10px] text-emerald-700 font-bold">
+                          当前复杂度建议售价 {Math.max(complexityPoints, Math.ceil(costFloor))} 算力点（档位建议 {complexityPoints} 点{costFloor > complexityPoints ? `，已兜底至成本底线 ${Math.ceil(costFloor)} 点` : ""}）
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 flex-wrap border-t border-slate-100 pt-2">
+                      <span className="text-slate-600">当前最终对外售价（每次执行扣点）：</span>
+                      <span className={`font-mono font-black ${belowFloor ? "text-rose-600" : "text-[#3182ce]"}`}>
+                        {finalPriceNum} 算力点
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-slate-600">折合毛利率：</span>
+                      <span className={`font-mono font-black ${belowFloor ? "text-rose-600" : "text-emerald-700"}`}>
+                        {marginPct == null ? "—" : `${marginPct > 0 ? "+" : ""}${marginPct}%`}
+                      </span>
+                    </div>
+                    {belowFloor && (
+                      <p className="text-[10px] font-bold text-rose-600 leading-relaxed">
+                        ⚠ 当前售价低于系统成本底线 {costFloor.toFixed(1)} 算力点，保存将被拦截。
+                      </p>
+                    )}
+                    <p className="text-[9.5px] text-slate-400 font-bold leading-relaxed">
+                      最终售价在上方「每次执行扣除算力点数」中填写（即大厅展示的一口价）；低于成本底线无法保存。
+                    </p>
                   </div>
-                  {onApply && (
-                    <button
-                      type="button"
-                      onClick={() => onApply(suggestedPoints)}
-                      className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                      title={`把「每次执行扣除算力点数」设置为 ${suggestedPoints} 点，保存后全系统生效`}
-                    >
-                      <Gauge className="w-3.5 h-3.5" />
-                      采用建议配点（{suggestedPoints} 算力点）
-                    </button>
-                  )}
-                  <p className="text-[9.5px] text-slate-400 font-bold leading-relaxed">
-                    毛利系数仅影响建议值（2.5 ≈ 60% 毛利），不影响你的 20% 加价与实际扣点；Token 用量请按组件实际材料规模调整。
-                  </p>
-                </div>
+                </>
               )}
             </>
           )}
@@ -560,6 +675,7 @@ export default function AdminComponentsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
+  const maxRows = useExportMaxRows();
 
   // 统一平台 RBAC 细粒度权限受控校验（无权直接隐藏，杜绝 403 页面）
   const { hasPermission, isSuperAdmin } = useAdminPermission();
@@ -613,6 +729,8 @@ export default function AdminComponentsPage() {
   });
 
   const [submitting, setSubmitting] = useState(false);
+  // 预估 Token 超出所选模型技术上限（由 CostReferenceTool 上报）：为 true 时置灰保存按钮
+  const [tokenOverLimit, setTokenOverLimit] = useState(false);
   // 批量操作：当前页选中的组件 ID 集合
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
@@ -790,7 +908,8 @@ export default function AdminComponentsPage() {
       }
 
       exportToExcel({
-        filename: "知阁组件清单",
+        filename: "组件清单",
+        dateRange: { start: filters.startDate, end: filters.endDate },
         sheetName: "组件数据",
         columns: [
           { header: "组件ID", key: "id", width: 28 },
@@ -814,6 +933,8 @@ export default function AdminComponentsPage() {
           { header: "创建时间", key: "createdAt", width: 20, formatter: formatExcelDateTime },
         ],
         data: exportList,
+        maxRows: maxRows,
+        trace: { exportType: "组件", rowCount: exportList.length, page: "/admin/components" },
       });
 
       toast.success(`已成功导出 ${exportList.length} 个组件数据为 Excel 表格！`);
@@ -1061,6 +1182,14 @@ export default function AdminComponentsPage() {
       sortOrder: component.sortOrder,
       isPublished: component.isPublished,
       estimatedModelTokens: component.estimatedModelTokens || 0,
+      // 携带数据库原始 detail，编辑时按子字段浅合并写回，避免清空 usage/apiDoc
+      detail: component.detail || undefined,
+      // 计费改版字段：携带成本底线 / 选型模型 / 预估 Token / 复杂度，编辑时回显并可改
+      costModelDeploymentId: component.costModelDeploymentId ?? null,
+      estimatedInputTokens: component.estimatedInputTokens ?? 4000,
+      estimatedOutputTokens: component.estimatedOutputTokens ?? 2000,
+      pricingComplexity: component.pricingComplexity ?? null,
+      costFloorPoints: component.costFloorPoints ?? null,
       errors: {},
     });
     setEditingComponent(component);
@@ -1733,6 +1862,7 @@ export default function AdminComponentsPage() {
                       <th className="py-3.5 px-4 whitespace-nowrap font-extrabold w-[25%]">组件名称与标识代码</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[14%]">领域分类</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[14%]">所需算力点数</th>
+                      <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[10%]">毛利率</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[10%]">状态</th>
                       <th className="py-3.5 px-3 whitespace-nowrap font-extrabold w-[12%]">全网调度次数</th>
                       <th className="py-3.5 px-4 whitespace-nowrap font-extrabold w-[15%]">创建时间</th>
@@ -1795,6 +1925,37 @@ export default function AdminComponentsPage() {
                               <Gauge className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                               {estimatedModelTokens} 算力点 / 次
                             </span>
+                          </td>
+
+                          {/* 毛利率（定价审核看板）：(售价-成本底线)/售价，≥70% 绿 / 40~70% 黄 / <40% 或无底线 红 */}
+                          <td className="py-3.5 px-3 font-mono font-black whitespace-nowrap">
+                            {(() => {
+                              const floor = component.costFloorPoints ?? 0;
+                              if (!(floor > 0) || !(estimatedModelTokens > 0)) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 border border-rose-200/60 text-[11px]" title="尚未配置成本测算模型或售价，无法计算毛利">
+                                    <TrendingDown className="w-3.5 h-3.5 shrink-0" />
+                                    未配置
+                                  </span>
+                                );
+                              }
+                              const m = Math.round(((estimatedModelTokens - floor) / estimatedModelTokens) * 100);
+                              const cls =
+                                m >= 70
+                                  ? "bg-emerald-50 text-emerald-600 border-emerald-200/60"
+                                  : m >= 40
+                                    ? "bg-amber-50 text-amber-600 border-amber-200/60"
+                                    : "bg-rose-50 text-rose-600 border-rose-200/60";
+                              return (
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] ${cls}`}
+                                  title={`售价 ${estimatedModelTokens} 点 − 成本底线 ${floor} 点`}
+                                >
+                                  {m >= 70 ? <TrendingUp className="w-3.5 h-3.5 shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 shrink-0" />}
+                                  {m}%
+                                </span>
+                              );
+                            })()}
                           </td>
 
                           <td className="py-3.5 px-3 whitespace-nowrap">
@@ -2024,6 +2185,26 @@ export default function AdminComponentsPage() {
                 <div className="text-xs font-medium text-slate-700 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">{detailComp.description || "暂无详细描述"}</div>
               </div>
 
+              {/* 深度功能解读：与前台集市 / 工作台读取同一段数据库内容（detail.fullDescription） */}
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">深度功能解读（长介绍）</div>
+                <div className="text-xs font-medium text-slate-700 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/60 whitespace-pre-wrap">{detailComp.detail?.fullDescription || detailComp.description || "暂无详细介绍"}</div>
+              </div>
+
+              {detailComp.detail?.usage && (
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">使用说明</div>
+                  <div className="text-xs font-medium text-slate-700 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/60 whitespace-pre-wrap">{detailComp.detail.usage}</div>
+                </div>
+              )}
+
+              {detailComp.detail?.apiDoc && (
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">接口文档</div>
+                  <div className="text-xs font-medium text-slate-700 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/60 whitespace-pre-wrap">{detailComp.detail.apiDoc}</div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-blue-500 uppercase">领域分类阶段</div>
@@ -2099,7 +2280,17 @@ export default function AdminComponentsPage() {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                 <Settings className="w-4 h-4 text-[#3182ce]" />
-                <span>{editingComponent ? `编辑下架组件 [${editingComponent.id}]` : "新增空间组件"}</span>
+                {/* 组件的核心标识是名称（滚动时始终可知在编辑哪个组件），编号仅作溯源辅助弱化展示 */}
+                <span>
+                  {editingComponent
+                    ? `编辑下架组件：${editingComponent.name}`
+                    : "新增空间组件"}
+                </span>
+                {editingComponent && (
+                  <span className="px-1.5 py-0.5 rounded bg-slate-200/70 text-[10px] font-mono font-black text-slate-500">
+                    {editingComponent.id}
+                  </span>
+                )}
               </h2>
               <button
                 type="button"
@@ -2165,6 +2356,27 @@ export default function AdminComponentsPage() {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    深度功能解读（长介绍）
+                  </label>
+                  <textarea
+                    rows={5}
+                    value={formData.detail?.fullDescription || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        detail: { ...(formData.detail || {}), fullDescription: e.target.value },
+                      })
+                    }
+                    placeholder="请输入该组件的深度功能解读、场景价值与产出说明（与前台集市、工作台展示的长介绍为同一段数据库内容）"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all leading-relaxed resize-none bg-slate-50/50 focus:bg-white"
+                  />
+                  <div className="mt-1 text-[10px] text-slate-400 font-medium">
+                    该内容与「功能职责描述」共同构成组件介绍；前台集市 / 工作台的长介绍即读取此字段（源自数据库 component_catalog.detail）
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -2209,6 +2421,13 @@ export default function AdminComponentsPage() {
                           : "border border-slate-200 focus:border-[#3182ce] bg-slate-50/50 focus:bg-white"
                       }`}
                     />
+                    {formData.costFloorPoints != null && formData.costFloorPoints > 0 && (
+                      <p className={`mt-1 text-[10px] font-bold ${formData.estimatedModelTokens < formData.costFloorPoints ? "text-rose-600" : "text-slate-400"}`}>
+                        {formData.estimatedModelTokens < formData.costFloorPoints
+                          ? `⚠ 低于系统成本底线 ${formData.costFloorPoints} 算力点，保存将被拦截`
+                          : `系统成本底线 ${formData.costFloorPoints} 算力点（防亏本红线）`}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -2223,13 +2442,21 @@ export default function AdminComponentsPage() {
                   </p>
                 </div>
 
-                {/* 成本折点参考：按模型单价估算成本折点，辅助配点定价；支持一键采用建议配点 */}
+                {/* 成本底线与定价参考：受控展示选型模型/预估 Token/复杂度，并实时联动最终售价 */}
                 <CostReferenceTool
+                  costModelDeploymentId={formData.costModelDeploymentId}
+                  estimatedInputTokens={formData.estimatedInputTokens}
+                  estimatedOutputTokens={formData.estimatedOutputTokens}
+                  finalPrice={formData.estimatedModelTokens}
+                  pricingComplexity={formData.pricingComplexity}
+                  onChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
+                  onTokenLimitState={setTokenOverLimit}
                   onApply={(points) => {
-                    setFormData({
-                      ...formData,
+                    // 函数式更新：基于最新表单状态追加，避免同一事件里连发两次更新时相互覆盖
+                    setFormData((prev) => ({
+                      ...prev,
                       estimatedModelTokens: points,
-                    });
+                    }));
                     // 定位到配点输入框并高亮闪烁 3 秒（不打扰、不用弹窗）
                     requestAnimationFrame(() => {
                       pointsInputRef.current?.scrollIntoView({
@@ -2338,8 +2565,9 @@ export default function AdminComponentsPage() {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting}
-                className="px-6 py-2 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white rounded-xl text-xs font-bold shadow-md transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                disabled={submitting || tokenOverLimit}
+                title={tokenOverLimit ? "预估 Token 已超出所选模型的技术上限，请调整后再保存" : undefined}
+                className="px-6 py-2 bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:from-[#3182ce] hover:to-[#2b6cb0] text-white rounded-xl text-xs font-bold shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
               >
                 {submitting && (
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />

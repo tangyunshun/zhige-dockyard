@@ -18,6 +18,7 @@ model componenttask {
   result      Json?
   userId      String?
   tenantId    String?
+  workspaceId String?   @map("workspace_id")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
@@ -35,6 +36,7 @@ model componenttask {
   @@index([sortOrder], map: "ComponentTask_sortOrder_idx")
   @@index([tenantId], map: "ComponentTask_tenantId_idx")
   @@index([userId], map: "ComponentTask_userId_idx")
+  @@index([workspaceId], map: "ComponentTask_workspaceId_idx")
 }
 
 model tenant {
@@ -1050,6 +1052,18 @@ model componentcatalog {
   /// 预估模型 Token 消耗（AI 实际 token 数）：属「用量度量单位」，不是算力点、更不是计费货币。
   /// 严禁把该值直接当作应扣算力点；所有扣点必须经算账中心 src/lib/billing/pricing-center.ts 换算。
   estimatedModelTokens Int       @default(0) @map("estimatedTokens")
+
+  /// 选型模型部署（成本底线计算依据）：记录组件成本估算所选用的底层模型部署，成本底线随之重算
+  costModelDeploymentId String?  @map("cost_model_deployment_id")
+  /// 预估输入 Token（成本底线估算用），默认 4000；同时作为执行防爆阀「预估 Token 预算」基准
+  estimatedInputTokens  Int      @default(4000) @map("estimated_input_tokens")
+  /// 预估输出 Token（成本底线估算用），默认 2000；同时作为执行防爆阀「预估 Token 预算」基准
+  estimatedOutputTokens Int      @default(2000) @map("estimated_output_tokens")
+  /// 系统成本底线（算力点，快照）：costModelDeploymentId + 预估 Token × 全局加价系数，
+  /// 作为「防亏本红线」：管理员配置的最终售价不得低于此值
+  costFloorPoints       Int?     @map("cost_floor_points")
+  /// 业务复杂度：LIGHT / MEDIUM / HEAVY，仅用于定价参考（建议溢价倍数），不影响实际扣点
+  pricingComplexity     String?  @map("pricing_complexity")
   previewData     Json // { inputMock, outputMock, roiText }
   businessTags    Json? // string[]
   inputMode       String    @default("text") // text | file | both

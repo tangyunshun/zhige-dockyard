@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import HeroSection from "@/components/HeroSection";
@@ -18,44 +19,83 @@ import {
   CheckCircle,
   LogOut,
   RotateCcw,
+  ShieldCheck,
 } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
   const toast = useToast();
+  const [mounted, setMounted] = useState(false);
   const [showDeletionModal, setShowDeletionModal] = useState(false);
   const [showDemoModal, setShowDemoModal] = useState(false);
-  const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number>(0);
+  const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number>(7);
   const [countdown, setCountdown] = useState<number>(0);
   const [cancelling, setCancelling] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const cancellingRef = useRef(false);
 
+  // 遮罩层激活时，严格锁定全站滚动（body 与 html 双重锁定，彻底阻断背景穿透）
   useEffect(() => {
-    // 检查是否是冷静期用户 - 使用authToken检查
+    if (mounted && showDeletionModal) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    };
+  }, [mounted, showDeletionModal]);
+
+  useEffect(() => {
+    setMounted(true);
+
+    // 检查注销申请状态（URL 参数 / 本地持久标记 / 服务端会话三重保障）
+    const urlParams = new URLSearchParams(window.location.search);
+    const deletionPending = urlParams.get("deletion_pending");
+    const daysParam = urlParams.get("daysRemaining");
+    const storedActive = localStorage.getItem("deletion_pending_active") === "true";
+    const storedDays = localStorage.getItem("deletion_pending_days");
+    const isPendingDeletion = deletionPending === "true" || storedActive || !!storedDays;
+
+    if (isPendingDeletion) {
+      const days = parseInt(daysParam || storedDays || "7", 10) || 7;
+      setDeletionDaysRemaining(days);
+      setCountdown(days * 24 * 60 * 60);
+      setShowDeletionModal(true);
+      // 持久化活跃标记：锁定冷静期状态，禁止在组件加载时清空，直至用户主动撤销或退出
+      localStorage.setItem("deletion_pending_active", "true");
+      localStorage.setItem("deletion_pending_days", String(days));
+    }
+
+    // 后台向 /api/auth/me 获取权威状态，校验冷静期天数或拦截非法穿透
     const checkDeletionStatus = async () => {
       const userId = localStorage.getItem("userId");
       const authToken = localStorage.getItem("auth_token");
 
-      // 如果有userId或authToken其中之一，就检查状态
       if (!userId && !authToken) {
-        console.log("[首页] 没有userId也没有authToken，跳过状态检查");
         return;
       }
 
       try {
         const res = await fetch("/api/auth/me", {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          credentials: "include",
+          cache: "no-store",
         });
 
         if (res.ok) {
           const data = await res.json();
-          console.log("[首页] 用户状态:", data.user?.status);
           if (data.user?.status === "deleting") {
-            setDeletionDaysRemaining(data.user.deletionDaysRemaining || 7);
+            const days = data.user.deletionDaysRemaining || 7;
+            setDeletionDaysRemaining(days);
             setShowDeletionModal(true);
-          } else {
-            // 已登录且状态正常的用户，自动重定向至工作台
+            localStorage.setItem("deletion_pending_active", "true");
+            localStorage.setItem("deletion_pending_days", String(days));
+          } else if (data.user?.status && !isPendingDeletion) {
+            // 已登录且状态正常的用户，且未处于冷静期，才自动重定向至工作台
             router.replace("/workspace-hub");
           }
         }
@@ -64,20 +104,7 @@ export default function Home() {
       }
     };
 
-    checkDeletionStatus();
-
-    // 处理注销申请成功后的跳转（从URL参数）
-    const urlParams = new URLSearchParams(window.location.search);
-    const deletionPending = urlParams.get("deletion_pending");
-    const daysRemaining = urlParams.get("daysRemaining");
-
-    if (deletionPending === "true" && daysRemaining) {
-      setDeletionDaysRemaining(parseInt(daysRemaining) || 7);
-      setShowDeletionModal(true);
-      // 清除 URL 参数
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, "", cleanUrl);
-    }
+    void checkDeletionStatus();
 
     // 如果是关闭浏览器后重新打开，设置 sessionStorage 标记
     const userId = localStorage.getItem("userId");
@@ -97,7 +124,7 @@ export default function Home() {
         sessionStorage.removeItem("just_showed_logout");
       }, 2500);
     }
-  }, [toast]);
+  }, [router, toast]);
 
   // 冷静期倒计时
   useEffect(() => {
@@ -141,6 +168,9 @@ export default function Home() {
       if (!authToken) {
         cancellingRef.current = false;
         setCancelling(false);
+        localStorage.removeItem("deletion_pending_active");
+        localStorage.removeItem("deletion_pending_days");
+        setShowDeletionModal(false);
         window.location.href = "/auth/login";
         return;
       }
@@ -151,27 +181,42 @@ export default function Home() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${authToken}`,
         },
+        credentials: "include",
       });
 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // 撤销成功：保持登录态，直接进入工作台继续操作（不再清除登录状态）
-        toast.success("撤销成功，您的账号已恢复正常");
-        router.replace("/workspace-hub");
+        // 撤销成功：清除本地冷静期活跃标记，恢复账号正常状态
+        localStorage.removeItem("deletion_pending_active");
+        localStorage.removeItem("deletion_pending_days");
+        if (data.token) {
+          localStorage.setItem("auth_token", data.token);
+        }
+        if (data.userId) {
+          localStorage.setItem("userId", data.userId);
+        }
+        setShowDeletionModal(false);
+        toast.success("撤销成功，已恢复登录并进入空间中枢", 1200);
+        setTimeout(() => {
+          window.location.href = "/workspace-hub";
+        }, 300);
       } else if (res.status === 401) {
-        // 会话已失效（如注销申请提交后 cookie 已被清除），引导重新登录，
-        // 登录成功后会自动进入撤销注销流程
+        // 会话已失效，引导重新登录
         cancellingRef.current = false;
         setCancelling(false);
+        localStorage.removeItem("deletion_pending_active");
+        localStorage.removeItem("deletion_pending_days");
+        setShowDeletionModal(false);
         window.location.href = "/auth/login";
       } else {
-        // 失败，重置状态
+        toast.error(data.error || data.message || "撤销失败，请稍后重试");
         cancellingRef.current = false;
         setCancelling(false);
       }
     } catch (error) {
       console.error("撤销失败:", error);
+      toast.error("网络异常，撤销失败");
       cancellingRef.current = false;
       setCancelling(false);
     }
@@ -179,6 +224,11 @@ export default function Home() {
 
   // 退出登录
   const handleLogout = () => {
+    // 清除冷静期专属锁定标记与状态
+    localStorage.removeItem("deletion_pending_active");
+    localStorage.removeItem("deletion_pending_days");
+    setShowDeletionModal(false);
+
     // 设置多标签页同步标记，通知其他标签页同步退出
     localStorage.setItem("logged_out", "true");
     
@@ -220,91 +270,120 @@ export default function Home() {
       <Footer />
       <DemoRequestModal isOpen={showDemoModal} onClose={() => setShowDemoModal(false)} />
 
-      {/* 冷静期遮罩弹窗 */}
-      {showDeletionModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5">
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
-                <Clock className="w-6 h-6 text-amber-500" />
+      {/* 账号注销冷静期全局最高级阻断遮罩与知阁规范居中弹窗：通过 createPortal 挂载到 document.body 根节点，彻底覆盖包括全局 Header 在内的所有页面区域 */}
+      {mounted && showDeletionModal && typeof document !== "undefined" && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="deletion-modal-title"
+          className="fixed inset-0 z-[99990] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto select-none pointer-events-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="zg-modal max-w-md w-full bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[calc(100vh-24px)] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 顶栏警示 Header */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent px-5 py-3.5 border-b border-amber-100 flex items-center gap-3 shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center flex-shrink-0 text-amber-600 shadow-sm">
+                <Clock className="w-4 h-4 animate-pulse" />
               </div>
-              <h2 className="text-lg font-bold text-slate-800 mb-1">
-                账号注销申请中
-              </h2>
-              <p className="text-sm text-slate-500">
-                您的账号已进入冷静期，请谨慎操作
-              </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <h2
+                    id="deletion-modal-title"
+                    className="text-sm font-bold text-slate-800"
+                  >
+                    账号注销申请保护中
+                  </h2>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                    冷静期锁定
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  您的账号已进入注销安全冷静期，当前系统业务已全面锁定。
+                </p>
+              </div>
             </div>
 
-            {/* 倒计时 */}
-            <div className="bg-gradient-to-r from-amber-50 to-red-50 border border-amber-200 rounded-xl p-3 mb-3 text-center">
-              <p className="text-xs text-amber-600 mb-1">冷静期剩余时间</p>
-              <p className="text-xl font-bold text-amber-600 font-mono">
-                {formatCountdown(countdown)}
-              </p>
-              <p className="text-xs text-amber-500 mt-1">
-                约 {deletionDaysRemaining} 天后账号将被永久删除
-              </p>
-            </div>
-
-            {/* 说明 */}
-            <div className="space-y-1.5 mb-4 text-xs">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                <div className="text-slate-600">
-                  <span className="font-medium text-red-600">冷静期内</span>
-                  可点击下方"撤销注销"恢复正常
+            <div className="p-4 sm:p-5 space-y-3 overflow-y-auto">
+              {/* 倒计时精美仪表卡片 */}
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50/60 border border-amber-200/90 rounded-xl p-3 text-center shadow-inner">
+                <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-700 mb-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                  <span>冷静期剩余倒计时</span>
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-amber-800 tracking-wider font-mono py-0.5">
+                  {formatCountdown(countdown)}
+                </div>
+                <div className="text-[10px] text-amber-600/90 mt-0.5 flex items-center justify-center gap-1">
+                  <span>约 {deletionDaysRemaining} 天后生效</span>
+                  <span>·</span>
+                  <span>到期后数据将被永久抹除且不可恢复</span>
                 </div>
               </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle className="w-3.5 h-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
-                <div className="text-slate-600">
-                  撤销后，所有数据将
-                  <span className="font-medium text-emerald-600">完整保留</span>
+
+              {/* 核心权益与规则告知 */}
+              <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80 space-y-1.5 text-[11px] text-slate-600">
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                  <span className="leading-snug">
+                    <strong className="text-slate-800">随时一键恢复：</strong>
+                    冷静期内点击下方“撤销注销进入系统”可即刻恢复正常使用并进入空间中枢，所有资产完整留存。
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#3182ce] mt-0.5 flex-shrink-0" />
+                  <span className="leading-snug">
+                    <strong className="text-slate-800">资产受控冻结：</strong>
+                    为保护资产免遭篡改，冷静期内业务接口处于只读安全冻结态。
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <LogOut className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                  <span className="leading-snug">
+                    <strong className="text-slate-800">安全退出登录：</strong>
+                    您也可以安全退出当前账号，冷静期结束后系统将自动执行最终注销。
+                  </span>
                 </div>
               </div>
-              <div className="flex items-start gap-2">
-                <LogOut className="w-3.5 h-3.5 text-slate-500 mt-0.5 flex-shrink-0" />
-                <div className="text-slate-600">
-                  退出登录后，冷静期仍在
-                  <span className="font-medium">继续计时</span>
-                </div>
+
+              {/* 操作按钮区 */}
+              <div className="space-y-2 pt-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCancelDeletion}
+                  disabled={cancelling}
+                  className="zg-btn zg-btn-primary w-full py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-60"
+                  style={{ backgroundColor: "#3182ce", borderColor: "#2b6cb0" }}
+                >
+                  {cancelling ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>正在撤销注销进入系统...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>撤销注销进入系统</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(true)}
+                  disabled={cancelling}
+                  className="zg-btn zg-btn-default w-full py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 border border-slate-200 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>安全退出登录</span>
+                </button>
               </div>
             </div>
-
-            {/* 操作按钮 */}
-            <div className="space-y-2">
-              <button
-                onClick={handleCancelDeletion}
-                disabled={cancelling}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-emerald-500/30 transition-all text-sm disabled:opacity-50"
-              >
-                {cancelling ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>撤销中...</span>
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw className="w-4 h-4" />
-                    <span>撤销注销</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => setShowLogoutConfirm(true)}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-medium hover:bg-slate-50 transition-all text-sm"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>退出登录</span>
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-400 text-center mt-3">
-              冷静期结束后，账号将被永久删除且无法恢复
-            </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 退出登录二次确认弹窗 */}

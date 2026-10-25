@@ -30,7 +30,6 @@ export async function GET(request: NextRequest) {
         ],
       },
       include: {
-        workspacequota: true,
         workspacemember: {
           where: {
             userId: userId,
@@ -41,6 +40,14 @@ export async function GET(request: NextRequest) {
         },
       },
     });
+
+    // 配额一律按 workspacequota.workspaceId 正向查询。
+    // ⚠️ 严禁使用 include: { workspacequota: true }——该关系走 workspace.workspacequotaId 外键，
+    // 历史数据（自愈补建/脚本补录的配额）该字段为 NULL，会导致配额取不到而误显示 0。
+    const quotaRecords = await prisma.workspacequota.findMany({
+      where: { workspaceId: { in: workspaces.map((w) => w.id) } },
+    });
+    const quotaByWsId = new Map(quotaRecords.map((q) => [q.workspaceId, q]));
 
     // 从数据库获取会员等级配额
     const dbUser = await prisma.user.findUnique({
@@ -75,7 +82,7 @@ export async function GET(request: NextRequest) {
 
     // 余额制口径：算力即各空间实际余额（充值/购买/注册福利到账），不再以会员 tokenLimit 作为“每月配额”
     const availableBalance = workspaces.reduce(
-      (sum, ws) => sum + Number(ws.workspacequota?.tokenBalance ?? 0),
+      (sum, ws) => sum + Number(quotaByWsId.get(ws.id)?.tokenBalance ?? 0),
       0
     );
 
@@ -103,7 +110,7 @@ export async function GET(request: NextRequest) {
           },
         },
         workspaces: await Promise.all(workspaces.map(async (ws) => {
-          let wsQuota = ws.workspacequota;
+          let wsQuota = quotaByWsId.get(ws.id) ?? null;
           if (!wsQuota) {
             let ml = await prisma.membershiplevel.findUnique({
               where: { id: membershipLevel }
@@ -115,7 +122,7 @@ export async function GET(request: NextRequest) {
 
             try {
               // 结构性自愈：仅补建 0 额度配额记录，不赠送算力（免费额度只来自注册福利或充值）
-              wsQuota = await prisma.workspacequota.create({
+              const newQuota = await prisma.workspacequota.create({
                 data: {
                   id: crypto.randomUUID(),
                   workspaceId: ws.id,
@@ -124,6 +131,13 @@ export async function GET(request: NextRequest) {
                   updatedAt: new Date()
                 }
               });
+              // 同步回写 workspace.workspacequotaId 外键，避免 include 关系读取继续取空
+              await prisma.workspace.update({
+                where: { id: ws.id },
+                data: { workspacequotaId: newQuota.id },
+              });
+              quotaByWsId.set(ws.id, newQuota);
+              wsQuota = newQuota;
             } catch (e) {
               console.error("兜底创建配额记录失败:", e);
             }

@@ -357,6 +357,32 @@ export async function GET(request: NextRequest) {
 
     const { actionDict, resourceDict } = await getAuditDictionariesFromDb();
 
+    // 真实财务与订单数据聚合（会员订单与账单流水）
+    const [orderTotalCount, todayOrderCount, billingSum] = await Promise.all([
+      prisma.membershiporder.count().catch(() => 0),
+      prisma.membershiporder
+        .count({
+          where: {
+            createdAt: {
+              gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            },
+          },
+        })
+        .catch(() => 0),
+      prisma.billingrecord
+        .aggregate({
+          _sum: { amount: true },
+          where: { status: "SUCCESS" },
+        })
+        .catch(() => ({ _sum: { amount: 0 } })),
+    ]);
+
+    const revenueFen = Number(billingSum?._sum?.amount || 0);
+    const revenueYuan = (revenueFen / 100).toLocaleString("zh-CN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -364,13 +390,22 @@ export async function GET(request: NextRequest) {
         totalWorkspaces,
         totalComponents,
         publishedComponents,
+        totalCategories: allCategories.length,
         activeWorkspaces,
         enterpriseWorkspaces,
-        totalTenants,
-        activeTenants,
+        totalTenants: enterpriseWorkspaces,
+        activeTenants: enterpriseWorkspaces,
         pendingReviews: upgradeApplications,
         systemHealth,
         systemServices,
+
+        // 真实财务与订单统计
+        financialSummary: {
+          totalOrders: orderTotalCount,
+          todayOrders: todayOrderCount,
+          totalRevenueFen: revenueFen,
+          formattedRevenue: `¥${revenueYuan}`,
+        },
 
         systemLogs: await prisma.loginhistory.count({
           where: {
@@ -379,6 +414,9 @@ export async function GET(request: NextRequest) {
             },
           },
         }),
+
+        // 系统文档与帮助手册总数（真实统计）
+        totalDocuments: await prisma.systemdocument.count(),
 
         recentUsers: recentUsers.map((u: any) => ({
           id: u.id,
@@ -390,41 +428,17 @@ export async function GET(request: NextRequest) {
           createdAt: u.createdAt,
         })),
 
-        // 批量查询最近工作空间的所有者头像（确保空间头像 100% 真实可靠）
-        recentWorkspaces: await (async () => {
-          const recentWsOwnerIds = Array.from(
-            new Set(recentWorkspaces.map((w: any) => w.ownerId).filter(Boolean)),
-          );
-          const recentOwners =
-            recentWsOwnerIds.length > 0
-              ? await prisma.user.findMany({
-                  where: { id: { in: recentWsOwnerIds } },
-                  select: { id: true, avatar: true },
-                })
-              : [];
-          const recentOwnerAvatarMap = new Map(recentOwners.map((o) => [o.id, o.avatar]));
-
-          return recentWorkspaces.map((ws: any) => {
-            const ownerAvatar =
-              recentOwnerAvatarMap.get(ws.ownerId) ||
-              ws.workspacemember?.find((m: any) => m.user?.avatar)?.user?.avatar ||
-              ws.workspacemember?.[0]?.user?.avatar ||
-              null;
-            const realAvatar = ws.logo || ownerAvatar || null;
-
-            return {
-              id: ws.id,
-              name: ws.name,
-              type: ws.type,
-              logo: ws.logo,
-              avatar: realAvatar,
-              createdAt: ws.createdAt,
-              members: ws.workspacemember.map((m: any) => ({
-                user: m.user,
-              })),
-            };
-          });
-        })(),
+        // 最近工作空间：严格获取空间本身的独立 logo，绝不混淆为用户个人头像
+        recentWorkspaces: recentWorkspaces.map((ws: any) => ({
+          id: ws.id,
+          name: ws.name,
+          type: ws.type,
+          logo: ws.logo || null,
+          createdAt: ws.createdAt,
+          members: (ws.workspacemember || []).map((m: any) => ({
+            user: m.user,
+          })),
+        })),
 
         componentCategories: componentCategories.map((c: any) => ({
           key: c.key,

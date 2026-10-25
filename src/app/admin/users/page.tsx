@@ -48,6 +48,7 @@ import {
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 
 /** 用户列表每页固定展示 10 条 */
@@ -240,6 +241,7 @@ interface UserData {
 
 export default function AdminUsersPage() {
   const toast = useToast();
+  const maxRows = useExportMaxRows();
   const { hasPermission, isSuperAdmin } = useAdminPermission();
 
   // 细粒度业务权限判定（若无某权限，界面对应操作按钮与入口严格隐藏）
@@ -633,6 +635,11 @@ export default function AdminUsersPage() {
   /** 导出当前筛选条件下的全量用户为 Excel 表格 */
   const handleExportExcel = async () => {
     if (exporting) return;
+    // 导出权限独立校验：普通管理员需持有 user:export，超级管理员已在上方自动放行
+    if (!isSuperAdmin && !hasPermission("user:export")) {
+      showToast("当前账号未配置导出权限，请联系超级管理员", "warning");
+      return;
+    }
     try {
       setExporting(true);
       const authToken = getAuthToken();
@@ -640,6 +647,7 @@ export default function AdminUsersPage() {
       const queryParams = new URLSearchParams({
         page: "1",
         limit: "5000",
+        export: "1",
         ...(searchQuery.trim() && { search: searchQuery.trim() }),
         ...(filterRole !== "all" && { role: filterRole }),
         ...(filterAccountStatus !== "all" && { accountStatus: filterAccountStatus }),
@@ -664,7 +672,7 @@ export default function AdminUsersPage() {
       }
 
       exportToExcel({
-        filename: "知阁用户清单",
+        filename: "用户清单",
         sheetName: "用户数据",
         columns: [
           { header: "用户ID", key: "id", width: 28 },
@@ -715,6 +723,8 @@ export default function AdminUsersPage() {
           { header: "注册时间", key: "createdAt", width: 20, formatter: formatExcelDateTime },
         ],
         data: exportList,
+        maxRows: maxRows,
+        trace: { exportType: "用户清单", rowCount: exportList.length, page: "/admin/users" },
       });
 
       showToast(`已成功导出 ${exportList.length} 位用户数据为 Excel 表格！`, "success");
@@ -1986,9 +1996,9 @@ export default function AdminUsersPage() {
           <button
             type="button"
             onClick={handleExportExcel}
-            disabled={exporting}
+            disabled={exporting || (!isSuperAdmin && !hasPermission("user:export"))}
             className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 flex items-center gap-1.5 border border-emerald-200/80 active:scale-95 disabled:opacity-50"
-            title="将当前筛选匹配的全量用户导出为 Excel 表格 (.xlsx)"
+            title={!isSuperAdmin && !hasPermission("user:export") ? "当前账号未配置导出权限，请联系超级管理员" : "将当前筛选匹配的全量用户导出为 Excel 表格 (.xlsx)"}
           >
             <Download className={`w-3.5 h-3.5 text-emerald-600 ${exporting ? "animate-spin" : ""}`} />
             <span>导出 Excel</span>

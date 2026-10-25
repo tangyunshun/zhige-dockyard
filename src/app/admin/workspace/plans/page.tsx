@@ -144,7 +144,7 @@ export default function WorkspacePlansAdminPage() {
   const [search, setSearch] = useState("");
   const [filterPrice, setFilterPrice] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterPurchasable, setFilterPurchasable] = useState("all");
+  const [filterUsage, setFilterUsage] = useState("all");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkspacePlan | null>(null);
@@ -157,19 +157,18 @@ export default function WorkspacePlansAdminPage() {
 
   const token = getAuthToken();
 
-  // 服务端过滤：把筛选条件拼到查询参数上（后端 GET 已支持 search/priceType/status/purchasable）
+  // 服务端过滤：把筛选条件拼到查询参数上（后端 GET 已支持 search/priceType/status/usage）
   const buildPlansQuery = (
     s: string,
     price: string,
     status: string,
-    purchasable: string,
+    usage: string,
   ) => {
     const params = new URLSearchParams();
     if (s.trim()) params.set("search", s.trim());
     if (price !== "all") params.set("priceType", price);
     if (status !== "all") params.set("status", status);
-    if (purchasable === "purchasable") params.set("purchasable", "true");
-    else if (purchasable === "not") params.set("purchasable", "false");
+    if (usage !== "all") params.set("usage", usage);
     const q = params.toString();
     return q ? `/api/admin/workspace-plans?${q}` : "/api/admin/workspace-plans";
   };
@@ -180,7 +179,7 @@ export default function WorkspacePlansAdminPage() {
       search?: string;
       price?: string;
       status?: string;
-      purchasable?: string;
+      usage?: string;
     },
   ) => {
     if (!silent) setLoading(true);
@@ -189,7 +188,7 @@ export default function WorkspacePlansAdminPage() {
         opts?.search ?? search,
         opts?.price ?? filterPrice,
         opts?.status ?? filterStatus,
-        opts?.purchasable ?? filterPurchasable,
+        opts?.usage ?? filterUsage,
       );
       const res = await fetch(url, {
         headers: { authorization: `Bearer ${token}` },
@@ -539,16 +538,17 @@ export default function WorkspacePlansAdminPage() {
             <option value="inactive">已停用</option>
           </select>
           <select
-            value={filterPurchasable}
+            value={filterUsage}
             onChange={(e) => {
-              setFilterPurchasable(e.target.value);
-              fetchPlans(true, { purchasable: e.target.value });
+              setFilterUsage(e.target.value);
+              fetchPlans(true, { usage: e.target.value });
             }}
             className="w-full sm:w-auto h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
+            title="按是否已绑定真实工作空间筛选，辅助识别可安全下架的空闲套餐"
           >
-            <option value="all">全部售卖方式</option>
-            <option value="purchasable">可在线购买</option>
-            <option value="not">线下定制</option>
+            <option value="all">空间绑定状态</option>
+            <option value="used">使用中（已绑定空间）</option>
+            <option value="unused">未绑定（空闲可清理）</option>
           </select>
         </div>
       </div>
@@ -783,7 +783,7 @@ export default function WorkspacePlansAdminPage() {
                 {plans.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-400 font-medium">
-                      {search.trim() !== "" || filterPrice !== "all" || filterStatus !== "all" || filterPurchasable !== "all"
+                      {search.trim() !== "" || filterPrice !== "all" || filterStatus !== "all" || filterUsage !== "all"
                         ? "没有符合筛选条件的套餐"
                         : "暂无空间套餐数据"}
                     </td>

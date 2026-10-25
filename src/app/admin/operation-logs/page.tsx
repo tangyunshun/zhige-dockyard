@@ -37,7 +37,8 @@ import {
   Monitor,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
-import { exportToExcel } from "@/utils/excel-export";
+import { exportToExcel, buildExportFileName } from "@/utils/excel-export";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 import { sanitizeAuditDetails, resolveAuditSummary, formatDetailValue } from "@/lib/log-details";
 import {
   setAuditDicts,
@@ -96,6 +97,9 @@ function translateActionToChinese(action: string): string {
   else if (lower.includes("role") || lower.includes("perm")) domain = "权限管理";
   else if (lower.includes("audit") || lower.includes("log")) domain = "审计日志";
   else if (lower.includes("export")) domain = "数据导出";
+  else if (lower.includes("apikey")) domain = "API密钥";
+  else if (lower.includes("model") || lower.includes("pricing")) domain = "模型计费";
+  else if (lower.includes("systemconfig")) domain = "系统配置";
 
   // 4. 动作意图中文解析
   let op = "操作";
@@ -115,6 +119,10 @@ function translateActionToChinese(action: string): string {
   else if (lower.includes("export")) op = "导出";
   else if (lower.includes("import")) op = "导入";
   else if (lower.includes("execute") || lower.includes("run")) op = "执行调用";
+  else if (lower.includes("list") || lower.includes("query") || lower.includes("search")) op = "查询";
+  else if (lower.includes("view") || lower.includes("detail")) op = "查看";
+  else if (lower.includes("use")) op = "调用";
+  else if (lower.includes("sync")) op = "同步";
 
   return `${domain}${op}`;
 }
@@ -135,6 +143,15 @@ function actionMeta(action: string, rawDetails?: any) {
     action === "user:batch" ||
     details?.totalSelected !== undefined ||
     details?.processedCount !== undefined;
+
+  if (action === "DATA_EXPORT") {
+    const t = details?.exportType || "数据";
+    const n = details?.rowCount;
+    return {
+      label: `导出数据（${t}${typeof n === "number" ? `，${n} 条` : ""}）`,
+      color: "bg-indigo-100 text-indigo-600",
+    };
+  }
 
   if (isBatch) {
     const act = details?.action || details?.op || action.replace("user:batch_", "");
@@ -900,8 +917,9 @@ function describeLog(log: OperationLog): string {
     case "export:json":
       return "导出操作审计数据为 JSON 备份文件";
     default:
-      // 兜底也绝不出现“其他”或英文，直接采用智能中文转译
-      return `执行${meta.label}操作`;
+      // 字典/智能转译产出的 label 已是完整中文短语（如「查看工作空间列表」），直接使用；
+      // 不再套「执行…操作」外壳，避免出现「执行查看工作空间列表操作」这类冗余病句
+      return meta.label || "执行系统常规操作";
   }
 }
 
@@ -964,6 +982,7 @@ const PAGE_SIZE = 10;
 
 export default function OperationLogsPage() {
   const [logs, setLogs] = useState<OperationLog[]>([]);
+  const maxRows = useExportMaxRows();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
@@ -1261,13 +1280,10 @@ export default function OperationLogsPage() {
         return;
       }
 
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
       if (format === "excel") {
         exportToExcel({
-          filename: `知阁平台操作审计日志_${stamp}`,
+          filename: "操作审计日志",
+          dateRange: { start: startDate, end: endDate },
           sheetName: "操作审计日志",
           columns: [
             { header: "操作时间", formatter: (_, r) => formatTime(r.createdAt), width: 22 },
@@ -1286,10 +1302,12 @@ export default function OperationLogsPage() {
             },
           ],
           data: rows,
+          maxRows: maxRows,
+          trace: { exportType: "操作审计日志", rowCount: rows.length, page: "/admin/operation-logs" },
         });
       } else {
         triggerDownload(
-          `知阁平台操作审计日志_${stamp}.json`,
+          buildExportFileName("操作审计日志", { dateRange: { start: startDate, end: endDate }, ext: "json" }),
           JSON.stringify(
             rows.map((r) => ({
               操作时间: formatTime(r.createdAt),

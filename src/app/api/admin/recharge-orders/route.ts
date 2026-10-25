@@ -34,6 +34,13 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
+    // 导出用途（export=1）需额外持有 billing:export，超级管理员自动放行
+    if (searchParams.get("export") === "1") {
+      const exportAuth = await requirePlatformPermission(request, "billing:export");
+      if (!exportAuth.authorized) {
+        return exportAuth.errorResponse || NextResponse.json({ error: "无权限导出充值订单" }, { status: 403 });
+      }
+    }
     const status = searchParams.get("status");
     const workspaceId = searchParams.get("workspaceId");
 

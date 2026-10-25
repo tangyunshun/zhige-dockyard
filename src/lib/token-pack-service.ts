@@ -25,10 +25,10 @@ export const DEFAULT_TOKEN_PACKS: TokenPackItem[] = [
     id: "pack_lite_500",
     name: "知惠算力包",
     points: 500,
-    price: 6, // ¥0.012/点，小额尝鲜
+    price: 5, // ¥0.010/点，小额尝鲜（修复原 ¥6 导致入门档单价比下一档更贵的倒挂）
     icon: "⚡",
     color: "#38a169",
-    description: "小额尝鲜，随时为空间补充算力（约 ¥0.012/点）",
+    description: "小额尝鲜，随时为空间补充算力（约 ¥0.010/点）",
     isPopular: false,
     isActive: true,
     sortOrder: 1,
@@ -37,37 +37,49 @@ export const DEFAULT_TOKEN_PACKS: TokenPackItem[] = [
     id: "pack_standard_1000",
     name: "标准算力包",
     points: 1000,
-    price: 10, // ¥0.01/点，标准价
+    price: 9, // ¥0.009/点，标准价
     icon: "💡",
     color: "#3182ce",
-    description: "适合日常小规模测试与组件研发调用（约 ¥0.010/点）",
+    description: "适合日常小规模测试与组件研发调用（约 ¥0.009/点）",
     isPopular: false,
     isActive: true,
     sortOrder: 2,
   },
   {
+    id: "pack_team_5000",
+    name: "团队算力包",
+    points: 5000,
+    price: 40, // ¥0.008/点，补齐 1000~10000 之间的中间档
+    icon: "🧰",
+    color: "#319795",
+    description: "小团队持续研发的性价比之选（约 ¥0.008/点）",
+    isPopular: false,
+    isActive: true,
+    sortOrder: 3,
+  },
+  {
     id: "pack_pro_10000",
     name: "尊享算力包",
     points: 10000,
-    price: 80, // ¥0.008/点
+    price: 70, // ¥0.007/点
     icon: "👑",
     color: "#dd6b20",
-    description: "团队敏捷研发首选，量大更省心（约 ¥0.008/点）",
+    description: "团队敏捷研发首选，量大更省心（约 ¥0.007/点）",
     isPopular: true,
     isActive: true,
-    sortOrder: 3,
+    sortOrder: 4,
   },
   {
     id: "pack_enterprise_50000",
     name: "企业旗舰算力包",
     points: 50000,
-    price: 350, // ¥0.007/点
+    price: 300, // ¥0.006/点，大额采购最优
     icon: "🚀",
     color: "#805ad5",
-    description: "专为大型企业级研发团队定制，大额采购最优（约 ¥0.007/点）",
+    description: "专为大型企业级研发团队定制，大额采购最优（约 ¥0.006/点）",
     isPopular: false,
     isActive: true,
-    sortOrder: 4,
+    sortOrder: 5,
   },
 ];
 

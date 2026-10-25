@@ -121,10 +121,10 @@ export async function PATCH(
           effectiveAt,
           replacementDeploymentId,
           reason,
-          actorId: auth.user?.id || null,
+          actorId: auth.user?.id || "",
         });
         await writeAuditLog(
-          auth.user?.id || null,
+          auth.user?.id || "",
           "model:schedule_disable",
           {
             deploymentId: id,
@@ -152,7 +152,7 @@ export async function PATCH(
           deploymentId: id,
           replacementDeploymentId,
           reason,
-          actorId: auth.user?.id || null,
+          actorId: auth.user?.id || "",
         });
         const row = await prisma.modeldeployment.findUnique({ where: { id } });
         return NextResponse.json({ success: true, data: row, impact: result });
@@ -171,7 +171,7 @@ export async function PATCH(
     const row = await prisma.modeldeployment.update({ where: { id }, data });
     if (isEnabling) {
       await writeAuditLog(
-        auth.user?.id || null,
+        auth.user?.id || "",
         "model:enable",
         { deploymentId: id, providerId: exists.providerId, modelId: exists.modelId },
         null,

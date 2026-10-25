@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog, isPlatformAdminRole } from "@/lib/security";
 import { addNotification } from "@/lib/notifications-store";
 
 export async function POST(request: NextRequest) {
@@ -47,8 +47,11 @@ export async function POST(request: NextRequest) {
           select: { id: true, role: true },
         })
       : [];
-    const ownerRoleMap = new Map(owners.map((o) => [o.id, (o.role || "").toUpperCase()]));
-    const PROTECTED_ROLES = ["SUPER_ADMIN", "SUPERADMIN", "ADMIN", "PLATFORM_ADMIN", "PLATFORMADMIN"];
+    // 受保护所有者：统一用 isPlatformAdminRole 变体归一判定（兼容 superadmin/SUPER/super_admin
+    // 等全部历史角色写法），替代手工枚举表——枚举表缺 "SUPER" 变体且与单条接口口径漂移
+    const protectedOwnerIds = new Set(
+      owners.filter((o) => isPlatformAdminRole(o.role)).map((o) => o.id)
+    );
 
     const skipped: { id: string; name: string; reason: string }[] = [];
 
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     // 3. 逐条判定可操作性：个人空间与企业空间均可批量管控，仅排除受保护空间与状态无变化的空间
     const operable = workspaces.filter((w) => {
-      if (PROTECTED_ROLES.includes(ownerRoleMap.get(w.ownerId) || "") || w.ownerId === userId) {
+      if (protectedOwnerIds.has(w.ownerId) || w.ownerId === userId) {
         skipped.push({ id: w.id, name: w.name, reason: "管理员空间受系统安全保护，不可管控" });
         return false;
       }

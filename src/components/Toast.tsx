@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export type ToastType = "success" | "error" | "warning" | "info" | "sms-code";
 
@@ -34,43 +35,34 @@ const ToastContext = React.createContext<ToastContextType | undefined>(
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const pathname = usePathname();
+  const prevPathnameRef = useRef(pathname);
+
+  // 核心体验保障：路由发生跳转时，自动清理上一页面遗留的 Toast，彻底根除跨页面残留遮挡
+  useEffect(() => {
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname;
+      setToasts([]);
+    }
+  }, [pathname]);
 
   /**
-   * 根据提示语长度智能计算显示时间
+   * 根据提示语类型和长度智能计算显示时间
    * 原则：
-   * 1. 最短 1500ms（保证用户能看清）
-   * 2. 最长 5000ms（避免等待过长）
-   * 3. 基于字符数计算：基础时间 + 每字符额外时间
-   * 
-   * 计算公式：
-   * - 基础时间：1500ms
-   * - 中文字符：每个字符 +200ms
-   * - 英文字符/数字：每个字符 +100ms
-   * - 标点符号：每个字符 +50ms
+   * 1. 成功/普通信息类：轻量感知，快速退场（1600ms ~ 2000ms，最高不超过 2000ms）
+   * 2. 警告/错误类：保留足够时间排查，但绝不无限悬挂（2000ms ~ 2600ms，最高不超过 2800ms）
+   * 3. 验证码类：保留适中时间供抄写（4000ms）
    */
-  const calculateDuration = (message: string): number => {
-    let charCount = 0;
-    
-    for (const char of message) {
-      // 中文字符（包括中文标点）
-      if (/[\u4e00-\u9fa5]/.test(char)) {
-        charCount += 2;
-      }
-      // 英文字母和数字
-      else if (/[a-zA-Z0-9]/.test(char)) {
-        charCount += 1;
-      }
-      // 标点符号和其他字符
-      else {
-        charCount += 0.5;
-      }
+  const calculateDuration = (message: string, type: ToastType = "info"): number => {
+    if (type === "sms-code") {
+      return 4000;
     }
-    
-    // 基础时间 1500ms + 每字符 200ms
-    const duration = 1500 + Math.round(charCount * 200);
-    
-    // 限制在 1500ms - 5000ms 范围内
-    return Math.min(Math.max(duration, 1500), 5000);
+    const isWarnOrError = type === "error" || type === "warning";
+    const baseDuration = isWarnOrError ? 2000 : 1600;
+    const charCount = message.length;
+    // 字符数微调：每字符 +25ms，增量上限 400ms
+    const duration = baseDuration + Math.min(charCount * 25, 400);
+    return isWarnOrError ? Math.min(duration, 2800) : Math.min(duration, 2000);
   };
 
   const addToast = (
@@ -81,8 +73,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const id = Math.random().toString(36).substr(2, 9);
     
-    // 如果没有指定 duration，根据消息长度智能计算
-    const calculatedDuration = duration !== undefined ? duration : calculateDuration(message);
+    // 如果没有指定 duration，根据类型与长度智能计算紧凑时长
+    const calculatedDuration = duration !== undefined ? duration : calculateDuration(message, type);
     
     const toast: ToastMessage = { id, type, message, duration: calculatedDuration, link };
 
@@ -136,10 +128,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      {/* 所有 Toast - 中间顶部（严格遵循设计系统规范，层级置顶防止被遮罩遮挡） */}
+      {/* 所有 Toast - 位于全局 Header（60px）正下方，居中呈现，彻底避开对顶部导航菜单项的遮挡 */}
       <div
         id="zg-toast-container"
-        className="fixed top-8 left-1/2 -translate-x-1/2 z-[99999] flex flex-col gap-3 pointer-events-none"
+        className="fixed top-16 md:top-20 left-1/2 -translate-x-1/2 z-[99999] flex flex-col gap-2.5 pointer-events-none transition-all duration-200"
       >
         {toasts.map((toast) => (
           <ToastItem

@@ -30,6 +30,7 @@ import {
   Download,
 } from "lucide-react";
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 
 interface Stage {
   id: string;
@@ -91,6 +92,7 @@ interface StageFormData {
 export default function AdminStagesPage() {
   const router = useRouter();
   const toast = useToast();
+  const maxRows = useExportMaxRows();
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -178,9 +180,12 @@ export default function AdminStagesPage() {
       }
 
       exportToExcel({
-        filename: "知阁组件阶段大纲",
+        filename: "组件阶段大纲",
+        dateRange: { start: filters.createDateStart, end: filters.createDateEnd },
         sheetName: "阶段分类",
         data: allStages,
+        maxRows: maxRows,
+        trace: { exportType: "内容阶段", rowCount: allStages.length, page: "/admin/content" },
         columns: [
           { header: "阶段标识/ID", key: "id", width: 22 },
           { header: "阶段分类名称", key: "name", width: 20 },

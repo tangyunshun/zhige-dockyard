@@ -290,15 +290,17 @@ export default function WorkspacePermissionsPage() {
     setLoadingStandardPosts(true);
     try {
       const token = getAuthToken();
-      const res = await fetch("/api/admin/posts/standard", {
+      // 走空间侧接口：/api/admin/posts/standard 受平台管理员规则保护，空间所有者读取会被 403
+      const res = await fetch(`/api/workspace/posts/suggested?workspaceId=${encodeURIComponent(workspaceId)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        // 系统保留岗位（如空间所有者）不允许被空间引入
-        setStandardPosts((data.posts || []).filter((p: any) => !p.isSystemReserved));
+        // 服务端已排除系统保留岗位（如空间所有者）与停用岗位
+        setStandardPosts(data.suggestedPosts || []);
       } else {
-        toast.error("加载官方岗位库失败");
+        const err = await res.json().catch(() => null);
+        toast.error(err?.error || "加载官方岗位库失败");
       }
     } catch (err) {
       console.error("加载标准岗位库错误:", err);

@@ -37,7 +37,7 @@ export async function GET(
         workspacemember: {
           include: {
             user: {
-              select: { name: true, email: true },
+              select: { name: true, email: true, avatar: true },
             },
           },
         },
@@ -121,6 +121,7 @@ export async function GET(
           componentCount: componentCountValue,
           members: workspacemember.map((m) => ({
             ...m,
+            avatar: m.user?.avatar || null,
             monthlyTokenLimit: m.monthlyTokenLimit ? Number(m.monthlyTokenLimit) : null,
             monthlyTokenUsed: Number(m.monthlyTokenUsed || 0),
             // tokenBalance 为 BigInt，显式转换，避免 NextResponse.json 序列化报错（500）

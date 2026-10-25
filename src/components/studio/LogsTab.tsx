@@ -16,6 +16,8 @@ export interface OperationLogItem {
   userId: string;
   workspaceId?: string | null;
   action: string;
+  actionLabel?: string;
+  actionCategory?: string;
   resource?: string | null;
   details?: any;
   ipAddress?: string | null;
@@ -87,8 +89,37 @@ const CATEGORY_COLOR: Record<string, string> = {
 
 const CATEGORY_LIST = ["组件装配", "任务执行", "知识沉淀", "资料管理", "成员与配置", "其他"];
 
-function resolveMeta(action: string) {
-  return ACTION_META[action] || { label: action, category: "其他", color: "slate", icon: Network };
+function resolveMeta(action: string, log?: OperationLogItem) {
+  // 1. 优先采用数据库动态富化的权威中文标签与模块分类（杜绝前端硬编码与英文裸露）
+  if (log?.actionLabel) {
+    const isConfigOrUpgrade = action.includes("UPGRADE") || action.includes("WORKSPACE") || action.includes("MEMBER") || action.includes("workspace");
+    const category = log.actionCategory || (isConfigOrUpgrade ? "成员与配置" : (ACTION_META[action]?.category || "其他"));
+    const staticMeta = ACTION_META[action];
+    return {
+      label: log.actionLabel,
+      category,
+      color: staticMeta?.color || (category === "成员与配置" ? "violet" : "blue"),
+      icon: staticMeta?.icon || (action.includes("UPGRADE") ? Zap : Network),
+    };
+  }
+
+  // 2. 静态元数据匹配
+  if (ACTION_META[action]) {
+    return ACTION_META[action];
+  }
+
+  // 3. 常见空间升级操作语义兜底（防御性杜绝未配置场景下的裸大写英文泄漏）
+  if (action === "UPGRADE_PERSONAL_TO_ENTERPRISE") {
+    return { label: "升级为企业工作空间", category: "成员与配置", color: "violet", icon: Zap };
+  }
+  if (action === "UPGRADE_WORKSPACE") {
+    return { label: "工作空间类型升级", category: "成员与配置", color: "violet", icon: Zap };
+  }
+  if (action === "UPGRADE_WORKSPACE_PLAN") {
+    return { label: "工作空间套餐升级", category: "成员与配置", color: "violet", icon: Zap };
+  }
+
+  return { label: action, category: "其他", color: "slate", icon: Network };
 }
 
 // 精准格式化具体时间（格式：YYYY-MM-DD HH:mm:ss，严禁出现“近期”）
@@ -299,6 +330,13 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
       case "KNOWLEDGE_APPROVE":
       case "KNOWLEDGE_REJECT":
         return d.title ? `沉淀与归档团队知识《${d.title}》` : "沉淀知识库规约项";
+      case "UPGRADE_PERSONAL_TO_ENTERPRISE":
+      case "UPGRADE_WORKSPACE":
+      case "UPGRADE_WORKSPACE_PLAN": {
+        const toPlan = d.toPlan ? (d.toPlan === "ENTERPRISE" || d.toPlan === "enterprise" ? "企业旗舰版" : d.toPlan) : "企业版";
+        const cycle = d.billingCycle === "YEAR" ? "年付" : d.billingCycle === "MONTH" ? "月付" : "";
+        return d.message || `个人空间成功升级为企业工作空间 · ${toPlan}${cycle ? `（${cycle}）` : ""}`;
+      }
       default:
         return d.message || "完成空间协同事务";
     }
@@ -316,7 +354,7 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
     const q = searchQuery.trim().toLowerCase();
 
     return localLogs.filter((log) => {
-      const meta = resolveMeta(log.action);
+      const meta = resolveMeta(log.action, log);
       
       // 1. 模块分类多选过滤
       if (selectedCategories.length > 0 && !selectedCategories.includes(meta.category)) {
@@ -695,19 +733,19 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
                       </button>
                     </th>
                   )}
-                  <th className="py-3.5 px-4 w-[20%]">操作人与角色</th>
-                  <th className="py-3.5 px-3 w-[15%]">模块分类</th>
-                  <th className="py-3.5 px-3 w-[18%]">行为类型</th>
-                  <th className="py-3.5 px-4 w-[30%]">具体业务操作与详情成果</th>
-                  <th className="py-3.5 px-4 w-[17%] text-right">精准时间</th>
+                  <th className={`py-3.5 px-4 ${isWorkspaceAdmin ? "w-[18%]" : "w-[20%]"}`}>操作人与角色</th>
+                  <th className={`py-3.5 px-3 ${isWorkspaceAdmin ? "w-[13%]" : "w-[15%]"}`}>模块分类</th>
+                  <th className={`py-3.5 px-3 ${isWorkspaceAdmin ? "w-[18%]" : "w-[20%]"}`}>行为类型</th>
+                  <th className={`py-3.5 px-4 ${isWorkspaceAdmin ? "w-[30%]" : "w-[30%]"}`}>具体业务操作与详情成果</th>
+                  <th className={`py-3.5 px-4 ${isWorkspaceAdmin ? "w-[13%]" : "w-[15%]"} text-right`}>精准时间</th>
                   {isWorkspaceAdmin && (
-                    <th className="py-3.5 px-4 w-[10%] text-center">操作</th>
+                    <th className="py-3.5 px-3 w-[8%] text-center">操作</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-600 bg-white">
                 {paginated.map((log) => {
-                  const meta = resolveMeta(log.action);
+                  const meta = resolveMeta(log.action, log);
                   const IconComp = meta.icon;
                   const colorCls = CATEGORY_COLOR[meta.color] || CATEGORY_COLOR.slate;
                   const roleName = log.user?.role === "Owner" || log.user?.role === "Admin" ? "管理员" : "空间成员";
@@ -729,33 +767,35 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
                       )}
 
                       {/* 操作人与角色 */}
-                      <td className="py-3.5 px-4 font-bold text-slate-900">
-                        <div className="flex items-center gap-2">
+                      <td className="py-3.5 px-4 font-bold text-slate-900 truncate">
+                        <div className="flex items-center gap-2 min-w-0">
                           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#3182ce] to-indigo-600 text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 shadow-2xs">
                             {actorName(log).slice(0, 1).toUpperCase()}
                           </div>
-                          <div className="min-w-0">
+                          <div className="min-w-0 truncate">
                             <span className="block truncate text-slate-900 font-extrabold">{actorName(log)}</span>
-                            <span className="text-[10px] text-slate-400 font-normal block">{roleName}</span>
+                            <span className="text-[10px] text-slate-400 font-normal block truncate">{roleName}</span>
                           </div>
                         </div>
                       </td>
 
                       {/* 模块分类 Badge */}
                       <td className="py-3.5 px-3">
-                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-bold inline-flex items-center gap-1 ${colorCls}`}>
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-bold inline-flex items-center gap-1 ${colorCls} whitespace-nowrap`}>
                           <IconComp className="w-3 h-3 shrink-0" />
                           <span>{meta.category}</span>
                         </span>
                       </td>
 
-                      {/* 行为类型 */}
-                      <td className="py-3.5 px-3 font-bold text-slate-800">
-                        {meta.label}
+                      {/* 行为类型 - 换行防重叠保护 */}
+                      <td className="py-3.5 px-3 font-bold text-slate-800 break-words leading-relaxed">
+                        <span className="line-clamp-2" title={meta.label}>
+                          {meta.label}
+                        </span>
                       </td>
 
-                      {/* 具体业务操作与详情成果 */}
-                      <td className="py-3.5 px-4 text-slate-700 font-medium leading-relaxed">
+                      {/* 具体业务操作与详情成果 - 换行防挤压保护 */}
+                      <td className="py-3.5 px-4 text-slate-700 font-medium leading-relaxed break-words">
                         <span className="line-clamp-2" title={summarizeDetails(log.action, log.details)}>
                           {summarizeDetails(log.action, log.details)}
                         </span>

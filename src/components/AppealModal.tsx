@@ -154,7 +154,7 @@ export default function AppealModal({ account, onClose, onStatusChange, initialB
       const data = await res.json();
 
       if (res.ok) {
-        toast.success(data.message || "申诉提交成功！", 3000);
+        toast.success(data.message || "申诉提交成功！", 1800);
         onClose();
         setShowReAppealForm(false);
         if (onStatusChange) onStatusChange();

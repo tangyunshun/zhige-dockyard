@@ -103,25 +103,6 @@ export async function GET(request: NextRequest) {
       where: { ownerId: userId },
     });
 
-    // 本月组件真实任务执行扣费消耗（从 componenttask 统计真实发生的算力扣费）
-    const monthTasksPromise = prisma.componenttask.findMany({
-      where: {
-        userId,
-        createdAt: { gte: startOfMonth },
-        status: { in: ["SUCCESS", "RUNNING"] },
-      },
-      select: { config: true },
-    });
-
-    // 历史累计组件真实任务执行扣费消耗
-    const totalTasksPromise = prisma.componenttask.findMany({
-      where: {
-        userId,
-        status: { in: ["SUCCESS", "RUNNING"] },
-      },
-      select: { config: true },
-    });
-
     // 查询最近 3 次安全登录历史记录
     const loginHistoryPromise = prisma.loginhistory.findMany({
       where: { userId },
@@ -145,29 +126,52 @@ export async function GET(request: NextRequest) {
     });
 
     // 并行运行基础用户数据查询
-    const [workspaceMembers, ownedWorkspaces, monthTasksRows, totalTasksRows, loginHistory, approvedAppeals] = await Promise.all([
+    const [workspaceMembers, ownedWorkspaces, loginHistory, approvedAppeals] = await Promise.all([
       workspaceMembersPromise,
       ownedWorkspacesPromise,
-      monthTasksPromise,
-      totalTasksPromise,
       loginHistoryPromise,
       approvedAppealsPromise,
     ]);
 
-    // Token 消耗真实统计：遍历真实执行的任务 config.tokenCost
-    const sumTaskCost = (tasks: { config: any }[]) => {
-      let sum = 0;
-      tasks.forEach((t) => {
-        const cfg = (t.config && typeof t.config === "object" ? t.config : {}) as any;
-        const cost = Number(cfg?.tokenCost ?? 0);
-        if (Number.isFinite(cost) && cost > 0) {
-          sum += cost;
-        }
-      });
-      return sum;
+    // Token 消耗统计：与「算力点流水」保持同一口径——只统计 pointledger 的
+    // CONSUME 实扣出账（GIFT_EXPIRE 赠送到期清零不算消耗），
+    // 范围 = 我的钱包 + 我所属的空间，与 /api/user/points 的 ledgerWhere 完全一致。
+    // 此前按 componenttask.config.tokenCost 估算，与流水对不上（存在未实际扣费的任务），
+    // 导致「累计消耗」虚高、「可用百分数」失真。
+    const myWsIds = Array.from(
+      new Set([
+        ...(ownedWorkspaces as any[]).map((w) => String(w.id)),
+        ...(workspaceMembers as any[]).map((wm) => String(wm.workspaceId)),
+      ]),
+    );
+    const ledgerBaseWhere: any = {
+      OR: [
+        { scope: "WALLET", userId },
+        ...(myWsIds.length ? [{ workspaceId: { in: myWsIds } }] : []),
+      ],
     };
-    const monthTokenUsed = sumTaskCost(monthTasksRows);
-    const totalTokenUsed = sumTaskCost(totalTasksRows);
+    const sumConsume = (rows: any[]) =>
+      rows
+        .filter((r) => r.direction === "OUT" && r.type === "CONSUME")
+        .reduce((s, r) => s + Number(r._sum?.points || 0), 0);
+    const [monthConsumeGroups, totalConsumeGroups] = await Promise.all([
+      prisma.pointledger
+        .groupBy({
+          by: ["direction", "type"],
+          where: { AND: [ledgerBaseWhere, { createdAt: { gte: startOfMonth } }] },
+          _sum: { points: true },
+        })
+        .catch(() => [] as any[]),
+      prisma.pointledger
+        .groupBy({ by: ["direction", "type"], where: ledgerBaseWhere, _sum: { points: true } })
+        .catch(() => [] as any[]),
+    ]);
+    const monthTokenUsed = sumConsume(monthConsumeGroups);
+    const totalTokenUsed = sumConsume(totalConsumeGroups);
+    // 累计过期：赠送到期清零（GIFT_EXPIRE）的累计额度，与「算力点流水」过期分类一致
+    const totalExpired = (totalConsumeGroups as any[])
+      .filter((r) => r.direction === "OUT" && r.type === "GIFT_EXPIRE")
+      .reduce((s, r) => s + Number(r._sum?.points || 0), 0);
 
     // 合并并去重工作空间
     const approvedWsIdSet = new Set<string>();
@@ -461,13 +465,15 @@ export async function GET(request: NextRequest) {
         maxApiCalls,
         // 余额制口径（不设“每月免费额度上限”）：
         // available = 各空间真实可用余额合计；used = 本月真实任务消耗（新用户为 0）；
-        // historyTotalUsed = 历史累计任务消耗；total = 可用余额 + 历史累计消耗。
+        // historyTotalUsed = 历史累计实扣消耗（pointledger CONSUME 口径，与算力点流水一致）；
+        // total = 可用余额 + 历史累计实扣消耗。
         // 会员无限档（tokenLimit = -1）：available/total 标记 -1，避免被 Math.max(0, …) 折叠成 0。
         tokenBalance: {
           total: calculatedTotalTokens,
           used: monthTokenUsed,
           available: tokenLimit === -1 ? -1 : userAvailableTokens,
           historyTotalUsed: totalTokenUsed,
+          totalExpired,
           personalTokens,
           ownedEnterpriseTokens,
           memberAllocatedTokens,

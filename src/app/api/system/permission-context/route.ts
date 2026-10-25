@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateUser } from "@/lib/auth";
-import { getAdminPermissions } from "@/lib/security";
+import { getAdminPermissions, isSuperAdminPlatformRole } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
-
-const SUPER_ROLES = ["SUPER_ADMIN", "SUPERADMIN", "super_admin", "superadmin"];
 
 /**
  * GET /api/system/permission-context
@@ -26,7 +24,9 @@ export async function GET(request: NextRequest) {
   }
 
   const role = String(auth.user.role || "").trim();
-  const isSuperAdmin = SUPER_ROLES.includes(role);
+  // 超管判定必须与业务闸门（requirePlatformAuth / isSuperAdminPlatformRole）同一套口径，
+  // 否则历史角色变体（如 SUPER_ADMIN_ROLE / SUPER）会出现「业务层放行、中间件规则层 403」的分裂。
+  const isSuperAdmin = isSuperAdminPlatformRole(role);
 
   // 超级管理员不需要读取权限包（本身无条件放行），因此不会因权限服务异常被牵连
   let permissions: string[] = [];

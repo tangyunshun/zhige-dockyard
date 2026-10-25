@@ -132,7 +132,7 @@ export const DEFAULT_FEATURE_MODULES: PlatformFeatureModuleItem[] = [
     route: "/admin/users",
     resourceKey: "user",
     description: "全站注册用户基本信息、联系方式、封禁解封与会话下线管理",
-    supportedActions: ["read", "update", "delete", "status_update"],
+    supportedActions: ["read", "update", "delete", "status_update", "export"],
     isSystemCore: true,
   },
   {
@@ -270,36 +270,49 @@ export const DEFAULT_FEATURE_MODULES: PlatformFeatureModuleItem[] = [
     supportedActions: ["read", "manage"],
     isSystemCore: true,
   },
+  {
+    id: "finance",
+    name: "账务管理模块",
+    route: "/admin/finance",
+    resourceKey: "billing",
+    description: "算力点流水、充值订单、退款工单与结算记录的查阅与导出",
+    supportedActions: ["read", "export"],
+    isSystemCore: true,
+  },
 ];
 
 /** 从数据库读取规则配置 */
 export async function getPermissionRulesFromDB(): Promise<PlatformPermissionRulesConfig> {
-  try {
-    const record = await prisma.systemconfig.findUnique({
-      where: { key: PLATFORM_PERMISSION_RULES_KEY },
-    });
-    if (record && record.value) {
+  // ⚠️ fail-fast：读取失败/JSON 损坏时抛出，严禁回退默认规则参与后续写回
+  //（调用方存在「读全量 → 修改 → 全量 upsert」流程，回退会把真实规则/注册表整体覆盖）。
+  const record = await prisma.systemconfig.findUnique({
+    where: { key: PLATFORM_PERMISSION_RULES_KEY },
+  });
+  if (record && record.value) {
+    try {
       const parsed = JSON.parse(record.value);
       if (parsed && Array.isArray(parsed.actionRules)) {
         return parsed;
       }
+    } catch (parseErr) {
+      console.error("权限规则 JSON 解析失败（PLATFORM_PERMISSION_RULES_V1 已损坏）:", parseErr);
+      throw new Error("PERMISSION_RULES_CORRUPTED");
     }
-    // 冷启动写入数据库
-    await prisma.systemconfig.upsert({
-      where: { key: PLATFORM_PERMISSION_RULES_KEY },
-      create: {
-        key: PLATFORM_PERMISSION_RULES_KEY,
-        value: JSON.stringify(DEFAULT_PERMISSION_RULES),
-      },
-      update: {
-        value: JSON.stringify(DEFAULT_PERMISSION_RULES),
-      },
-    });
-    return DEFAULT_PERMISSION_RULES;
-  } catch (err) {
-    console.error("从数据库读取权限规则失败:", err);
-    return DEFAULT_PERMISSION_RULES;
+    console.error("权限规则数据结构非法（缺 actionRules 数组），拒绝回退默认值");
+    throw new Error("PERMISSION_RULES_CORRUPTED");
   }
+  // 冷启动写入数据库
+  await prisma.systemconfig.upsert({
+    where: { key: PLATFORM_PERMISSION_RULES_KEY },
+    create: {
+      key: PLATFORM_PERMISSION_RULES_KEY,
+      value: JSON.stringify(DEFAULT_PERMISSION_RULES),
+    },
+    update: {
+      value: JSON.stringify(DEFAULT_PERMISSION_RULES),
+    },
+  });
+  return DEFAULT_PERMISSION_RULES;
 }
 
 /** 保存规则配置到数据库 */
@@ -326,32 +339,36 @@ export async function savePermissionRulesToDB(
 
 /** 从数据库读取功能模块注册表 */
 export async function getFeatureModulesFromDB(): Promise<PlatformFeatureModuleItem[]> {
-  try {
-    const record = await prisma.systemconfig.findUnique({
-      where: { key: PLATFORM_MODULE_REGISTRY_KEY },
-    });
-    if (record && record.value) {
+  // ⚠️ fail-fast：读取失败/JSON 损坏时抛出，严禁回退内置种子——
+  // 「注册新模块」等流程是「读全量注册表 → 追加 → 全量写回」，回退会把管理员注册的模块整体覆盖。
+  const record = await prisma.systemconfig.findUnique({
+    where: { key: PLATFORM_MODULE_REGISTRY_KEY },
+  });
+  if (record && record.value) {
+    try {
       const parsed = JSON.parse(record.value);
       if (Array.isArray(parsed)) {
         return parsed;
       }
+    } catch (parseErr) {
+      console.error("功能模块注册表 JSON 解析失败（PLATFORM_MODULE_REGISTRY_V1 已损坏）:", parseErr);
+      throw new Error("MODULE_REGISTRY_CORRUPTED");
     }
-    // 冷启动写入数据库
-    await prisma.systemconfig.upsert({
-      where: { key: PLATFORM_MODULE_REGISTRY_KEY },
-      create: {
-        key: PLATFORM_MODULE_REGISTRY_KEY,
-        value: JSON.stringify(DEFAULT_FEATURE_MODULES),
-      },
-      update: {
-        value: JSON.stringify(DEFAULT_FEATURE_MODULES),
-      },
-    });
-    return DEFAULT_FEATURE_MODULES;
-  } catch (err) {
-    console.error("从数据库读取功能模块注册表失败:", err);
-    return DEFAULT_FEATURE_MODULES;
+    console.error("功能模块注册表数据结构非法（非数组），拒绝回退内置种子");
+    throw new Error("MODULE_REGISTRY_CORRUPTED");
   }
+  // 冷启动写入数据库
+  await prisma.systemconfig.upsert({
+    where: { key: PLATFORM_MODULE_REGISTRY_KEY },
+    create: {
+      key: PLATFORM_MODULE_REGISTRY_KEY,
+      value: JSON.stringify(DEFAULT_FEATURE_MODULES),
+    },
+    update: {
+      value: JSON.stringify(DEFAULT_FEATURE_MODULES),
+    },
+  });
+  return DEFAULT_FEATURE_MODULES;
 }
 
 /** 保存功能模块注册表到数据库 */
@@ -377,6 +394,23 @@ export async function saveFeatureModulesToDB(
 }
 
 /**
+ * 导出类权限点覆盖：通用动作规则无法逐键定制 label/level，
+ * 这里精确控制敏感导出权限的展示文案与风险等级（level 沿用既有 high 高危档）。
+ */
+const EXPORT_PERMISSION_OVERRIDES: Record<string, Partial<PermissionKeyItem>> = {
+  "user:export": {
+    label: "导出用户清单",
+    level: "high",
+    desc: "将全站用户清单（含手机号/邮箱等联系方式）导出为离线表格，存在批量带走敏感信息风险",
+  },
+  "billing:export": {
+    label: "导出账务数据",
+    level: "high",
+    desc: "将算力点流水、充值订单、退款工单与结算记录导出为离线表格",
+  },
+};
+
+/**
  * 纯数据库数据驱动：根据数据库规则模板，为一个模块派生生成对应的全部权限项
  */
 export function derivePermissionsByModuleAndRules(
@@ -399,13 +433,16 @@ export function derivePermissionsByModuleAndRules(
       : `执行 ${cleanModuleName} 的 ${act} 操作`;
     const level = rule ? rule.defaultLevel : "normal";
 
-    return {
+    const item: PermissionKeyItem = {
       key,
       label,
       desc,
       moduleName: cleanModuleName,
       level,
     };
+    const override = EXPORT_PERMISSION_OVERRIDES[key];
+    if (override) Object.assign(item, override);
+    return item;
   });
 }
 

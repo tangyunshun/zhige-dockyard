@@ -71,26 +71,40 @@ export async function GET(request: NextRequest) {
     let realApiCallsUsed = 0;
     let realStorageUsed = 0;
     try {
+      // ⚠️ 按 workspacequota.workspaceId 正向查询：workspace.workspacequotaId 外键历史为 NULL，
+      // 依赖 include 关系会把有余额的个人空间误读成 0。
       const personalWs = await prisma.workspace.findFirst({
         where: { ownerId: userId, type: "PERSONAL" },
-        include: { workspacequota: true },
+        select: { id: true },
       });
       if (personalWs) {
-        if (personalWs.workspacequota) {
-          tokenBalance = Number(personalWs.workspacequota.tokenBalance);
-          realApiCallsUsed = Number(personalWs.workspacequota.apiCallsUsed);
-          realStorageUsed = Number(personalWs.workspacequota.storageUsed);
-        } else {
-          // 结构性自愈：仅补建 0 额度配额记录，不赠送算力
-          await prisma.workspacequota.create({
-            data: {
-              id: crypto.randomUUID(),
-              workspaceId: personalWs.id,
-              membershipLevelId: "FREE",
-              tokenBalance: BigInt(0),
-              updatedAt: new Date(),
-            },
-          }).catch(() => {});
+        let personalQuota = await prisma.workspacequota.findUnique({
+          where: { workspaceId: personalWs.id },
+        });
+        if (!personalQuota) {
+          // 结构性自愈：仅补建 0 额度配额记录，不赠送算力；并回写外键
+          try {
+            personalQuota = await prisma.workspacequota.create({
+              data: {
+                id: crypto.randomUUID(),
+                workspaceId: personalWs.id,
+                membershipLevelId: "FREE",
+                tokenBalance: BigInt(0),
+                updatedAt: new Date(),
+              },
+            });
+            await prisma.workspace.update({
+              where: { id: personalWs.id },
+              data: { workspacequotaId: personalQuota.id },
+            });
+          } catch {
+            /* 并发下已存在则忽略 */
+          }
+        }
+        if (personalQuota) {
+          tokenBalance = Number(personalQuota.tokenBalance);
+          realApiCallsUsed = Number(personalQuota.apiCallsUsed);
+          realStorageUsed = Number(personalQuota.storageUsed);
         }
       }
     } catch (quotaErr) {

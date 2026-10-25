@@ -456,6 +456,13 @@ export default function ComponentDispatcherPanel({
       cancelled = true;
     };
   }, [isOpen, comp?.id, isLoggedIn, selectedWorkspaceId]);
+  // 估价兜底：估价接口不可用时（未登录 / 未选空间 / 模型未裁决 / 合同未声明能力），
+  // 用后台配置的固定扣点 estimatedModelTokens 兜底展示。平台模型下它就是真实扣点，
+  // 文案统一标注「预估约」以覆盖 BYOK 动态计价与「只补不退」补扣场景，避免只显示模糊文案。
+  const dispatchFallbackPoints =
+    comp && Number.isFinite(comp.estimatedModelTokens) && comp.estimatedModelTokens > 0
+      ? comp.estimatedModelTokens
+      : null;
   // Esc 关闭 + 弹窗打开期间锁定背景滚动
   useEffect(() => {
     if (!isOpen) return;
@@ -724,12 +731,14 @@ export default function ComponentDispatcherPanel({
                 </span>
                 <div className="flex items-center gap-1 text-[9px] text-slate-400 font-bold">
                   <Activity className="w-3.5 h-3.5 text-[#f59e0b]" />
-                  {/* 单次消耗口径与空间执行面板、实际扣点一致（估价接口真源），Token 估算值不再直出 */}
+                  {/* 单次消耗口径与空间执行面板、实际扣点一致（估价接口真源）；估价不可用时用后台固定扣点兜底为「预估约」 */}
                   <span>
                     单次消耗{" "}
                     {dispatchEstPoints != null
                       ? `${dispatchEstPoints} 算力点`
-                      : "点数按模型单价动态折算"}
+                      : dispatchFallbackPoints != null
+                        ? `预估约 ${dispatchFallbackPoints} 算力点`
+                        : "点数按模型单价动态折算"}
                     {isLoggedIn && selectedWorkspaceId ? "（以执行时实际扣点为准）" : ""}
                   </span>
                 </div>

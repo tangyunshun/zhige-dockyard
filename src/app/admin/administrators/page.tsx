@@ -261,6 +261,10 @@ export default function AdministratorsPage() {
     });
   };
 
+  // 目录权限点总数：实时来自数据库权限目录（GET /api/admin/permissions 的 catalog），
+  // 超管「全部权限」徽标与运营管理员统计均据此计算，严禁写死数字。
+  const totalCatalogKeys = catalog.reduce((sum, g) => sum + (g.keys?.length || 0), 0);
+
   const filteredAdmins = admins.filter(admin => {
     const term = searchQuery.toLowerCase();
     const matchQuery = (
@@ -372,7 +376,7 @@ export default function AdministratorsPage() {
             </div>
           </div>
           <div className="text-3xl font-black text-[#805ad5] mt-2 tracking-tight">
-            {loading ? "—" : admins.reduce((sum, a) => sum + (a.permissions?.length || 0), 0)}
+            {loading ? "—" : admins.filter((a) => !a.isSuper).reduce((sum, a) => sum + (a.permissions?.length || 0), 0)}
           </div>
           <div className="text-[11px] text-slate-400 font-medium mt-1">运营管理员已开通的功能权限总计</div>
         </div>
@@ -532,7 +536,7 @@ export default function AdministratorsPage() {
                           className="text-xs font-bold text-amber-600 hover:text-amber-700 hover:underline flex items-center gap-1 cursor-pointer"
                           title="点击预览系统最高权限"
                         >
-                          ● 全部权限 (80项)
+                          ● 全部权限 ({totalCatalogKeys}项)
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">

@@ -62,6 +62,11 @@ async function setupFixture() {
   await prisma.user.create({ data: { id: userId, password: "t", role: "USER", status: "active" } });
   await prisma.workspace.create({ data: { id: workspaceId, name: `e3fc_${s}`, ownerId: userId, type: "PERSONAL", updatedAt: new Date() } });
   await prisma.workspacemember.create({ data: { id: `m_${s}`, userId, workspaceId, role: "OWNER" } });
+  // 空间默认模型策略（resolveDefaultDeployment 新语义：空间须显式设置默认模型）
+  const platformDefault = await prisma.systemconfig.findUnique({ where: { key: "PLATFORM_DEFAULT_DEPLOYMENT_ID" } });
+  await prisma.workspace_model_policy.create({
+    data: { id: `pol_${s}`, workspaceId, defaultDeploymentId: platformDefault?.value ?? null, allowedDeploymentIds: platformDefault?.value ? [platformDefault.value] : [] },
+  });
   await prisma.userwallet.create({ data: { id: `w_${s}`, userId, balance } });
   await prisma.workspacequota.create({ data: { id: `q_${s}`, workspaceId, membershipLevelId: "FREE", tokenBalance: balance, updatedAt: new Date() } });
   await prisma.pointgrant.create({

@@ -79,6 +79,10 @@ function dbToConfig(row: any): WorkspacePlanConfig {
     maxMembers,
     maxStorage,
     maxApiCalls,
+    maxConcurrency: Number(row.maxConcurrency ?? 0),
+    maxSingleFileBytes: Number(row.maxSingleFileBytes ?? 0),
+    maxModelAllocations: Number(row.maxModelAllocations ?? 0),
+    maxByoModels: Number(row.maxByoModels ?? 0),
     tokenLimit: Number(row.tokenLimit ?? 0),
     trialGift,
     poolLowThreshold:

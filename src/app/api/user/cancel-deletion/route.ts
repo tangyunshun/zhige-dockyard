@@ -146,6 +146,8 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       success: true,
       message: "注销申请已撤销，账号已恢复正常",
+      token: newToken,
+      userId: user.id,
     });
 
     response.cookies.set("auth_token", newToken, {

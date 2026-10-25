@@ -300,7 +300,8 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
     // 输出 500 tokens @ 60 micros = 30000 micros = 0.03 元 = 3 点
     // 实际售价 = 4 点 (而非按篡改价的 400 点)
     assert.equal(result.actualPricePoints, BigInt(4));
-    assert.equal(result.releasedPoints, BigInt(96));
+    // 只补不退：预扣 100 点即实扣 100 点，差额 96 点不释放
+    assert.equal(result.releasedPoints, B_ZERO);
   });
 
   test("3. 严禁成本价兜底结算：仅有供应成本无用户售价时，严禁扣款，转 REQUIRES_REVIEW", async () => {
@@ -776,7 +777,7 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
 
     // 消耗 1,000,000 input tokens, 1,000,000 output tokens
     // 售价：输入 6 元 + 输出 36 元 = 42 元 = 4200 点
-    // 释放差额：4500 - 4200 = 300 点
+    // 只补不退：预扣 4500 点即实扣 4500 点，差额 300 点不再释放
     const settleRes = await completeSettlement({
       taskId,
       userId: testUserId,
@@ -786,7 +787,7 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
 
     assert.equal(settleRes.status, "SETTLED");
     assert.equal(settleRes.actualPricePoints, BigInt(4200));
-    assert.equal(settleRes.releasedPoints, BigInt(300));
+    assert.equal(settleRes.releasedPoints, B_ZERO);
     assert.equal(settleRes.supplementPoints, B_ZERO);
     assert.ok(settleRes.userPriceMicros !== undefined && settleRes.userPriceMicros !== null && settleRes.userPriceMicros > B_ZERO);
 
@@ -900,8 +901,8 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
       holdDetails: cr.details,
     });
 
-    // 实际消费 6 点 (3000 input tokens * 10 micros = 3 点, 500 output tokens * 60 micros = 3 点, 共 6 点)，释放差额 74 点。
-    // LIFO 逆序释放：分桶 2 扣了 30 点，全额恢复 30 点至 50 点；剩余 44 点逆序释放给分桶 1，分桶 1 恢复至 44 点且由 EXHAUSTED 转为 ACTIVE！
+    // 实际消费 6 点 (3000 input tokens * 10 micros = 3 点, 500 output tokens * 60 micros = 3 点, 共 6 点)。
+    // 只补不退策略（定价审核调整）：预扣 80 点即实扣 80 点，差额 74 点不再释放给用户。
     const settle = await completeSettlement({
       taskId,
       userId: testUserId,
@@ -911,17 +912,17 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
 
     assert.equal(settle.status, "SETTLED");
     assert.equal(settle.actualPricePoints, BigInt(6));
-    assert.equal(settle.releasedPoints, BigInt(74));
+    assert.equal(settle.releasedPoints, BigInt(0), "只补不退：少用不退还差额");
 
-    // 检查分桶 2 恢复至 50 点
+    // 分桶 2 维持消耗后状态（20 点，ACTIVE），不恢复
     const g2AfterSettle = await prisma.pointgrant.findUniqueOrThrow({ where: { id: g2Id } });
-    assert.equal(g2AfterSettle.remaining, BigInt(50));
+    assert.equal(g2AfterSettle.remaining, BigInt(20));
     assert.equal(g2AfterSettle.status, "ACTIVE");
 
-    // 检查分桶 1 恢复至 44 点，且状态已从 EXHAUSTED 恢复为 ACTIVE
+    // 分桶 1 维持扣尽状态（0 点，EXHAUSTED），不恢复
     const g1AfterSettle = await prisma.pointgrant.findUniqueOrThrow({ where: { id: g1Id } });
-    assert.equal(g1AfterSettle.remaining, BigInt(44));
-    assert.equal(g1AfterSettle.status, "ACTIVE", "恢复余额大于 0 的分桶必须恢复为 ACTIVE 状态");
+    assert.equal(g1AfterSettle.remaining, BigInt(0));
+    assert.equal(g1AfterSettle.status, "EXHAUSTED", "只补不退：扣尽的分桶保持 EXHAUSTED");
   });
 
   test("15. 生产环境特性开关绝对安全防御：NODE_ENV=production 时传显式 true 依然恒返回 false", () => {
@@ -1308,8 +1309,9 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
     assert.equal(calc.priceMicros, expectedMicros, "大数计算必须保持 BigInt 纯整数绝对精确");
   });
 
-  test("22. 强断言：统一 monthlyTokenUsed 业务口径（少退回滚差额，多补追加差额）", async () => {
-    // 1. 少退测试：预扣 100 点，实际用 30 点，释放 70 点，月度用量净增 30 点
+  test("22. 强断言：统一 monthlyTokenUsed 业务口径（只补不退：少用不回滚，多补追加差额）", async () => {
+    // 1. 少用测试（只补不退）：预扣 100 点，实际用 30 点，差额 70 点不退还，
+    //    月度用量维持预扣时累加的 100 点（固定包干制：预扣即实扣）
     const taskIdRefund = `task-monthly-refund-${uid()}`;
     await grantPoints({ userId: testUserId, scope: "WALLET", points: 200, title: "充值", sourceType: "ONLINE_RECHARGE", type: "RECHARGE" });
 
@@ -1333,7 +1335,7 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
     });
     assert.equal(memberMid1.monthlyTokenUsed, monthlyBefore1 + BigInt(100), "预扣时增加 100 点已用");
 
-    // 实际使用 30 点 (30,000 input tokens * 10 micros = 30 点)，差额释放 70 点
+    // 实际使用 30 点 (30,000 input tokens * 10 micros = 30 点)，差额 70 点留存不退
     await completeSettlement({
       taskId: taskIdRefund,
       userId: testMemberUserId,
@@ -1347,8 +1349,8 @@ describe("真实 Token 结算账务基础与状态机测试 (Phase 2A 强化真�
     });
     assert.equal(
       memberAfter1.monthlyTokenUsed,
-      monthlyBefore1 + BigInt(30),
-      "少退释放差额后，月度已用额度精确回滚至实际消耗的 30 点"
+      monthlyBefore1 + BigInt(100),
+      "只补不退：少用不退还差额，月度已用额度维持预扣口径的 100 点"
     );
 
     // 2. 多补测试：预扣 40 点，实际用 70 点，追加补扣 30 点，月度用量净增 70 点

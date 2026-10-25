@@ -89,6 +89,7 @@ export default function UserProfilePage() {
   const [deletionPending, setDeletionPending] = useState(false);
   const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number | null>(null);
   const [cancelDeletionLoading, setCancelDeletionLoading] = useState(false);
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [originalPhone, setOriginalPhone] = useState("");
   const [originalEmail, setOriginalEmail] = useState("");
   const [smsCode, setSmsCode] = useState("");
@@ -252,16 +253,26 @@ export default function UserProfilePage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
+        credentials: "include",
         body: JSON.stringify({ verifyToken: token }),
       });
 
       if (res.ok) {
         const data = await res.json();
         const daysRemaining = data.daysRemaining || deletionCooldownDays || 7;
-        localStorage.removeItem("userId");
-        document.cookie = "auth_token=; path=/; max-age=0";
+        // 销毁旧的业务会话，保留冷静期专属临时撤销令牌（供首页遮罩弹窗直接一键撤销恢复）
+        localStorage.removeItem("sessionToken");
+        if (data.token) {
+          localStorage.setItem("auth_token", data.token);
+        }
+        if (data.userId) {
+          localStorage.setItem("userId", data.userId);
+        }
+        // 设置持久冷静期活跃标记，防止刷新或重载导致遮罩层丢失
+        localStorage.setItem("deletion_pending_active", "true");
+        localStorage.setItem("deletion_pending_days", String(daysRemaining));
         window.location.href = `/?deletion_pending=true&daysRemaining=${daysRemaining}`;
       } else {
         const error = await res.json();
@@ -323,8 +334,11 @@ export default function UserProfilePage() {
     }
   };
 
-  const handleCancelDeletion = async () => {
-    if (!window.confirm("确认撤销账号注销申请？撤销后账号将恢复正常，所有数据资产完整留存。")) return;
+  const handleCancelDeletion = () => {
+    setShowCancelConfirmModal(true);
+  };
+
+  const executeCancelDeletion = async () => {
     try {
       setCancelDeletionLoading(true);
       const authToken = getAuthToken();
@@ -338,6 +352,7 @@ export default function UserProfilePage() {
         toast.success(data.message || "注销申请已撤销，账号已恢复正常");
         setDeletionPending(false);
         setDeletionDaysRemaining(null);
+        setShowCancelConfirmModal(false);
         loadUserInfo();
       } else {
         toast.error(data.error || data.message || "撤销注销失败");
@@ -1175,63 +1190,70 @@ export default function UserProfilePage() {
         </div>
       </div>
 
-      {/* 注销须知弹窗 */}
+      {/* 注销须知弹窗 (统一使用 .zg-modal 规范，带局部滚动保护) */}
       {showNoticeModal && (
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowNoticeModal(false);
           }}
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          className="zg-modal-overlay"
         >
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative">
-            <button
-              onClick={() => setShowNoticeModal(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 text-amber-500 flex items-center justify-center mx-auto mb-2">
-                <AlertTriangle className="w-6 h-6" />
+          <div className="zg-modal max-w-md w-full animate-in zoom-in-95 duration-150">
+            <div className="zg-modal-header">
+              <div className="flex items-center gap-2 text-slate-800">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <span className="font-bold text-sm">账号注销重要须知</span>
               </div>
-              <h3 className="text-base font-bold text-slate-800">账号注销须知</h3>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-3">
-                <div className="flex items-center gap-1.5 font-bold text-[#2b6cb0] mb-0.5">
-                  <Clock className="w-3.5 h-3.5" />
-                  {deletionCooldownDays} 天安全冷静期
-                </div>
-                <p className="text-slate-600">在此期间再次登录即可一键撤销申请，所有数据资产完整留存。</p>
-              </div>
-              <div className="bg-rose-50/60 border border-rose-200/80 rounded-xl p-3">
-                <div className="flex items-center gap-1.5 font-bold text-rose-600 mb-0.5">
-                  <Trash2 className="w-3.5 h-3.5" />
-                  期满永久抹除
-                </div>
-                <p className="text-slate-600">冷静期结束将彻底抹除名下全部组件、工作空间配置与活动日志，无法找回。</p>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-start gap-2">
-              <input
-                type="checkbox"
-                id="agree"
-                checked={hasAgreed}
-                onChange={(e) => setHasAgreed(e.target.checked)}
-                className="mt-0.5 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]"
-              />
-              <label htmlFor="agree" className="text-xs text-slate-600 cursor-pointer">
-                我已知晓并理解注销影响，自愿进入安全预备流程
-              </label>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowNoticeModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                title="关闭"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="zg-modal-body space-y-3 text-xs">
+              <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 font-bold text-[#2b6cb0] mb-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  {deletionCooldownDays} 天安全冷静期保护
+                </div>
+                <p className="text-slate-600 leading-relaxed">
+                  申请注销后账号将进入冷静期。在此期间再次登录即可一键撤销申请，所有工作空间、模型资产与数据完整留存。
+                </p>
+              </div>
+
+              <div className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 font-bold text-rose-600 mb-1">
+                  <Trash2 className="w-3.5 h-3.5" />
+                  冷静期满永久抹除
+                </div>
+                <p className="text-slate-600 leading-relaxed">
+                  冷静期结束后系统将彻底抹除名下全部组件、工作空间配置与活动日志，不可逆且无法找回。
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="agree"
+                  checked={hasAgreed}
+                  onChange={(e) => setHasAgreed(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+                />
+                <label htmlFor="agree" className="text-xs text-slate-600 cursor-pointer select-none">
+                  我已知晓并理解上述注销影响，自愿进入安全预备检测流程
+                </label>
+              </div>
+            </div>
+
+            <div className="zg-modal-footer">
+              <button
+                type="button"
+                onClick={() => setShowNoticeModal(false)}
+                className="zg-btn zg-btn-default text-xs cursor-pointer"
               >
                 取消
               </button>
@@ -1239,7 +1261,7 @@ export default function UserProfilePage() {
                 type="button"
                 onClick={handleStartCheck}
                 disabled={!hasAgreed}
-                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="zg-btn zg-btn-danger text-xs cursor-pointer"
               >
                 开始安全检测
               </button>
@@ -1248,137 +1270,237 @@ export default function UserProfilePage() {
         </div>
       )}
 
-      {/* 检测进度弹窗 */}
+      {/* 检测进度与注销确认弹窗 (基于 .zg-modal 规范重塑，消除双重Header并解决截断问题) */}
       {showCheckModal && (
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCheckModal(false);
           }}
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          className="zg-modal-overlay"
         >
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative">
-            {/* 右上角关闭按钮 */}
-            <button
-              type="button"
-              onClick={() => setShowCheckModal(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-              title="关闭"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-200 text-blue-500 flex items-center justify-center mx-auto mb-2">
-                <ShieldCheck className="w-6 h-6" />
+          <div className="zg-modal max-w-md w-full animate-in zoom-in-95 duration-150">
+            {/* 统一单一头部 */}
+            <div className="zg-modal-header">
+              <div className="flex items-center gap-2 text-slate-800">
+                {checkComplete ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-500" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 text-[#3182ce]" />
+                )}
+                <span className="font-bold text-sm">
+                  {checkComplete ? "安全合规检测完成" : "正在执行安全合规检测"}
+                </span>
               </div>
-              <h3 className="text-base font-bold text-slate-800">
-                {checkComplete ? "检测完成" : deleteStep || "正在检测..."}
-              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCheckModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                title="关闭"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {!checkComplete ? (
-              <>
-                <div className="w-full bg-slate-100 rounded-full h-2 mb-4">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${deleteProgress}%` }}
-                  ></div>
-                </div>
+            {/* 弹窗 Body：自适应局部滚动保护，无论视口高低均绝不截断 */}
+            <div className="zg-modal-body space-y-3.5">
+              {!checkComplete ? (
+                <>
+                  <div className="text-center py-2">
+                    <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-200 text-[#3182ce] flex items-center justify-center mx-auto mb-2 animate-pulse">
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-700">
+                      {deleteStep || "正在扫描资产与权限状态..."}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      系统正在核验关联工作空间、模型资产与未结算工单
+                    </p>
+                  </div>
 
-                <div className="space-y-2">
-                  {checkResults.map((result, index) => (
+                  {/* 进度条 */}
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                     <div
-                      key={index}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      {result.status === "warn" ? (
-                        <AlertCircle className="w-4 h-4 text-amber-500" />
-                      ) : (
-                        <CheckCircle className="w-4 h-4 text-emerald-500" />
-                      )}
-                      <span className="text-slate-600">{result.item}</span>
-                      <span className={`text-xs ml-auto ${result.status === "warn" ? "text-amber-600" : "text-emerald-500"}`}>
-                        {result.detail || (result.status === "warn" ? "需注意" : "检测通过")}
+                      className="bg-gradient-to-r from-[#3182ce] to-[#10b981] h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${deleteProgress}%` }}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {checkResults.map((result, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-50 border border-slate-100"
+                      >
+                        <div className="flex items-center gap-2 text-slate-700">
+                          {result.status === "warn" ? (
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          ) : (
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          )}
+                          <span className="font-medium">{result.item}</span>
+                        </div>
+                        <span
+                          className={`text-[11px] font-semibold ${
+                            result.status === "warn" ? "text-amber-600" : "text-emerald-600"
+                          }`}
+                        >
+                          {result.detail || (result.status === "warn" ? "需注意" : "检测通过")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* 单一状态 Banner：干净整洁，消除冗余双重 Header */}
+                  <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-3 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                      <CheckCircle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-emerald-900">
+                        安全检测通过，未发现阻断项
+                      </h4>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        您的账号符合平台注销标准，确认后将进入冷静期
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 5项检测结果精简条目 */}
+                  <div className="space-y-1.5">
+                    {checkResults.map((result, index) => (
+                      <div
+                        key={index}
+                        className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border ${
+                          result.status === "warn"
+                            ? "bg-amber-50/60 border-amber-200/70 text-amber-800"
+                            : "bg-slate-50/80 border-slate-200/60 text-slate-700"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {result.status === "warn" ? (
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          ) : (
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          )}
+                          <span className="font-medium">{result.item}</span>
+                        </div>
+                        <span
+                          className={`text-[11px] font-semibold ${
+                            result.status === "warn" ? "text-amber-600" : "text-emerald-600"
+                          }`}
+                        >
+                          {result.detail || (result.status === "warn" ? "将一并清除" : "正常")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {pendingRecharge > 0 && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                      <span>
+                        您有 {pendingRecharge} 笔线下充值工单尚未结算入账，注销后将无法自动退款，请先到「计费中心」处理完毕再申请注销。
                       </span>
                     </div>
-                  ))}
-                </div>
+                  )}
 
-                <div className="mt-6">
+                  {/* 冷静期说明条（紧凑清晰，完全消除截断） */}
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-2.5 text-center">
+                    <p className="text-xs text-slate-600 font-medium">
+                      点击下方“确认注销”后，账号将立即进入{" "}
+                      <span className="text-[#3182ce] font-bold">{deletionCooldownDays} 天安全冷静期</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      冷静期内随时重新登录即可一键撤销申请，所有数据完整恢复
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 统一固定的底部操作栏 */}
+            <div className="zg-modal-footer">
+              {!checkComplete ? (
+                <button
+                  type="button"
+                  onClick={() => setShowCheckModal(false)}
+                  className="zg-btn zg-btn-default text-xs cursor-pointer"
+                >
+                  取消检测并返回
+                </button>
+              ) : (
+                <>
                   <button
                     type="button"
                     onClick={() => setShowCheckModal(false)}
-                    className="w-full px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-                  >
-                    取消检测并返回
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="text-center mb-4">
-                  <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-                    <CheckCircle className="w-8 h-8 text-emerald-500" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-800 mb-1">
-                    检测完成
-                  </h3>
-                  <p className="text-sm text-emerald-600">
-                    未发现任何问题，可以注销
-                  </p>
-                </div>
-
-                <div className="space-y-2 mb-4">
-                  {checkResults.map((result, index) => (
-                    <div
-                      key={index}
-                      className={`flex items-center gap-2 text-sm p-2 rounded-lg ${result.status === "warn" ? "bg-amber-50" : "bg-emerald-50"}`}
-                    >
-                      {result.status === "warn" ? (
-                        <AlertCircle className="w-4 h-4 text-amber-500" />
-                      ) : (
-                        <CheckCircle className="w-4 h-4 text-emerald-500" />
-                      )}
-                      <span className="text-slate-600">{result.item}</span>
-                      <span className={`text-xs ml-auto ${result.status === "warn" ? "text-amber-600" : "text-emerald-500"}`}>
-                        {result.detail || (result.status === "warn" ? "将一并清除" : "正常")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <p className="text-xs text-slate-500 text-center mb-4">
-                  点击"确认注销"后，您的账号将进入冷静期
-                </p>
-
-                {pendingRecharge > 0 && (
-                  <div className="flex items-start gap-2 mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs leading-relaxed">
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>
-                      您有 {pendingRecharge} 笔线下充值工单尚未结算入账，注销后将无法自动退款，请先到「计费中心」处理完毕再申请注销。
-                    </span>
-                  </div>
-                )}
-
-                {/* 底部取消与确认注销双操作区 */}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowCheckModal(false)}
-                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer text-center"
+                    className="zg-btn zg-btn-default text-xs cursor-pointer"
                   >
                     取消 / 我再想想
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteAccount()}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-red-500/30 transition-all text-sm cursor-pointer text-center"
+                    className="zg-btn zg-btn-danger text-xs cursor-pointer"
                   >
                     确认注销
                   </button>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 撤销注销二次确认弹窗 (替代原生 window.confirm) */}
+      {showCancelConfirmModal && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCancelConfirmModal(false);
+          }}
+          className="zg-modal-overlay"
+        >
+          <div className="zg-modal max-w-sm w-full animate-in zoom-in-95 duration-150">
+            <div className="zg-modal-header">
+              <div className="flex items-center gap-2 text-slate-800">
+                <ShieldCheck className="w-4 h-4 text-[#3182ce]" />
+                <span className="font-bold text-sm">确认撤销注销申请</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirmModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="zg-modal-body text-xs text-slate-600 space-y-2">
+              <p>确认撤销当前的账号注销申请吗？</p>
+              <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800">
+                撤销后账号将立即恢复正常可用状态，所有工作空间及资产数据完整留存。
+              </div>
+            </div>
+
+            <div className="zg-modal-footer">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirmModal(false)}
+                disabled={cancelDeletionLoading}
+                className="zg-btn zg-btn-default text-xs cursor-pointer"
+              >
+                暂不撤销
+              </button>
+              <button
+                type="button"
+                onClick={executeCancelDeletion}
+                disabled={cancelDeletionLoading}
+                className="zg-btn zg-btn-primary text-xs cursor-pointer"
+              >
+                {cancelDeletionLoading ? "正在撤销..." : "确认撤销"}
+              </button>
+            </div>
           </div>
         </div>
       )}

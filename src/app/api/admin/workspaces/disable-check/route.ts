@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { writeAuditLog } from "@/lib/security";
+import { writeAuditLog, isPlatformAdminRole } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -49,9 +49,9 @@ export async function GET(request: NextRequest) {
     });
 
     // 3. 特殊安全保护检查：超级管理员与系统管理员自身的工作空间受保护不可停用
+    //    ⚠️ 用 isPlatformAdminRole 变体归一判定（角色值存在小写历史写法，精确比对会漏保护）
     if (
-      owner?.role === "SUPER_ADMIN" ||
-      owner?.role === "ADMIN" ||
+      (owner && isPlatformAdminRole(owner.role)) ||
       workspace.ownerId === currentUserId
     ) {
       return NextResponse.json({

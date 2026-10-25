@@ -33,7 +33,11 @@ import {
   CheckSquare,
   Square,
   Activity,
+  Download,
 } from "lucide-react";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 import type { SettlementDictPayload } from "@/lib/settlement-dict";
 
 interface SettlementRecord {
@@ -98,6 +102,9 @@ function Row({ label, value, mono }: { label: string; value: React.ReactNode; mo
 
 export default function AdminTokenSettlementsPage() {
   const toast = useToast();
+  const maxRows = useExportMaxRows();
+  const [exporting, setExporting] = useState(false);
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
 
   const [records, setRecords] = useState<SettlementRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -229,6 +236,62 @@ export default function AdminTokenSettlementsPage() {
       setLoading(false);
     }
   }, [statusFilter, page, searchTaskId, searchUserId, searchWorkspaceId, toast]);
+
+  const handleExportExcel = useCallback(async () => {
+    if (!isSuperAdmin && !hasPermission("billing:export")) {
+      toast.warning("当前账号未配置导出权限，请联系超级管理员");
+      return;
+    }
+    try {
+      setExporting(true);
+      const token = getAuthToken();
+      const sp = new URLSearchParams({ status: statusFilter, page: "1", pageSize: String(maxRows) });
+      if (searchTaskId.trim()) sp.set("taskId", searchTaskId.trim());
+      if (searchUserId.trim()) sp.set("userId", searchUserId.trim());
+      if (searchWorkspaceId.trim()) sp.set("workspaceId", searchWorkspaceId.trim());
+      sp.set("export", "1");
+      const res = await fetch(`/api/admin/token-settlements?${sp.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json?.error || "导出数据拉取失败");
+      const list: SettlementRecord[] = json.data?.records || [];
+      if (list.length === 0) {
+        toast.warning("当前筛选条件下暂无数据可导出");
+        return;
+      }
+      exportToExcel({
+        filename: "结算记录",
+        sheetName: "结算记录",
+        maxRows: maxRows,
+        trace: {
+          exportType: "结算记录",
+          filters: { status: statusFilter, taskId: searchTaskId, userId: searchUserId, workspaceId: searchWorkspaceId },
+          rowCount: list.length,
+          page: "/admin/finance/settlements",
+        },
+        columns: [
+          { header: "任务编号", key: "taskId", width: 26 },
+          { header: "押金点数", key: "holdPoints", width: 14 },
+          { header: "实际结算点数", key: "actualPricePoints", width: 16 },
+          { header: "多退金额(点)", key: "releasedPoints", width: 16 },
+          { header: "少补金额(点)", key: "supplementPoints", width: 16 },
+          { header: "Token 输入", key: "inputTokens", width: 16 },
+          { header: "Token 输出", key: "outputTokens", width: 16 },
+          { header: "状态", key: "statusName", width: 14 },
+          { header: "时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
+        ],
+        data: list,
+      });
+      toast.success(`已导出 ${list.length} 条结算记录`);
+    } catch (e: any) {
+      toast.error(e?.message || "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }, [statusFilter, searchTaskId, searchUserId, searchWorkspaceId, isSuperAdmin, hasPermission, toast]);
 
   useEffect(() => {
     loadRecords();
@@ -492,7 +555,15 @@ export default function AdminTokenSettlementsPage() {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : ""}`} />
             刷新数据
-          </button>
+            </button>
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting || (!isSuperAdmin && !hasPermission("billing:export"))}
+              title={!isSuperAdmin && !hasPermission("billing:export") ? "当前账号未配置导出权限，请联系超级管理员" : "将当前筛选条件下的全量结算记录导出为 Excel"}
+              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl flex items-center gap-1.5 disabled:opacity-50 cursor-pointer transition-all shadow-2xs"
+            >
+              <Download className="w-3.5 h-3.5" /> {exporting ? "导出中…" : "导出 Excel"}
+            </button>
         </div>
       </div>
 

@@ -45,7 +45,7 @@ const KNOWN_KEYS: Record<string, Omit<CatalogKey, "key">> = {
     label: "账务管理操作",
     desc: "押金结算、退款审批、账务对账等资金类管理操作",
     moduleName: "账务管理",
-    level: "danger",
+    level: "high",
   },
   "billing:read": {
     label: "查看账务数据",
@@ -57,7 +57,7 @@ const KNOWN_KEYS: Record<string, Omit<CatalogKey, "key">> = {
     label: "模型部署管理操作",
     desc: "新增/修改/启停模型部署与供应商配置、设置平台默认模型",
     moduleName: "模型管理",
-    level: "danger",
+    level: "high",
   },
   "model:read": {
     label: "查看模型注册表",
@@ -65,12 +65,37 @@ const KNOWN_KEYS: Record<string, Omit<CatalogKey, "key">> = {
     moduleName: "模型管理",
     level: "read",
   },
+  "demo:read": {
+    label: "查看演示申请列表",
+    desc: "查阅访客提交的产品演示预约申请（姓名、联系方式、公司与需求说明）",
+    moduleName: "演示申请管理",
+    level: "read",
+  },
+  "demo:manage": {
+    label: "处理演示申请跟进",
+    desc: "更新演示申请的处理状态流转（待处理 / 已联系 / 已关闭）",
+    moduleName: "演示申请管理",
+    level: "normal",
+  },
+  "user:export": {
+    label: "导出用户清单",
+    desc: "将当前筛选的全量用户数据（含手机号邮箱等联系方式）导出为 Excel",
+    moduleName: "用户管理模块 (User)",
+    level: "high",
+  },
+  "billing:export": {
+    label: "导出账务数据",
+    desc: "导出算力点流水 / 充值订单 / 退款工单 / 结算记录四类资金数据",
+    moduleName: "账务管理模块 (Billing)",
+    level: "high",
+  },
 };
 
 /** 已知键归属模块的路由（用于新建模块组时填充 moduleRoute） */
 const KNOWN_MODULE_ROUTES: Record<string, string> = {
   账务管理: "/admin/finance",
   模型管理: "/admin/models",
+  演示申请管理: "/admin/demo-requests",
 };
 
 /** 1. 扫描代码中的权限点（requirePlatformPermission 调用），跨平台纯 Node 实现 */
@@ -111,11 +136,11 @@ function scanCodeKeys(): string[] {
 const PREFIX_GROUP: Record<string, { group: string; route: string; desc: string }> = {
   user: { group: "用户管理模块 (User)", route: "/admin/users", desc: "用户管理相关权限" },
   workspace: { group: "工作空间管理模块 (Workspace)", route: "/admin/workspaces", desc: "工作空间管理相关权限" },
-  workspace_plan: { group: "空间套餐管理模块 (Workspace Plans)", route: "/admin/workspace-plans", desc: "空间套餐管理相关权限" },
+  workspace_plan: { group: "空间套餐管理模块 (Workspace Plans)", route: "/admin/workspace/plans", desc: "空间套餐管理相关权限" },
   post: { group: "岗位管理模块 (Posts)", route: "/admin/posts", desc: "岗位管理相关权限" },
   component: { group: "组件管理模块 (Components)", route: "/admin/components", desc: "组件管理相关权限" },
   membership: { group: "会员套餐管理模块 (Membership)", route: "/admin/membership", desc: "会员套餐管理相关权限" },
-  token_pack: { group: "算力加油包管理模块 (Token Packs)", route: "/admin/token-packs", desc: "加油包管理相关权限" },
+  token_pack: { group: "算力加油包管理模块 (Token Packs)", route: "/admin/membership/token-packs", desc: "加油包管理相关权限" },
   order: { group: "订单管理模块 (Orders)", route: "/admin/orders", desc: "订单管理相关权限" },
   content: { group: "内容管理模块 (Content)", route: "/admin/content", desc: "内容管理相关权限" },
   document: { group: "文档管理模块 (Documents)", route: "/admin/documents", desc: "文档管理相关权限" },
@@ -131,8 +156,9 @@ const PREFIX_GROUP: Record<string, { group: string; route: string; desc: string 
   tenant: { group: "多租户机构管理模块 (Tenants)", route: "/admin/tenants", desc: "多租户管理相关权限" },
   upgrade: { group: "升级申请审核模块 (Upgrade Applications)", route: "/admin/upgrade-applications", desc: "升级审核相关权限" },
   user_reviews: { group: "用户评价模块 (USER_REVIEWS)", route: "/admin/testimonials", desc: "用户评价相关权限" },
-  billing: { group: "账务管理", route: "/admin/finance", desc: "账务管理相关权限（押金结算/退款/对账）" },
+  billing: { group: "账务管理模块 (Billing)", route: "/admin/finance", desc: "账务管理相关权限（押金结算/退款/对账）" },
   model: { group: "模型管理", route: "/admin/models", desc: "模型注册/部署/能力/价格管理相关权限" },
+  demo: { group: "演示申请管理模块 (Demo Requests)", route: "/admin/demo-requests", desc: "演示申请管理相关权限" },
 };
 
 function inferGroup(key: string): { group: string; route: string } {

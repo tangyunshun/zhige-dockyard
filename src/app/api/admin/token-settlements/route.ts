@@ -19,6 +19,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    // 导出用途（export=1）需额外持有 billing:export，超级管理员自动放行
+    if (searchParams.get("export") === "1") {
+      const exportAuth = await requirePlatformPermission(request, "billing:export");
+      if (!exportAuth.authorized) {
+        return exportAuth.errorResponse || NextResponse.json({ success: false, error: "无权限导出结算记录" }, { status: 403 });
+      }
+    }
     const status = searchParams.get("status") || undefined;
     const taskId = searchParams.get("taskId") || undefined;
     const userId = searchParams.get("userId") || undefined;

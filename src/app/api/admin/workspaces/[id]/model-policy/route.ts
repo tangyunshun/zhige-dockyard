@@ -55,7 +55,7 @@ export async function PUT(
     const resolved = await params;
     const workspaceId = resolved.id || resolved.workspaceId || "";
 
-    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { id: true } });
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { id: true, plan: true } });
     if (!workspace) return NextResponse.json({ success: false, error: "工作空间不存在" }, { status: 404 });
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;

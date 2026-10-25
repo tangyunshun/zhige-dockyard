@@ -146,16 +146,22 @@ export default function LoginNotificationPopup() {
 
   const handleConfirm = () => {
     if (!current || exiting) return;
+    const confirmedId = current.id;
     setExiting(true);
 
-    // 动效隐藏后再归入消息列表并切换下一条（与 CSS duration-300 对齐，避免提前卸载）
+    // 与 CSS duration-300 对齐：退场动效播完立即切换下一条/卸载弹窗。
+    // ⚠️ 归档请求放后台执行，严禁 await 网络往返阻塞遮罩层卸载——
+    // 此前遮罩要等 acknowledge-popup 接口返回才消失（网络慢时数秒级），观感即"关闭了但遮罩迟迟不消"。
     window.setTimeout(async () => {
-      await acknowledgePopup(current.id);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("zhige_notifications_updated"));
-      }
       setQueue((prev) => prev.slice(1));
       setExiting(false);
+      try {
+        await acknowledgePopup(confirmedId);
+      } finally {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("zhige_notifications_updated"));
+        }
+      }
     }, 300);
   };
 
@@ -166,7 +172,13 @@ export default function LoginNotificationPopup() {
   const hasMore = queue.length > 1;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+    // 遮罩层必须与卡片同步参与退场动效（此前 exiting 只作用于卡片，遮罩全程保持全黑，
+    // 且要等归档接口返回才卸载，造成"弹窗关了遮罩还在"的观感）；退场期间放行指针事件。
+    <div
+      className={`fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm transition-all duration-300 ease-out ${
+        exiting ? "opacity-0 pointer-events-none" : "opacity-100"
+      }`}
+    >
       <div
         className={`w-full max-w-md rounded-2xl border-2 shadow-2xl bg-white p-0 overflow-hidden transition-all duration-300 ease-out ${
           exiting ? "opacity-0 scale-95" : "opacity-100 scale-100"

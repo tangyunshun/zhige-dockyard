@@ -22,23 +22,24 @@ export async function GET(request: NextRequest) {
     const member = await prisma.workspacemember.findFirst({
       where: { userId, workspaceId },
       include: {
-        workspace: {
-          include: {
-            workspacequota: true,
-          },
-        },
+        workspace: true,
       },
     });
 
     const workspace = member?.workspace
       ?? (await prisma.workspace.findFirst({
           where: { id: workspaceId, ownerId: userId },
-          include: { workspacequota: true },
         }));
 
     if (!workspace) {
       return NextResponse.json({ error: "工作空间不存在或无权访问" }, { status: 404 });
     }
+
+    // ⚠️ 配额按 workspacequota.workspaceId 正向查询：workspace.workspacequotaId 外键历史为 NULL，
+    // 依赖 include 关系会把有余额的空间误读成 0。
+    const quotaRecord = await prisma.workspacequota.findUnique({
+      where: { workspaceId },
+    });
 
     const role =
       workspace.ownerId === userId
@@ -86,8 +87,6 @@ export async function GET(request: NextRequest) {
       take: 3,
     });
 
-    const quota = workspace.workspacequota;
-
     return NextResponse.json({
       success: true,
       data: {
@@ -113,13 +112,13 @@ export async function GET(request: NextRequest) {
           componentId: t.type,
           callCount: t._count.id,
         })),
-        quota: quota
+        quota: quotaRecord
           ? {
-              tokenBalance: Number(quota.tokenBalance),
-              storageUsed: Number(quota.storageUsed),
-              storageLimit: Number(quota.storageLimit),
-              apiCallsUsed: Number(quota.apiCallsUsed),
-              apiCallsLimit: Number(quota.apiCallsLimit),
+              tokenBalance: Number(quotaRecord.tokenBalance),
+              storageUsed: Number(quotaRecord.storageUsed),
+              storageLimit: Number(quotaRecord.storageLimit),
+              apiCallsUsed: Number(quotaRecord.apiCallsUsed),
+              apiCallsLimit: Number(quotaRecord.apiCallsLimit),
             }
           : null,
       },

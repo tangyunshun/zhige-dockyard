@@ -45,6 +45,7 @@ export const DEFAULT_ACTION_DICT: Record<string, string> = {
   CREATE_ENTERPRISE_WORKSPACE: "创建企业工作空间",
   UPGRADE_WORKSPACE: "工作空间类型升级",
   UPGRADE_WORKSPACE_PLAN: "工作空间套餐升级",
+  UPGRADE_PERSONAL_TO_ENTERPRISE: "升级为企业工作空间",
   JOIN_WORKSPACE: "加入工作空间",
   UPDATE_MEMBER_ROLE: "修改成员角色",
   WORKSPACE_KICK: "移出工作空间成员",
@@ -58,11 +59,11 @@ export const DEFAULT_ACTION_DICT: Record<string, string> = {
   "model:disable": "禁用模型部署",
   "model:enable": "启用模型部署",
   "model:schedule_disable": "设置定时禁用模型",
-  // 组件 / 微前端
-  BIND_COMPONENT: "绑定微前端组件",
-  UNBIND_COMPONENT: "解绑微前端组件",
-  ENABLE_COMPONENT: "启用微前端组件",
-  DISABLE_COMPONENT: "停用微前端组件",
+  // 组件
+  BIND_COMPONENT: "使用组件",
+  UNBIND_COMPONENT: "解除组件使用",
+  ENABLE_COMPONENT: "启用组件",
+  DISABLE_COMPONENT: "停用组件",
   SET_RESTRICTED_COMPONENTS: "设置受限组件清单",
   SAVE_CUSTOM_POSITIONS: "保存组件自定义布局",
   "component:create": "创建组件",
@@ -110,7 +111,7 @@ export const DEFAULT_ACTION_DICT: Record<string, string> = {
   APIKey: "API密钥操作",
   stepup: "二次认证操作",
   testimonial: "用户评价操作",
-  component: "微前端组件操作",
+  component: "组件操作",
   asset: "知识资料操作",
 };
 
@@ -133,8 +134,14 @@ export const DEFAULT_RESOURCE_DICT: Record<string, string> = {
   database_snapshot: "数据库备份快照",
   "workspace/member": "工作空间成员",
   solution: "解决方案",
-  component: "微前端组件",
+  component: "组件",
   asset: "知识资料",
+  component_contract: "组件版本合同",
+  model: "模型部署",
+  MODEL_PRICING: "模型计费价格",
+  modelpricingperiod: "模型周期价规则",
+  systemconfig: "系统配置",
+  PLATFORM_PERMISSION_CATALOG: "接口权限目录",
   // 裸业务对象词根兜底（曾作为 resource 直接落库）
   appeal: "申诉工单",
   APIKey: "API密钥",
@@ -606,8 +613,19 @@ export async function getAuditDictionariesFromDb() {
     if (actionRec?.value) {
       try {
         // 数据库值优先（允许管理员在库内覆盖/扩展标签），覆盖默认值
-        actionDict = { ...DEFAULT_ACTION_DICT, ...JSON.parse(actionRec.value) };
+        const parsedDbAction = JSON.parse(actionRec.value) || {};
+        actionDict = { ...DEFAULT_ACTION_DICT, ...parsedDbAction };
         dbHasDict = true;
+
+        // 增量自愈：如果数据库中尚未包含部分标准动作键（如 UPGRADE_PERSONAL_TO_ENTERPRISE），自动补全写回数据库
+        const missingActionKeys = Object.keys(DEFAULT_ACTION_DICT).filter((k) => !(k in parsedDbAction));
+        if (missingActionKeys.length > 0) {
+          const mergedActions = { ...DEFAULT_ACTION_DICT, ...parsedDbAction };
+          prisma.systemconfig.update({
+            where: { key: "audit_action_dict" },
+            data: { value: JSON.stringify(mergedActions) },
+          }).catch((err) => console.warn("[审计字典] 增量同步动作字典至数据库失败:", err));
+        }
       } catch (e) {
         console.error("解析数据库 audit_action_dict 失败:", e);
       }
@@ -715,12 +733,18 @@ function fallbackTranslateAction(action: string): string {
     actBody = rest.join(":");
     if (mod === "user") prefix = "用户账号";
     else if (mod === "workspace") prefix = "工作空间";
-    else if (mod === "component") prefix = "微前端组件";
+    else if (mod === "component") prefix = "组件";
+    else if (mod === "component_contract") prefix = "组件版本合同";
     else if (mod === "system") prefix = "系统核心";
+    else if (mod === "systemconfig") prefix = "系统配置";
     else if (mod === "auth") prefix = "安全认证";
     else if (mod === "asset") prefix = "知识资料";
     else if (mod === "security") prefix = "平台安全";
     else if (mod === "knowledge") prefix = "知识资产";
+    else if (mod === "apikey") prefix = "API密钥";
+    else if (mod === "model") prefix = "模型部署";
+    else if (mod === "testimonial") prefix = "用户评价";
+    else if (mod === "appeal") prefix = "申诉工单";
   }
 
   // 动作动词识别
@@ -744,6 +768,19 @@ function fallbackTranslateAction(action: string): string {
       case "create": return "创建";
       case "update": return "更新";
       case "delete": return "删除";
+      case "list": return "查询列表";
+      case "view": return "查看";
+      case "detail": return "详情";
+      case "use": return "调用";
+      case "sync": return "同步";
+      case "check": return "校验";
+      case "permission": return "权限";
+      case "catalog": return "目录";
+      case "pricing": return "计费价格";
+      case "markup": return "成本加价";
+      case "period": return "周期价";
+      case "open": return "开放";
+      case "api": return "接口";
       case "upgrade": return "升级";
       case "login": return "登录";
       case "logout": return "登出";
@@ -841,6 +878,10 @@ export function translateResource(resource: string | null | undefined, resourceD
 
   // 0. 裸业务对象 ID 兜底（如 clxxx / comp_xxx 等无命名空间标识），避免直接回显无意义串
   if (!clean.includes("/") && !clean.includes(":") && !clean.includes(" ")) {
+    // 组件目录编码（如 C01 / C12）：转译为「组件 C01」
+    if (/^c\d{1,4}$/i.test(clean)) {
+      return `组件 ${clean.toUpperCase()}`;
+    }
     if (/^[a-z0-9]+$/i.test(clean) && clean.length > 10) {
       const shortId = clean.length > 18 ? `${clean.slice(0, 8)}...${clean.slice(-6)}` : clean;
       return `指定业务对象 (${shortId})`;

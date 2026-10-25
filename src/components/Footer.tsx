@@ -63,9 +63,10 @@ export default function Footer() {
     wechatQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/wechat",
     qqQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/qq",
     weiboQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/weibo",
-    policeIcp: "京公网安备 31000000000000 号",
-    icpNumber: "京ICP备 2026000000 号-1",
-    copyright: "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1 · 京公网安备 31000000000000 号",
+    // 备案号初始一律为空：未配置即不展示，严禁内置虚构备案号（接口挂载后以数据库真实值为准）
+    policeIcp: "",
+    icpNumber: "",
+    copyright: "© 2026 ZhiGe OS · 知阁·舟坊",
     navColumns: [
       {
         title: "产品",
@@ -368,7 +369,10 @@ export default function Footer() {
         {/* 底部版权与备案资质行（右侧预留安全边距，彻底避免与回到顶部悬浮球重合） */}
         <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 md:pr-16">
           <div className="text-[13px] text-blue-200 text-center md:text-left">
-            © 2026 ZhiGe OS · {footerData.siteName} · {footerData.icpNumber} · {footerData.policeIcp}
+            © 2026 ZhiGe OS
+            {footerData.siteName ? ` · ${footerData.siteName}` : ""}
+            {footerData.icpNumber ? ` · ${footerData.icpNumber}` : ""}
+            {footerData.policeIcp ? ` · ${footerData.policeIcp}` : ""}
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <button

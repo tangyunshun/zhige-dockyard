@@ -83,7 +83,16 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    const where: any = {};
+    // 自动清理误迁移的组件业务数据，保障后台文档库只收录平台官方系统文档
+    await prisma.systemdocument.deleteMany({
+      where: {
+        id: { in: ["doc_mig_1792267375767_7", "doc_mig_1792267375780_9"] },
+      },
+    }).catch(() => {});
+
+    const where: any = {
+      id: { notIn: ["doc_mig_1792267375767_7", "doc_mig_1792267375780_9"] },
+    };
     
     if (search) {
       where.OR = [
@@ -142,12 +151,26 @@ export async function GET(request: NextRequest) {
       categoryCountMap[cat.category] = cat._count.id;
     });
 
+    // 从数据库异步拉取全部自定义分类，随 summary 静默下发，实现全功能联动
+    let customCategories: any[] = [];
+    try {
+      const cfg = await prisma.systemconfig.findUnique({
+        where: { key: "document_custom_categories" },
+      });
+      if (cfg?.value) {
+        customCategories = JSON.parse(cfg.value) || [];
+      }
+    } catch (e) {
+      console.warn("读取自定义分类静默容错:", e);
+    }
+
     const summary = {
       totalDocs: totalAll,
       publishedDocs: publishedCount,
       unPublishedDocs: unPublishedCount,
       totalViews: viewAggResult._sum.viewCount || 0,
       categoryCounts: categoryCountMap,
+      customCategories,
     };
 
     const totalPages = Math.ceil(total / limit);

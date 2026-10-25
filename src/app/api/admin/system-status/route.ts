@@ -234,10 +234,10 @@ async function collectSystemHealthData() {
       () =>
         `系统配置中心已加载 ${configCount} 项运行参数，全站维护模式: ${inMaintenance ? "开启" : "正常关闭"}，灾备快照: ${lastBackupConfig?.value ? lastBackupConfig.value : "建议建立定期快照"}`
     ),
-    // 8. 微前端组件与研发任务中枢
+    // 8. 组件与研发任务中枢
     probeService(
       "component_pipeline",
-      "微前端组件与任务中枢",
+      "组件与任务中枢",
       "研发组件",
       async () => {
         if ((prisma as any).componentcatalog?.findFirst) {
@@ -506,7 +506,7 @@ export async function POST(request: NextRequest) {
         descBuilder = (lat) => `系统配置参数读取与生效状态正常，耗时 ${lat}ms`;
         break;
       case "component_pipeline":
-        serviceName = "微前端组件与任务中枢";
+        serviceName = "组件与任务中枢";
         category = "研发组件";
         runner = async () => {
           if ((prisma as any).componentcatalog?.findFirst) {

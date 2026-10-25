@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog, isPlatformAdminRole } from "@/lib/security";
 import { toJsonSafe } from "@/lib/json-safe";
 
 export async function GET(request: NextRequest) {
@@ -13,20 +13,25 @@ export async function GET(request: NextRequest) {
     }
     const currentAdminId = authCheck.user?.id || "";
 
-    // 审计：记录管理员查阅空间列表（高危只读操作留痕）
+    // 审计：仅当管理员真正使用了「搜索关键词」或「类型筛选」时才留痕；
+    // 纯打开列表 / 翻页属于浏览噪音，不再写入审计（避免日志被无意义查询刷屏）。
     const listParams = new URL(request.url).searchParams;
-    void writeAuditLog(
-      currentAdminId,
-      "workspace:list",
-      {
-        search: listParams.get("search") || "",
-        type: listParams.get("type") || "",
-        page: parseInt(listParams.get("page") || "1"),
-      },
-      null,
-      null,
-      request,
-    );
+    const auditSearch = listParams.get("search") || "";
+    const auditType = listParams.get("type") || "";
+    if (auditSearch || auditType) {
+      void writeAuditLog(
+        currentAdminId,
+        "workspace:list",
+        {
+          search: auditSearch,
+          type: auditType,
+          page: parseInt(listParams.get("page") || "1"),
+        },
+        null,
+        null,
+        request,
+      );
+    }
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
@@ -96,12 +101,11 @@ export async function GET(request: NextRequest) {
       const componentCountValue = allWsCompMap.get(workspace.id)?.size || 0;
       // 剔除原始 workspacemember（含 BigInt 字段），避免序列化报错
       const { workspacemember, ...workspaceBase } = workspace;
-      const ownerAvatar = workspacemember?.[0]?.user?.avatar || null;
       return {
         ...workspaceBase,
         componentCount: componentCountValue,
         logo: workspace.logo,
-        avatar: workspace.logo || ownerAvatar || null,
+        avatar: workspace.logo || null,
         members: workspacemember,
       };
     });
@@ -272,9 +276,12 @@ export async function GET(request: NextRequest) {
         }
 
         // 获取该空间拥有者信息及受保护状态（超管/管理员名下的空间受系统安全保护，严禁停用）
+        // ⚠️ 必须用 isPlatformAdminRole 做大小写免疫的变体归一判定：数据库角色值存在
+        // "superadmin"/"admin" 小写历史写法，此前精确比对 "SUPER_ADMIN"/"ADMIN" 恒为 false，
+        // 导致管理员空间未标记受保护、停用按钮照常显示（前端与单条/批量接口三处同一病根）。
         const owner = ownerMap.get(workspace.ownerId) || null;
         const isProtected = Boolean(
-          (owner && (owner.role === "SUPER_ADMIN" || owner.role === "ADMIN")) ||
+          (owner && isPlatformAdminRole(owner.role)) ||
           (currentAdminId && workspace.ownerId === currentAdminId)
         );
 
@@ -282,11 +289,7 @@ export async function GET(request: NextRequest) {
         const { workspacemember, ...workspaceBase } = workspace;
         const memberCount = workspace._count?.workspacemember ?? workspacemember.length ?? 0;
         const isEnterprise = workspace.type === "ENTERPRISE";
-        const realAvatar =
-          workspace.logo ||
-          owner?.avatar ||
-          workspacemember?.find((m: any) => m.user?.avatar)?.user?.avatar ||
-          null;
+        const realAvatar = workspace.logo || null;
 
         return {
           ...workspaceBase,
@@ -343,10 +346,10 @@ export async function GET(request: NextRequest) {
     }
 
     // 计算统计数据（基于所有工作空间，不受筛选影响）
-    const totalComponentCount = allWorkspacesWithComponentCount.reduce(
-      (sum, ws) => sum + ws.componentCount,
-      0,
-    );
+    // 组件总数：跨空间全局去重 —— 同一组件装配到多个空间只计一次（单空间内的计数仍是去重后的）
+    const allComponentIds = new Set<string>();
+    allWsCompMap.forEach((ids) => ids.forEach((id) => allComponentIds.add(id)));
+    const totalComponentCount = allComponentIds.size;
 
     // 待审核空间：这里暂时用 DISABLED 状态作为待审核（实际应该有 PENDING 状态）
     const pendingCount = allWorkspacesWithComponentCount.filter(

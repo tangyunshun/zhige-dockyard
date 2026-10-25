@@ -20,6 +20,7 @@ import { test, expect, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { runStudioPost, markTaskStatusFailed } from "../handler";
+import { __resetStudioRateLimitForTests } from "@/lib/studio-rate-limit";
 import { ModelAdapterError } from "@/lib/model-adapter";
 import { ComponentContractError } from "@/lib/component-contract/errors";
 import type { ConsumeResult } from "@/lib/credit-service";
@@ -80,8 +81,16 @@ function fakePrisma() {
                 if (where && where.status) rows = rows.filter((r) => r.status === where.status);
                 return rows;
               },
+              count: async ({ where }: any) => {
+                let rows = Array.from(store.values());
+                if (where && where.status) rows = rows.filter((r) => r.status === where.status);
+                return { count: rows.length };
+              },
             };
-          case "componentstats":
+          case "membershiplevel":
+            // 并发上限新功能依赖：给测试发高级别配额（maxConcurrency=5），避免 FREE=1 限制并发用例
+            return { findUnique: async ({ where }: any) => ({ name: where.name, maxConcurrency: 5, maxSingleFileBytes: 0, maxModelAllocations: 0, maxByoModels: 0 }) };
+                    case "componentstats":
             return { upsert: async () => ({}) };
           case "workspacequota":
             return { update: async ({ data }: any) => data, findUnique: async () => null };
@@ -286,6 +295,9 @@ beforeEach(() => {
   recoveries = [];
   forceUpdateThrow = false;
   adapterMode = "timeout";
+  // 清空执行限频/熔断内存计数：连续跑大量同组件用例会触发
+  // 「每用户每组件 10 次/分钟」限频（429），导致任务不创建、断言取 null
+  __resetStudioRateLimitForTests();
 });
 
 // 1. 前置无合同：无任务、无扣点、无模型调用
@@ -446,6 +458,7 @@ for (const cid of ["C01", "C02"]) {
     const deps = buildDeps({ contract: cid === "C01" ? C01_CONTRACT : { ...C01_CONTRACT, componentId: "C02" }, consumePoints: 50 });
     const res = await runStudioPost(req({ workspaceId: "w1", componentId: cid }, { name: "m.txt", type: "text/plain", content: "x" }), deps);
     const body = await res.json();
+    if (!body.success) console.log("[DIAG-C01]", res.status, JSON.stringify(body).slice(0, 300));
     const t = findTask();
     expect(t.status).toBe("FAILED");
     expect(consumeSum()).toBe(50);

@@ -1,4 +1,4 @@
-import { isPlatformAdminRole } from "@/lib/security";
+import { isPlatformAdminRole, requirePlatformPermission } from "@/lib/security";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -32,6 +32,13 @@ export async function GET(request: NextRequest) {
     }
 
     const sp = request.nextUrl.searchParams;
+    // 导出用途（export=1）需额外持有 billing:export，超级管理员自动放行
+    if (sp.get("export") === "1") {
+      const exportAuth = await requirePlatformPermission(request, "billing:export");
+      if (!exportAuth.authorized) {
+        return exportAuth.errorResponse || NextResponse.json({ error: "无权限导出算力点流水" }, { status: 403 });
+      }
+    }
     const page = Math.max(parseInt(sp.get("page") || "1", 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(sp.get("pageSize") || "20", 10) || 20, 1), 200);
     const typeFilter = (sp.get("type") || "all").toLowerCase();

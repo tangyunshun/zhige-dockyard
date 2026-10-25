@@ -184,6 +184,9 @@ function AdminPostsContent() {
     sortOrder: 1,
   });
 
+  // 表单内联校验错误（输入框下方红字提示，替代浏览器原生 required 气泡）
+  const [formErrors, setFormErrors] = useState<{ name?: string; code?: string }>({});
+
   // 平台岗位商务图标库（来自数据库 posticonlibrary，供新建/编辑标准岗位时选择）
   const [iconLibrary, setIconLibrary] = useState<{ iconKey: string; name: string; category: string }[]>([]);
 
@@ -323,6 +326,7 @@ function AdminPostsContent() {
       status: "ACTIVE",
       sortOrder: standardPosts.length + 1,
     });
+    setFormErrors({});
     setShowModal(true);
   };
 
@@ -339,16 +343,30 @@ function AdminPostsContent() {
       status: post.status,
       sortOrder: post.sortOrder || 1,
     });
+    setFormErrors({});
     setShowModal(true);
   };
 
   // 提交新建/编辑
   const handleSaveStandardPost = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 内联校验（输入框下方红字，杜绝浏览器原生 required 气泡）
+    const nextErrors: { name?: string; code?: string } = {};
     if (!formData.name.trim()) {
-      toast.error("请输入标准岗位名称");
+      nextErrors.name = "请填写岗位名称";
+    }
+    const codeTrimmed = formData.code.trim();
+    if (!codeTrimmed) {
+      nextErrors.code = "请填写英文唯一标识代号";
+    } else if (!/^[A-Z][A-Z0-9_]*$/.test(codeTrimmed)) {
+      nextErrors.code = "仅支持大写英文字母、数字与下划线，且需以字母开头";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFormErrors(nextErrors);
       return;
     }
+    setFormErrors({});
 
     setSubmitting(true);
     try {
@@ -1852,12 +1870,23 @@ function AdminPostsContent() {
                   </label>
                   <input
                     type="text"
-                    required
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, name: e.target.value });
+                      if (formErrors.name) setFormErrors((prev) => ({ ...prev, name: undefined }));
+                    }}
                     placeholder="例如：系统架构师、前端开发工程师"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white"
+                    className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:bg-white ${
+                      formErrors.name
+                        ? "border-red-400 focus:border-red-500"
+                        : "border-slate-200 focus:border-[#3182ce]"
+                    }`}
                   />
+                  {formErrors.name && (
+                    <span className="text-[10px] text-red-500 font-bold mt-1 block">
+                      {formErrors.name}
+                    </span>
+                  )}
                 </div>
 
                 {/* 岗位代号 */}
@@ -1867,17 +1896,26 @@ function AdminPostsContent() {
                   </label>
                   <input
                     type="text"
-                    required
                     value={formData.code}
-                    onChange={(e) =>
-                      setFormData({ ...formData, code: e.target.value.toUpperCase() })
-                    }
+                    onChange={(e) => {
+                      setFormData({ ...formData, code: e.target.value.toUpperCase() });
+                      if (formErrors.code) setFormErrors((prev) => ({ ...prev, code: undefined }));
+                    }}
                     placeholder="例如：SYSTEM_ARCHITECT、FRONTEND_DEV"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white"
+                    className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:bg-white ${
+                      formErrors.code
+                        ? "border-red-400 focus:border-red-500"
+                        : "border-slate-200 focus:border-[#3182ce]"
+                    }`}
                   />
                   <span className="text-[10px] text-slate-400 mt-1 block">
                     大写英文英文字符与下划线，用于系统底层识别
                   </span>
+                  {formErrors.code && (
+                    <span className="text-[10px] text-red-500 font-bold mt-1 block">
+                      {formErrors.code}
+                    </span>
+                  )}
                 </div>
 
                 {/* 主题配色选择 */}
@@ -2478,7 +2516,6 @@ function AdminPostsContent() {
                     </label>
                     <textarea
                       rows={3}
-                      required
                       placeholder="请输入不予纳入全平台标准库的具体理由或改进建议（将以站内信同步通知提报用户）..."
                       value={rejectReason}
                       onChange={(e) => setRejectReason(e.target.value)}

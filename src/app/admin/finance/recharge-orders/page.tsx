@@ -14,7 +14,11 @@ import {
   Building2,
   FileText,
   Clock3,
+  Download,
 } from "lucide-react";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 
 interface OrderItem {
   id: string;
@@ -56,6 +60,7 @@ const PAYMENT_LABEL: Record<string, string> = {
 
 export default function AdminRechargeOrdersPage() {
   const toast = useToast();
+  const maxRows = useExportMaxRows();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [orders, setOrders] = useState<OrderItem[]>([]);
@@ -64,6 +69,8 @@ export default function AdminRechargeOrdersPage() {
   const [selected, setSelected] = useState<OrderItem | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [actioning, setActioning] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
 
   const load = useCallback(async () => {
     try {
@@ -90,6 +97,53 @@ export default function AdminRechargeOrdersPage() {
       setLoading(false);
     }
   }, [statusFilter]);
+
+  const handleExportExcel = useCallback(async () => {
+    if (!isSuperAdmin && !hasPermission("billing:export")) {
+      toast.warning("当前账号未配置导出权限，请联系超级管理员");
+      return;
+    }
+    try {
+      setExporting(true);
+      const token = getAuthToken();
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`/api/admin/recharge-orders?status=${statusFilter}&pageSize=${maxRows}&export=1`, {
+        headers,
+        credentials: "include",
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "导出数据拉取失败");
+      const list: OrderItem[] = json.orders || [];
+      if (list.length === 0) {
+        toast.warning("当前筛选条件下暂无数据可导出");
+        return;
+      }
+      exportToExcel({
+        filename: "充值订单清单",
+        sheetName: "充值订单",
+        maxRows: maxRows,
+        trace: { exportType: "充值订单", filters: { status: statusFilter }, rowCount: list.length, page: "/admin/finance/recharge-orders" },
+        columns: [
+          { header: "订单号", key: "orderNo", width: 24 },
+          { header: "空间名称", key: "workspaceName", width: 20 },
+          { header: "套餐或包名", key: "packName", width: 22 },
+          { header: "点数", key: "points", width: 12 },
+          { header: "实付金额(元)", key: "amountCents", width: 16, formatter: (v: number) => (Number(v || 0) / 100).toFixed(2) },
+          { header: "支付方式", key: "paymentMethod", width: 16, formatter: (v: string) => PAYMENT_LABEL[v] || v || "-" },
+          { header: "状态", key: "status", width: 14, formatter: (v: string) => STATUS_META[v]?.label || v },
+          { header: "创建时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
+          { header: "到账时间", key: "paidAt", width: 22, formatter: formatExcelDateTime },
+        ],
+        data: list,
+      });
+      toast.success(`已导出 ${list.length} 条充值订单`);
+    } catch (e: any) {
+      toast.error(e?.message || "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }, [statusFilter, isSuperAdmin, hasPermission, toast]);
 
   useEffect(() => {
     load();
@@ -151,7 +205,15 @@ export default function AdminRechargeOrdersPage() {
           className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg flex items-center gap-1.5"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新
-        </button>
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || (!isSuperAdmin && !hasPermission("billing:export"))}
+            title={!isSuperAdmin && !hasPermission("billing:export") ? "当前账号未配置导出权限，请联系超级管理员" : "将当前筛选条件下的全量充值订单导出为 Excel"}
+            className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" /> {exporting ? "导出中…" : "导出 Excel"}
+          </button>
       </div>
 
       {stats && (

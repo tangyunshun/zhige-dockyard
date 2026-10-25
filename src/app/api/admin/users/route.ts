@@ -10,6 +10,11 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    // 导出用途（export=1）的大批量用户拉取：需持有 user:export 权限，超级管理员已在上方自动放行
+    if (searchParams.get("export") === "1") {
+      const exportAuth = await requirePlatformPermission(request, "user:export");
+      if (!exportAuth.authorized) return exportAuth.errorResponse!;
+    }
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const search = searchParams.get("search") || "";

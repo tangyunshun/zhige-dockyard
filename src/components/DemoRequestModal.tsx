@@ -135,13 +135,13 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
 
       if (res.ok && data.success) {
         setSuccess(true);
-        toast.success("演示申请提交成功！专属顾问将尽快联系您", 3000);
+        toast.success("演示申请提交成功！专属顾问将尽快联系您", 1800);
       } else {
-        toast.error(data.error || "提交失败，请稍后重试", 3000);
+        toast.error(data.error || "提交失败，请稍后重试", 2200);
       }
     } catch (err) {
       console.error("Submit demo request error:", err);
-      toast.error("网络连接异常，请检查网络后重试", 3000);
+      toast.error("网络连接异常，请检查网络后重试", 2200);
     } finally {
       setSubmitting(false);
     }

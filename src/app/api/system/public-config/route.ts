@@ -167,8 +167,10 @@ export async function GET() {
       siteUrl: configMap.siteUrl || "https://dockyard.zhige.com",
       description: configMap.description || "企业级全生命周期软件组件工程与效能中枢平台",
       logo: configMap.logo || "/logo.png",
-      copyright: configMap.copyright || "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1",
-      icpNumber: configMap.icpNumber || "京ICP备 2026000000 号-1",
+      // 备案号严禁虚构兜底：数据库未配置即返回空串，前台据此不渲染该段，
+      // 由站长在后台「系统设置」填写真实备案号后展示。
+      copyright: configMap.copyright || "© 2026 ZhiGe OS · 知阁·舟坊",
+      icpNumber: configMap.icpNumber || "",
       oauth: {
         github: {
           enabled: githubChannel ? githubChannel.enabled : configMap.oauthGithubEnabled === "true",
@@ -186,21 +188,21 @@ export async function GET() {
         wechatQr: configMap.footerWechatQr || "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/wechat",
         qqQr: configMap.footerQqQr || "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/qq",
         weiboQr: configMap.footerWeiboQr || "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/weibo",
-        policeIcp: configMap.footerPoliceIcp || "京公网安备 31000000000000 号",
-        copyright: configMap.copyright || "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1",
+        policeIcp: configMap.footerPoliceIcp || "",
+        copyright: configMap.copyright || "© 2026 ZhiGe OS · 知阁·舟坊",
         navColumns,
       },
     });
   } catch (error) {
     console.error("加载公开系统配置失败:", error);
-    // 降级返回默认兜底配置
+    // 降级返回默认兜底配置（备案号一律为空：未配置不虚构，前台不渲染该段）
     return NextResponse.json({
       siteName: "知阁·舟坊",
       siteUrl: "https://dockyard.zhige.com",
       description: "企业级全生命周期软件组件工程与效能中枢平台",
       logo: "/logo.png",
-      copyright: "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1",
-      icpNumber: "京ICP备 2026000000 号-1",
+      copyright: "© 2026 ZhiGe OS · 知阁·舟坊",
+      icpNumber: "",
       oauth: {
         github: { enabled: false, clientId: "" },
         wechat: { enabled: false, appId: "" },
@@ -211,8 +213,8 @@ export async function GET() {
         wechatQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/wechat",
         qqQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/qq",
         weiboQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/weibo",
-        policeIcp: "京公网安备 31000000000000 号",
-        copyright: "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1",
+        policeIcp: "",
+        copyright: "© 2026 ZhiGe OS · 知阁·舟坊",
         navColumns: [],
       },
     });

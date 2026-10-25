@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 
 interface Order {
   id: string;
@@ -65,6 +66,7 @@ const PAGE_SIZE = 10;
 export default function AdminMembershipOrdersPage() {
   const router = useRouter();
   const toast = useToast();
+  const maxRows = useExportMaxRows();
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -138,9 +140,11 @@ export default function AdminMembershipOrdersPage() {
       };
 
       exportToExcel({
-        filename: "知阁会员订单流水",
+        filename: "会员订单流水",
         sheetName: "订单明细",
         data: allOrders,
+        maxRows: maxRows,
+        trace: { exportType: "会员订单", rowCount: allOrders.length, page: "/admin/membership/orders" },
         columns: [
           { header: "订单编号", key: "id", width: 28 },
           { header: "用户 ID", key: "userId", width: 26 },

@@ -28,6 +28,8 @@ import { formatTokenBalance } from "@/utils/quota";
 import { formatDiscountLabel } from "@/lib/point-rate";
 import { getMembershipLevelIcon } from "@/utils/membership-icon";
 import WorkspacePlanSection from "@/components/pricing/WorkspacePlanSection";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 
 interface BillingRecord {
   id: string;
@@ -129,6 +131,7 @@ export default function BillingCenterPage() {
   const router = useRouter();
   const toast = useToast();
   const { userState } = useAppContext();
+  const maxRows = useExportMaxRows();
 
   const [loading, setLoading] = useState(true);
   const [userInfo, setUserInfo] = useState<any>(null);
@@ -150,6 +153,7 @@ export default function BillingCenterPage() {
   const [pointsLedger, setPointsLedger] = useState<Array<{ id: string; type: string; direction: string; points: number; title: string; createdAt: string; balanceAfter: number }>>([]);
   /** 账单 API 错误信息（用于表格顶部显式提示用户） */
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [exportingLedger, setExportingLedger] = useState(false);
 
   // 空间级扩容：支持 ?workspaceId 直达 + 多空间切换
   const [mounted, setMounted] = useState(false);
@@ -420,6 +424,58 @@ export default function BillingCenterPage() {
     document.body.removeChild(link);
     toast.success(`交易凭证 [${invId}] 已成功导出并触发下载`);
   };
+
+  // 导出「我的算力点流水」：仅本人数据（接口按登录态过滤），留痕落入用户端审计
+  const handleExportPointsLedger = useCallback(async () => {
+    try {
+      setExportingLedger(true);
+      const authToken = getAuthToken();
+      const res = await fetch(`/api/user/points?type=all&pageSize=${maxRows}`, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
+      const pData = await res.json().catch(() => ({}));
+      const list: any[] = Array.isArray(pData?.data?.records)
+        ? pData.data.records
+        : Array.isArray(pData?.list)
+          ? pData.list
+          : Array.isArray(pData?.data?.list)
+            ? pData.data.list
+            : [];
+      if (list.length === 0) {
+        toast.warning("当前暂无算力点流水可导出");
+        return;
+      }
+      const POINT_TYPE_LABEL: Record<string, string> = {
+        CONSUME: "组件执行扣点",
+        REFUND: "退款",
+        RECHARGE: "充值",
+        OFFLINE_RECHARGE: "线下充值",
+        GIFT_REGISTER: "注册赠送",
+        MEMBERSHIP_GRANT: "会员发放",
+        GIFT_EXPIRE: "赠送过期",
+        MANUAL_ADJUST: "手动调整",
+      };
+      exportToExcel({
+        filename: "我的算力点流水",
+        sheetName: "我的算力点流水",
+        maxRows: maxRows,
+        trace: { exportType: "我的算力点流水", filters: { type: "all" }, rowCount: list.length, page: "/user/billing-center" },
+        columns: [
+          { header: "时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
+          { header: "类型", key: "type", width: 16, formatter: (v: string, row: any) => POINT_TYPE_LABEL[v] || row.typeLabel || v },
+          { header: "说明", key: "title", width: 30 },
+          { header: "点数变动", key: "points", width: 14, formatter: (v: number) => (Number(v) > 0 ? `+${v}` : String(v)) },
+          { header: "变动后余额", key: "balanceAfter", width: 14 },
+        ],
+        data: list,
+      });
+      toast.success(`已导出 ${list.length} 笔算力点流水`);
+    } catch (e: any) {
+      toast.error(e?.message || "导出失败");
+    } finally {
+      setExportingLedger(false);
+    }
+  }, [toast]);
 
   // 电子发票申请
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -950,9 +1006,18 @@ export default function BillingCenterPage() {
                 <Wallet className="w-4 h-4 text-[#3182ce]" />
                 算力点流水
               </h3>
-              <span className="text-[10px] text-slate-400 font-bold">
-                组件执行的押金、实扣、退款等每笔流水（最近 20 笔）
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-slate-400 font-bold">
+                  组件执行的押金、实扣、退款等每笔流水（最近 20 笔）
+                </span>
+                <button
+                  onClick={handleExportPointsLedger}
+                  disabled={exportingLedger}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-black border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" /> {exportingLedger ? "导出中…" : "导出我的流水"}
+                </button>
+              </div>
             </div>
             <div className="bg-white/90 rounded-2xl border border-slate-200/80 overflow-x-auto">
               <table className="w-full text-left text-xs table-auto">

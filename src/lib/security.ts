@@ -238,10 +238,10 @@ const globalForPerms = globalThis as unknown as {
   adminPermissionsCache: PermissionsCache | null;
 };
 
-async function loadPermissionsMapping(): Promise<Record<string, string[]>> {
+async function loadPermissionsMapping(force = false): Promise<Record<string, string[]>> {
   const now = Date.now();
   const cache = globalForPerms.adminPermissionsCache;
-  if (cache && now - cache.fetchedAt < ADMIN_PERMISSIONS_CACHE_MS) {
+  if (!force && cache && now - cache.fetchedAt < ADMIN_PERMISSIONS_CACHE_MS) {
     return cache.mapping;
   }
 
@@ -333,7 +333,9 @@ export async function saveAdminPermissions(
 ): Promise<boolean> {
   let mapping: Record<string, string[]>;
   try {
-    mapping = await loadPermissionsMapping();
+    // 写路径强制读库（绕过 5 分钟缓存）：保存是「读全量映射 → 改一人 → 全量写回」，
+    // 若基于陈旧缓存写回，会把缓存窗口内其他写入（如保存他人权限、新功能自动赋权）整体覆盖丢失。
+    mapping = await loadPermissionsMapping(true);
   } catch (error) {
     console.error("加载管理员权限映射失败，无法保存:", error);
     return false;
@@ -898,8 +900,8 @@ export function isPlatformAdminRole(role?: string | null): boolean {
   return r === 'ADMIN' || r === 'PLATFORM_ADMIN' || isSuperAdminPlatformRole(r);
 }
 
-/** 归一化角色，兼容历史遗留的 SUPER 写法 */
-function isSuperAdminPlatformRole(role: string | null | undefined): boolean {
+/** 归一化角色，兼容历史遗留的 SUPER 写法（导出供中间件权限上下文等处统一口径） */
+export function isSuperAdminPlatformRole(role: string | null | undefined): boolean {
   const r = String(role || "").toUpperCase().trim();
   return (
     r === "SUPER_ADMIN" ||
@@ -933,10 +935,31 @@ export interface PermissionGrantPolicy {
    * 是否允许通过「权限点」委派该能力。
    * 默认 false —— 即 permission:manage / admin:permission_grant 等**不得穿透**，
    * 这是防止非超管自我提权的关键开关。
+   * ⚠️ 开启前必读下方 PERMISSION_GRANT_POLICY 注释中的「委派开启前置清单」。
    */
   allowPermissionDelegation: boolean;
 }
 
+/**
+ * 权限授予类操作的统一管控策略（集中管控，各路由只调用 requirePermissionGrantAuthority）。
+ *
+ * 【当前实际效果】
+ * allowPermissionDelegation = false 时，各路由传入的 actionPermissions 权限点**完全无效**
+ * （不参与任何判定），真实门禁 = allowedRoles 白名单（当前仅 SUPER_ADMIN）。
+ * 这些键此时是「死参数」：既不会被代码扫描器登记进权限目录，授予了也不产生任何能力。
+ *
+ * 【委派开启前置清单】（把 allowPermissionDelegation 改为 true 前必须逐项确认）
+ * 1. 上述权限点**均已正式登记在权限目录中**（permission:read / permission:manage 归属
+ *    「权限配置模块」，admin:read/create/update/delete 归属「管理员管理模块」，
+ *    admin:revoke / admin:permission_grant 为委派专用键）。⚠️ 它们不会被「同步代码权限点」
+ *    自动发现——代码扫描正则只认 requirePlatformPermission(...) 调用里的字面量，
+ *    而它们以可变参数形式声明在本函数签名之后，扫不到；请勿从目录中删除，否则开启委派后无键可授；
+ * 2. 将对应权限点授予可信的指定管理员（建议只授予专职角色，且**绝不授予 permission:manage**——
+ *    它能反向给自己/他人追加任意权限，形成自我提权闭环）；
+ * 3. 再把本开关改为 true 并重启服务。开启后，持有清单内任一权限点的管理员即可执行对应授予类操作；
+ * 4. 中间件规则层（/admin/permissions/api-rules）对应规则已统一为 permission:read / permission:manage，
+ *    与本策略口径一致。
+ */
 export const PERMISSION_GRANT_POLICY: PermissionGrantPolicy = {
   allowedRoles: ["SUPER_ADMIN"],
   allowPermissionDelegation: false,

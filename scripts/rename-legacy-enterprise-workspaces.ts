@@ -28,7 +28,7 @@ async function main() {
   console.log(`发现 ${targets.length} 个「沿用了个人空间名」的企业空间待改名`);
   for (const w of targets) {
     const owner = await prisma.user.findUnique({ where: { id: w.ownerId }, select: { name: true } });
-    const newName = generateEnterpriseWorkspaceName(owner?.name);
+    const newName = await generateEnterpriseWorkspaceName(w.ownerId, owner?.name);
     await prisma.workspace.update({ where: { id: w.id }, data: { name: newName, updatedAt: new Date() } });
     console.log(`  ${w.id}: 「${w.name}」 → 「${newName}」`);
   }

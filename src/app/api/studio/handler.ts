@@ -122,6 +122,9 @@ import {
   evaluateSettlementReadiness,
   type RegistryPricingSnapshot,
 } from "@/lib/model-pricing";
+import { estimateCombinedTokenCount } from "@/lib/token-estimate";
+import { checkStudioExecutionAllowed, recordStudioCircuitBreak } from "@/lib/studio-rate-limit";
+import { computeCostFloorFromPricing } from "@/lib/component-cost-floor";
 import {
   isTokenSettlementFeatureEnabled,
   createSettlementHold,
@@ -1672,6 +1675,7 @@ async function createRunningTask(
       result: { executionMode: params.config.executionMode } as unknown as Prisma.InputJsonValue,
       userId: params.userId,
       tenantId: params.workspaceId,
+      workspaceId: params.workspaceId,
       isPublished: false,
       icon: "Zap",
     },
@@ -2062,14 +2066,12 @@ export function buildProductionDeps(): StudioExecutionDeps {
 // 真正的执行逻辑在 runStudioPost，测试可传入内存 fake deps 调用同一处理函数。
 export async function POST(
   request: NextRequest,
-  _context?: { params: Promise<Record<string, string>> },
 ): Promise<NextResponse> {
   return runStudioPost(request, buildProductionDeps());
 }
 
 export async function GET(
   request: NextRequest,
-  _context?: { params: Promise<Record<string, string>> },
 ): Promise<NextResponse> {
   return runStudioGet(request, buildProductionDeps());
 }
@@ -2210,7 +2212,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         // 验证空间归属与使用权限
         const ws = await prisma.workspace.findUnique({
           where: { id: workspaceId },
-          select: { type: true, ownerId: true, name: true }
+          select: { type: true, ownerId: true, name: true, plan: true }
         });
         if (!ws) {
           return NextResponse.json({ success: false, error: "工作空间不存在" }, { status: 400 });
@@ -2287,11 +2289,24 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             estimatedModelTokens: true,
             activeContractId: true,
             detail: true,
+            // 防爆阀：预估 Token 预算（输入 + 输出），单次实际消耗超 3 倍即熔断
+            estimatedInputTokens: true,
+            estimatedOutputTokens: true,
           },
         });
 
         if (!comp) {
           return NextResponse.json({ success: false, error: "未找到对应组件，无法执行" }, { status: 404 });
+        }
+
+        // §执行防刷门禁（定价审核修复）：频率限制 + 熔断隔离，在扣费与模型调用之前裁决。
+        // 固定包干制下「执行→熔断/失败→全额退款」会让平台净付供应商成本，必须限流防脚本刷量。
+        const execGate = await checkStudioExecutionAllowed(userId, comp.id);
+        if (!execGate.ok) {
+          return NextResponse.json(
+            { success: false, code: execGate.code, error: execGate.error },
+            { status: 429 },
+          );
         }
 
         // 建立执行合同唯一真源：
@@ -3031,6 +3046,70 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             adapter = await createModelAdapter(modelPlan);
             modelPlanForSettlement = modelPlan;
 
+            // §输入闸门（防爆阀前置·自适应口径，定价审核修复）：
+            // 不依赖管理员手填预估值（无需逐个组件调参），三重数据驱动口径取最宽松者放行：
+            //  1) 合同声明的输入容量 textConstraints.maxLength（字符≈Token，×2 冗余）；
+            //  2) 模型真实上下文上限 × 0.7（留 30% 给输出；超限调用注定失败，提前拦截省额度）；
+            //  3) 成本红线（仅平台模型轨道）：按执行模型真实单价估算本次成本，超过固定售价
+            //     2 倍即拦截，防止低价组件被超大输入击穿毛利。
+            const gatePromptTemplate =
+              activeContract.executionPlan?.steps?.[0]?.promptTemplate ||
+              "请基于以下输入材料执行专业分析并输出规范成果物。";
+            const estimatedActualInput = estimateCombinedTokenCount(
+              gatePromptTemplate,
+              buildSourceMaterialPrompt(effectiveInputMaterial),
+            );
+            const declaredMaxLen =
+              typeof activeContract.input?.textConstraints?.maxLength === "number"
+                ? activeContract.input.textConstraints.maxLength
+                : 0;
+            const contractCap = declaredMaxLen > 0 ? declaredMaxLen * 2 : 0;
+            const modelCap =
+              modelPlan.contextLimit > 0 ? Math.floor(modelPlan.contextLimit * 0.7) : 0;
+            const inputCeiling = Math.max(contractCap, modelCap);
+            if (inputCeiling > 0 && estimatedActualInput > inputCeiling) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "INPUT_TOO_LARGE",
+                  error: `输入材料超出该组件的处理上限（预估约 ${estimatedActualInput.toLocaleString("en-US")} Token，上限 ${inputCeiling.toLocaleString("en-US")}）。请压缩或拆分材料后重试。`,
+                },
+                { status: 400 },
+              );
+            }
+            if (modelPlan.pricing && resolvePricingSource(modelPlan.deploymentId) !== "USER_BYOK") {
+              const declaredMaxOutput = Array.isArray(activeContract.executionPlan?.steps)
+                ? activeContract.executionPlan.steps.reduce(
+                    (acc, s) =>
+                      acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
+                    0,
+                  )
+                : 0;
+              const projectedPoints = computeCostFloorFromPricing(
+                modelPlan.pricing,
+                estimatedActualInput,
+                declaredMaxOutput,
+                modelPlan.pricing.markupRateBps ?? billingCfg.markupCoefficientBps ?? 0,
+              );
+              if (projectedPoints != null && rawCost > 0 && projectedPoints > rawCost * 2) {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    code: "INPUT_COST_TOO_HIGH",
+                    error: `输入材料过大：按当前模型单价估算，本次执行成本约 ${projectedPoints} 算力点，已超过该组件定价（${rawCost} 点）的 2 倍。请压缩或拆分材料后重试。`,
+                  },
+                  { status: 400 },
+                );
+              }
+            }
+            // 预估值偏差仅告警（不拦截）：实际输入超后台预估 3 倍时提示校准，不再阻断执行
+            const calibratedInputEstimate = Number(comp.estimatedInputTokens) || 0;
+            if (calibratedInputEstimate > 0 && estimatedActualInput > calibratedInputEstimate * 3) {
+              console.warn(
+                `[输入校准提示] 组件 ${comp.id} 本次实际输入约 ${estimatedActualInput} Token，超过后台预估输入 ${calibratedInputEstimate} 的 3 倍，建议在后台校准该组件的预估输入 Token。`,
+              );
+            }
+
             // 前置门禁：若启用了真实结算，必须校验模型定价就绪情况；未就绪直接阻断，不扣点、不调模型
             if (settlementFeatureEnabled) {
               if (!modelPlan.pricing || !evaluateSettlementReadiness(modelPlan.pricing, { settlementFeatureEnabled })) {
@@ -3125,6 +3204,23 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                   { status: 400 },
                 );
               }
+            }
+          }
+
+          // §成本红线巡检（定价审核修复，只告警不阻断）：固定售价低于「实际执行模型」
+          // 的成本底线时记录警告，供运营发现「低价组件跑在贵模型上」的毛利泄漏。
+          // 不阻断执行，避免影响存量任务；根除需后台调整售价或改选成本测算模型。
+          if (resolvePricingSource(modelPlan.deploymentId) !== "USER_BYOK" && modelPlan.pricing) {
+            const execFloor = computeCostFloorFromPricing(
+              modelPlan.pricing,
+              Number(comp.estimatedInputTokens) || 0,
+              Number(comp.estimatedOutputTokens) || 0,
+              billingCfg.markupCoefficientBps ?? 0,
+            );
+            if (execFloor != null && rawCost < execFloor) {
+              console.warn(
+                `[成本红线] 组件 ${comp.id} 固定售价 ${rawCost} 点低于执行模型 ${modelPlan.providerId}/${modelPlan.modelId} 的成本底线 ${execFloor} 点，存在毛利泄漏，请在后台调整售价或改选成本测算模型。`,
+              );
             }
           }
 
@@ -3311,7 +3407,13 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
               systemPrompt,
               userPrompt: buildSourceMaterialPrompt(effectiveInputMaterial),
               temperature: 0.5,
-              maxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS) || 2000,
+              // §风控防爆阀（生成期硬封顶）：输出上限 = 预估输出 Token × 3，
+              // 与执行后「总 Token 超 3 倍预估预算即熔断」形成双层防护，
+              // 防止恶意用户绕过前端刷爆模型额度。未配置预估输出 Token 时回退全局默认值。
+              maxOutputTokens:
+                (comp?.estimatedOutputTokens ?? 0) > 0
+                  ? comp.estimatedOutputTokens * 3
+                  : Number(process.env.MODEL_MAX_OUTPUT_TOKENS) || 2000,
             });
             modelResultForSettlement = modelResult;
           } catch (e) {
@@ -3500,6 +3602,83 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             contractVersion: targetContractVersion,
             timeoutMs: getModelTimeoutMs(),
           };
+
+          // §风控防爆阀：单次实际 Token 消耗超过预估预算 3 倍 → 熔断拦截，
+          // 保护平台模型额度，防止恶意用户绕过前端刷爆供应商配额（固定包干制下的必要防线）
+          const tokenBudget =
+            (comp?.estimatedInputTokens ?? 0) + (comp?.estimatedOutputTokens ?? 0);
+          const usedTokens = modelResult?.usage?.totalTokens ?? 0;
+          if (tokenBudget > 0 && usedTokens > tokenBudget * 3) {
+            // §熔断计数（定价审核修复）：同一用户短时间反复触发熔断将临时暂停其执行权限，
+            // 堵住「执行→熔断→全额退款」的供应商成本刷量路径（计数失败不阻断熔断本身）。
+            try {
+              await recordStudioCircuitBreak(userId);
+            } catch (breakErr) {
+              console.warn("[执行熔断计数] 记录失败:", breakErr);
+            }
+            const failRes = await failTaskSafe(prisma, taskId, {
+              errorCode: "TOKEN_BUDGET_EXCEEDED",
+              errorMessage: `任务实际 Token 消耗 ${usedTokens} 超出预估预算 ${tokenBudget} 的 3 倍，已触发熔断拦截，算力点已原路退回。`,
+              chargeAttempted: !!(consumeResult && shouldRefundOnFailure(consumeResult)),
+            });
+            if (failRes) return failRes;
+            if (settlementFeatureEnabled) {
+              try {
+                await releaseSettlementHold({
+                  taskId,
+                  userId,
+                  workspaceId,
+                  reason: "Token 消耗超 3 倍预估预算，熔断拦截",
+                  errorCode: "TOKEN_BUDGET_EXCEEDED",
+                  componentId: comp.id,
+                  componentName: comp.name || componentId,
+                  workspaceType: ws?.type || null,
+                  workspaceName: ws?.name || null,
+                });
+              } catch (relErr) {
+                const enq = await enqueueSettlementRecovery({
+                  taskId,
+                  userId,
+                  workspaceId,
+                  recoveryType: "RELEASE_FAILED",
+                  error: `Token 熔断后释放预扣异常: ${(relErr as Error)?.message || "释放失败"}`,
+                });
+                if (!enq.ok) {
+                  return NextResponse.json(
+                    { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "Token 熔断且释放恢复记录入队失败，请联系管理员核对任务对账。" },
+                    { status: 500 },
+                  );
+                }
+                return NextResponse.json(
+                  { success: false, code: "REFUND_PENDING", taskId, error: "Token 熔断且算力点退款处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                  { status: 500 },
+                );
+              }
+            } else {
+              const refundOutcome = await safeRefund(consumeResult);
+              if (!refundOutcome.ok) {
+                if (refundOutcome.enqueued) {
+                  return NextResponse.json(
+                    { success: false, code: "REFUND_PENDING", taskId, error: "Token 熔断且算力点退款处理中，已进入恢复队列，请稍后重试或联系客服。" },
+                    { status: 500 },
+                  );
+                }
+                return NextResponse.json(
+                  { success: false, code: "ACCOUNTING_RECONCILIATION_REQUIRED", taskId, error: "Token 熔断且待退款记录落库失败，请联系管理员核对任务对账。" },
+                  { status: 500 },
+                );
+              }
+            }
+            return NextResponse.json(
+              {
+                success: false,
+                code: "TOKEN_BUDGET_EXCEEDED",
+                taskId,
+                error: `任务实际 Token 消耗 ${usedTokens} 已超出预估预算 ${tokenBudget} 的 3 倍，触发熔断拦截，算力点已原路退回。`,
+              },
+              { status: 400 },
+            );
+          }
         } else {
           // 生产路径严禁产生模拟结果：无有效 PUBLISHED 激活合同时一律拒绝，
           // 绝不伪造、绝不调用模型、绝不扣算力点、绝不写成功 task、绝不写 artifact。

@@ -12,7 +12,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import { formatYuanFromPoints } from "@/lib/point-rate";
-import { Check, X, Search, RefreshCw, Copy, Loader2, AlertTriangle, Inbox } from "lucide-react";
+import { Check, X, Search, RefreshCw, Copy, Loader2, AlertTriangle, Inbox, Download } from "lucide-react";
+import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
+import { useAdminPermission } from "@/contexts/AdminPermissionContext";
+import { useExportMaxRows } from "@/lib/use-export-max-rows";
 
 interface AdminUser {
   email: string;
@@ -60,6 +63,7 @@ const fmtTime = (s: string | null) => (s ? new Date(s).toLocaleString("zh-CN") :
 
 export default function AdminRefundRequestsPage() {
   const toast = useToast();
+  const maxRows = useExportMaxRows();
   const [rows, setRows] = useState<RefundRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -69,6 +73,8 @@ export default function AdminRefundRequestsPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
   const [modal, setModal] = useState<{ type: "approve" | "reject"; row: RefundRequestRow } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const { hasPermission, isSuperAdmin } = useAdminPermission();
 
   const authFetch = useCallback(async (url: string, init?: RequestInit) => {
     const res = await fetch(url, {
@@ -97,6 +103,44 @@ export default function AdminRefundRequestsPage() {
       setLoading(false);
     }
   }, [authFetch, toast]);
+
+  const handleExportExcel = useCallback(async () => {
+    if (!isSuperAdmin && !hasPermission("billing:export")) {
+      toast.warning("当前账号未配置导出权限，请联系超级管理员");
+      return;
+    }
+    try {
+      setExporting(true);
+      const json = await authFetch(`/api/admin/refund-requests?status=${filter}&pageSize=${maxRows}&export=1`);
+      const list: RefundRequestRow[] = json.data || [];
+      if (list.length === 0) {
+        toast.warning("当前筛选条件下暂无数据可导出");
+        return;
+      }
+      exportToExcel({
+        filename: "退款工单清单",
+        sheetName: "退款工单",
+        maxRows: maxRows,
+        trace: { exportType: "退款工单", filters: { status: filter }, rowCount: list.length, page: "/admin/finance/refund-requests" },
+        columns: [
+          { header: "工单号", key: "id", width: 24 },
+          { header: "申请人", key: "applicant", width: 18, formatter: (_: any, row: RefundRequestRow) => row.applicant?.name || row.applicant?.email || "-" },
+          { header: "任务编号", key: "taskId", width: 24 },
+          { header: "退款点数", key: "points", width: 12 },
+          { header: "申请原因摘要", key: "reason", width: 36 },
+          { header: "状态", key: "status", width: 12, formatter: (v: string) => STATUS_LABEL[v]?.text || v },
+          { header: "审批人", key: "admin", width: 14, formatter: (_: any, row: RefundRequestRow) => row.admin?.name || "-" },
+          { header: "审批时间", key: "resolvedAt", width: 22, formatter: formatExcelDateTime },
+        ],
+        data: list,
+      });
+      toast.success(`已导出 ${list.length} 条退款工单`);
+    } catch (e: any) {
+      toast.error(e?.message || "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }, [filter, isSuperAdmin, hasPermission, toast, authFetch]);
 
   useEffect(() => {
     void load();
@@ -248,7 +292,15 @@ export default function AdminRefundRequestsPage() {
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
           刷新
-        </button>
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || (!isSuperAdmin && !hasPermission("billing:export"))}
+            title={!isSuperAdmin && !hasPermission("billing:export") ? "当前账号未配置导出权限，请联系超级管理员" : "将当前筛选条件下的全量退款工单导出为 Excel"}
+            className="px-3 py-1.5 rounded-lg text-xs font-black border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center gap-1 disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" /> {exporting ? "导出中…" : "导出 Excel"}
+          </button>
       </div>
 
       {loading ? (

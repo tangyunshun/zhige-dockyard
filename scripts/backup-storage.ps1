@@ -14,6 +14,8 @@
 # 说明：
 #   - 备份内容 = uploads 全部资料文件 + 数据库完整 dump（含空间、流水、订单等业务数据）。
 #   - 每次备份生成一个带时间戳的 zip；自动只保留最近 -Keep 份（默认 14）。
+#   - 部署说明：本机计划任务 ZhiGe-Backup 通过 D:\db-backup\run-file-backup.cmd 调用本脚本，
+#     参数使用 -Keep 1（只保留最新一份，目录中不积累历史备份；如需恢复多份历史请调大该值）。
 #   - 数据库导出依赖 mysqldump 在 PATH 中（MySQL 安装目录 bin 下，可自行加入 PATH）；
 #     若 mysqldump 不可用，脚本仍会备份文件部分并给出提示。
 

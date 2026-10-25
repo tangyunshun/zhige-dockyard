@@ -129,6 +129,8 @@ function LoginForm() {
     disabled?: boolean;
     // 已被封禁（与「禁用登录」同属不可登录态，UI 文案不同，disabled 一并置位以复用拦截逻辑）
     banned?: boolean;
+    // 账号处于注销冷静期：允许登录（登录后可在撤销页撤销注销），仅作明确提示，不拦截
+    deleting?: boolean;
     minutesRemaining?: number;
     remainingAttempts?: number;
   }>({});
@@ -507,6 +509,13 @@ function LoginForm() {
         setErrors({
           account: "账号已被禁用，请联系管理员",
         });
+      } else if (data.status === "deleting") {
+        // 注销冷静期：账号仍可正常登录（登录后进入撤销注销页，冷静期内可撤销），
+        // 这里给出明确提示，避免用户只看到检测状态而无任何说明
+        setAccountCheckStatus({
+          exists: true,
+          deleting: true,
+        });
       } else {
         setAccountCheckStatus({ exists: true });
       }
@@ -857,9 +866,22 @@ function LoginForm() {
             "账号正在注销冷静期，跳转到撤销页面，剩余天数:",
             data.deletionDaysRemaining,
           );
+          // 必须把令牌写入本地：撤销注销页依赖 getAuthToken() 查询账号状态。
+          // 此前只存了 userId、未存令牌，该页一进来就判定「未登录」把用户踢回登录页，
+          // 表现为「账号检测一直转圈，最后还是停留在登录页」。
           if (data.user?.id) {
             localStorage.setItem("userId", data.user.id);
           }
+          if (data.token) {
+            localStorage.setItem("auth_token", data.token);
+          } else if (data.user?.auth_token) {
+            localStorage.setItem("auth_token", data.user.auth_token);
+          }
+          if (data.user?.role) {
+            localStorage.setItem("userRole", data.user.role);
+          }
+          // 冷静期状态以服务端为准，清除跳转时用的临时标记
+          localStorage.removeItem("deletion_pending_days");
           window.location.href = "/auth/cancel-deletion";
           return;
         }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify } from "jose";
+import { jwtVerify, SignJWT } from "jose";
 import { requireStepUp } from "@/lib/step-up";
 import { assertCSRF } from "@/lib/csrf";
 import { getDeletionCooldownDays, getDeletionCooldownMs } from "@/lib/account-deletion";
@@ -18,8 +18,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "CSRF_INVALID", message: "请求来源校验失败" }, { status: 403 });
     }
 
-    // 获取用户ID
-    const token = request.cookies.get("auth_token")?.value;
+    // 获取用户ID：优先从 Cookie 获取，Cookie 缺省时从 Authorization Header 获取
+    let token = request.cookies.get("auth_token")?.value;
+    if (!token) {
+      const authHeader = request.headers.get("authorization");
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.substring(7).trim();
+      }
+    }
     if (!token) {
       return NextResponse.json({ error: "请先登录" }, { status: 401 });
     }
@@ -47,7 +53,7 @@ export async function POST(request: NextRequest) {
     // 检查用户是否存在
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, status: true, email: true },
+      select: { id: true, status: true, email: true, role: true },
     });
 
     if (!user) {
@@ -101,22 +107,38 @@ export async function POST(request: NextRequest) {
 
     console.log(`[账号注销申请] 用户 ${userId} 申请注销，冷静期至 ${deletionRequestedAt}`);
 
-    // 清除Cookie
+    const now = new Date();
+    // 签发冷静期临时撤销令牌（供首页遮罩弹窗或撤销页直接一键撤销恢复，不携带 sessionToken，无法进入业务工作台）
+    const tempToken = await new SignJWT({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      deletionStatus: "cancelling",
+      issuedAt: now.toISOString(),
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("24h")
+      .sign(getJwtSecretKey());
+
     const response = NextResponse.json({
       success: true,
-      message: `注销申请已提交，${cooldownDays} 天后正式生效，期间可撤销`,
+      message: `注销申请已提交，${cooldownDays} 天后正式生效，期间可随时撤销`,
       deletionRequestedAt: deletionRequestedAt.toISOString(),
       daysRemaining: cooldownDays,
+      token: tempToken,
+      userId: user.id,
     });
 
-    response.cookies.set("auth_token", "", {
+    // 写入临时撤销凭证（24小时有效）
+    response.cookies.set("auth_token", tempToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 0,
+      maxAge: 24 * 60 * 60,
       path: "/",
     });
 
+    // 彻底销毁正式业务会话与刷新令牌
     response.cookies.set("session_token", "", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

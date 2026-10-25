@@ -82,8 +82,10 @@ const DEFAULT_CONFIGS: Record<string, string> = {
   siteUrl: "https://dockyard.zhige.com",
   description: "企业级全生命周期软件组件工程与效能中枢平台",
   logo: "/logo.png",
-  copyright: "© 2026 ZhiGe OS · 知阁·舟坊 · 京ICP备 2026000000 号-1",
-  icpNumber: "京ICP备 2026000000 号-1",
+  // 备案类配置严禁给假默认值：未配置就是未配置（空串），
+  // 否则后台会把兜底值当“当前值”展示，管理员一保存就把虚构备案号持久化进数据库。
+  copyright: "© 2026 ZhiGe OS · 知阁·舟坊",
+  icpNumber: "",
   // 商业化计费（算账中心）：全局加价率 +20% / BYOK 服务费 15% / 免费 3 个月每月 100 点 / 退款审核阈值 500 元
   "billing.markupCoefficientBps": "2000",
   "billing.byokServiceRateBps": "1500",
@@ -124,7 +126,7 @@ const DEFAULT_CONFIGS: Record<string, string> = {
   footerWechatQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/wechat",
   footerQqQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/qq",
   footerWeiboQr: "https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://zhige-dockyard.com/weibo",
-  footerPoliceIcp: "京公网安备 31000000000000 号",
+  footerPoliceIcp: "",
   footerNavColumns: JSON.stringify([
     {
       title: "产品",

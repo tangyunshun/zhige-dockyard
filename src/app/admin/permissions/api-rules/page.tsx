@@ -259,34 +259,44 @@ export default function ApiPermissionRulesPage() {
   };
 
   const toggle = async (rule: ApiRule) => {
-    const res = await fetch("/api/admin/api-permission-rules", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      credentials: "include",
-      body: JSON.stringify({ ...rule, enabled: !rule.enabled }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data?.success) {
-      toast.error(data?.error || "操作失败");
-      return;
+    try {
+      const res = await fetch("/api/admin/api-permission-rules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        credentials: "include",
+        body: JSON.stringify({ ...rule, enabled: !rule.enabled }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || "操作失败");
+        return;
+      }
+      toast.success(rule.enabled ? "已关闭拦截（该接口不再校验权限），约 3 秒内生效" : "已开启拦截（该接口会校验权限），约 3 秒内生效");
+      await load();
+    } catch (error) {
+      console.error("Toggle api permission rule error:", error);
+      toast.error("网络异常，操作失败，请稍后重试");
     }
-    toast.success(rule.enabled ? "已关闭拦截（该接口不再校验权限），约 3 秒内生效" : "已开启拦截（该接口会校验权限），约 3 秒内生效");
-    await load();
   };
 
   const remove = async (rule: ApiRule) => {
-    const res = await fetch(`/api/admin/api-permission-rules?id=${encodeURIComponent(rule.id)}`, {
-      method: "DELETE",
-      headers: authHeaders(),
-      credentials: "include",
-    });
-    const data = await res.json();
-    if (!res.ok || !data?.success) {
-      toast.error(data?.error || "删除失败");
-      return;
+    try {
+      const res = await fetch(`/api/admin/api-permission-rules?id=${encodeURIComponent(rule.id)}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || "删除失败");
+        return;
+      }
+      toast.success("已删除该条规则");
+      await load();
+    } catch (error) {
+      console.error("Remove api permission rule error:", error);
+      toast.error("网络异常，删除失败，请稍后重试");
     }
-    toast.success("已删除该条规则");
-    await load();
   };
 
   const fieldClass = (hasError: boolean) =>

@@ -36,6 +36,8 @@ export default function ResourceOverview({
   // === 算力点统计与 SVG 圆环计算（余额制：不再有“会员每月配额上限”，展示可用余额剩余率） ===
   const tokenQuota = dashboardData?.userQuota?.quotas?.tokenBalance;
   const tokenHistoryUsed = tokenQuota?.historyTotalUsed ?? tokenQuota?.used ?? 0;
+  // 累计过期：赠送到期清零的额度（与流水「过期」分类一致）
+  const tokenTotalExpired = tokenQuota?.totalExpired ?? 0;
   // 无限额度（total = -1）：不进入比率计算，单独标记
   const tokenUnlimited = (tokenQuota?.total ?? 0) === -1;
   const tokenAvailable = tokenUnlimited ? -1 : Math.max(tokenQuota?.available ?? 0, 0);
@@ -211,6 +213,13 @@ export default function ResourceOverview({
                 消耗明细
                 <ArrowUpRight className="w-3 h-3" />
               </Link>
+            </div>
+            <div className="mt-1.5 text-[11px] text-slate-500 font-bold whitespace-nowrap">
+              累计过期{" "}
+              <span className="font-mono text-slate-700">
+                {tokenTotalExpired.toLocaleString("zh-CN")}
+              </span>{" "}
+              点
             </div>
           </div>
         </div>

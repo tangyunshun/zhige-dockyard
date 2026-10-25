@@ -126,6 +126,14 @@ const adminMenuItems: AdminMenuItem[] = [
     requiredPermission: "workspace:read",
   },
   {
+    icon: Building2,
+    label: "空间成员活动",
+    href: "/admin/tenants",
+    description: "按企业空间透视每位成员的执行、组件与操作明细",
+    group: "空间与组织",
+    superAdminOnly: true,
+  },
+  {
     icon: Boxes,
     label: "空间套餐管理",
     href: "/admin/workspace/plans",

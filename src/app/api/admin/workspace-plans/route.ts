@@ -68,12 +68,9 @@ export async function GET(request: NextRequest) {
       where.isActive = false;
     }
 
-    const purchasable = searchParams.get("purchasable") || "";
-    if (purchasable === "true") {
-      where.purchasable = true;
-    } else if (purchasable === "false") {
-      where.purchasable = false;
-    }
+    // 空间绑定状态过滤（有实际运营意义的筛选项）：绑定计数需 groupBy 计算后才可知，
+    // 故在内存中过滤；used=使用中（已绑定空间，删除需谨慎）/ unused=未绑定（空闲，可安全下架清理）
+    const usage = searchParams.get("usage") || "";
 
     const plans = await prisma.workspaceplan.findMany({
       where,
@@ -87,9 +84,16 @@ export async function GET(request: NextRequest) {
     }).catch(() => []);
     const planCountMap = new Map(workspaceCounts.map((w) => [w.plan, w._count.id]));
 
+    const filtered =
+      usage === "used"
+        ? plans.filter((p) => (planCountMap.get(p.key) || 0) > 0)
+        : usage === "unused"
+          ? plans.filter((p) => (planCountMap.get(p.key) || 0) === 0)
+          : plans;
+
     return NextResponse.json({
       success: true,
-      data: plans.map((p) => ({
+      data: filtered.map((p) => ({
         ...serializePlan(p),
         workspaceCount: planCountMap.get(p.key) || 0,
       })),

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   if (!result.authorized || !result.user) {
     const status = result.errorResponse?.status === 401 ? 401 : 403;
     return NextResponse.json(
-      { success: false, error: result.errorResponse?.message || "无权限上传文件" },
+      { success: false, error: result.errorResponse?.statusText || "无权限上传文件" },
       { status }
     );
   }

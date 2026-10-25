@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 import { addNotification } from "@/lib/notifications-store";
-import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog, isPlatformAdminRole } from "@/lib/security";
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -63,8 +63,10 @@ export async function PATCH(request: NextRequest) {
         select: { id: true, role: true, name: true },
       });
 
+      // ⚠️ 用 isPlatformAdminRole 做变体归一判定（数据库角色值有小写历史写法，
+      // 精确比对 "SUPER_ADMIN"/"ADMIN" 会漏保护，管理员空间可能被越权停用）
       if (
-        (owner && (owner.role === "SUPER_ADMIN" || owner.role === "ADMIN")) ||
+        (owner && isPlatformAdminRole(owner.role)) ||
         workspace.ownerId === userId
       ) {
         return NextResponse.json(
